@@ -659,12 +659,10 @@ class BoxBehaviour {
     const target = this.prop.state.open ? 1 : 0;
     this.anim += (target - this.anim) * Math.min(1, dt * 6);
     const P = this.prop.model.parts;
-    if (P.lid) P.lid.rotation.x = -this.anim * 1.9;
-    (P.flaps || []).forEach((f, i) => {
-      if (f.userData.rest === undefined) f.userData.rest = { x: f.rotation.x, z: f.rotation.z };
-      const s = i % 2 ? 1 : -1;
-      if (i < 2) f.rotation.x = f.userData.rest.x + s * this.anim * 2.0;
-      else f.rotation.z = f.userData.rest.z + s * this.anim * 2.0;
+    if (P.lid) P.lid.rotation.x = (this.prop.model.params?.lidOpenSign ?? -1) * this.anim * 1.9;
+    (P.flaps || []).forEach((f) => {
+      if (f.userData.rest === undefined) f.userData.rest = { x: f.rotation.x };
+      f.rotation.x = f.userData.rest.x + this.anim * 2.1; // +x opens every flap
     });
   }
 }
@@ -726,7 +724,7 @@ class ExitDoor extends Device {
     this.root.position.set(e.x, 0, e.z);
     this.root.rotation.y = e.rot;
     // shell occupies the cell; door on its +Z side (toward the radio)
-    const shell = buildModel('exit_room_shell', { seed: 1 });
+    const shell = buildModel('exit_room_shell', { seed: 1, frontWall: true });
     // the shell extends toward -Z from its open side; inset slightly to avoid z-fighting with cell walls
     shell.object.position.set(0, 0, CELL / 2 - 0.08);
     shell.object.scale.set(0.95, 1, 0.95);
@@ -776,7 +774,7 @@ class ExitDoor extends Device {
     const open = this.closing || tl <= 0 ? 0 : 1;
     this.anim += (open - this.anim) * Math.min(1, dt * (open ? 2 : 6));
     const d = this.door.parts.door;
-    if (d) d.rotation.y = -this.anim * 1.7;
+    if (d) d.rotation.y = (this.door.params?.doorOpenSign ?? 1) * this.anim * 1.7;
     const glow = this.door.parts.glow;
     if (glow?.material) glow.material.emissiveIntensity = 2 + Math.sin(this.world.time * 6) * 0.8;
     this.redLights.forEach((l) => { if (l.material) l.material.emissiveIntensity = tl < 30 ? (Math.floor(this.world.time * 4) % 2 ? 3 : 0.3) : 1.5; });

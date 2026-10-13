@@ -9,6 +9,35 @@ export const QUALITY = {
   high: { pixelRatio: 1.0, shadows: true, shadowSize: 2048, bloom: true, ao: true, msaa: false, maxDpr: 2 },
 };
 
+// Image-based-lighting scene: a drop-ceiling office with a grid of fluorescent panels. Average radiance is
+// close to RoomEnvironment's (so diffuse fill stays the same) but the hottest texel is ~5 instead of ~100.
+function officeEnvironment() {
+  const env = new THREE.Scene();
+  const basic = (hex, k, side = THREE.FrontSide) => new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k), side });
+  // probe sits ~1 m above the floor, 1.8 m below the ceiling
+  const room = new THREE.Mesh(new THREE.BoxGeometry(16, 2.8, 16), basic(0xd8d2c2, 1.15, THREE.BackSide));
+  room.position.y = 0.4;
+  env.add(room);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), basic(0x8a7f6a, 0.55));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -0.98;
+  env.add(floor);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(15.9, 0.25, 15.9), basic(0x4a4036, 0.5, THREE.BackSide));
+  base.position.y = -0.86;
+  env.add(base);
+  const panel = basic(0xfff6e4, 5.0, THREE.DoubleSide);
+  const geo = new THREE.PlaneGeometry(1.2, 0.6);
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 6; j++) {
+      const m = new THREE.Mesh(geo, panel);
+      m.rotation.x = Math.PI / 2;
+      m.position.set(-6 + i * 3, 1.78, -6 + j * 2.4);
+      env.add(m);
+    }
+  }
+  return env;
+}
+
 class Engine {
   init(container, qualityName = 'medium') {
     this.container = container;
@@ -37,7 +66,10 @@ class Engine {
     this.vmScene.add(this.vmCamera);
 
     this.pmrem = new THREE.PMREMGenerator(r);
-    this.defaultEnv = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    // World reflections use a dim fluorescent office; the studio RoomEnvironment is kept for UI icons only
+    // (its 50-100x area lights turn every chrome trim and glossy plastic into a blooming hot spot).
+    this.studioEnv = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.defaultEnv = this.pmrem.fromScene(officeEnvironment(), 0.04).texture;
     this.scene.environment = this.defaultEnv;
     this.vmScene.environment = this.defaultEnv;
     this.scene.environmentIntensity = 0.35;

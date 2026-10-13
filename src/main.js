@@ -59,6 +59,7 @@ async function boot() {
   window.__game = game;
   window.__net = net;
   window.__engine = engine;
+  window.__input = input;
 
   bootEl.remove();
 

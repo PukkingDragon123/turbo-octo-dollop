@@ -117,7 +117,10 @@ class Agent {
     this.controller.computeColliderMovement(this.collider, desired, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, groups(G.MONSTER, G.STATIC | G.PROP | G.PLAYER));
     const mv = this.controller.computedMovement();
     this.pos.x += mv.x; this.pos.y += mv.y; this.pos.z += mv.z;
-    if (this.pos.y < 0) this.pos.y = 0;
+    // monsters walk on the static floor (they shove furniture, never climb onto it)
+    const g = this.world.physics.raycast(_v.set(this.pos.x, this.pos.y + 0.9, this.pos.z), _v2.set(0, -1, 0), 4, Q.world);
+    if (g) this.pos.y = g.point.y;
+    else if (this.pos.y < 0) this.pos.y = 0;
     this.collider.setTranslation({ x: this.pos.x, y: this.pos.y + this.halfH + this.radius, z: this.pos.z });
     // stuck detection
     const moved = Math.hypot(this.pos.x - this.lastPos.x, this.pos.z - this.lastPos.z);

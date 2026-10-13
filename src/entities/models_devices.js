@@ -4193,7 +4193,6 @@ function b_pipe_cluster(o) {
   return k.done({ mass: 800, material: 'metal' });
 }
 
-//@@MODELS@@
 
 // ===========================================================================
 // Registry, template cache & cloning
@@ -4238,7 +4237,6 @@ const BUILDERS = {
   server_rack: b_server_rack,
   photocopier: b_photocopier,
   pipe_cluster: b_pipe_cluster,
-  //@@REGISTRY@@
 };
 
 function stable(o) {

@@ -90,10 +90,11 @@ export class VendingMachine extends ModelDevice {
     const self = this;
     const g = this.world.game;
     const scr = new CrtScreen(512, 384, 'green');
+    this.root.updateMatrixWorld(true);
     g.terminal.open({
-      device: this, screen: scr,
-      mesh: this.model.screens?.main?.mesh || this.model.object,
-      distance: 1.0,
+      device: this, screen: scr, overlay: true,
+      target: this.root.localToWorld(new THREE.Vector3(-0.15, 1.15, 0)),
+      distance: 1.9,
       anchorNormal: new THREE.Vector3(0, 0, 1).applyQuaternion(this.root.quaternion),
       view() {
         const items = self.list.map(([t, name], i) => ({ label: `${String.fromCharCode(65 + Math.floor(i / 4))}${(i % 4) + 1}  ${name}`, hint: self.price ? `${self.price} CR` : 'FREE', disabled: !!self.state.broken || (self.price > 0 && g.run.credits < self.price), i }));
@@ -149,6 +150,11 @@ export class VendingMachine extends ModelDevice {
   playFx(m) {
     if (m.k === 'vend') {
       this.spin.set(m.i, 0);
+      const prods = this.parts.products || [];
+      const pr = prods[m.i % Math.max(1, prods.length)];
+      if (pr) { setTimeout(() => { pr.visible = false; }, 1400); setTimeout(() => { pr.visible = true; }, 45000); }
+      const bl = (this.parts.buttonLights || [])[m.i % Math.max(1, (this.parts.buttonLights || []).length)];
+      if (bl?.material) { const prev = bl.material.emissiveIntensity; bl.material.emissiveIntensity = 4; setTimeout(() => { bl.material.emissiveIntensity = prev; }, 1500); }
       audio.play('coin', { pos: this.root.position, volume: 0.7 });
       audio.play('vending_motor', { pos: this.root.position, volume: 0.9 });
     }
@@ -195,8 +201,14 @@ export class WaterCooler extends ModelDevice {
     }
   }
   update(dt) {
+    const wtr = this.parts.water;
+    if (wtr) {
+      this.level = Math.min(1, (this.level ?? 1) + dt * 0.004);
+      wtr.scale.y = 0.25 + this.level * 0.75;
+    }
     if (this.glug > 0) {
       this.glug -= dt;
+      this.level = Math.max(0, (this.level ?? 1) - dt * 0.05);
       this.bubT -= dt;
       const bo = this.parts.bubbleOrigin;
       if (bo && this.bubT <= 0) {
@@ -330,7 +342,8 @@ export class DartBoard extends ModelDevice {
     // embed the dart
     this.world.props.setFrozen(prop, true);
     const n = new THREE.Vector3(0, 0, 1).applyQuaternion(this.root.quaternion);
-    const embed = this.root.localToWorld(new THREE.Vector3(local.x, local.y, 0.015)).addScaledVector(fwd, -0.06);
+    const faceZ = this.model.params?.faceZ ?? this.anchors.center?.z ?? 0.015;
+    const embed = this.root.localToWorld(new THREE.Vector3(local.x, local.y, faceZ + 0.01)).addScaledVector(fwd, -0.06);
     prop.root.position.copy(embed);
     this.world.props.forceSendIds.add(prop.id);
     const by = prop.thrownBy || net.selfId;
@@ -662,7 +675,7 @@ export class Fridge extends ModelDevice {
   }
   update(dt) {
     this.anim += ((this.state.open ? 1 : 0) - this.anim) * Math.min(1, dt * 5);
-    if (this.parts.door) this.parts.door.rotation.y = -this.anim * 1.6;
+    if (this.parts.door) this.parts.door.rotation.y = (this.model.params?.doorOpenSign ?? 1) * this.anim * 1.6;
     if (!this.hum && this.nearLocal(8)) this.hum = audio.loop('fridge_hum', { pos: this.root.position.clone().setY(1), volume: 0.4 });
     else if (this.hum && !this.nearLocal(12)) { this.hum.stop(0.3); this.hum = null; }
   }

@@ -113,15 +113,29 @@ export class LocalPlayer {
     this.flashlight.target = this.flashTarget;
     this.flashFlicker = 0;
 
-    // grab beam
+    // grab beam: a glowing tube (rebuilt in place every frame) + a core line + a glow at the grip point
+    const SEG = 24, RAD = 6;
+    this.beamSeg = SEG;
+    this.beamRad = RAD;
+    const tubeGeo = new THREE.BufferGeometry();
+    tubeGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((SEG + 1) * RAD * 3), 3));
+    const idx = [];
+    for (let i = 0; i < SEG; i++) for (let j = 0; j < RAD; j++) {
+      const a = i * RAD + j, b = i * RAD + ((j + 1) % RAD), c = (i + 1) * RAD + j, d = (i + 1) * RAD + ((j + 1) % RAD);
+      idx.push(a, c, b, b, c, d);
+    }
+    tubeGeo.setIndex(idx);
+    this.beamTube = new THREE.Mesh(tubeGeo, new THREE.MeshBasicMaterial({ color: 0x6fd8ff, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    this.beamTube.frustumCulled = false;
+    this.beamTube.visible = false;
     const beamGeo = new THREE.BufferGeometry();
-    beamGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(24 * 3), 3));
-    this.beam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+    beamGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((SEG + 1) * 3), 3));
+    this.beam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0xe0faff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.beam.frustumCulled = false;
     this.beam.visible = false;
-    this.beamGlow = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 8), new THREE.MeshBasicMaterial({ color: 0xbff4ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+    this.beamGlow = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 8), new THREE.MeshBasicMaterial({ color: 0xbff4ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.beamGlow.visible = false;
-    engine.scene.add(this.beam, this.beamGlow);
+    engine.scene.add(this.beam, this.beamTube, this.beamGlow);
   }
 
   get id() { return net.selfId; }
@@ -566,12 +580,13 @@ export class LocalPlayer {
     }
     if (!this.grab) return;
     this.grab.t += dt;
-    if (!input.mouseDown(0)) {
-      this.releaseGrab(false);
-      return;
-    }
+    // check the throw first so a quick RMB+LMB release in one frame still throws
     if (input.mouseHit(2)) {
       this.releaseGrab(true);
+      return;
+    }
+    if (!input.mouseDown(0)) {
+      this.releaseGrab(false);
       return;
     }
     const w = input.consumeWheel();
@@ -637,29 +652,51 @@ export class LocalPlayer {
     const g = this.grab;
     const show = !!(g && (g.point || g.remote) && !this.dead);
     this.beam.visible = show;
+    this.beamTube.visible = show;
     this.beamGlow.visible = show;
     if (!show) return;
     const cam = engine.camera;
-    const start = _v.set(0.22, -0.2, -0.45).applyQuaternion(cam.quaternion).add(cam.position);
+    const start = _v.set(0.2, -0.22, -0.42).applyQuaternion(cam.quaternion).add(cam.position).clone();
     let end;
     if (g.remote) {
       const r = this.game.remotes.get(g.remote);
       end = r ? r.pos.clone().add(_v2.set(0, 0.7, 0)) : start.clone();
     } else end = g.point;
-    const mid = g.target ? g.target.clone().lerp(start, 0.3) : start.clone().lerp(end, 0.5);
-    const arr = this.beam.geometry.attributes.position.array;
+    // the beam sags toward where we are pulling, like a stretched rope of light
+    const mid = g.target ? g.target.clone().lerp(start, 0.35) : start.clone().lerp(end, 0.5);
+    const SEG = this.beamSeg, RAD = this.beamRad;
+    const line = this.beam.geometry.attributes.position.array;
+    const tube = this.beamTube.geometry.attributes.position.array;
     const t0 = engine.time;
-    for (let i = 0; i < 24; i++) {
-      const t = i / 23;
+    const pts = [];
+    for (let i = 0; i <= SEG; i++) {
+      const t = i / SEG;
       const a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
-      const wob = Math.sin(t * Math.PI) * 0.012 * Math.sin(t0 * 40 + i);
-      arr[i * 3] = start.x * a + mid.x * b + end.x * c + wob;
-      arr[i * 3 + 1] = start.y * a + mid.y * b + end.y * c + wob;
-      arr[i * 3 + 2] = start.z * a + mid.z * b + end.z * c;
+      const wob = Math.sin(t * Math.PI) * 0.015 * Math.sin(t0 * 35 + i * 0.9);
+      const p = new THREE.Vector3(start.x * a + mid.x * b + end.x * c + wob, start.y * a + mid.y * b + end.y * c + wob, start.z * a + mid.z * b + end.z * c);
+      pts.push(p);
+      line[i * 3] = p.x; line[i * 3 + 1] = p.y; line[i * 3 + 2] = p.z;
+    }
+    const tan = new THREE.Vector3(), n1 = new THREE.Vector3(), n2 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+    for (let i = 0; i <= SEG; i++) {
+      tan.subVectors(pts[Math.min(SEG, i + 1)], pts[Math.max(0, i - 1)]).normalize();
+      n1.crossVectors(tan, up);
+      if (n1.lengthSq() < 1e-4) n1.set(1, 0, 0);
+      n1.normalize();
+      n2.crossVectors(tan, n1).normalize();
+      const r = 0.012 + Math.sin((i / SEG) * Math.PI) * 0.012 + Math.sin(t0 * 20 + i) * 0.003;
+      for (let j = 0; j < RAD; j++) {
+        const ang = (j / RAD) * Math.PI * 2;
+        const k = (i * RAD + j) * 3;
+        tube[k] = pts[i].x + (n1.x * Math.cos(ang) + n2.x * Math.sin(ang)) * r;
+        tube[k + 1] = pts[i].y + (n1.y * Math.cos(ang) + n2.y * Math.sin(ang)) * r;
+        tube[k + 2] = pts[i].z + (n1.z * Math.cos(ang) + n2.z * Math.sin(ang)) * r;
+      }
     }
     this.beam.geometry.attributes.position.needsUpdate = true;
+    this.beamTube.geometry.attributes.position.needsUpdate = true;
     this.beamGlow.position.copy(end);
-    this.beamGlow.scale.setScalar(0.8 + Math.sin(t0 * 30) * 0.2);
+    this.beamGlow.scale.setScalar(0.8 + Math.sin(t0 * 30) * 0.25);
   }
 
   // ---------------- inventory & items ----------------
@@ -1021,6 +1058,7 @@ export class LocalPlayer {
     this.detachWorld();
     this.arms.root.removeFromParent();
     this.beam.removeFromParent();
+    this.beamTube.removeFromParent();
     this.beamGlow.removeFromParent();
   }
 }

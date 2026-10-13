@@ -5,11 +5,6 @@ export default defineConfig({
   server: { host: true, port: 5173 },
   build: {
     target: 'es2022',
-    chunkSizeWarningLimit: 4000,
-    rollupOptions: {
-      input: {
-        main: 'index.html',
-      },
-    },
+    chunkSizeWarningLimit: 8000,
   },
 });

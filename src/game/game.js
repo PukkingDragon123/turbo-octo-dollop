@@ -331,7 +331,8 @@ export class Game {
     }
     if (this.world !== world) { this.loading = false; return; }
     // spawn point
-    const idx = [...this.roster.keys()].sort().indexOf(net.selfId);
+    // roster order is the host's join order (clients rebuild it from the host's list), so indexes never collide
+    const idx = [...this.roster.keys()].indexOf(net.selfId);
     const arrival = !!desc.arrival && !lateJoin;
     const sp = world.level.spawnPoint(Math.max(0, idx), lateJoin, arrival);
     this.local.attachWorld(world, sp);
@@ -554,7 +555,8 @@ export class Game {
   onLocalDeath() {
     profile.stat('deaths');
     if ((profile.data.stats.deaths || 0) >= 10) profile.unlock('disposable');
-    this.ui.feed('Your clone has been terminated. Teammates can re-clone you at the cloning pad.', 'bad', 'R.O.O.M.');
+    const alive = [...this.roster.values()].some((r) => r.id !== net.selfId && !r.dead);
+    this.ui.feed(alive ? 'Your clone has been terminated. Teammates can re-clone you at the cloning pad.' : 'Your clone has been terminated.', 'bad', 'R.O.O.M.');
   }
 
   onItemUsed(type, wasBleeding) {

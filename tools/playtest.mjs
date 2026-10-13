@@ -138,6 +138,160 @@ const scenarios = {
     await ev(() => { const g = __game; const r = g.world.level.mission.radio(); r.custom.interact(g.local); });
     await shot('radio_term', 5000);
   },
+  async input() {
+    await page.goto(base + '?auto=solo');
+    await waitLoaded();
+    await page.waitForTimeout(3000);
+    await page.mouse.click(550, 310);
+    await page.waitForTimeout(500);
+    console.log('menu?', await ev(() => ({ menuOpen: __game.ui.menuOpen, locked: __input.locked, active: document.activeElement?.tagName })));
+    await ev(() => __game.ui.hideMenus());
+    const p0 = await ev(() => __game.local.pos.toArray());
+    await page.keyboard.down('KeyW');
+    await page.waitForTimeout(1500);
+    console.log('keys', await ev(() => ({ keys: [...__input.keys], vel: __game.local.vel.toArray().map((v) => +v.toFixed(2)), menu: __game.ui.menuOpen, term: !!__game.local.terminal })));
+    await page.waitForTimeout(1500);
+    await page.keyboard.up('KeyW');
+    const p1 = await ev(() => __game.local.pos.toArray());
+    console.log('walk', p0.map((v) => v.toFixed(2)), '->', p1.map((v) => v.toFixed(2)));
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(150);
+    console.log('jump y', await ev(() => [__game.local.pos.y.toFixed(2), __game.local.grounded]));
+    await page.waitForTimeout(1500);
+    // face the nearest light prop and grab it with the mouse
+    const target = await ev(() => {
+      const g = __game, l = g.local; let best = null, bd = 1e9;
+      for (const p of g.world.props.props.values()) { const d = p.root.position.distanceTo(l.pos); if (d < bd && d > 1 && p.mass < 15) { bd = d; best = p; } }
+      if (!best) return null;
+      const dx = best.root.position.x - l.pos.x, dz = best.root.position.z - l.pos.z;
+      l.yaw = Math.atan2(-dx, -dz);
+      const dy = best.root.position.y - (l.pos.y + 1.16);
+      l.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+      // walk up to it
+      const d = Math.hypot(dx, dz);
+      if (d > 2) l.teleport(new l.pos.constructor(best.root.position.x + dx / d * -1.6, l.pos.y, best.root.position.z + dz / d * -1.6), l.yaw);
+      return { id: best.id, type: best.type, d: bd.toFixed(2) };
+    });
+    console.log('target', JSON.stringify(target));
+    await page.waitForTimeout(500);
+    await ev((id) => { const g = __game, l = g.local, p = g.world.props.get(id); const dx = p.root.position.x - l.pos.x, dz = p.root.position.z - l.pos.z; l.yaw = Math.atan2(-dx, -dz); l.pitch = Math.atan2(p.root.position.y - (l.pos.y + 1.16), Math.hypot(dx, dz)); }, target.id);
+    await page.waitForTimeout(400);
+    await page.mouse.down();
+    await page.waitForTimeout(1500);
+    console.log('grabbing', await ev(() => ({ grab: __game.local.grab?.id, focus: __game.local.focus?.prompt })));
+    await shot('grab', 300);
+    await page.mouse.down({ button: 'right' });
+    await page.waitForTimeout(100);
+    await page.mouse.up({ button: 'right' });
+    await page.mouse.up();
+    await page.waitForTimeout(2000);
+    console.log('after throw', await ev((id) => { const p = __game.world.props.get(id); return p ? p.root.position.toArray().map((v) => +v.toFixed(2)) : 'gone'; }, target.id), 'thrown', await ev(() => __game.local.stats.thrown));
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(2500);
+    await shot('tabwatch', 300);
+  },
+  async lobby2() {
+    await page.goto(base + '?auto=solo');
+    await waitLoaded();
+    await page.waitForTimeout(3000);
+    const tp = (p, yaw, pitch = 0) => ev(([p, yaw, pitch]) => { const l = __game.local; l.teleport(new l.pos.constructor(p[0], p[1], p[2]), yaw); l.pitch = pitch; }, [p, yaw, pitch]);
+    // reception + receptionist
+    await tp([0, 0, 13.2], 0, -0.05);
+    await shot('l2_reception', 4000);
+    // locker customizer
+    await tp([-20.4, 0, 0.5], Math.PI / 2, 0);
+    await page.waitForTimeout(800);
+    console.log('locker', await ev(() => { const d = __game.world.devices.get('lockers'); d.interact(__game.local, 'use', null); return !!__game.ui.customizing; }));
+    await shot('l2_custom', 5000);
+    await ev(() => { __game.local.setCosmetics({ suit: 'hawaiian', hat: 'bucket', accessory: 'fannypack' }); __game.ui._renderCustom(); });
+    await shot('l2_custom2', 4000);
+    await ev(() => __game.ui.closeCustomizer());
+    // mirror
+    await tp([-17, 0, -3.6], 0, 0);
+    await ev(() => { __game.local.thirdPerson = false; });
+    await shot('l2_mirror', 4000);
+    // vending terminal
+    await tp([15.2, 0, -4.1], 0, -0.1);
+    await page.waitForTimeout(800);
+    await ev(() => { const d = __game.world.devices.get('vend_snack'); d.interact(__game.local); });
+    await shot('l2_vending', 4000);
+    await ev(() => __game.terminal.close());
+    // dispatch
+    await tp([13, 0, -13], 0, 0.1);
+    await ev(() => __game.world.devices.get('dispatch_lever').hostAction('pull'));
+    await shot('l2_dispatch', 6000);
+    await page.waitForTimeout(25000);
+    await waitLoaded();
+    console.log('after dispatch', await ev(() => ({ type: __game.world.type, depth: __game.run.depth })));
+  },
+  async bacteria() {
+    await page.goto(base + '?auto=solo&level=yellow');
+    await waitLoaded();
+    await page.waitForTimeout(3000);
+    await ev(() => { __game.cutscene = null; __engine.post.params.uFade.value = 0; __engine.post.params.uGlitch.value = 0; });
+    // find a long straight view: try a few yaws and pick the one with the farthest wall
+    const info = await ev(() => {
+      const g = __game, l = g.local, ph = g.world.physics;
+      let best = 0, by = 0;
+      for (let k = 0; k < 16; k++) {
+        const yaw = k * Math.PI / 8;
+        const d = new l.pos.constructor(-Math.sin(yaw), 0, -Math.cos(yaw));
+        const hit = ph.raycast(l.pos.clone().setY(1.2), d, 40, undefined, null, (c) => c !== l.collider);
+        const dist = hit ? hit.dist : 40;
+        if (dist > best) { best = dist; by = yaw; }
+      }
+      l.yaw = by; l.pitch = 0.02;
+      const mm = g.world.monsters;
+      const fwd = new l.pos.constructor(-Math.sin(by), 0, -Math.cos(by));
+      const a = mm.debugSpawn('bacteria', l.pos.clone().addScaledVector(fwd, Math.min(best - 1, 9)));
+      a.setState('listen'); a.listenT = 60;
+      return { best, yaw: by };
+    });
+    console.log('view', JSON.stringify(info));
+    await shot('bac_idle', 6000);
+    await ev(() => { const g = __game; const a = [...g.world.monsters.agents.values()][0]; a.target = g.world.monsters.alivePlayers()[0]; a.lastKnown = g.local.pos.clone(); a.setState('chase'); });
+    await shot('bac_chase', 2500);
+    await ev(() => { __game.local.flashOn = true; const i = __game.local.inv; });
+    await shot('bac_chase2', 2500);
+  },
+  async days() {
+    await page.goto(base + '?auto=solo&level=yellow&daylen=60');
+    await waitLoaded();
+    await page.waitForTimeout(3000);
+    await ev(() => { __game.cutscene = null; __engine.post.params.uFade.value = 0; __engine.post.params.uGlitch.value = 0; __game.local.yaw = 0.4; });
+    for (const d of [3, 5, 7]) {
+      await ev((d) => { __game.day.time = (d - 1) * 60 - 0.5; }, d);
+      await page.waitForTimeout(6000);
+      console.log('day', await ev(() => ({ day: __game.day.day, inst: +__game.day.instability().toFixed(2), col: +__game.day.collapse().toFixed(2), dead: [...__game.world.field.lights.values()].filter((l) => l.mode === 'dead').length, flick: [...__game.world.field.lights.values()].filter((l) => l.mode === 'flicker').length })));
+      await shot('day' + d, 500);
+    }
+    await ev(() => { __game.day.time = 7 * 60 - 1; });
+    await page.waitForTimeout(20000);
+    console.log('collapse', await ev(() => ({ dead: __game.local.dead, type: __game.world?.type, ro: document.querySelector('#runover')?.classList.contains('show') })));
+    await shot('collapse', 500);
+  },
+  async loop() {
+    // full failure loop: reality collapses -> run over -> back in the lobby with a controllable, living clone
+    await page.goto(base + '?auto=solo&level=yellow&daylen=30');
+    await waitLoaded();
+    await page.waitForTimeout(3000);
+    await ev(() => { __game.cutscene = null; __game.day.time = 7 * 30 - 1; });
+    await page.waitForTimeout(8000);
+    console.log('collapsed', await ev(() => ({ dead: __game.local.dead, ro: document.querySelector('#runover')?.classList.contains('show'), menu: __game.ui.menuOpen })));
+    for (let i = 0; i < 60; i++) {
+      if (await ev(() => __game.world?.type === 'lobby' && !__game.loading)) break;
+      await page.waitForTimeout(1000);
+    }
+    await page.waitForTimeout(4000);
+    console.log('lobby', await ev(() => ({ type: __game.world.type, dead: __game.local.dead, ro: document.querySelector('#runover')?.classList.contains('show'), menu: __game.ui.menuOpen, hp: Math.round(__game.local.survival.health), depth: __game.run.depth })));
+    const p0 = await ev(() => __game.local.pos.toArray());
+    await page.keyboard.down('KeyW');
+    await page.waitForTimeout(2000);
+    await page.keyboard.up('KeyW');
+    const p1 = await ev(() => __game.local.pos.toArray());
+    console.log('moved', Math.hypot(p1[0] - p0[0], p1[2] - p0[2]).toFixed(2));
+    await shot('loop_lobby', 500);
+  },
   async lobby() {
     await page.goto(base + '?auto=solo');
     await waitLoaded();

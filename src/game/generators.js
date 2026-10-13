@@ -10,6 +10,7 @@ import { audio } from '../audio/audio.js';
 import { Device } from './devices.js';
 import { buildModel } from '../entities/catalog.js';
 import { CrtScreen, text, bar } from '../ui/crt.js';
+import * as Devs from '../entities/models_devices.js';
 
 const _v = new THREE.Vector3();
 const COLORS = ['red', 'blue', 'green', 'yellow'];
@@ -28,13 +29,13 @@ class GeneratorBase extends Device {
     this.smokeT = 0;
   }
 
-  buildModel(key) {
-    const m = buildModel(key, { seed: 3 });
+  buildModel(key, opts = {}) {
+    const m = buildModel(key, { seed: 3, ...opts });
     this.model = m;
     this.root.add(m.object);
     this.addColliders(m.colliders);
     if (m.screens?.main?.mesh) {
-      this.screen = new CrtScreen(256, 192, 'green');
+      this.screen = new CrtScreen(512, 384, 'green');
       this.screen.fps = 6;
       this.screen.attach(m.screens.main.mesh, 1.3);
     }
@@ -94,11 +95,15 @@ class GeneratorBase extends Device {
         }
       }
     }
-    if (this.screen) {
+    const inTerminal = this.mission.game.terminal?.session?.device === this;
+    if (this.screen && !inTerminal && this.root.position.distanceTo(this.mission.game.local.pos) < 16) {
       this.screen.draw(dt, (ctx, w, h, pal) => {
+        ctx.save();
+        ctx.scale(2, 2);
         text(ctx, this.label, 10, 6, 28, pal.hi);
         text(ctx, this.statusText(), 10, 40, 24, this.running ? pal.good : pal.bad);
-        this.drawStatus(ctx, w, h, pal);
+        this.drawStatus(ctx, w / 2, h / 2, pal);
+        ctx.restore();
       });
     }
   }
@@ -160,8 +165,10 @@ export class DieselGenerator extends GeneratorBase {
     }
     // needles
     for (const [i, n] of (this.model.parts.needles || []).entries()) {
-      const target = this.running ? 0.6 + Math.sin(this.world.time * 9 + i) * 0.1 : i === 0 ? this.state.fuel * 1.2 - 0.6 : -0.6;
-      n.rotation.z += (-target - n.rotation.z) * Math.min(1, dt * 6);
+      const jit = Math.sin(this.world.time * 9 + i * 2) * 0.04;
+      const v = this.running ? [0.72, 0.62, 0.8][i % 3] + jit : i === 0 ? this.state.fuel * 0.3 : 0.02;
+      const target = Devs.gaugeAngle ? Devs.gaugeAngle(v) : (0.5 - v) * 1.5 * Math.PI;
+      n.rotation.z += (target - n.rotation.z) * Math.min(1, dt * 6);
     }
     // host: fuel pouring from a held fuel can near the cap
     if (net.isHost && !this.running && this.state.fuel < 1) {
@@ -228,7 +235,8 @@ export class ElectricGenerator extends GeneratorBase {
     let s = seed >>> 0;
     for (let i = 3; i > 0; i--) { s = (s * 1103515245 + 12345) >>> 0; const j = s % (i + 1); [order[i], order[j]] = [order[j], order[i]]; }
     Object.assign(this.state, { door: 0, wires: [0, 0, 0, 0], fuse: 0, breaker: 0, order });
-    this.buildModel('generator_electric');
+    // the physical right-hand terminals are colour-coded in the same scrambled order
+    this.buildModel('generator_electric', { leftOrder: COLORS.slice(), rightOrder: order.map((i) => COLORS[i]) });
     this.wireMeshes = [];
     this.pick = -1; // locally selected wire colour (0..3) awaiting a socket
     this.doorAnim = 0;
@@ -261,12 +269,25 @@ export class ElectricGenerator extends GeneratorBase {
   _openWiring() {
     const game = this.mission.game;
     const self = this;
-    const scr = new CrtScreen(512, 384, 'green');
+    // frame the status screen and the terminal block together
+    const terms = this.model.anchors.terminals || [];
+    const c = new THREE.Vector3();
+    for (const t of terms) c.add(new THREE.Vector3(t.x, t.y, t.z));
+    if (terms.length) c.divideScalar(terms.length); else c.set(0, 1.0, 0.3);
+    const scrMesh = this.model.screens?.main?.mesh;
+    if (scrMesh) {
+      const sp = new THREE.Box3().setFromObject(scrMesh).getCenter(new THREE.Vector3());
+      this.root.updateMatrixWorld(true);
+      const local = this.root.worldToLocal(sp.clone());
+      c.lerp(local, 0.5);
+    }
+    const target = c.applyMatrix4(this.root.matrixWorld);
     game.terminal.open({
       device: this,
-      screen: scr,
-      mesh: this.model.parts.door || this.model.screens?.main?.mesh,
-      distance: 1.1,
+      screen: new CrtScreen(512, 384, 'green'),
+      overlay: true,
+      target,
+      distance: 1.6,
       anchorNormal: new THREE.Vector3(0, 0, 1).applyQuaternion(this.root.quaternion),
       view() {
         const st = self.state;
@@ -274,14 +295,14 @@ export class ElectricGenerator extends GeneratorBase {
         if (self.pick < 0) {
           COLORS.forEach((c, i) => items.push({ label: `WIRE ${c.toUpperCase()}`, hint: st.wires[i] ? 'CONNECTED' : 'LOOSE', disabled: !!st.wires[i], act: 'pick', i }));
         } else {
-          ['A', 'B', 'C', 'D'].forEach((L, s) => items.push({ label: `SOCKET ${L}`, hint: `[${COLORS[st.order[s]].toUpperCase().slice(0, 1)}]`, act: 'socket', s }));
+          ['A', 'B', 'C', 'D'].forEach((L, s) => items.push({ label: `SOCKET ${L}`, hint: ['TOP', '2ND', '3RD', 'BOTTOM'][s], act: 'socket', s }));
           items.push({ label: 'CANCEL', act: 'cancel' });
         }
         return {
           title: `${self.label} — WIRING`,
           subtitle: 'MAINT. PANEL',
           lines: [
-            self.pick < 0 ? 'Select a loose wire.' : `Route ${COLORS[self.pick].toUpperCase()} wire to the socket marked with its colour code.`,
+            self.pick < 0 ? 'Select a loose wire (left column).' : `Route ${COLORS[self.pick].toUpperCase()} to the right-hand socket with the SAME colour. Look at the panel!`,
             { t: 'Wrong socket = electric shock. R.O.O.M. is not liable.', c: 'dim', s: 20 },
           ],
           items,
@@ -353,8 +374,8 @@ export class ElectricGenerator extends GeneratorBase {
       if (!on) return;
       // left terminal of colour ci -> right terminal of the socket that expects it
       const s = this.state.order.indexOf(ci);
-      const a = terms[ci * 2] || terms[ci];
-      const b = terms[s * 2 + 1] || terms[4 + s];
+      const a = terms[ci];
+      const b = terms[4 + s];
       const av = new THREE.Vector3(a.x, a.y, a.z), bv = new THREE.Vector3(b.x, b.y, b.z);
       const mid = av.clone().lerp(bv, 0.5).add(new THREE.Vector3(0, -0.08, 0.08));
       const curve = new THREE.QuadraticBezierCurve3(av, mid, bv);
@@ -481,14 +502,16 @@ export class MechGenerator extends GeneratorBase {
     if (P.flywheel) P.flywheel.rotation.x += dt * (this.running ? 14 : this.crankAnim > 0 ? 3 : 0);
     if (P.crank) P.crank.rotation.x = this.running ? this.world.time * 4 : this.state.crank * 25 + this.crankAnim;
     if (P.needle) {
-      const target = this.running ? 1.1 + Math.sin(this.world.time * 7) * 0.05 : this.state.crank * 1.2 - 0.8;
-      P.needle.rotation.z += (-target - P.needle.rotation.z) * Math.min(1, dt * 5);
+      const v = this.running ? 0.82 + Math.sin(this.world.time * 7) * 0.03 : this.state.crank * 0.7;
+      const target = Devs.gaugeAngle ? Devs.gaugeAngle(v) : (0.5 - v) * 1.5 * Math.PI;
+      P.needle.rotation.z += (target - P.needle.rotation.z) * Math.min(1, dt * 5);
     }
     (P.bolts || []).forEach((b, i) => {
       if (!b.userData.rest) b.userData.rest = { p: b.position.clone(), r: b.rotation.clone() };
       const f = this.state.bolts[i] ?? 0;
       b.rotation.z = b.userData.rest.r.z + f * 12;
       b.position.copy(b.userData.rest.p);
+      b.position.z = (b.userData.z0 ?? b.userData.rest.p.z) + (1 - f) * 0.035;
     });
     // glowing cracks (unsealed) / cooling beads (sealed)
     const cracks = this.model.anchors.cracks || [];

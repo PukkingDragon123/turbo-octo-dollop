@@ -27,6 +27,18 @@ export class Terminal {
   open(spec) {
     if (this.session) this.close();
     this.session = { ...spec, sel: 0, t: 0 };
+    // small physical screens: show the same canvas as a readable CRT panel beside the device
+    if (spec.overlay && spec.screen) {
+      if (!this.panel) {
+        this.panel = document.createElement('div');
+        this.panel.style.cssText = 'position:fixed;right:4vw;top:50%;transform:translateY(-50%);width:min(46vw,620px);aspect-ratio:4/3;z-index:12;border-radius:18px;overflow:hidden;box-shadow:0 0 0 6px #1a1209,0 0 0 9px #3a2a14,0 0 40px rgba(0,0,0,0.8);pointer-events:none;';
+        document.body.appendChild(this.panel);
+      }
+      this.panel.innerHTML = '';
+      spec.screen.canvas.style.cssText = 'width:100%;height:100%;display:block;image-rendering:auto;';
+      this.panel.appendChild(spec.screen.canvas);
+      this.panel.style.display = 'block';
+    }
     this.game.local.terminal = this.session;
     this.game.local.releaseGrab(false);
     this.blend = 0;
@@ -39,6 +51,7 @@ export class Terminal {
 
   close() {
     if (!this.session) return;
+    if (this.panel) { this.panel.style.display = 'none'; this.panel.innerHTML = ''; }
     this.session.onClose?.();
     this.session = null;
     this.game.local.terminal = null;
@@ -48,17 +61,23 @@ export class Terminal {
   _computePose() {
     const s = this.session;
     const mesh = s.mesh;
-    if (!mesh) { s.pose = null; return; }
-    mesh.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(mesh);
-    box.getCenter(_p);
-    const size = box.getSize(new THREE.Vector3());
+    if (!mesh && !s.target) { s.pose = null; return; }
+    let size;
+    if (s.target) {
+      _p.copy(s.target);
+      size = new THREE.Vector3(0.5, 0.5, 0.5);
+    } else {
+      mesh.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(mesh);
+      box.getCenter(_p);
+      size = box.getSize(new THREE.Vector3());
+    }
     // facing normal: the device/prop front (+Z by convention), else the screen geometry
     const owner = s.prop?.root || s.device?.root;
     if (s.anchorNormal) _n.copy(s.anchorNormal);
     else if (owner) _n.set(0, 0, 1).applyQuaternion(owner.getWorldQuaternion(_q)).normalize();
     else {
-      const nAttr = mesh.geometry?.attributes?.normal;
+      const nAttr = mesh?.geometry?.attributes?.normal;
       _n.set(0, 0, 0);
       if (nAttr) {
         const nm = new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld);

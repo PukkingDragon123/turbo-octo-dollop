@@ -11,6 +11,7 @@ import { itemName, itemDef, SAMPLES } from '../game/itemdefs.js';
 import { Avatar, COSMETICS } from '../entities/avatar.js';
 import { buildStillLife } from '../entities/optional.js';
 import { damp } from '../core/rng.js';
+import { Q } from '../physics/physics.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -255,7 +256,7 @@ export class UI {
     for (const [k, s] of Object.entries(this.screens)) s.classList.toggle('show', k === id);
     this.menuOpen = !!id && id !== 'custom';
     if (id) input.exitLock();
-    this.hud.classList.toggle('hidden', !this.game || this.game.state !== 'playing' || id === 'menu-main');
+    this.hud.classList.toggle('hidden', !this.game || this.game.state !== 'playing' || id === 'menu-main' || id === 'runover');
   }
 
   showMainMenu() {
@@ -307,8 +308,9 @@ export class UI {
     if (label) $('.l', l).textContent = label;
   }
   onWorldLoaded(desc) {
+    // leaving the run-over screen must also release menuOpen, or the clone can't move in the lobby
+    if (this.screens.runover.classList.contains('show')) this._show(null);
     this.hud.classList.remove('hidden');
-    $('#runover', this.root).classList.remove('show');
     if (desc.type !== 'lobby') this.feed(`${desc.depth > 1 ? 'SECTOR ' + desc.depth + ' — ' : ''}LEVEL 0: THE YELLOW ROOMS. DAY 1/7.`, 'hq', 'HQ');
     else this.feed('Welcome back to Sublevel B4. Pull the dispatch lever when your team is ready.', 'hq', 'HQ');
   }
@@ -383,6 +385,9 @@ export class UI {
     this.customizing = { onClose };
     input.exitLock();
     this.customAngle = 0;
+    // turn the clone around to face the room, so the camera can stand in front of it instead of inside the lockers
+    const l = this.game?.local;
+    if (l) { l.yaw += Math.PI; l.pitch = 0; }
     this._renderCustom();
     this.screens.custom.classList.add('show');
     $('#locker-no', this.root).textContent = String(1 + (Math.abs(profile.name.length * 7) % 32)).padStart(2, '0');
@@ -453,7 +458,7 @@ export class UI {
     const prevClear = r.getClearColor(new THREE.Color());
     const prevAlpha = r.getClearAlpha();
     const prevTM = r.toneMapping;
-    scene.environment = env || engine.defaultEnv;
+    scene.environment = env || engine.studioEnv || engine.defaultEnv;
     r.setRenderTarget(rt);
     r.setClearColor(0x000000, 0);
     r.clear();
@@ -586,14 +591,23 @@ export class UI {
     if (this.customizing) {
       const cam = engine.camera;
       this.customAngle += dt * 0.25;
-      const target = l.pos.clone().setY(l.pos.y + 0.75);
-      const ang = l.yaw + Math.PI + Math.sin(this.customAngle) * 0.7;
-      const pos = target.clone().add(new THREE.Vector3(-Math.sin(ang) * 1.9, 0.25, -Math.cos(ang) * 1.9));
-      cam.position.lerp(pos, Math.min(1, dt * 5));
-      cam.lookAt(target);
+      const target = l.pos.clone().setY(l.pos.y + 0.72);
+      const ang = l.yaw + Math.sin(this.customAngle) * 0.6;
+      // stand in front of the clone and look slightly to its left so it sits right of the panel
+      const fwd = new THREE.Vector3(-Math.sin(ang), 0, -Math.cos(ang));
+      const right = new THREE.Vector3(Math.cos(ang), 0, -Math.sin(ang));
+      const pos = target.clone().addScaledVector(fwd, 2.1).add(new THREE.Vector3(0, 0.2, 0));
+      const dir = pos.clone().sub(target), dist = dir.length();
+      const hit = g.world?.physics.raycast(target, dir.normalize(), dist, Q.world);
+      if (hit) pos.copy(target).addScaledVector(dir, Math.max(0.7, hit.dist - 0.25));
+      // the player re-seats the camera at eye height every frame, so ease a persistent position instead
+      if (!this.customCamPos) this.customCamPos = cam.position.clone();
+      this.customCamPos.lerp(pos, Math.min(1, dt * 4));
+      cam.position.copy(this.customCamPos);
+      cam.lookAt(target.clone().addScaledVector(right, 0.62));
       l.avatar.root.visible = true;
       l.arms.root.visible = false;
-    }
+    } else this.customCamPos = null;
     // post fx from survival state
     const P = engine.post.params;
     P.uDamage.value = damp(P.uDamage.value, Math.max(s.damageFlash, s.health < 30 ? 0.35 + Math.sin(g.time * 3) * 0.1 : 0, s.bleed >= 2 ? 0.25 : 0), 6, dt);

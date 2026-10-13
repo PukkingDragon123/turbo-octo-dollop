@@ -281,7 +281,7 @@ export class LobbyLevel {
     this._dev('server_rack', 'rack1', -11.4, 0, 4.6, Math.PI / 2);
     // --- Locker room ---
     this._dev('locker_bank', 'lockers', -21.65, 0, 0, Math.PI / 2, { count: 8 });
-    this._dev('mirror', 'mirror', -17, 0, -5.88, 0, { width: 1.2, height: 1.6 });
+    this._dev('mirror', 'mirror', -17, 1.45, -5.88, 0, { width: 1.2, height: 1.6 });
     this._dev('poster', 'poster_l1', -12.12, 1.5, 3.8, -Math.PI / 2, { texts: [L.posters[2]], creepy: L.creepy, color: '#5a3a7a' });
     // --- Break room ---
     this._dev('vending_snack', 'vend_snack', 15.2, 0, -5.45, 0);
@@ -348,21 +348,30 @@ export class LobbyLevel {
   }
 
   _elevator(x, z) {
+    // sealed elevator bank on the south wall (local +z faces the room)
     const g = new THREE.Group();
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(3.4, 2.5, 0.12), Mat.get('steel'));
-    frame.position.set(0, 1.25, 0);
-    const doorL = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.25, 0.06), Mat.get('chrome'));
-    doorL.position.set(-0.71, 1.13, -0.08);
-    const doorR = doorL.clone();
-    doorR.position.x = 0.71;
-    const ind = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.04), Mat.get('emissive_amber'));
-    ind.position.set(0, 2.45, -0.09);
-    g.add(frame, doorL, doorR, ind);
+    const steel = Mat.get('steel'), chrome = Mat.get('chrome');
+    const add = (w, h, d, mat, px, py, pz) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(px, py, pz);
+      g.add(m);
+      return m;
+    };
+    add(3.0, 2.3, 0.04, Mat.get('plastic_black'), 0, 1.15, -0.08); // shaft darkness behind the door seam
+    for (const s of [-1, 1]) add(0.2, 2.5, 0.16, steel, s * 1.6, 1.25, 0);
+    add(3.4, 0.22, 0.16, steel, 0, 2.39, 0);
+    const doorL = add(1.49, 2.28, 0.05, chrome, -0.755, 1.14, -0.02);
+    const doorR = add(1.49, 2.28, 0.05, chrome, 0.755, 1.14, -0.02);
+    add(0.6, 0.12, 0.03, Mat.get('emissive_amber'), 0, 2.39, 0.09); // floor indicator
+    add(0.12, 0.3, 0.02, steel, 1.92, 1.15, -0.0); // call panel
+    add(0.05, 0.05, 0.02, Mat.get('emissive_amber'), 1.92, 1.18, 0.02);
     g.position.set(x, 0, z);
     g.rotation.y = Math.PI;
     this.world.group.add(g);
     this.world.registerDynamic(g);
     this.elevatorDoors = [doorL, doorR];
+    // the wall opening behind the doors has no wall collider of its own
+    this.world.physics.addStaticBox(x, 1.15, z + 0.1, 1.5, 1.15, T / 2 + 0.02, { kind: 'static' });
   }
 
   _scoreboard(x, z) {
@@ -576,11 +585,14 @@ export class LobbyLevel {
     const open = counting && left < 6 ? 1 : 0;
     this.doorOpen = (this.doorOpen || 0) + (open - (this.doorOpen || 0)) * Math.min(1, dt * 1.5);
     const P = this.dispatchDoor?.parts || {};
-    if (P.left) P.left.position.x = -this.doorOpen * 1.55;
-    if (P.right) P.right.position.x = this.doorOpen * 1.55;
-    for (const [i, b] of (P.beacons || []).entries()) {
-      b.rotation.y += dt * (counting ? 8 : 0.0);
-      void i;
+    const travel = this.dispatchDoor?.model.params?.travel ?? 1.55;
+    if (P.left) P.left.position.x = (P.left.userData.x0 ?? P.left.position.x) - this.doorOpen * travel;
+    if (P.right) P.right.position.x = (P.right.userData.x0 ?? P.right.position.x) + this.doorOpen * travel;
+    for (const r of P.beaconReflectors || []) r.rotation.y += dt * (counting ? 9 : 0);
+    for (const l of P.beaconLamps || []) {
+      if (!l.material) continue;
+      if (!l.userData.own) { l.material = l.material.clone(); l.userData.own = true; }
+      l.material.emissiveIntensity = counting ? 4 : 0.15;
     }
     this.beaconLight.intensity = counting ? 4 + Math.sin(t * 16) * 3 : 0;
     const passable = this.doorOpen > 0.8;
@@ -695,7 +707,13 @@ class DispatchLever extends ModelDevice {
   update(dt) {
     const counting = this.state.count > 0;
     this.anim += ((counting ? 1 : 0) - this.anim) * Math.min(1, dt * 6);
-    if (this.parts.handle) this.parts.handle.rotation.x = -0.7 + this.anim * 1.4;
+    if (this.parts.handle) this.parts.handle.rotation.x = -0.6 + this.anim * 1.2;
+    for (const l of this.parts.lamps || []) {
+      if (!l.material) continue;
+      if (!l.userData.own) { l.material = l.material.clone(); l.userData.own = true; }
+      const armed = l.name === 'lamp_armed';
+      l.material.emissiveIntensity = armed ? (counting && Math.floor(this.world.time * 4) % 2 ? 4 : 0.1) : (counting ? 0.1 : 2.5);
+    }
     const left = counting ? Math.max(0, this.state.count - this.world.time) : 0;
     if (counting) {
       const s = Math.ceil(left);
