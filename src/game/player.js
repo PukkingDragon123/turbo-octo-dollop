@@ -94,8 +94,9 @@ export class LocalPlayer {
     this.vmHemi = new THREE.HemisphereLight(0xfff2d0, 0x3a3020, 0.6);
     this.vmDir = new THREE.DirectionalLight(0xfff0d8, 0.5);
     this.vmDir.position.set(0.5, 1, 0.3);
-    this.vmFlash = new THREE.PointLight(0xfff4e0, 0, 2.5, 2);
-    this.vmFlash.position.set(0.2, -0.1, -0.3);
+    // flashlight bounce off whatever the beam hits, lighting the hands from the front
+    this.vmFlash = new THREE.PointLight(0xfff4e0, 0, 4, 2);
+    this.vmFlash.position.set(0, 0.05, -1.1);
     engine.vmScene.add(this.vmHemi, this.vmDir, this.vmFlash);
 
     // flashlight (world)
@@ -868,8 +869,28 @@ export class LocalPlayer {
       }
     }
     this.flashlight.intensity = inten;
-    this.flashlight.visible = inten > 0;
-    this.vmFlash.intensity = inten > 0 ? 0.4 : 0;
+    // never hidden (a light-count change recompiles every material); skip its shadow pass while off, but make
+    // sure the map exists, or the shadow sampler gets bound to a plain placeholder texture
+    const sh = this.flashlight.shadow;
+    sh.autoUpdate = inten > 0;
+    if (!sh.map && this.flashlight.castShadow && engine.renderer.shadowMap.enabled) {
+      // create it now: the water reflection pass renders before the main pass (with shadow updates off)
+      sh.needsUpdate = true;
+      this.flashlight.updateMatrixWorld(true);
+      engine.renderer.shadowMap.render([this.flashlight], engine.scene, engine.camera);
+    }
+    let bounce = 0;
+    if (inten > 0 && this.world) {
+      this._bounceT = (this._bounceT || 0) - dt;
+      if (this._bounceT <= 0) {
+        this._bounceT = 0.12;
+        const cam = engine.camera;
+        const hit = this.world.physics.raycast(cam.position, _v.set(0, 0, -1).applyQuaternion(cam.quaternion), 6, Q.world);
+        this._bounceD = hit ? hit.dist : 6;
+      }
+      bounce = (inten / 36) * 0.45 / Math.max(0.7, this._bounceD);
+    }
+    this.vmFlash.intensity = damp(this.vmFlash.intensity, bounce, 10, dt);
     const held = this.inv.current?.type === 'flashlight';
     // pocketed flashlight sits on the chest: wider, dimmer
     this.flashlight.angle = held ? 0.5 : 0.62;

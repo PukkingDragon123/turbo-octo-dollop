@@ -30,12 +30,11 @@ export class RemotePlayer {
     this.stepDist = 0;
     this.heldType = null;
     this.heldModel = null;
+    // the flashlight lives in the world group (not the avatar, which hides while out of the world) so the
+    // scene's light count only changes when a teammate's world attaches
     this.flash = new THREE.SpotLight(0xfff1dc, 0, 22, 0.55, 0.6, 1.6);
     this.flash.castShadow = false;
     this.flashTarget = new THREE.Object3D();
-    this.avatar.root.add(this.flash, this.flashTarget);
-    this.flash.position.set(0.15, 1.0, -0.2);
-    this.flashTarget.position.set(0, 0.6, -5);
     this.flash.target = this.flashTarget;
     this.voiceLevel = 0;
     this.hs = { h: 100 };
@@ -44,7 +43,7 @@ export class RemotePlayer {
   attachWorld(world) {
     this.detachWorld();
     this.world = world;
-    world.group.add(this.avatar.root);
+    world.group.add(this.avatar.root, this.flash, this.flashTarget);
     world.registerDynamic(this.avatar.root);
     const desc = RAPIER.ColliderDesc.capsule(0.38, 0.3).setCollisionGroups(GROUPS.remote).setTranslation(this.pos.x, this.pos.y + 0.68, this.pos.z);
     this.collider = world.physics.world.createCollider(desc);
@@ -57,6 +56,9 @@ export class RemotePlayer {
     try { this.world.physics.removeCollider(this.collider); } catch (e) { /* freed */ }
     this.world.unregisterDynamic(this.avatar.root);
     this.avatar.root.removeFromParent();
+    this.flash.removeFromParent();
+    this.flashTarget.removeFromParent();
+    this.flash.intensity = 0;
     this.collider = null;
     this.world = null;
     this.inWorld = false;
@@ -130,9 +132,11 @@ export class RemotePlayer {
       this.collider.setEnabled(!p.d && this.inWorld);
     }
     // flashlight
-    this.flash.intensity = p.fl && !p.d ? 26 : 0;
-    this.flash.visible = this.flash.intensity > 0;
-    this.flashTarget.position.set(0, 1.0 + Math.sin(this.pitch) * 5, -5 * Math.cos(this.pitch));
+    this.flash.intensity = p.fl && !p.d && this.inWorld ? 26 : 0; // never hidden: keeps the light count stable
+    const root = this.avatar.root;
+    root.updateMatrix();
+    this.flash.position.set(0.15, 1.0, -0.2).applyMatrix4(root.matrix);
+    this.flashTarget.position.set(0, 1.0 + Math.sin(this.pitch) * 5, -5 * Math.cos(this.pitch)).applyMatrix4(root.matrix);
     // held item
     if (p.it !== this.heldType) {
       if (this.heldModel) this.heldModel.removeFromParent();

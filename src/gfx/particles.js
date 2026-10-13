@@ -211,9 +211,11 @@ export class FX {
     this.ambientDust = true;
     this.lights = []; // short-lived point lights {light, life, max, intensity}
     this.lightPool = [];
+    // pooled lights never toggle visibility: a changing light count makes three.js swap every lit material
+    // to another shader variant (a compile stall the first time each count is seen)
     for (let i = 0; i < 3; i++) {
       const l = new THREE.PointLight(0xffaa55, 0, 6, 2);
-      l.visible = false;
+      l.userData = { life: 0, max: 1, intensity: 0 };
       this.group.add(l);
       this.lightPool.push(l);
     }
@@ -225,11 +227,10 @@ export class FX {
   }
 
   flashLight(pos, color, intensity, life, dist = 6) {
-    const l = this.lightPool.find((x) => !x.visible) || this.lightPool[0];
+    const l = this.lightPool.find((x) => x.userData.life <= 0) || this.lightPool[0];
     l.position.copy(pos);
     l.color.set(color);
     l.distance = dist;
-    l.visible = true;
     l.intensity = intensity;
     l.userData = { life, max: life, intensity };
   }
@@ -323,9 +324,9 @@ export class FX {
     this.alpha.update(dt);
     this.debris.update(dt);
     for (const l of this.lightPool) {
-      if (!l.visible) continue;
+      if (l.userData.life <= 0) continue;
       l.userData.life -= dt;
-      if (l.userData.life <= 0) { l.visible = false; l.intensity = 0; continue; }
+      if (l.userData.life <= 0) { l.intensity = 0; continue; }
       l.intensity = l.userData.intensity * (l.userData.life / l.userData.max);
     }
   }

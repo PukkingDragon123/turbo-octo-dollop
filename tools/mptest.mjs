@@ -23,6 +23,9 @@ await cli.waitForTimeout(8000);
 const st = async (p) => p.evaluate(() => ({ mode: __net.mode, id: __net.selfId.slice(-6), roster: [...__game.roster.values()].map((r) => r.name), remotes: [...__game.remotes.values()].map((r) => [r.name, r.pos.toArray().map((v) => +v.toFixed(1)), r.inWorld]), world: __game.world?.type, props: __game.world?.props.props.size, pos: __game.local.pos.toArray().map((v) => +v.toFixed(1)) }));
 console.log('host', JSON.stringify(await st(host)));
 console.log('cli ', JSON.stringify(await st(cli)));
+// proximity voice: both sides should have a call with a live remote stream (fake mic = test tone)
+const vs = (p) => p.evaluate(() => { const v = __game.voice; return { mic: !!v.stream, calls: [...v.calls.values()].map((c) => ({ stream: !!c.spatial, open: c.call.open })), level: +v.level.toFixed(2), remoteLevel: Math.max(0, ...[...__game.remotes.values()].map((r) => +(r.voiceLevel || 0).toFixed(2))) }; });
+console.log('voice host', JSON.stringify(await vs(host)), 'cli', JSON.stringify(await vs(cli)));
 // client grabs & throws a prop near it, host checks it moved
 const r = await cli.evaluate(() => {
   const g = __game; let best = null, bd = 1e9;

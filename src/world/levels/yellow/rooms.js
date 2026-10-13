@@ -37,6 +37,15 @@ function placeStatic(level, rec, type, x, y, z, rotY = 0, opts = {}) {
   return { o, m };
 }
 
+// the pipe cluster's open floor duct is a critter exit: they run to the mouth and climb inside
+function pipeExit(level, { o, m }) {
+  if (!level.critters || !m.anchors?.mouth) return;
+  o.updateWorldMatrix(true, false);
+  const mouth = m.anchors.mouth.clone().applyMatrix4(o.matrixWorld);
+  const inside = (m.anchors.inside || m.anchors.mouth).clone().applyMatrix4(o.matrixWorld);
+  level.critters.addVent(mouth.setY(0.15), o, inside);
+}
+
 function addDevice(level, rec, kind, id, pos, rotY, opts = {}) {
   let dev = level.world.devices.get(id);
   if (!dev) {
@@ -79,7 +88,7 @@ export function decorateRoom(level, room, rec) {
     }
     case 'workshop': {
       addDevice(level, rec, 'workbench', `wb:${rid}`, new THREE.Vector3(b.cx, 0, b.z0 + 0.55), 0);
-      placeStatic(level, rec, 'pipe_cluster', b.x1 - 0.15, 0, b.cz, -Math.PI / 2, { useHalf: false });
+      pipeExit(level, placeStatic(level, rec, 'pipe_cluster', b.x1 - 0.15, 0, b.cz, -Math.PI / 2, { useHalf: false }));
       break;
     }
     case 'vending_lonely': {
@@ -161,7 +170,7 @@ export function decorateRoom(level, room, rec) {
     }
     case 'vent_room': {
       placeStatic(level, rec, 'wall_vent', b.x0 + 0.12, 0, b.cz, Math.PI / 2, { useHalf: false });
-      placeStatic(level, rec, 'pipe_cluster', b.x1 - 0.15, 0, b.cz, -Math.PI / 2, { useHalf: false });
+      pipeExit(level, placeStatic(level, rec, 'pipe_cluster', b.x1 - 0.15, 0, b.cz, -Math.PI / 2, { useHalf: false }));
       break;
     }
     case 'dead_clone': {
@@ -182,7 +191,8 @@ export function decorateRoom(level, room, rec) {
       const x = (rec.cx * CHUNK + v.li) * CELL, z = (rec.cz * CHUNK + v.lj) * CELL;
       const pos = v.side === 'N' ? new THREE.Vector3(x + CELL / 2, 0, z + 0.09) : new THREE.Vector3(x + 0.09, 0, z + CELL / 2);
       const { o } = placeStatic(level, rec, 'wall_vent', pos.x, 0, pos.z, v.side === 'N' ? 0 : Math.PI / 2, { useHalf: false });
-      level.critters?.addVent(pos.clone().setY(0.15), o);
+      const inside = v.side === 'N' ? new THREE.Vector3(pos.x, 0.12, z - 0.02) : new THREE.Vector3(x - 0.02, 0.12, pos.z);
+      level.critters?.addVent(pos.clone().setY(0.15), o, inside);
     }
   }
 }

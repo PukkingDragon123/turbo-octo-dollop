@@ -39,8 +39,15 @@ export class Voice {
       this.analyser.fftSize = 512;
       src.connect(this.analyser);
       this.buf = new Float32Array(this.analyser.fftSize);
-      // re-call peers with our stream
-      for (const [id, c] of this.calls) { try { c.call.close(); } catch (e) { /* */ } this.calls.delete(id); }
+      // swap the mic into calls that were set up with the silent placeholder (no renegotiation needed);
+      // calls without an audio sender are closed, and the calling side re-dials them with real audio
+      const track = this.stream.getAudioTracks()[0];
+      for (const [id, c] of this.calls) {
+        const sender = c.call.peerConnection?.getSenders?.().find((x) => x.track?.kind === 'audio');
+        const redial = () => { this.remove(id); this._redial(id); };
+        if (sender && track) sender.replaceTrack(track).catch(redial);
+        else redial();
+      }
       this.syncPeers([...this.game.roster.keys()]);
     } catch (e) {
       console.warn('[voice] microphone unavailable', e?.name || e);
@@ -93,6 +100,7 @@ export class Voice {
     const rec = { call, el: null, spatial: null, analyser: null, buf: null };
     this.calls.set(id, rec);
     call.on('stream', async (remote) => {
+      this.retries?.delete(id);
       await audio.init();
       // Chrome needs the stream attached to a (muted) media element to flow into WebAudio
       const el = new Audio();
@@ -110,17 +118,32 @@ export class Voice {
       src.connect(rec.analyser);
       rec.buf = new Float32Array(rec.analyser.fftSize);
     });
-    call.on('close', () => this.remove(id));
-    call.on('error', () => this.remove(id));
+    const lost = () => {
+      if (this.calls.get(id)?.call !== call) return;
+      this.remove(id);
+      this._redial(id);
+    };
+    call.on('close', lost);
+    call.on('error', lost);
+  }
+
+  // the deterministic caller re-dials a dropped call while that teammate is still on the shift
+  _redial(id) {
+    if (!(net.selfId < id) || !this.game.roster.has(id) || this.mode === 'off') return;
+    this.retries = this.retries || new Map();
+    const n = (this.retries.get(id) || 0) + 1;
+    if (n > 5) return;
+    this.retries.set(id, n);
+    setTimeout(() => { if (this.game.roster.has(id) && !this.calls.has(id)) this.syncPeers([...this.game.roster.keys()]); }, 800 * n);
   }
 
   remove(id) {
     const rec = this.calls.get(id);
     if (!rec) return;
+    this.calls.delete(id); // first, so the call's own close event doesn't treat this as a drop
     try { rec.call.close(); } catch (e) { /* */ }
     rec.spatial?.dispose();
     if (rec.el) { rec.el.srcObject = null; }
-    this.calls.delete(id);
   }
 
   _rms(an, buf) {

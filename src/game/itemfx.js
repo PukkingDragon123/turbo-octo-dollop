@@ -35,8 +35,7 @@ export class ItemFX {
     this.world = world;
     this.lights = [];
     for (let i = 0; i < 4; i++) {
-      const l = new THREE.PointLight(0x40ff80, 0, 7, 1.8);
-      l.visible = false;
+      const l = new THREE.PointLight(0x40ff80, 0, 7, 1.8); // always in the scene (see FX light pool)
       world.group.add(l);
       this.lights.push(l);
     }
@@ -63,8 +62,7 @@ export class ItemFX {
     lit.sort((a, b) => a.root.position.distanceToSquared(cam) - b.root.position.distanceToSquared(cam));
     this.lights.forEach((l, i) => {
       const p = lit[i];
-      if (!p) { l.visible = false; return; }
-      l.visible = true;
+      if (!p) { l.intensity = 0; return; }
       l.position.copy(p.root.position).add(_v.set(0, 0.15, 0));
       if (p.type === 'flare') {
         l.color.setHex(0xff3a1a);

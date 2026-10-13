@@ -73,6 +73,7 @@ class Critter {
       if (!this.vent && dPlayer > 16) this.dead = true;
     } else if (this.state === 'enter') {
       this.enter += dt * 2.5;
+      if (this.vent?.inside) this.pos.lerp(this.vent.inside, Math.min(1, dt * 7));
       this.root.scale.setScalar(Math.max(0.01, 1 - this.enter));
       if (this.enter >= 1) this.dead = true;
     }
@@ -115,7 +116,8 @@ export class Critters {
     this.spawnT = 3;
   }
 
-  addVent(pos, obj) { this.vents.push({ pos, obj }); }
+  // pos: where a fleeing critter heads (floor level, in front of the opening); inside: where it squeezes in
+  addVent(pos, obj, inside = null) { this.vents.push({ pos, obj, inside }); }
   removeVentsOf(rec) {
     const statics = new Set(rec.statics || []);
     this.vents = this.vents.filter((v) => !statics.has(v.obj));
