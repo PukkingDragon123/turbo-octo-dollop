@@ -249,6 +249,8 @@ export class LocalPlayer {
 
     this._updateMovement(dt, canControl && !s.sleeping);
     this._updateCamera(dt);
+    this._updateSurvival(dt);
+    if (this.dead) return;
     if (canControl && !s.sleeping) {
       this._updateInteraction(dt);
       this._updateGrab(dt);
@@ -989,6 +991,25 @@ export class LocalPlayer {
       this.emoteT -= dt;
       if (this.emoteT <= 0 || (this.emote === 'dance' && this.moving)) this.emote = null;
     }
+  }
+
+  // ---------------- survival tick ----------------
+  _updateSurvival(dt) {
+    const s = this.survival;
+    const mm = this.world.monsters;
+    let near = 0;
+    for (const r of this.game.remotes.values()) if (!r.dead && r.inWorld && r.pos.distanceTo(this.pos) < 8) near++;
+    const lobby = this.world.type === 'lobby';
+    s.update(dt, {
+      sprinting: this.sprinting, moving: this.moving,
+      light: Math.max(this.lightLevel ?? 1, this.flashOn ? 0.35 : 0),
+      teammatesNear: near,
+      monsterVisible: !!mm?.localVisible, monsterNear: mm?.localNear || 0, chased: !!mm?.localChased,
+      inWater: (this.waterDepth || 0) > 0.05,
+      lobby,
+      dayPressure: lobby ? 0 : this.game.day?.instability?.() || 0,
+    });
+    if (s.dead && !this.dead) this.onDeath(s.deathCause || 'injuries');
   }
 
   // ---------------- death & spectating ----------------

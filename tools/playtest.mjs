@@ -292,6 +292,63 @@ const scenarios = {
     console.log('moved', Math.hypot(p1[0] - p0[0], p1[2] - p0[2]).toFixed(2));
     await shot('loop_lobby', 500);
   },
+  async gens() {
+    // drive each generator through its repair steps via the same host actions/input paths players use
+    await page.goto(base + '?auto=solo&level=yellow');
+    await waitLoaded();
+    await page.waitForTimeout(3000);
+    await ev(() => { __game.cutscene = null; __engine.post.params.uFade.value = 0; __engine.post.params.uGlitch.value = 0; });
+    const genAt = (kind) => ev((kind) => { const g = __game, gen = g.world.level.mission.generators.find((x) => x.kind === kind); const f = new g.local.pos.constructor(0, 0, 1).applyQuaternion(gen.root.quaternion); g.local.teleport(gen.root.position.clone().addScaledVector(f, 1.8), Math.atan2(f.x, f.z)); return gen.root.position.toArray().map(Math.round); }, kind);
+    const state = (kind) => ev((kind) => { const gen = __game.world.level.mission.generators.find((x) => x.kind === kind); return JSON.parse(JSON.stringify(gen.state)); }, kind);
+    // ---- DIESEL: carry the fuel can to the filler cap, then pull the cord in the green
+    console.log('diesel at', await genAt('diesel'));
+    await page.waitForTimeout(6000);
+    const can = await ev(() => { const g = __game; const gen = g.world.level.mission.generators.find((x) => x.kind === 'diesel'); const cans = [...g.world.props.props.values()].filter((p) => p.type === 'fuel_can'); if (!cans.length) return null; const cap = gen.anchorWorld('fuelCap'); const c = cans.sort((a, b) => a.root.position.distanceTo(cap) - b.root.position.distanceTo(cap))[0]; const d0 = c.root.position.distanceTo(cap); g.world.props.teleport(c, cap.clone().add(new cap.constructor(0, 0.35, 0.25))); return { id: c.id, d0: +d0.toFixed(1) }; });
+    console.log('fuel can', JSON.stringify(can));
+    for (let i = 0; i < 40 && can; i++) {
+      await ev((id) => { const g = __game; const gen = g.world.level.mission.generators.find((x) => x.kind === 'diesel'); const cap = gen.anchorWorld('fuelCap'); __net.toHost('grab', { id, lp: [0, 0, 0], tp: cap.add(new cap.constructor(0, 0.3, 0.15)).toArray() }); }, can.id);
+      await page.waitForTimeout(400);
+      if ((await state('diesel')).fuel >= 1) break;
+    }
+    await ev((id) => __net.toHost('grab', { release: true, id }), can?.id);
+    console.log('diesel fuel', (await state('diesel')).fuel);
+    for (let i = 0; i < 30 && !(await state('diesel')).running; i++) await ev(() => __game.world.level.mission.generators.find((x) => x.kind === 'diesel').hostAction('pull', { q: 0.53 }));
+    console.log('diesel', JSON.stringify(await state('diesel')));
+    // ---- ELECTRIC: panel door, four wires to their colour sockets, fuse from the fuse office, breaker
+    console.log('electric at', await genAt('electric'));
+    await page.waitForTimeout(6000);
+    await ev(() => { const gen = __game.world.level.mission.generators.find((x) => x.kind === 'electric'); gen.interact(__game.local); });
+    await page.waitForTimeout(500);
+    console.log('wrong wire hp', await ev(() => { const gen = __game.world.level.mission.generators.find((x) => x.kind === 'electric'); const s = gen.state.order.findIndex((w) => w !== 0); gen.send('wire', { w: 0, s }); return Math.round(__game.local.survival.health); }));
+    await ev(() => { const gen = __game.world.level.mission.generators.find((x) => x.kind === 'electric'); for (let w = 0; w < 4; w++) gen.send('wire', { w, s: gen.state.order.indexOf(w) }); });
+    await page.waitForTimeout(800);
+    const fuse = await ev(() => { const g = __game; const f = [...g.world.props.props.values()].find((p) => p.type === 'fuse'); if (!f) return null; const d = f.root.position.distanceTo(g.local.pos); __net.toHost('pickup', { id: f.id }); return { id: f.id, d: +d.toFixed(1) }; });
+    await page.waitForTimeout(1500);
+    console.log('fuse', JSON.stringify(fuse), 'inv', JSON.stringify(await ev(() => __game.local.inv.slots.map((s) => s && s.type))));
+    await ev(() => { const l = __game.local; const i = l.inv.find('fuse'); if (i >= 0) l.inv.select(i); const gen = __game.world.level.mission.generators.find((x) => x.kind === 'electric'); gen.interact(l); });
+    await page.waitForTimeout(800);
+    await ev(() => { const gen = __game.world.level.mission.generators.find((x) => x.kind === 'electric'); gen.interact(__game.local); });
+    await page.waitForTimeout(800);
+    console.log('electric', JSON.stringify(await state('electric')));
+    // ---- MECH: weld the three cracks (welder ticks routed through the mission), tighten bolts, crank
+    console.log('mech at', await genAt('mech'));
+    await page.waitForTimeout(6000);
+    await ev(() => { const g = __game, gen = g.world.level.mission.generators.find((x) => x.kind === 'mech'); const n = (gen.model.anchors.cracks || []).length; for (let i = 0; i < n; i++) { const p = gen.anchorWorld('cracks', i); for (let k = 0; k < 20; k++) __net.toHost('weldTick', { id: null, p: p.toArray(), n: [0, 0, 1] }); } });
+    await page.waitForTimeout(800);
+    await ev(() => { const gen = __game.world.level.mission.generators.find((x) => x.kind === 'mech'); for (let i = 0; i < 4; i++) for (let k = 0; k < 5; k++) gen.send('bolt', { i }); });
+    await page.waitForTimeout(800);
+    await ev(() => { const gen = __game.world.level.mission.generators.find((x) => x.kind === 'mech'); for (let k = 0; k < 60; k++) gen.send('crank'); });
+    await page.waitForTimeout(1500);
+    console.log('mech', JSON.stringify(await state('mech')));
+    // ---- uplinks: carry the radio next to each running generator
+    for (const kind of ['diesel', 'electric', 'mech']) {
+      await ev((kind) => { const g = __game, m = g.world.level.mission, gen = m.generators.find((x) => x.kind === kind), r = m.radio(); const f = new g.local.pos.constructor(0, 0, 1).applyQuaternion(gen.root.quaternion); g.world.props.teleport(r, gen.root.position.clone().addScaledVector(f, 1.6).setY(0.4)); g.local.teleport(gen.root.position.clone().addScaledVector(f, 2.6), Math.atan2(f.x, f.z)); }, kind);
+      for (let i = 0; i < 40 && !(await state(kind)).linked; i++) await page.waitForTimeout(1000);
+      console.log('link', kind, (await state(kind)).linked);
+    }
+    console.log('links', await ev(() => __game.world.level.mission.linksCount()), 'credits', await ev(() => __game.run.credits));
+    await shot('gens_done', 1000);
+  },
   async lobby() {
     await page.goto(base + '?auto=solo');
     await waitLoaded();
