@@ -164,6 +164,13 @@ export class LightField {
 
 // outer-ring weights are stored as Uint16 normalized values of w / OUT_SCALE
 export const OUT_SCALE = 2.0;
+// troffer emission lobe over the cosine to the downward axis: a smooth (C1) Lambert-like falloff with a small
+// floor for light thrown sideways by the lens (a clamped linear ramp drew hard 45-degree 'V' scallops on walls)
+export function emitLobe(c) {
+  const t = Math.min(1, Math.max(0, (c + 0.03) / 0.88));
+  return 0.12 + 0.88 * t * t * (3 - 2 * t);
+}
+const EMIT_GLSL = 'float bkEmit(float c){ return 0.12 + 0.88 * smoothstep(-0.03, 0.85, c); }';
 // light transmission per Level 0 wall type (W.NONE, FULL, DOOR, ARCH, HALF_A, HALF_B, LOW, WINDOW); must match
 // wallTransmission() in levels/yellow/layout.js (gridbake.js checks it). Used for the per-pixel inner ring.
 export const WALL_T = [1, 0, 0.42, 0.7, 0.55, 0.55, 0.85, 0.6];
@@ -232,7 +239,7 @@ export function bakeGeometry(geo, matrixWorld, lightsNear, occl, ao, opts = {}) 
       const id = 1 / Math.max(d, 1e-3);
       const ndl = (dx * _n.x + dy * _n.y + dz * _n.z) * id;
       // panels emit downward: cosine on the emitter side too
-      const emit = Math.max(0.12, Math.min(1, (l.y - sy) * id * 1.2 + 0.15));
+      const emit = emitLobe((l.y - sy) * id);
       const t = occl ? occl(sx, sz, l.x, l.z, sy) : 1;
       const w = fall * Math.max(0, ndl * 0.85 + 0.15) * emit * t;
       // bounce light: light hitting nearby floor lights everything softly (even ceilings)
@@ -652,6 +659,7 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
       uniform vec2 uLightMix;
       uniform float uSpecMul;
       float sat(float x){ return clamp(x, 0.0, 1.0); }
+      ${EMIT_GLSL}
       ${FETCH}
       ${HASH}
       ${planeAO ? planeAOGLSL(aoMode) : ''}
@@ -718,7 +726,7 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
           vec3 dl = lp - vWPos; float d = length(dl);
           float e = d / uGrid.z; e *= e;
           float fall = max(0.0, 1.0 - e * e) / (1.0 + 0.16 * d * d);
-          float emit = clamp((lp.y - vWPos.y) / max(d, 1e-3) * 1.2 + 0.15, 0.12, 1.0);
+          float emit = bkEmit((lp.y - vWPos.y) / max(d, 1e-3));
           vec3 lc = c * (uLightScale * fall);
           bkBounce += lc * (0.5 * (0.35 + 0.65 * t));
           if (t > 0.003) bkDirect(lc * (t * emit * uLightMix.x * bkAOd * PI), normalize((viewMatrix * vec4(dl, 0.0)).xyz), normal, geometryViewDir, material, d, reflectedLight);
@@ -737,7 +745,7 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
             vec3 c = bkLight(floor(lp.xz / uRoomKey.x) + uRoomKey.y);
             float e = d / uGrid.z; e *= e;
             float fall = max(0.0, 1.0 - e * e) / (1.0 + 0.16 * d * d);
-            float emit = clamp((lp.y - vWPos.y) / max(d, 1e-3) * 1.2 + 0.15, 0.12, 1.0);
+            float emit = bkEmit((lp.y - vWPos.y) / max(d, 1e-3));
             vec3 lc = c * (uLightScale * fall);
             bkBounce += lc * 0.5;
             bkDirect(lc * (emit * uLightMix.x * bkAOd * PI), normalize((viewMatrix * vec4(dl, 0.0)).xyz), normal, geometryViewDir, material, d, reflectedLight);

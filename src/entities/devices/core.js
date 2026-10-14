@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { RNG, hashString } from '../../core/rng.js';
 import { classMat, atlasMats, atlasGlowMat, CLEAR, hasClass } from './mats.js';
 import { Atlas, placeholderTex, PRINTED, SCREEN_GLOW } from './atlas.js';
-import { linkInstanced, linkMasked } from './sync.js';
+import { linkInstanced, linkMasked, linkGlow, linkSkin } from './sync.js';
 
 export const PI = Math.PI, TAU = PI * 2, HP = PI / 2, DEG = PI / 180;
 export const NO = Object.freeze({});
@@ -865,6 +865,20 @@ export const FIN = {
 const SHADOWLESS = new Set(['decal', 'glass']);
 const PROF = typeof location !== 'undefined' && new URLSearchParams(location.search).get('dvprof') === '1';
 
+// shared vertex-coloured emissive material for glow() LED groups (vColor = colour * intensity / ref)
+const _glow = new Map();
+function glowMat(ref) {
+  let m = _glow.get(ref);
+  if (m) return m;
+  m = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, emissive: 0xffffff, emissiveIntensity: ref, vertexColors: true, roughness: 0.3, metalness: 0 });
+  m.name = 'dev_glow';
+  m.userData.noShadow = true;
+  m.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n#ifdef USE_COLOR\ntotalEmissiveRadiance *= vColor.rgb;\n#endif'); };
+  m.customProgramCacheKey = () => 'dvglow';
+  _glow.set(ref, m);
+  return m;
+}
+
 export class DKit {
   constructor(name, o = {}) {
     this.name = name;
@@ -876,6 +890,7 @@ export class DKit {
     this.buckets = new Map();
     this.singles = [];
     this._masked = [];
+    this._skins = [];
     this.parts = {}; this.anchors = {}; this.screens = {}; this.colliders = []; this.params = {};
     this.wear = { chip: 0.12, rust: 0, grime: 0.45, dust: 0.3, edge: 1, ...(o.wear || {}) };
     this.ground = o.ground ?? 'floor';
@@ -1038,6 +1053,45 @@ export class DKit {
     linkInstanced(im, proxies);
     return proxies;
   }
+  // LED groups the game drives one by one through parts[i].material.emissiveIntensity, drawn as ONE
+  // vertex-coloured emissive mesh. groups: [{ geo: Geo, color: hex, intensity }]; returns the proxies
+  // (Object3Ds carrying a plain material each, mirrored into the vertex colours every frame).
+  glow(name, groups, o = NO) {
+    const G = new Geo(), ranges = [];
+    for (const gr of groups) { const s = G.count; G.append(gr.geo); ranges.push([s, G.count]); }
+    const ref = o.ref ?? 2.2;
+    const mesh = this.mesh(glowMat(ref), G, 0, 0, 0, { name, shadow: false, ao: false, to: o.to });
+    const proxies = groups.map((gr, i) => {
+      const p = this._place(new THREE.Object3D(), 0, 0, 0, { name: `${name}_${i}`, to: o.to });
+      p.material = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: gr.color, emissiveIntensity: gr.intensity ?? ref });
+      p.material.name = `${name}_${i}`;
+      return p;
+    });
+    linkGlow(mesh, proxies, ranges, groups.map((gr) => new THREE.Color(gr.color).toArray()), ref);
+    return proxies;
+  }
+  // N rigid sub-assemblies that the game animates one by one (e.g. a bank of locker doors), merged into
+  // ONE skinned mesh per material: each part is weighted 100% to its own THREE.Bone, so rotating
+  // parts[i] (the bone) moves it. places: [[x,y,z,rot?,name?]]; fn(i, bone) builds in the bone frame.
+  bones(name, places, fn) {
+    const holder = this.grp(0, 0, 0, { name: name + '_skin' });
+    holder.updateMatrix();
+    const inv = holder.matrix.clone().invert();
+    const counts = () => { const tb = this.buckets.get(holder); return new Map(tb ? [...tb].map(([key, b]) => [key, b.geo.count]) : []); };
+    const bones = [], marks = [];
+    places.forEach((pl, i) => {
+      const b = this._place(new THREE.Bone(), pl[0], pl[1], pl[2], { rot: pl[3], name: pl[4] || `${name}_${i}` });
+      b.updateMatrix();
+      const before = counts();
+      const save = [this.tgt, this.cur, this.stack];
+      this.tgt = holder; this.cur = inv.clone().multiply(b.matrix); this.stack = [new THREE.Matrix4()];
+      try { fn(i, b); } finally { [this.tgt, this.cur, this.stack] = save; }
+      marks.push([before, counts()]);
+      bones.push(b);
+    });
+    this._skins.push({ holder, bones, marks });
+    return bones;
+  }
   // N toggleable groups merged into one mesh per material: fn(i, proxy) builds slot i in the proxy's
   // local frame. Hiding proxies[i] drops that slot's triangles from the merged index (sync.js).
   masked(name, places, fn) {
@@ -1161,7 +1215,16 @@ export class DKit {
         continue;
       }
       const mat = this._matFor(it);
-      const mesh = new THREE.Mesh(bg, mat);
+      const sk = this._skins.find((x) => x.holder === it.target);
+      let mesh;
+      if (sk) {
+        const nv = bg.attributes.position.count;
+        const si = new Uint16Array(nv * 4), sw = new Float32Array(nv * 4);
+        sk.marks.forEach(([a, b], bi) => { for (let v = a.get(it.key) ?? 0, e = b.get(it.key) ?? 0; v < e; v++) { si[v * 4] = bi; sw[v * 4] = 1; } });
+        bg.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+        bg.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+        mesh = new THREE.SkinnedMesh(bg, mat);
+      } else mesh = new THREE.Mesh(bg, mat);
       mesh.name = `${it.target === this.root ? this.name : it.target.name || 'part'}:${mat.name || it.cls}`;
       const tr = mat.transparent || SHADOWLESS.has(it.cls);
       mesh.castShadow = !tr && bg.boundingSphere.radius > 0.025;
@@ -1169,6 +1232,14 @@ export class DKit {
       if (!mesh.castShadow) mesh.userData.noShadow = true;
       if (it.cls === 'glass') mesh.renderOrder = 3;
       it.target.add(mesh);
+      if (sk) {
+        this.root.updateMatrixWorld(true);
+        mesh.bind(new THREE.Skeleton(sk.bones));
+        // doors swing out of the rest-pose bounds: pad the culling sphere
+        mesh.boundingSphere = bg.boundingSphere.clone();
+        mesh.boundingSphere.radius += 0.6;
+        linkSkin(mesh, sk.bones);
+      }
       const mk = this._masked.find((x) => x.holder === it.target);
       if (mk) linkMasked(mesh, mk.proxies, mk.marks.map(([a, b]) => [a.get(it.key) ?? 0, b.get(it.key) ?? 0]));
       draws++;

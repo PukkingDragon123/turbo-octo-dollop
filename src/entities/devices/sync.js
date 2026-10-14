@@ -18,6 +18,11 @@ const _z = new THREE.Vector3(0, 0, 0);
 export function linkInstanced(im, proxies) { LINKS.set(im, { kind: 'inst', proxies }); }
 export function linkMasked(mesh, proxies, ranges) { LINKS.set(mesh, { kind: 'mask', proxies, ranges }); }
 export function linkFlash(mesh, rest) { LINKS.set(mesh, { kind: 'flash', rest }); }
+// LED groups driven through proxy.material.emissiveIntensity, drawn as one vertex-coloured mesh.
+// ranges: per proxy [vertexStart, vertexEnd); colors: linear rgb per proxy; ref: material intensity
+export function linkGlow(mesh, proxies, ranges, colors, ref) { LINKS.set(mesh, { kind: 'glow', proxies, ranges, colors, ref }); }
+// skinned rigid parts (DKit.bones): re-bind the clone to the cloned bones
+export function linkSkin(mesh, bones) { LINKS.set(mesh, { kind: 'skin', proxies: bones }); }
 // run fn every frame for this object (e.g. advance a shader clock)
 export function linkTick(obj, fn) { LINKS.set(obj, { kind: 'fn', fn }); }
 
@@ -72,6 +77,31 @@ function bindMasked(mesh, proxies, ranges) {
   });
 }
 
+function bindGlow(mesh, proxies, l) {
+  const g = mesh.geometry.clone();
+  g.userData.shared = false;
+  mesh.geometry = g;
+  const col = new Float32Array(g.attributes.position.count * 3);
+  const attr = new THREE.BufferAttribute(col, 3);
+  g.setAttribute('color', attr);
+  proxies.forEach((p, i) => { if (!p.material && l.proxies[i]?.material) p.material = l.proxies[i].material.clone(); });
+  const last = new Float32Array(proxies.length).fill(NaN);
+  const upd = () => {
+    let dirty = false;
+    for (let i = 0; i < proxies.length; i++) {
+      const e = proxies[i].material?.emissiveIntensity ?? 0;
+      if (e === last[i]) continue;
+      last[i] = e;
+      const [s, t] = l.ranges[i], c = l.colors[i], f = e / l.ref;
+      for (let v = s; v < t; v++) { col[v * 3] = c[0] * f; col[v * 3 + 1] = c[1] * f; col[v * 3 + 2] = c[2] * f; }
+      dirty = true;
+    }
+    if (dirty) attr.needsUpdate = true;
+  };
+  upd();
+  hook(mesh, upd);
+}
+
 function bindFlash(mesh, rest) {
   const thr = rest * 1.05 + 0.01;
   mesh.visible = false;
@@ -89,6 +119,8 @@ export function bindLinks(tplRoot, map = null) {
     if (l.kind === 'inst') bindInst(c, P);
     else if (l.kind === 'mask') bindMasked(c, P, l.ranges);
     else if (l.kind === 'flash') bindFlash(c, l.rest);
+    else if (l.kind === 'glow') bindGlow(c, P, l);
+    else if (l.kind === 'skin' && map) c.bind(new THREE.Skeleton(P, c.skeleton.boneInverses.map((m) => m.clone())), c.bindMatrix);
     else if (l.kind === 'fn') hook(c, l.fn);
   });
 }

@@ -3,6 +3,7 @@ import { b_fuse_box, b_employee_of_month, b_wall_clock, b_poster, b_mirror, b_ce
 import { b_generator_diesel, b_generator_electric, b_generator_mech } from './generators.js';
 import { b_vending_snack, b_vending_drink } from './vending.js';
 import { b_water_cooler, b_aquarium, b_service_bell, b_dart_board, b_coffee_machine, b_fridge } from './breakroom.js';
+import { b_crt_terminal, b_reception_desk, b_photocopier, b_server_rack, b_locker, b_locker_bank } from './office.js';
 
 export const NEW_BUILDERS = {
   fuse_box: b_fuse_box, employee_of_month: b_employee_of_month, wall_clock: b_wall_clock, poster: b_poster, mirror: b_mirror,
@@ -10,4 +11,5 @@ export const NEW_BUILDERS = {
   generator_diesel: b_generator_diesel, generator_electric: b_generator_electric, generator_mech: b_generator_mech,
   vending_snack: b_vending_snack, vending_drink: b_vending_drink,
   water_cooler: b_water_cooler, aquarium: b_aquarium, service_bell: b_service_bell, dart_board: b_dart_board, coffee_machine: b_coffee_machine, fridge: b_fridge,
+  crt_terminal: b_crt_terminal, reception_desk: b_reception_desk, photocopier: b_photocopier, server_rack: b_server_rack, locker: b_locker, locker_bank: b_locker_bank,
 };

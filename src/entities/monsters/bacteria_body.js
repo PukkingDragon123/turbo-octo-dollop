@@ -23,7 +23,7 @@
 // Conventions: meters, Y up, faces -Z, root origin on the floor under the body.
 import * as THREE from 'three';
 import { RNG } from '../../core/rng.js';
-import { rig, quatYFront, D, FINGER_X, FOOT_PITCH, TENDRILS, JAW_AT } from './bacteria_rig.js';
+import { rig, quatYFront, D, FINGER_X, FOOT_PITCH, TENDRILS } from './bacteria_rig.js';
 import { buildTemplateData } from './bacteria_sculpt.js';
 import { makeBodyMaterial, makeShadowMaterial, dripMaterial } from './bacteria_material.js';
 

@@ -9,7 +9,7 @@
 //   aTis (x: ambient occlusion, y: hard tissue (claws/teeth/bone tips), z: raw inner tissue, w: wetness)
 import { Sculpt, MAT } from '../stilllife/sdf.js';
 import { meshRaw, finishMesh, clusterBoxes } from '../stilllife/mesher.js';
-import { rig, frameOf, D, FINGER_X, TENDRILS } from './bacteria_rig.js';
+import { rig, frameOf, D, FINGER_X } from './bacteria_rig.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -27,9 +27,7 @@ function rng(seed) {
   return { next, range: (a, b) => a + (b - a) * next() };
 }
 
-const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const mul3 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
 const len3 = (a) => Math.hypot(a[0], a[1], a[2]);
 const norm3 = (a) => { const l = len3(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 const mix3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];

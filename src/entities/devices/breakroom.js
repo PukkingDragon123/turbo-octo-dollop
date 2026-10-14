@@ -72,7 +72,7 @@ export function b_water_cooler(o) {
     k.sph(col, 0.0042, x, 0.915, D / 2 + 0.003, { ws: 10, hs: 6, s: [1, 1, 0.6] });
     k.parts.leds.push(k.grp(x, 0.915, D / 2 + 0.003, { name }));
   }
-  P.scuffs(k, 0, 0.18, D / 2 + 0.0005, W * 0.9, 0.3, { col: '30,26,20', alpha: 0.3 });
+  P.scuffs(k, 0, 0.12, D / 2 + 0.0005, W * 0.8, 0.2, { col: '30,26,20', alpha: 0.12 });
   // back: condenser serpentine + brackets + cord
   const coil = [];
   for (let i = 0; i < 9; i++) { const y = 0.12 + i * 0.05; coil.push([i % 2 ? 0.1 : -0.1, y, -D / 2 - 0.02]); coil.push([i % 2 ? -0.1 : 0.1, y, -D / 2 - 0.02]); }

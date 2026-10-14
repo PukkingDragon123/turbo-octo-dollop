@@ -557,7 +557,7 @@ class MonsterView {
     const s = this.snap;
     const look = s.l ? new THREE.Vector3().fromArray(s.l) : null;
     if (this.body) {
-      this.body.update(dt, { velocity: vel.clone(), state: s.s, lookTarget: look, attackT: s.a, ceilingY: HEIGHT, intensity: s.i });
+      this.body.update(dt, { velocity: vel.clone(), state: s.s, lookTarget: look, attackT: s.a, ceilingY: HEIGHT, intensity: s.i, frozen: !!s.f });
       this.presence?.setPosition(this.pos.clone().setY(1.7));
       this.presence?.setParam?.('intensity', s.s === 'chase' ? 1 : 0.3);
       if (this.dissolve > 0) { this.dissolve = Math.max(0, this.dissolve - dt * 0.8); this.body.setDissolve?.(this.dissolve); }

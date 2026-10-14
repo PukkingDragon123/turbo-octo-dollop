@@ -18,6 +18,17 @@ function signature(g) {
   return s + (g.index ? 'i' : 'n');
 }
 
+// Materials flagged unique (per-instance screens / name cards) are interchangeable when they show
+// the same cached texture with the same parameters, so they may share one batch.
+function matKey(m) {
+  const u = m.userData;
+  if (u?.unique && m.map) {
+    const hx = (c) => (c?.getHexString ? c.getHexString() : '');
+    return `u:${m.type}:${m.map.uuid}:${m.emissiveMap?.uuid || ''}:${hx(m.color)}:${hx(m.emissive)}:${(m.emissiveIntensity ?? 0).toFixed(3)}:${(m.roughness ?? 0).toFixed(3)}:${(m.metalness ?? 0).toFixed(3)}:${m.transparent ? 1 : 0}:${u.probe ? 1 : 0}`;
+  }
+  return m.uuid;
+}
+
 function visibleChain(o, stop) {
   for (let p = o; p && p !== stop; p = p.parent) if (!p.visible) return false;
   return true;
@@ -39,7 +50,7 @@ export function batchStatics(level, rec) {
       if (!visibleChain(m, rec.group) || m.matrixWorld.determinant() <= 0) return;
       const sig = signature(g);
       if (!sig) return;
-      const key = `${m.material.uuid}|${sig}|${m.castShadow ? 1 : 0}|${root.userData.noRefl ? 1 : 0}`;
+      const key = `${matKey(m.material)}|${sig}|${m.castShadow ? 1 : 0}|${root.userData.noRefl ? 1 : 0}`;
       let e = groups.get(key);
       if (!e) groups.set(key, (e = { mat: m.material, cast: m.castShadow, noRefl: !!root.userData.noRefl, list: [] }));
       e.list.push(m);

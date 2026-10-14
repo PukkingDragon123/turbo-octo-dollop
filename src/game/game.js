@@ -14,7 +14,7 @@ import { DayCycle, DAY_LENGTH } from './daycycle.js';
 import { Tools } from './tools.js';
 import { buildRagdoll } from '../entities/avatar.js';
 import { buildStillLife, prewarmStillLifes } from '../entities/stilllife_model.js';
-import { BacteriaBody } from '../entities/monsters/bacteria_body.js';
+import { BacteriaBody, prewarmBacteria } from '../entities/monsters/bacteria_body.js';
 import { itemDef } from './itemdefs.js';
 
 const _v = new THREE.Vector3();
@@ -532,7 +532,7 @@ export class Game {
   async _monsterWarmups(world, at) {
     const out = [];
     try {
-      await Promise.race([prewarmStillLifes(), new Promise((r) => setTimeout(r, 4000))]);
+      await Promise.race([Promise.all([prewarmStillLifes(), prewarmBacteria?.()]), new Promise((r) => setTimeout(r, 4000))]);
       const sl = buildStillLife('watcher', 1);
       out.push(sl);
       const bac = new BacteriaBody(-1);
