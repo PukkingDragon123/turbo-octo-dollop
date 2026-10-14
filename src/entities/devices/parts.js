@@ -157,7 +157,7 @@ export function pushButton(k, x, y, z, r, o = NO) {
   k.within(g, () => {
     const h = o.h ?? r * 0.55, dome = o.dome ?? r * 0.22;
     const prof = [[0, -0.006], [r * 0.98, -0.006], [r, h * 0.7, 2], [r * 0.9, h + dome * 0.4], [r * 0.55, h + dome * 0.85], [0, h + dome]];
-    k.lathe(o.slot ?? 'plastic', prof, 0, 0, 0, { tint: o.tint ?? 0xc8231b, rough: o.rough ?? 0.5, axis: 'z', seg: 20, chip: 0.3 });
+    k.lathe(o.slot ?? (k.A ? '#' + (o.tint ?? 0xc8231b).toString(16).padStart(6, '0') + ':s' : 'plastic'), prof, 0, 0, 0, { tint: o.tint ?? 0xc8231b, rough: o.rough ?? 0.5, axis: 'z', seg: 20, chip: 0.3 });
   }, o.static);
   return g;
 }
@@ -272,7 +272,7 @@ export function gland(k, x, y, z, r = 0.009, o = NO) {
   const fin = o.fin ?? FIN.zinc;
   k.push(x, y, z, o.dir ? FACE_ROT[o.dir] : null);
   k.cyl('metal', r * 1.25, r * 0.55, 0, 0, r * 0.275, { ...fin, axis: 'z', seg: 6, bev: r * 0.08 });
-  k.lathe(o.domeSlot ?? 'dark', [[r * 1.05, 0], [r * 1.08, r * 0.5, 2], [r * 0.85, r * 1.0], [r * 0.6, r * 1.15], [0.0, r * 1.18]], 0, 0, r * 0.55, { axis: 'z', seg: 12, tint: o.domeTint ?? 0x202022 });
+  k.lathe(o.domeSlot ?? (k.A ? '#' + (o.domeTint ?? 0x202022).toString(16).padStart(6, '0') + ':p' : 'dark'), [[r * 1.05, 0], [r * 1.08, r * 0.5, 2], [r * 0.85, r * 1.0], [r * 0.6, r * 1.15], [0.0, r * 1.18]], 0, 0, r * 0.55, { axis: 'z', seg: 12, tint: o.domeTint ?? 0x202022 });
   k.pop();
 }
 // straight conduit with couplings + mounting straps (axis from a to b)

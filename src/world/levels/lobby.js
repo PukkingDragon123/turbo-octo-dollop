@@ -88,7 +88,20 @@ export class LobbyLevel {
     onProgress?.(0.7, 'WARMING UP CRTS');
     this._bake();
     await tick();
+    this._captureElevatorProbe();
     onProgress?.(1, 'READY');
+  }
+
+  // one-off local reflection probe of the lit reception for the elevator's brushed steel
+  _captureElevatorProbe() {
+    if (!this.elevatorSteel || this._elevEnv) return;
+    try {
+      this.field.update(this.world.time || 0);
+      this._elevEnv = engine.captureEnvironment(new THREE.Vector3(0, 1.5, 13.6), 0.1, 40);
+      this.elevatorSteel.envMap = this._elevEnv;
+      this.elevatorSteel.envMapIntensity = 1.0;
+      this.elevatorSteel.needsUpdate = true;
+    } catch (e) { /* keeps the scene environment */ }
   }
 
   _customModel(type, state) {
@@ -492,14 +505,6 @@ export class LobbyLevel {
   update(dt) {
     this.time += dt;
     const t = this.time;
-    // one-off reflection probe for the elevator steel, captured once the lit room has rendered a few frames
-    this._frames = (this._frames || 0) + 1;
-    if (this.elevatorSteel && !this._elevEnv && this._frames > 3) {
-      this._elevEnv = engine.captureEnvironment(new THREE.Vector3(0, 1.5, 13.6), 0.1, 40);
-      this.elevatorSteel.envMap = this._elevEnv;
-      this.elevatorSteel.envMapIntensity = 1.0;
-      this.elevatorSteel.needsUpdate = true;
-    }
     // muzak gets slightly warbly over time (uncanny)
     this.muzak?.setParam('warble', Math.min(0.6, t / 600));
     // receptionist: watches you, but only moves when nobody looks

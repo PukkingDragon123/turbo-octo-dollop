@@ -83,7 +83,7 @@ export function b_generator_diesel(o) {
   const cx = ex - 0.02;
   k.cyl('metal', 0.075, 0.24, cx, 0.53, 0, { ...FIN.iron, seg: 16 });
   const fin = rrShape(0.27, 0.27, 0.04);
-  for (let i = 0; i < 9; i++) k.ext('paint', fin, 0.006, cx, 0.425 + i * 0.024, 0, { ...BLK, rot: [-HP, 0, 0], curveSeg: 2, bev: 0.0012, bevSeg: 1, chip: 0.5 });
+  for (let i = 0; i < 8; i++) k.ext('paint', fin, 0.006, cx, 0.428 + i * 0.026, 0, { ...BLK, rot: [-HP, 0, 0], curveSeg: 2, bev: 0.0012, bevSeg: 1, chip: 0.5 });
   k.box('paint', 0.31, 0.09, 0.3, cx, 0.665, 0, { ...BLK, r: 0.018 });
   for (let i = 0; i < 3; i++) k.ext('paint', rrShape(0.29, 0.28, 0.035), 0.005, cx, 0.628 + i * 0.024, 0, { ...BLK, rot: [-HP, 0, 0], curveSeg: 2, chip: 0.5 });
   k.box('paint', 0.24, 0.05, 0.2, cx, 0.734, 0, { ...ENG, r: 0.016 });                              // rocker cover
@@ -149,7 +149,7 @@ export function b_generator_diesel(o) {
   k.cyl('metal', 0.036, 0.022, 0.22, 0.986, 0.08, { ...FIN.zinc, seg: 18, bev: 0.002 });
   const cap = k.grp(0.22, 0.997, 0.08, { name: 'fuelCap' });
   k.insideStatic(cap, () => {
-    k.put('#151516:p', axisGeo(P.flutedGeo(0.044, 0.024, 14, 0.07), 'y'), 0, 0, 0);
+    k.put('#151516:p', axisGeo(P.flutedGeo(0.044, 0.024, 10, 0.07), 'y'), 0, 0, 0);
     k.box('#151516:p', 0.074, 0.016, 0.014, 0, 0.03, 0, { r: 0.005 });
   });
   k.tube('#8a8d90:m', curvePts([[0.22 + 0.04, 0.995, 0.08], [0.29, 0.99, 0.1], [0.31, 0.982, 0.12]], 10), 0.0012, { radial: 4 });
@@ -189,7 +189,7 @@ export function b_generator_diesel(o) {
 
   // ---- battery ----
   const bx = 0.55, by = 0.16, bz = -0.2;
-  k.box('#1d1e1f:p', 0.2, 0.15, 0.13, bx, by, bz, { r: 0.006 });
+  k.box('#1d1e1f:p', 0.2, 0.15, 0.13, bx, by, bz, { r: 0.005 });
   k.box('#262728:p', 0.204, 0.018, 0.134, bx, by + 0.075, bz, { r: 0.004 });
   for (let i = 0; i < 6; i++) k.cyl('#d9b21e:p', 0.008, 0.006, bx - 0.075 + i * 0.03, by + 0.087, bz - 0.03, { seg: 8 });
   for (const [dx, col] of [[-0.06, '#9a8a7a:m'], [0.06, '#9a8a7a:m']]) k.cyl(col, 0.008, 0.014, bx + dx, by + 0.09, bz + 0.03, { seg: 8 });
@@ -231,7 +231,7 @@ export function b_generator_diesel(o) {
   const cr = 0.022;
   for (const sz of [-1, 1]) {
     const zz = sz * (D / 2 - 0.03);
-    k.tube('paint', [[-W / 2 + 0.03, 0.08, zz], [-W / 2 + 0.03, ch, zz], [W / 2 - 0.03, ch, zz], [W / 2 - 0.03, 0.08, zz]], cr, { ...CAGE, round: 0.09, rseg: 6, radial: 12 });
+    k.tube('paint', [[-W / 2 + 0.03, 0.08, zz], [-W / 2 + 0.03, ch, zz], [W / 2 - 0.03, ch, zz], [W / 2 - 0.03, 0.08, zz]], cr, { ...CAGE, round: 0.09, rseg: 6, radial: 10 });
     for (const sx of [-1, 1]) k.box('paint', 0.07, 0.008, 0.07, sx * (W / 2 - 0.03), 0.084, zz, { ...CAGE, r: 0 });
   }
   for (const x of [-(W / 2 - 0.03), 0, W / 2 - 0.03]) k.cyl('paint', x === 0 ? cr * 1.1 : cr, D - 0.06, x, ch, 0, { ...CAGE, axis: 'z', seg: 12 });
@@ -478,7 +478,7 @@ export function b_generator_mech(o) {
   for (const sz of [-1, 1]) P.channel(k, 'paint', 1.6, 0.12, 0.06, 0.006, 0, 0.06, sz * 0.45, { ...IRON, flip: sz > 0 });
   for (const x of [-0.7, -0.22, 0.25, 0.7]) { k.push(x, 0.055, 0, [0, HP, 0]); P.channel(k, 'paint', 0.84, 0.1, 0.05, 0.006, 0, 0, -0.025, IRON); k.pop(); }
   k.box('paint', 1.5, 0.008, 0.82, 0, 0.116, 0, { ...IRON, r: 0, div: 0.3 });
-  for (let i = 0; i < 12; i++) for (const sz of [-1, 1]) P.rivet(k, -0.75 + i * 0.136, 0.08, sz * 0.453, { dir: sz > 0 ? 'z' : '-z', r: 0.006, seg: 6, fin: { tint: 0x3a3c3a, rough: 1.3 } });
+  for (let i = 0; i < 9; i++) for (const sz of [-1, 1]) P.rivet(k, -0.72 + i * 0.18, 0.08, sz * 0.453, { dir: sz > 0 ? 'z' : '-z', r: 0.006, seg: 6, fin: { tint: 0x3a3c3a, rough: 1.3 } });
   for (const [x, z] of [[-0.72, -0.38], [0.72, -0.38], [-0.72, 0.38], [0.72, 0.38]]) { k.cyl('paint', 0.045, 0.012, x, 0.006, z, { ...IRON, seg: 10 }); P.screw(k, x, 0.012, z, { kind: 'hex', r: 0.011, dir: 'y' }); }
   // ---- boiler drum on cradles ----
   const dx = -0.22, dy = 0.6, dr = 0.3, dl = 0.95;
@@ -518,7 +518,7 @@ export function b_generator_mech(o) {
   k.sph('metal', 0.03, dx + 0.07, dy + dr + 0.085, -0.05, { ...FIN.iron, ws: 12, hs: 8 });
   // ---- flywheel (rotates around X) on an A-frame bearing pedestal ----
   const fx = 0.62, fy = 0.62, FR = 0.42;
-  for (const sz of [-1, 1]) k.box('paint', 0.08, 0.62, 0.06, fx + 0.12, 0.38, sz * 0.12, { ...IRON, rot: [sz * 0.25, 0, 0], r: 0.008 });
+  for (const sz of [-1, 1]) k.box('paint', 0.08, 0.62, 0.06, fx + 0.12, 0.38, sz * 0.12, { ...IRON, rot: [sz * 0.25, 0, 0], r: 0.005 });
   k.box('paint', 0.12, 0.12, 0.15, fx + 0.12, fy, 0, { ...IRON, r: 0.015 });
   k.cyl('metal', 0.045, 0.13, fx + 0.12, fy, 0, { ...BRASS, axis: 'x', seg: 16, bev: 0.004 });
   k.cyl('metal', 0.035, 0.42, fx + 0.06, fy, 0, { ...STEEL, axis: 'x', seg: 14 });
@@ -527,7 +527,7 @@ export function b_generator_mech(o) {
   k.lathe('metal', [[0.004, 0], [0.018, 0.01], [0.02, 0.03], [0.012, 0.042], [0, 0.044]], fx + 0.12, fy + 0.085, 0, { ...BRASS, seg: 12 });
   const fly = k.grp(fx, fy, 0, { name: 'flywheel' });
   k.inside(fly, () => {
-    k.lathe('paint', [[FR - 0.065, -0.045], [FR - 0.005, -0.05, 2], [FR + 0.006, -0.02], [FR + 0.008, 0.02], [FR - 0.005, 0.05, 2], [FR - 0.065, 0.045], [FR - 0.07, 0], [FR - 0.065, -0.045]], 0, 0, 0, { ...IRON, axis: 'x', seg: 48, rings: false, chip: 0.3 });
+    k.lathe('paint', [[FR - 0.065, -0.045], [FR - 0.005, -0.05, 2], [FR + 0.006, -0.02], [FR + 0.008, 0.02], [FR - 0.005, 0.05, 2], [FR - 0.065, 0.045], [FR - 0.07, 0], [FR - 0.065, -0.045]], 0, 0, 0, { ...IRON, axis: 'x', seg: 40, rings: false, chip: 0.3 });
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * TAU;
       const pts = [];
@@ -535,8 +535,8 @@ export function b_generator_mech(o) {
       k.tube('paint', pts, (t) => [0.018 - t * 0.005, 0.01], { ...IRON, radial: 6, caps: false });
     }
     k.cyl('paint', 0.09, 0.12, 0, 0, 0, { ...IRON, axis: 'x', seg: 18, bev: 0.008 });
-    k.cyl('metal', 0.05, 0.13, 0, 0, 0, { ...BRASS, axis: 'x', seg: 14 });
-    P.screw(k, 0, 0.09, 0, { kind: 'hex', r: 0.008, dir: 'y' });
+    k.cyl('#c8a254:m', 0.05, 0.13, 0, 0, 0, { axis: 'x', seg: 14 });
+    P.screw(k, 0, 0.09, 0, { kind: 'hex', r: 0.008, dir: 'y', slot: '#7a7d80:m' });
     k.box('paint', 0.012, 0.07, 0.035, -0.045, FR - 0.03, 0, { tint: 0xb3221a, r: 0.003, chip: 0.4 });
   });
   // flat leather belt to the dynamo pulley

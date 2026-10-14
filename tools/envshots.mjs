@@ -9,6 +9,7 @@ const W = +(process.env.W || 1100), H = +(process.env.H || 620);
 const prefix = process.env.PREFIX || 'env';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
 const page = await browser.newPage({ viewport: { width: W, height: H } });
+page.setDefaultTimeout(240000);
 const logs = [];
 page.on('console', (m) => {
   const t = m.text();
@@ -83,7 +84,7 @@ const stats = async (label) => {
   return s;
 };
 const loadYellow = async () => {
-  await page.goto(base + '?auto=solo');
+  await page.goto(base + '?auto=solo', { timeout: 240000 });
   await waitLoaded();
   await page.waitForTimeout(1500);
   await ev((seed) => { const g = __game; g.run = g._newRun(); g.run.depth = 1; g.hostLoadWorld({ type: 'yellow', seed, depth: 1, fresh: true }); }, SEED);
@@ -264,7 +265,7 @@ const scenarios = {
     await stats('one');
   },
   async lobby() {
-    await page.goto(base + '?auto=solo');
+    await page.goto(base + '?auto=solo', { timeout: 240000 });
     await waitLoaded();
     await page.waitForTimeout(3000);
     await clean();

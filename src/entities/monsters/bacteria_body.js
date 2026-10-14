@@ -56,7 +56,10 @@ function noise1(x) {
 // ---------------------------------------------------------------------------
 let _tpl = null;
 let _prewarm = null;
+let _workerBusy = false;
+const _waiting = new Set(); // bodies created before the template existed (placeholder geometry)
 const stats = (typeof window !== 'undefined' ? (window.__bacStats = window.__bacStats || {}) : {});
+const IN_GAME = typeof window !== 'undefined' && typeof location !== 'undefined' && !/gallery/.test(location.pathname);
 
 function geometryFrom(d) {
   const g = new THREE.BufferGeometry();
@@ -78,7 +81,24 @@ function installTemplate(d, how) {
   if (_tpl) return _tpl;
   _tpl = { geometry: geometryFrom(d), stats: d.stats, how };
   Object.assign(stats, { tris: d.stats.tris, verts: d.stats.verts, buildMs: d.stats.ms, how });
+  for (const b of _waiting) b._attachTemplate(_tpl);
+  _waiting.clear();
   return _tpl;
+}
+
+// Tiny stand-in with the template's exact attribute layout: a body created before the sculpt is
+// ready (e.g. the loading-screen shader warm-up) compiles the very same program and swaps in the
+// real geometry when the background build lands.
+let _placeholder = null;
+function placeholderGeometry() {
+  if (_placeholder) return _placeholder;
+  _placeholder = geometryFrom({
+    pos: new Float32Array([0, 1.2, 0, 0.001, 1.2, 0, 0, 1.201, 0]),
+    nor: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    si: new Uint16Array(12), sw: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]),
+    tis: new Uint8Array(12).fill(255), idx: new Uint32Array([0, 1, 2]),
+  });
+  return _placeholder;
 }
 
 /** The shared sculpted geometry (builds synchronously if the background build has not finished). */
@@ -87,7 +107,7 @@ export function bacteriaTemplate() {
   return _tpl;
 }
 
-/** Start building the template off the main thread. Resolves when it is ready. */
+/** Start building the template off the main thread. Resolves when it is ready (never rejects). */
 export function prewarmBacteria() {
   if (_prewarm) return _prewarm;
   _prewarm = new Promise((resolve) => {
@@ -95,22 +115,27 @@ export function prewarmBacteria() {
     let w = null;
     try { w = new Worker(new URL('./bacteria_worker.js', import.meta.url), { type: 'module' }); } catch (e) { w = null; }
     if (!w) { resolve(); return; }
-    w.onmessage = (e) => {
-      const m = e.data || {};
-      if (m.type === 'template' && m.d) installTemplate(m.d, 'worker');
-      else if (m.type === 'error') console.warn('[bacteria] worker build failed', m.error);
+    _workerBusy = true;
+    const done = (ok) => {
+      _workerBusy = false;
       w.terminate();
+      // bodies still waiting on a failed worker get a synchronous build at the next idle moment
+      if (!ok && _waiting.size) setTimeout(() => bacteriaTemplate(), 0);
       resolve();
     };
-    w.onerror = (e) => { console.warn('[bacteria] worker error', e.message); w.terminate(); resolve(); };
+    w.onmessage = (e) => {
+      const m = e.data || {};
+      if (m.type === 'template' && m.d) { installTemplate(m.d, 'worker'); done(true); return; }
+      if (m.type === 'error') console.warn('[bacteria] worker build failed', m.error);
+      done(false);
+    };
+    w.onerror = (e) => { console.warn('[bacteria] worker error', e.message); done(false); };
     w.postMessage({ type: 'build' });
   });
   return _prewarm;
 }
 
-if (typeof window !== 'undefined' && typeof location !== 'undefined' && !/gallery/.test(location.pathname)) {
-  setTimeout(() => prewarmBacteria(), 3500);
-}
+if (IN_GAME) setTimeout(() => prewarmBacteria(), 3500);
 
 // ---------------------------------------------------------------------------
 // Drips: instanced goo drops that hang from the body, stretch, fall and splat.
@@ -325,8 +350,11 @@ export class BacteriaBody {
       uWet: { value: 1 },
     };
     this.material = makeBodyMaterial(this.uniforms);
-    const tpl = bacteriaTemplate();
-    this.geometry = tpl.geometry;
+    // shared sculpt: in-game it is built by a worker; never stall a frame waiting for it
+    let tpl = _tpl;
+    if (!tpl && IN_GAME) prewarmBacteria();
+    if (!tpl && !_workerBusy) tpl = bacteriaTemplate();
+    this.geometry = tpl ? tpl.geometry : placeholderGeometry();
 
     this.bones = [];
     const inv = [];
@@ -349,8 +377,9 @@ export class BacteriaBody {
     mesh.receiveShadow = true;
     mesh.customDepthMaterial = makeShadowMaterial(this.uniforms, THREE.MeshDepthMaterial, { depthPacking: THREE.RGBADepthPacking });
     mesh.customDistanceMaterial = makeShadowMaterial(this.uniforms, THREE.MeshDistanceMaterial, {});
-    mesh.userData.stats = tpl.stats;
+    mesh.userData.stats = tpl ? tpl.stats : null;
     this.root.add(mesh);
+    if (!tpl) _waiting.add(this);
 
     this.drips = new Drips(36, new RNG((this.seed * 31337 + 5) >>> 0 || 1));
     this.root.add(this.drips.mesh);
@@ -601,6 +630,12 @@ export class BacteriaBody {
     this._updateDrips(dt);
   }
 
+  _attachTemplate(tpl) {
+    this.geometry = tpl.geometry;
+    this.mesh.geometry = tpl.geometry;
+    this.mesh.userData.stats = tpl.stats;
+  }
+
   getHeadWorldPosition(target = new V3()) {
     return target.copy(this.headPos);
   }
@@ -613,6 +648,7 @@ export class BacteriaBody {
   }
 
   dispose() {
+    _waiting.delete(this);
     this.root.removeFromParent();
     // geometry + skin textures are shared by every Bacteria (cached); materials are per instance
     this.material.dispose();
