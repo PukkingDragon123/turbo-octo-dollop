@@ -98,8 +98,8 @@ export function makeWaterMaterial(reflection, field, opts = {}) {
       uTexMat: { value: reflection.textureMatrix },
       uNoise: { value: noise },
       uTime: { value: 0 },
-      uColor: { value: new THREE.Color(opts.color ?? 0x4a4630) },
-      uDeep: { value: new THREE.Color(opts.deep ?? 0x1e1f14) },
+      uColor: { value: new THREE.Color(opts.color ?? 0x5a5236) },
+      uDeep: { value: new THREE.Color(opts.deep ?? 0x262518) },
       uOpacity: { value: opts.opacity ?? 0.62 },
       uReflectStrength: { value: opts.reflect ?? 0.95 },
       uLightTex: field.uniforms.uLightTex,
@@ -164,7 +164,7 @@ export function makeWaterMaterial(reflection, field, opts = {}) {
         vec3 body = mix(uDeep, uColor, 0.45 + film * 0.3);
         body = mix(body, vec3(0.32, 0.3, 0.22), scum * 0.35);
         body *= vBaked * 0.9 + 0.03;
-        float refK = clamp(F * 1.6 + 0.06, 0.0, 1.0) * uReflectStrength * (1.0 - scum * 0.5);
+        float refK = clamp(F * 1.8 + 0.14, 0.0, 1.0) * uReflectStrength * (1.0 - scum * 0.5);
         vec3 col = mix(body, refl, refK);
         // a little sparkle where ripples catch the fixtures
         col += vBaked * pow(max(0.0, N.y < 0.999 ? (1.0 - N.y) * 60.0 : 0.0), 2.0) * 0.02;

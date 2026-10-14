@@ -25,6 +25,8 @@ function placeStatic(level, rec, type, x, y, z, rotY = 0, opts = {}) {
   const o = m.object;
   o.position.set(x, y + (opts.useHalf === false ? 0 : m.halfHeight ?? 0), z);
   o.rotation.set(opts.rx || 0, rotY, opts.rz || 0);
+  o.userData.noRefl = true; // room furniture never sits by the water: skip the mirrored pass
+  opts.prep?.(o);
   rec.group.add(o);
   level.prepStatic(o, rec);
   if (opts.collide && m.colliders?.length) {
@@ -56,6 +58,19 @@ function addDevice(level, rec, kind, id, pos, rotY, opts = {}) {
   return dev;
 }
 
+// algae-tinted copies of furniture materials for the sunken office (shared, so they batch)
+const DROWN_TINT = new THREE.Color(0.58, 0.82, 0.86);
+const drownedMats = new Map();
+function drowned(mt) {
+  let c = drownedMats.get(mt.uuid);
+  if (!c) {
+    c = mt.clone();
+    if (c.color) c.color.multiply(DROWN_TINT);
+    drownedMats.set(mt.uuid, c);
+  }
+  return c;
+}
+
 const YELLOW_KINDS = new Set(['workshop', 'fuel_store', 'fuse_office', 'dead_clone', 'vending_lonely']);
 
 export function decoratePoolRoom(level, room, rec) {
@@ -83,18 +98,15 @@ export function decoratePoolRoom(level, room, rec) {
       if (!p) break;
       const ox = rec.cx * CHUNK * CELL, oz = rec.cz * CHUNK * CELL;
       const items = [['desk', p.run + 1.2, 0.35, 0.3], ['chair_office', p.run + 1.9, 0.42, 2.6], ['desk', p.run + 1.1, 0.75, Math.PI + 0.15], ['filing_cabinet', p.L - 0.45, 0.85, -Math.PI / 2], ['chair_office', p.run + 0.7, 0.8, 1.2], ['crt_monitor', p.run + 1.25, 0.33, 0.4]];
-      const tint = new THREE.Color(0.58, 0.82, 0.86);
       for (const [type, s, t, rot] of items) {
         const [x, z] = poolPoint(p, ox, oz, s, t);
         let y = poolFloorAt(p, s, t);
         if (type === 'crt_monitor') y += 0.76;
-        const { o } = placeStatic(level, rec, type, x, y, z, rot, { collide: type !== 'crt_monitor', rx: type === 'chair_office' && s > p.run + 1.5 ? 0.25 : 0 });
-        o.traverse((m) => {
+        const prep = (o) => o.traverse((m) => {
           if (!m.isMesh) return;
-          const mats = Array.isArray(m.material) ? m.material : [m.material];
-          const nm = mats.map((mt) => { const c = mt.clone(); if (c.color) c.color.multiply(tint); return c; });
-          m.material = Array.isArray(m.material) ? nm : nm[0];
+          m.material = Array.isArray(m.material) ? m.material.map(drowned) : drowned(m.material);
         });
+        placeStatic(level, rec, type, x, y, z, rot, { collide: type !== 'crt_monitor', rx: type === 'chair_office' && s > p.run + 1.5 ? 0.25 : 0, prep });
       }
       break;
     }

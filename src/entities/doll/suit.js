@@ -293,6 +293,26 @@ function buildFront(B, seamCol) {
     const an2 = (t, out) => { const y = lerp(y0 + 0.01, y1 - 0.01, t); return torsoNrm(torsoPhiX(fx + e * 0.026, y), y, out); };
     surfStrip(B, 'suit', at2, an2, 30, 0.006, 0.0015, seamCol, torsoW);
   }
+  // press-stud snaps holding the flap shut
+  for (const y of [0.36, 0.47, 0.58, 0.69, 0.79]) {
+    const phi = torsoPhiX(fx - 0.006, y), p = torsoPt(phi, y, 0.0125, V()), n = torsoNrm(phi, y, V());
+    const q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), n);
+    const stud = new THREE.CylinderGeometry(0.0062, 0.0068, 0.0032, 14); stud.applyQuaternion(q).translate(p.x, p.y, p.z);
+    B.skinned('metal', stud, torsoW, 0xb9bcc0);
+  }
+  // embroidered name tape on the right chest, between the flap edge and the harness pad; it rides
+  // the folded torso surface so no fabric lump swallows it
+  {
+    const W = 0.028, H = 0.0086, cx = 0.0625, cy = 0.772, nn = V();
+    const tape = grid(8, 2, (i, j, p) => {
+      const x = cx - (i / 8 - 0.5) * W, y = cy + (j / 2 - 0.5) * H, phi = torsoPhiX(x, y);
+      torsoPt(phi, y, 0, p); torsoNrm(phi, y, nn);
+      p.addScaledVector(nn, torsoFold(p.x, p.y, p.z, Math.atan2(p.x, p.z)) + 0.0026);
+    });
+    ensureOutward(tape, V(cx, cy, 0));
+    const uv = tape.attributes.uv; for (let k = 0; k < uv.count; k++) { const [a1, b1] = atlasUV('name', uv.getX(k), uv.getY(k)); uv.setXY(k, a1, b1); }
+    B.skinned('decal', tape, torsoW);
+  }
   // zip slider + pull peeking out at the collar
   const zp = torsoPt(torsoPhiX(0.0, 0.83), 0.83, 0.012, V()), zn = torsoNrm(torsoPhiX(0.0, 0.83), 0.83, V());
   const q = new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), zn);

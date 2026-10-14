@@ -91,6 +91,13 @@ export const DM = {
       roughnessMap: t.orm, roughness: 1, clearcoat: 0.18, clearcoatRoughness: 0.45, envMapIntensity: 1.1,
     });
   }),
+  hose: () => cached('dm_hose', () => {
+    const t = synth('doll_rubber');
+    return new THREE.MeshStandardMaterial({
+      name: 'doll_hose', color: 0xffffff, vertexColors: true, normalMap: t.normalMap, normalScale: new THREE.Vector2(0.5, 0.5),
+      roughness: 0.62, metalness: 0, envMapIntensity: 0.6,
+    });
+  }),
   tape: () => cached('dm_tape', () => {
     const t = synth('doll_tape');
     return new THREE.MeshPhysicalMaterial({

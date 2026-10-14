@@ -62,8 +62,10 @@ export function ceilingCell(G, baker, c, seed, cut = null) {
   ce.grid([x0, FACE_Y, z0], [CELL, 0, 0], [0, 0, CELL], [0, -1, 0], us.map((u) => u / 5), vs.map((v) => v / 5), (x, y, z) => [x, z],
     (iu, iv) => tileOf(us[iu], vs[iv]) !== T_NORMAL);
 
-  // --- troffer
-  if (trof) troffer(G, x0 + trof.a0 * TILE, z0 + trof.b0 * TILE, x0 + trof.a1 * TILE, z0 + trof.b1 * TILE, trof.alongX, hash01(c.i, c.j, 73, seed));
+  // --- troffer (parabolic louvres in office sectors, prismatic lenses elsewhere)
+  const office = c.zone === 'office' || c.lightTone === 1;
+  const tg = office && G.lensLouvre ? { enamel: G.enamel, lens: G.lensLouvre } : G;
+  if (trof) troffer(tg, x0 + trof.a0 * TILE, z0 + trof.b0 * TILE, x0 + trof.a1 * TILE, z0 + trof.b1 * TILE, trof.alongX, hash01(c.i, c.j, 73, seed));
 
   // --- damaged tiles
   for (let b = 0; b < 5; b++) for (let a = 0; a < 5; a++) {

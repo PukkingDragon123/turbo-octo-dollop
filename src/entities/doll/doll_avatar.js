@@ -168,7 +168,7 @@ export class Avatar {
     this.bones.wrR.add(this.anchors.right); this.bones.wrL.add(this.anchors.left);
     this.bones.head.add(this.anchors.head); this.bones.elL.add(this.anchors.watch);
     this.anchors.head.position.set(0, FACE.eyeY, -0.2);
-    this.hose = new Hose(DM.rubber());
+    this.hose = new Hose(DM.hose());
     this.rigRoot.add(this.hose.mesh);
     this.hoseStart = new THREE.Object3D(); this.hoseEnd = new THREE.Object3D();
     this.fpHidden = !!opts?.firstPersonHidden;

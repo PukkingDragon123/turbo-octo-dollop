@@ -505,7 +505,8 @@ export class UI {
         a.update(0.016, { speed: 0, grounded: true, expression: 'happy', moveDir: new THREE.Vector2() });
         obj = a.root;
       }
-      return this._renderToCanvas(obj, this.portraitRT, 192, 256, new THREE.Vector3(0.15, 0.1, 1), 1.6);
+      // characters face -Z, so the portrait camera sits on that side
+      return this._renderToCanvas(obj, this.portraitRT, 192, 256, new THREE.Vector3(-0.15, 0.1, -1), 1.6);
     } catch (e) {
       return null;
     }

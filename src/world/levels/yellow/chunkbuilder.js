@@ -124,9 +124,13 @@ function floorDrain(G, x, z) {
   m.ao = 1;
 }
 
+// zone carpets: the same synthesized pile, re-dyed (no extra texture memory)
+const _carpets = {};
+function carpetTint(k, hex) { return _carpets[k] || (_carpets[k] = Mat.make('carpet', { color: hex })); }
+
 // maintenance block walls: the same synthesized set as the HQ, older paint (tinted)
 let _cmuDirty = null;
-function cmuDirty() { return _cmuDirty || (_cmuDirty = Mat.make('cmu', { color: 0xbcb4a0 })); }
+function cmuDirty() { return _cmuDirty || (_cmuDirty = Mat.make('cmu', { color: 0xa69e88 })); }
 
 // per-chunk build statistics (ms, accumulated) for profiling tools
 export const buildStats = { geo: 0, bake: 0, mat: 0, decor: 0, phys: 0, water: 0, verts: 0, tris: 0, meshes: 0, n: 0 };
@@ -150,6 +154,7 @@ export function buildChunk(level, cx, cz) {
     wall: new EnvGeo({ wet: true, cap: 4096 }), manila: new EnvGeo({ wet: true }), concrete: new EnvGeo({ wet: true }), pool: new EnvGeo(),
     trim: new EnvGeo({ cap: 4096 }), rubber: new EnvGeo(), metal: new EnvGeo(), fixture: new EnvGeo({ color: true }),
     carpet: new EnvGeo({ edge: true, wet: true, cap: 2048 }), slab: new EnvGeo({ edge: true, wet: true }), tile: new EnvGeo({ edge: true }),
+    carpetOffice: new EnvGeo({ edge: true, wet: true }), carpetManila: new EnvGeo({ edge: true, wet: true }), lensLouvre: new EnvGeo(),
     ceil: new EnvGeo({ edge: true, wet: true, cap: 4096 }), enamel: new EnvGeo({ cap: 2048 }), lens: new EnvGeo(), plenum: new EnvGeo(), debris: new EnvGeo(),
     pipe: new EnvGeo(), insul: new EnvGeo(), paper: new EnvGeo(),
   };
@@ -172,7 +177,9 @@ export function buildChunk(level, cx, cz) {
   };
   for (const c of layout.cells) {
     const x0 = c.i * CELL, z0 = c.j * CELL;
-    const g = c.floor === 'concrete' ? G.slab : c.floor === 'tile' ? G.tile : G.carpet;
+    const g = c.floor === 'concrete' ? G.slab : c.floor === 'tile' ? G.tile
+      : c.zone === 'office' || c.special?.kind === 'cubicle_farm' || c.special?.kind === 'office_room' ? G.carpetOffice
+      : c.zone === 'manila' || c.roomStyle === 'manila' ? G.carpetManila : G.carpet;
     const [e0, e1] = baker.edgeInfo(c.i, c.j, false);
     g.edge0 = e0; g.edge1 = e1; g.ao = 1;
     if (g.Wt) g.wetFn = (x, y, z) => wetAt(x, z);
@@ -245,11 +252,14 @@ export function buildChunk(level, cx, cz) {
   add(G.metal, Mat.get('galvanized'), 0, { quant: 0.25 });
   add(G.fixture, fixtureMaterial(), 0, { quant: 0.3 });
   add(G.carpet, Mat.get('carpet'), 1, { ao: 'floor' });
+  add(G.carpetOffice, carpetTint('office', 0xa4a49c), 1, { ao: 'floor' });
+  add(G.carpetManila, carpetTint('manila', 0xc89c74), 1, { ao: 'floor' });
   add(G.slab, Mat.get('concrete_dark'), 4, { ao: 'floor' });
   add(G.tile, Mat.get('tile_pool'), 0, { ao: 'floor' });
   add(G.ceil, Mat.get('ceiling'), 3, { ao: 'ceil', tiles: true, mix: [0.22, 0.42] });
   add(G.enamel, Mat.get('enamel'), 0, { quant: 0.3, mix: [0.5, 0.6] });
   add(G.lens, Mat.get('lightpanel'), 0, { emissive: true, lens: true, quant: 0.6, mix: [0.2, 0.4] });
+  add(G.lensLouvre, Mat.get('lightpanel'), 0, { emissive: true, lens: 'louvre', quant: 0.6, mix: [0.2, 0.4] });
   add(G.plenum, Mat.get('plenum'), 0, { quant: 0.3, mix: [0.3, 0.2] });
   add(G.debris, Mat.get('ceiling'), 0, { quant: 0.3 });
   add(G.pipe, Mat.get('pipe_paint'), 0, { quant: 0.3, cast: true });

@@ -66,7 +66,7 @@ const synth = {
   wallpaper_manila: { r: 'env_wallpaper', o: { c0: 0xb48c58, c1: 0x94703f, c2: 0x553a1c, c3: 0xc6a06a, p0: [3, 6, 18, 0.95], p1: [1, 0.7, 1, 1], size: 512 }, ns: 1.0 },
   carpet: { r: 'env_carpet', o: {}, ns: 1.0, aniso: 16 },
   ceiling: { r: 'env_acoustic', o: {}, ns: 1.0 },
-  concrete: { r: 'concrete', o: { c0: 0xa8a49a, c1: 0x86827a, c2: 0x4e4a44, c3: 0xbdb7aa, p0: [70, 0.35, 0.6, 0.45], wear: 0.35, meters: 2, size: 1024 }, ns: 1.0 },
+  concrete: { r: 'concrete', o: { c0: 0xa8a49a, c1: 0x86827a, c2: 0x4e4a44, c3: 0xbdb7aa, p0: [70, 0.35, 0.6, 0.45], wear: 0.35, meters: 2, size: 512 }, ns: 1.0 },
   concrete_dark: { r: 'env_slab', o: {}, color: 0x9a968e, ns: 1.0, aniso: 16 },
   slab: { r: 'env_slab', o: {}, ns: 1.0, aniso: 16 },
   cmu: { r: 'env_cmu', o: {}, ns: 1.0 },
@@ -77,22 +77,23 @@ const synth = {
   paint_blue: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a }, color: 0x8fa0b3, ns: 0.8 },
   paint_white: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a }, color: 0xeae7e0, ns: 0.8 },
   panel: { r: 'env_panel', o: {}, ns: 1.0 },
-  tile: { r: 'env_ceramic', o: {}, ns: 1.0, envMapIntensity: 1.0 },
-  tile_green: { r: 'env_ceramic', o: { c0: 0xa9c9b2, c3: 0xa2c4ac, c1: 0xa8aca2 }, ns: 1.0, envMapIntensity: 1.0 },
-  tile_pool: { r: 'env_ceramic', o: { c0: 0xe4f2f2, c3: 0xd8eeee, c1: 0x9fb2b2, p0: [4, 4, 0.045, 0.05], p1: [0.04, 0.15, 0.14, 0.4] }, ns: 1.0, envMapIntensity: 1.2 },
+  tile: { r: 'env_ceramic', o: { size: 512 }, ns: 1.0, envMapIntensity: 1.0 },
+  tile_green: { r: 'env_ceramic', o: { size: 512 }, color: 0xb4d8bd, ns: 1.0, envMapIntensity: 1.0 },
+  tile_pool: { r: 'env_ceramic', o: { size: 512 }, color: 0xe2f4f6, ns: 1.0, envMapIntensity: 1.2 },
   lightpanel: { r: 'env_prism', o: {}, world: false, texRepeat: 4, emissive: 0xfff1d8, emissiveIntensity: 2.6, emissiveFromMap: true, rough: 1, ns: 0.6 },
   // environment detail set
   trim: { r: 'wood', o: { c0: 0x4e3d2a, c1: 0x6f5a3e, c2: 0x2a2014, p0: [20, 1, 0.8, 0.5], wear: 0.4, meters: 1, size: 512 }, ns: 0.8 },
-  trim_paint: { r: 'env_enamel', o: { p0: [0.42, 0.6, 0, 0], wear: 0.35 }, color: 0xcbbf9e, ns: 0.6 },
+  trim_paint: { r: 'env_enamel', o: {}, color: 0xcbbf9e, rough: 1.1, ns: 0.6 },
   enamel: { r: 'env_enamel', o: {}, color: 0xf2efe6, ns: 0.5 },
   fixture: { r: 'env_enamel', o: {}, color: 0xffffff, ns: 0.4, vertexColors: true },
   rubber_base: { r: 'vinyl', o: { c0: 0x2a2826, c1: 0x34312e, p0: [140, 0.55, 0, 0], wear: 0.3, meters: 0.3, size: 512 }, ns: 0.6 },
   pipe_paint: { r: 'paint_metal', o: { c0: 0x5e6a58, wear: 0.45, meters: 0.6, size: 512 }, ns: 1.0, metal: 1 },
-  pipe_rust: { r: 'rust', o: { wear: 0.6, meters: 0.6, size: 512 }, ns: 1.0, metal: 1 },
   galvanized: { r: 'metal', o: { c0: 0xb4b8b8, c1: 0x868a8a, c2: 0x5a5448, p0: [0.4, 0.42, 0.25, 0], wear: 0.5, meters: 0.5, size: 512 }, ns: 0.8, metal: 1 },
   insulation: { r: 'env_insulation', o: {}, ns: 1.0, metal: 1 },
-  stainless: { r: 'metal', o: { c0: 0xd2d6d8, c1: 0xa6aaad, c2: 0x6a6660, p0: [1, 0.24, 0.06, 0], wear: 0.22, meters: 0.6, size: 512 }, ns: 0.6, metal: 1, envMapIntensity: 1.3 },
-  plenum: { r: 'concrete', o: { c0: 0x4a4740, c1: 0x34322c, c2: 0x1e1c18, c3: 0x5a564c, p0: [40, 0.2, 0.5, 0.6], wear: 0.6, meters: 2, size: 512 }, ns: 0.8 },
+  // brushed stainless shares the galvanized synthesis (brighter tint, smoother)
+  stainless: { r: 'metal', o: { c0: 0xb4b8b8, c1: 0x868a8a, c2: 0x5a5448, p0: [0.4, 0.42, 0.25, 0], wear: 0.5, meters: 0.5, size: 512 }, color: 0xf4f6f8, rough: 0.7, ns: 0.6, metal: 1, envMapIntensity: 1.3 },
+  // dark plenum / soffit concrete shares the generic concrete synthesis
+  plenum: { r: 'concrete', o: { c0: 0xa8a49a, c1: 0x86827a, c2: 0x4e4a44, c3: 0xbdb7aa, p0: [70, 0.35, 0.6, 0.45], wear: 0.35, meters: 2, size: 512 }, color: 0x4a4740, ns: 0.8 },
 };
 
 const shared = new Map();
@@ -214,11 +215,14 @@ export function isWorld(name) {
   return !!synth[name];
 }
 
-// Synthesize every world texture set up front (loading screen); yields between sets.
+// Synthesize the world texture sets up front (loading screen); yields between sets.
+const WARM = ['wallpaper', 'wallpaper_manila', 'carpet', 'ceiling', 'slab', 'cmu', 'office_carpet', 'linoleum', 'paint', 'panel', 'tile',
+  'lightpanel', 'trim', 'enamel', 'rubber_base', 'pipe_paint', 'galvanized', 'insulation', 'plenum'];
 export async function warmWorld(onProgress) {
   const seen = new Set();
   const jobs = [];
   for (const [name, d] of Object.entries(synth)) {
+    if (!WARM.includes(name)) continue;
     const k = d.r + JSON.stringify(d.o || {});
     if (seen.has(k)) continue;
     seen.add(k);

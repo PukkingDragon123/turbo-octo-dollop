@@ -78,6 +78,18 @@ const texMem = () => ev(() => {
   return { MB: +(bytes / 1e6).toFixed(1), n: seen.size, top };
 });
 
+// draw calls per renderer.render() call (scene/camera) and inside the shadow pass, over one frame
+const passInfo = () => ev(() => new Promise((res) => {
+  const r = __engine.renderer; const info = r.info; const sm = r.shadowMap;
+  const origSM = sm.render; const origR = r.render;
+  let shadow = 0; const per = [];
+  sm.render = function (...a) { const c0 = info.render.calls; origSM.apply(this, a); shadow += info.render.calls - c0; };
+  r.render = function (scene, cam) { const c0 = info.render.calls; origR.call(this, scene, cam); per.push((scene.name || scene.type) + '/' + cam.type + ':' + (info.render.calls - c0)); };
+  const done = () => { sm.render = origSM; r.render = origR; res({ shadow, per }); };
+  requestAnimationFrame(() => { per.length = 0; shadow = 0; requestAnimationFrame(done); });
+  setTimeout(done, 200000);
+}));
+
 const scenarios = {
   async mission() {
     await page.goto(base + '?auto=solo&level=grasslands' + extra);
@@ -212,6 +224,7 @@ const scenarios = {
     await tp([s.x, null, s.z], yawTo(s.x, s.z, h.lipX, h.lipZ) + Math.PI, 0.0);
     await shot('v_spawn_back', 3000);
     console.log(JSON.stringify(await stats()));
+    console.log('passes', JSON.stringify(await passInfo()));
     console.log(JSON.stringify(await ev(() => __game.world.level.debugDraw())));
     // the riverbank, looking at the waterfall
     const bank = await ev(() => {
@@ -228,6 +241,7 @@ const scenarios = {
     await tp([s.x - 6, null, s.z + 4], yawTo(s.x, s.z, h.lipX, h.lipZ) + 0.6, -0.02);
     await shot('v_meadow', 3000);
     console.log(JSON.stringify(await stats()));
+    console.log('passes', JSON.stringify(await passInfo()));
     console.log(JSON.stringify(await ev(() => __game.world.level.debugDraw())));
     console.log('texmem', JSON.stringify(await texMem()));
     // inside the generator sheds (interior light)

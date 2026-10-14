@@ -8,6 +8,10 @@ import * as THREE from 'three';
 import { PU } from './poolmat.js';
 
 export const MAX_RIPPLES = 16;
+const _look = new THREE.Vector3();
+const _up = new THREE.Vector3();
+const _tgt = new THREE.Vector3();
+const _size2 = new THREE.Vector2();
 
 export class PoolReflection {
   constructor(renderer, height, scale) {
@@ -30,7 +34,7 @@ export class PoolReflection {
   }
 
   _checkSize() {
-    const size = this.renderer.getSize(new THREE.Vector2());
+    const size = this.renderer.getSize(_size2);
     if (size.x !== this._size.x || size.y !== this._size.y) {
       this._size.copy(size);
       this.rt.setSize(Math.max(2, Math.round(size.x * this.scale)), Math.max(2, Math.round(size.y * this.scale)));
@@ -45,19 +49,19 @@ export class PoolReflection {
     const vc = this.camera;
     vc.copy(camera, false);
     vc.position.y = 2 * h - camera.position.y;
-    const look = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const look = _look.set(0, 0, -1).applyQuaternion(camera.quaternion);
     look.y *= -1;
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    const up = _up.set(0, 1, 0).applyQuaternion(camera.quaternion);
     up.y *= -1;
     vc.up.copy(up);
-    vc.lookAt(vc.position.clone().add(look));
+    vc.lookAt(_tgt.copy(vc.position).add(look));
     vc.updateMatrixWorld();
     vc.projectionMatrix.copy(camera.projectionMatrix);
     this.textureMatrix.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
     this.textureMatrix.multiply(vc.projectionMatrix);
     this.textureMatrix.multiply(vc.matrixWorldInverse);
     // oblique near plane (Lengyel) so nothing below the water is mirrored
-    this._plane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, h, 0));
+    this._plane.setFromNormalAndCoplanarPoint(_up.set(0, 1, 0), _tgt.set(0, h, 0));
     this._plane.applyMatrix4(vc.matrixWorldInverse);
     this._clip.set(this._plane.normal.x, this._plane.normal.y, this._plane.normal.z, this._plane.constant);
     const pm = vc.projectionMatrix;

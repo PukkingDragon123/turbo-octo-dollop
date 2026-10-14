@@ -18,7 +18,7 @@ export function hazeMaterial(field) {
     uniforms: Object.assign(THREE.UniformsUtils.clone(THREE.UniformsLib.fog), {
       uLightTex: field.uniforms.uLightTex,
       uLightScale: field.uniforms.uLightScale,
-      uHaze: { value: 0.06 },
+      uHaze: { value: 0.028 },
       uTime: field.uniforms.uTime,
     }),
     vertexShader: /* glsl */`
@@ -54,10 +54,11 @@ export function hazeMaterial(field) {
         vec3 V = normalize(cameraPosition - vWP);
         float face = abs(dot(normalize(vN), V));
         float edge = sin(PI * clamp(vUV.x, 0.0, 1.0));
-        float fall = pow(1.0 - clamp(vUV.y, 0.0, 1.0), 1.6);
+        edge = edge * edge * edge;
+        float fall = pow(1.0 - clamp(vUV.y, 0.0, 1.0), 2.2) * smoothstep(0.0, 0.08, vUV.y);
         float nearFade = smoothstep(0.4, 1.6, length(cameraPosition - vWP));
         float shimmer = 0.85 + 0.15 * sin(vWP.x * 3.1 + vWP.z * 2.3 + uTime * 0.4) * sin(vWP.y * 4.0 - uTime * 0.3);
-        float a = uHaze * edge * edge * fall * smoothstep(0.05, 0.6, face) * nearFade * shimmer;
+        float a = uHaze * edge * fall * smoothstep(0.25, 0.85, face) * nearFade * shimmer;
         vec3 col = vCol * uLightScale * a;
         gl_FragColor = vec4(col, 1.0);
         #include <fog_fragment>

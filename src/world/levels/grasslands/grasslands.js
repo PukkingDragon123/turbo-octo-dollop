@@ -27,6 +27,7 @@ import { WaterSystem } from './water.js';
 import { terrainUniforms } from './terrain.js';
 import { Structures, slabMaterial } from './structures.js';
 import { patchInteriorObject, unpatchAllInterior, setInteriors, interiorUniforms } from './interior.js';
+import { buildProxy, disposeProxy, stateSig } from './proxy.js';
 import { GrassAnomalies } from './gl_anomalies.js';
 import { registerGrassAudio } from './gaudio.js';
 import { MistSystem } from './mist.js';
@@ -71,6 +72,7 @@ export class GrasslandsLevel {
     this.sunCache = new Map();
     this.sunKey = '';
     this.debugT = null;
+    this.proxies = new Map(); // device -> distance proxy record
   }
 
   // ---------------------------------------------------------------
@@ -146,6 +148,17 @@ export class GrasslandsLevel {
     this.mission.build();
     for (const g of this.mission.generators) patchInteriorObject(g.root);
     for (const d of this.structures.devices) if (d.root) patchInteriorObject(d.root);
+    // machines swap to merged proxies past a few metres (the two shed generators stand under a roof: no sun
+    // shadow, and only visible through the open south side)
+    for (const g of this.mission.generators) {
+      const st = (g.id === 'gen_diesel' || g.id === 'gen_mech') && this.gw.structures.find((x) => x.kind === g.id);
+      if (st) g.root.traverse((o) => { if (o.isMesh) o.castShadow = false; });
+      this.registerProxy(g, {
+        near: 12, far: 56, shadows: !st,
+        blind: st ? (cam) => cam.z < st.z1 - 0.3 && !(cam.x > st.x0 - 0.5 && cam.x < st.x1 + 0.5 && cam.z > st.z0 - 0.5) : null,
+      });
+    }
+    for (const d of this.structures.devices) if (d.root) this.registerProxy(d, { near: 10, far: 50, shadows: false });
     this._interiorList = [...this.structures.interiors];
     setInteriors(this._interiorList);
     this.sky.update(0.016, this._dayT(), c);
@@ -587,26 +600,69 @@ export class GrasslandsLevel {
     if (ex && !ex._grassFixed) this._seatExit(ex);
   }
 
-  // the valley is wide open: loose props and machines far away are each 5-25 draw calls for a few pixels.
-  // Hide them past a distance (never a held prop; only ever un-hide what was hidden here).
+  // machines: the real (interactive, animated) device up close, a merged proxy further out, nothing far away
+  registerProxy(dev, o = {}) {
+    if (!dev?.root || this.proxies.has(dev)) return;
+    this.proxies.set(dev, { dev, near: o.near ?? 12, far: o.far ?? 60, shadows: o.shadows !== false, blind: o.blind || null, proxy: null, sig: null, mode: -1 });
+  }
+
+  unregisterProxy(dev) {
+    const P = this.proxies.get(dev);
+    if (!P) return;
+    disposeProxy(P.proxy);
+    this.proxies.delete(dev);
+  }
+
+  // the valley is wide open: loose props and machines far away are each 5-60 draw calls for a few pixels
   _cullSmall() {
     this._cullT = (this._cullT || 0) - 1;
     if (this._cullT > 0) return;
-    this._cullT = 8;
+    this._cullT = 6;
+    this._cullN = (this._cullN || 0) + 1;
     const cam = engine.camera.position;
-    const hid = this._culled || (this._culled = new Set());
-    const test = (o, r, held, blind = false) => {
-      const far = blind || o.position.distanceToSquared(cam) > r * r;
-      if (far && o.visible && !held) { o.visible = false; hid.add(o); } else if (!far && hid.has(o)) { o.visible = true; hid.delete(o); }
-    };
-    for (const d of this.structures.devices) if (d.root) test(d.root, 60, false);
-    // the machines in the two sheds can only be seen through their open south side
-    for (const g of this.mission.generators) {
-      const st = (g.id === 'gen_diesel' || g.id === 'gen_mech') && this.gw.structures.find((x) => x.kind === g.id);
-      const blind = !!st && cam.z < st.z1 - 0.3 && !(cam.x > st.x0 - 0.5 && cam.x < st.x1 + 0.5 && cam.z > st.z0 - 0.5);
-      test(g.root, 55, false, blind);
+    let builds = 0; // at most one proxy (re)build per pass: no hitch when several machines come into range
+    for (const P of this.proxies.values()) {
+      const root = P.dev.root;
+      if (!root.parent) continue;
+      const d2 = root.position.distanceToSquared(cam);
+      const mode = (P.blind && P.blind(cam)) || d2 > P.far * P.far ? 0 : d2 < P.near * P.near ? 2 : 1;
+      if (mode === 1) {
+        const sig = stateSig(P.dev);
+        if (builds < 1 && (P.proxy === null || (sig !== P.sig && this._cullN % 5 === 0))) {
+          builds++;
+          // build from the live device (temporarily visible so its parts are collected)
+          const was = root.visible;
+          root.visible = true;
+          const px = buildProxy(root, { shadows: P.shadows });
+          root.visible = was;
+          disposeProxy(P.proxy);
+          P.proxy = px || false;
+          P.sig = sig;
+          if (px) this.world.group.add(px);
+        }
+      }
+      root.visible = mode === 2 || (mode === 1 && !P.proxy);
+      if (P.proxy) P.proxy.visible = mode === 1;
+      P.mode = mode;
     }
-    for (const p of this.world.props.props.values()) test(p.root, 65, p.isHeld?.());
+    // loose props: hidden far away (never a held one; only ever un-hide what was hidden here), and only the
+    // ones near the camera cast sun shadows
+    const hid = this._culled || (this._culled = new Set());
+    const noShadow = this._noShadow || (this._noShadow = new WeakSet());
+    for (const p of this.world.props.props.values()) {
+      const o = p.root;
+      const d2 = o.position.distanceToSquared(cam);
+      const far = d2 > 65 * 65;
+      if (far && o.visible && !p.isHeld?.()) { o.visible = false; hid.add(o); } else if (!far && hid.has(o)) { o.visible = true; hid.delete(o); }
+      const cast = d2 < 20 * 20;
+      if (cast !== !o.userData.glNoShadow) {
+        o.userData.glNoShadow = !cast;
+        o.traverse((m) => {
+          if (!m.isMesh) return;
+          if (!cast && m.castShadow) { m.castShadow = false; noShadow.add(m); } else if (cast && noShadow.has(m)) { m.castShadow = true; noShadow.delete(m); }
+        });
+      }
+    }
     for (const o of hid) if (!o.parent) hid.delete(o);
   }
 
@@ -843,6 +899,8 @@ export class GrasslandsLevel {
 
   dispose() {
     unpatchAllInterior();
+    for (const P of this.proxies.values()) disposeProxy(P.proxy);
+    this.proxies.clear();
     this.ambience?.stop(0.5);
     this.meadowLoop?.stop(0.5);
     this.riverLoop?.stop(0.5);

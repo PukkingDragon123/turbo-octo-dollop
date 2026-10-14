@@ -19,7 +19,7 @@ import { Anomalies } from '../../../game/anomalies.js';
 import { Critters } from '../../../game/critters.js';
 import { Device } from '../../../game/devices.js';
 import {
-  CELL, CHUNK, CHUNK_M, HEIGHT, TALL, W, WATER_Y, SUNK_Y, getLayout, cellInfo, wallN, wallW, wallPassable,
+  CELL, CHUNK, CHUNK_M, HEIGHT, TALL, W, WATER_Y, SUNK_Y, getLayout, wallN, wallW, wallPassable,
   clearLayoutCache, poolFloorAt, poolCoords, poolStairSide,
 } from './layout.js';
 import { buildChunk, buildChunkSteps, cellLightSpec, makeQueries } from './chunkbuilder.js';
@@ -30,6 +30,7 @@ import { decoratePoolRoom, populatePoolRoom } from './rooms.js';
 import { registerPoolAudio } from './audio.js';
 import { poolEnvironment } from './env.js';
 import { PoolFX } from './fx.js';
+import { batchStatics } from './batch.js';
 
 const LOAD_R = 2;
 const UNLOAD_R = 3;
@@ -74,6 +75,7 @@ export class PoolroomsLevel extends YellowLevel {
   constructor(world, desc) {
     super(world, desc);
     this.name = 'LEVEL 37 — THE POOLROOMS';
+    this.feedName = 'LEVEL 37: THE POOLROOMS';
     this.reverb = 'pool';
     clearLayoutCache();
     this.Q = makeQueries(this.seed, this.variantFn);
@@ -94,13 +96,20 @@ export class PoolroomsLevel extends YellowLevel {
         const g = rec.group;
         if (!g.visible) continue;
         const dx = Math.max(0, Math.abs(cam.x - (rec.cx + 0.5) * CHUNK_M) - CHUNK_M / 2), dz = Math.max(0, Math.abs(cam.z - (rec.cz + 0.5) * CHUNK_M) - CHUNK_M / 2);
-        if (dx * dx + dz * dz > 26 * 26) { g.visible = false; hidden.push(g); }
+        if (dx * dx + dz * dz > 24 * 24) { g.visible = false; hidden.push(g); continue; }
+        // submerged surfaces, small fittings and room furniture are not worth a mirrored draw call
+        for (const o of rec.reflSkip || []) if (o.visible) { o.visible = false; hidden.push(o); }
       }
       for (const p of this.world.props.props.values()) {
         const r = p.root;
         if (!r.visible) continue;
         const d2 = r.position.distanceToSquared(cam);
-        if (d2 > 14 * 14 || (d2 > 6 * 6 && (p.radius ?? 1) < 0.25)) { r.visible = false; hidden.push(r); }
+        if (d2 > 12 * 12 || (d2 > 5 * 5 && (p.radius ?? 1) < 0.3)) { r.visible = false; hidden.push(r); }
+      }
+      for (const d of this.world.devices.values()) {
+        const r = d.root;
+        if (!r?.visible || !r.parent) continue;
+        if (r.position.distanceToSquared(cam) > 12 * 12) { r.visible = false; hidden.push(r); }
       }
     };
     this.waterLevel = WATER_Y;
@@ -117,6 +126,7 @@ export class PoolroomsLevel extends YellowLevel {
 
   // ---------------------------------------------------------------
   async build(onProgress) {
+    onProgress?.(0, 'LEVEL 37 — THE POOLROOMS · FILLING THE POOLS');
     const scene = engine.scene;
     scene.background = new THREE.Color(0x9fb4b6);
     scene.fog = new THREE.FogExp2(_fogLit.getHex(), 0.024);
@@ -157,7 +167,7 @@ export class PoolroomsLevel extends YellowLevel {
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) need.push([dx, dz]);
     for (let i = 0; i < need.length; i++) {
       this._buildChunk(need[i][0], need[i][1]);
-      onProgress?.((i + 1) / need.length, 'FLOODING THE POOLROOMS');
+      onProgress?.((i + 1) / need.length, `LEVEL 37 — THE POOLROOMS · ${i < 3 ? 'FILLING THE POOLS' : i < 6 ? 'TILING THE HALLS' : 'WARMING THE WATER'}`);
       await new Promise((r) => setTimeout(r, 0));
     }
     this.mission.build();
@@ -267,6 +277,10 @@ export class PoolroomsLevel extends YellowLevel {
     }
     if (rec.floatMesh) this.prepStatic(rec.floatMesh, rec);
     for (const room of rec.layout.specials) decoratePoolRoom(this, room, rec);
+    // room furniture: never mirrored, merged per material
+    for (const o of rec.statics || []) if (o.parent === rec.group && o !== rec.floatMesh) o.userData.noRefl = true;
+    batchStatics(this, rec);
+    rec.reflSkip = rec.group.children.filter((o) => o.userData.noRefl);
     if (net.isHost) this._populate(key);
   }
 
@@ -413,6 +427,24 @@ export class PoolroomsLevel extends YellowLevel {
   }
 
   fadeIn() { this.fadeT = 0.35; }
+
+  // distance culling: the halls are wide open, so small loose props drop out sooner than big ones
+  _cull(dt) {
+    this._cullT = (this._cullT || 0) - dt;
+    if (this._cullT > 0) return;
+    this._cullT = 0.2;
+    const cam = engine.camera.position;
+    const half = CHUNK_M / 2;
+    for (const rec of this.chunks.values()) {
+      const dx = Math.max(0, Math.abs(cam.x - (rec.cx + 0.5) * CHUNK_M) - half), dz = Math.max(0, Math.abs(cam.z - (rec.cz + 0.5) * CHUNK_M) - half);
+      rec.group.visible = dx * dx + dz * dz < 46 * 46;
+    }
+    for (const p of this.world.props.props.values()) {
+      const r = p.radius ?? 0.5;
+      const lim = r < 0.15 ? 16 : r < 0.3 ? 24 : r < 0.6 ? 34 : 42;
+      p.root.visible = p.root.position.distanceToSquared(cam) < lim * lim;
+    }
+  }
 
   ripple(x, z, s = 1) { this.waterMaterial.userData.addRipple(x, z, s, this.time); }
 

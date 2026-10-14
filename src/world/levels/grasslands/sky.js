@@ -15,8 +15,8 @@ const sst = (t) => t * t * (3 - 2 * t);
 
 // keyframes along the dimension's lifetime (t = day-1 + progress, 0..7)
 const KEYS = [
-  { t: 0.0, elev: 31, sun: C(0xfff0d8), sunI: 6.2, zen: C(0x3f6fae), hor: C(0xbcd0dc), halo: C(0xffe6c0), fog: C(0xb7c4c6), fogD: 0.0035, cloud: 0.42, sat: 1.04, expo: 0.8, sick: 0 },
-  { t: 1.6, elev: 23, sun: C(0xffe2b8), sunI: 5.8, zen: C(0x3d68a4), hor: C(0xcdd2cc), halo: C(0xffd8a0), fog: C(0xc2c4bc), fogD: 0.0042, cloud: 0.48, sat: 1.02, expo: 0.8, sick: 0 },
+  { t: 0.0, elev: 31, sun: C(0xfff0d8), sunI: 6.2, zen: C(0x3f6fae), hor: C(0xbcd0dc), halo: C(0xffe6c0), fog: C(0xb7c4c6), fogD: 0.0028, cloud: 0.42, sat: 1.04, expo: 0.8, sick: 0 },
+  { t: 1.6, elev: 23, sun: C(0xffe2b8), sunI: 5.8, zen: C(0x3d68a4), hor: C(0xcdd2cc), halo: C(0xffd8a0), fog: C(0xc2c4bc), fogD: 0.0036, cloud: 0.48, sat: 1.02, expo: 0.8, sick: 0 },
   { t: 3.0, elev: 12, sun: C(0xffc98a), sunI: 5.1, zen: C(0x46649a), hor: C(0xe7c8a0), halo: C(0xffb870), fog: C(0xcdb79a), fogD: 0.0055, cloud: 0.52, sat: 1.0, expo: 0.84, sick: 0 },
   { t: 4.2, elev: 4.5, sun: C(0xff9a50), sunI: 3.9, zen: C(0x404f80), hor: C(0xe39a68), halo: C(0xff8a40), fog: C(0xb58c74), fogD: 0.0075, cloud: 0.55, sat: 0.94, expo: 0.94, sick: 0.05 },
   { t: 5.0, elev: 0.5, sun: C(0xff6a30), sunI: 1.9, zen: C(0x2d3762), hor: C(0xa56a5e), halo: C(0xe85a30), fog: C(0x6e5a62), fogD: 0.01, cloud: 0.6, sat: 0.85, expo: 1.1, sick: 0.12 },
@@ -52,7 +52,7 @@ export const SKY_GLSL = /* glsl */`
     col += uHorizon * 0.25 * exp(-hh * 18.0);
     col = mix(col, uGround, smoothstep(0.0, -0.22, h));
     float sd = max(dot(d, uSunDir), 0.0);
-    float glow = pow(sd, 5.0) * 0.55 + pow(sd, 32.0) * 0.9 + pow(sd, 400.0) * 3.0;
+    float glow = pow(sd, 8.0) * 0.32 + pow(sd, 32.0) * 0.8 + pow(sd, 400.0) * 3.0;
     col += uHalo * glow * (1.0 - 0.45 * smoothstep(0.0, 0.7, h)) * (1.0 - uNoSun);
     // clouds on a curved layer
     if (h > -0.02) {
@@ -130,7 +130,7 @@ const AtmoShader = {
       float optical = uFogD * dist * exp(-b * max(y0, -10.0)) * fy;
       float T = exp(-optical);
       float sd = max(dot(wdir, uSunDir), 0.0);
-      vec3 fogc = mix(uFogCol, uSunFog, pow(sd, 10.0) * 0.42 + pow(sd, 64.0) * 0.35);
+      vec3 fogc = mix(uFogCol, uSunFog, pow(sd, 14.0) * 0.3 + pow(sd, 64.0) * 0.25);
       float skyK = sky ? smoothstep(0.32, 0.0, wdir.y) * 0.85 : 1.0;
       col = mix(col, fogc, (1.0 - T) * skyK);
       // god rays: march toward the sun, accumulating unoccluded sky near the sun
@@ -360,6 +360,12 @@ export class GrassSky {
     this.sun.color.copy(S.sun);
     this.sun.intensity = S.sunI * above;
     this.sun.castShadow = !!engine.quality.shadows && this.sun.intensity > 0.05;
+    // the sun's shadow map is re-rendered every other frame (half the shadow-pass draw calls); the box only
+    // moves on those frames so map and matrix always agree
+    this._shadowF = (this._shadowF || 0) + 1;
+    const shadowNow = this._shadowF % 2 === 0 || !this._shadowInit || this.level.debugT !== null;
+    this.sun.shadow.autoUpdate = false;
+    if (shadowNow) { this.sun.shadow.needsUpdate = true; this._shadowInit = true; }
     const fwd = this._v.set(0, 0, -1).applyQuaternion(engine.camera.quaternion).setY(0);
     if (fwd.lengthSq() > 1e-4) fwd.normalize();
     const cx = focus.x + fwd.x * this.shadowHalf * 0.45, cz = focus.z + fwd.z * this.shadowHalf * 0.45;
@@ -371,9 +377,11 @@ export class GrassSky {
     p.x = Math.round(p.x / texel) * texel;
     p.y = Math.round(p.y / texel) * texel;
     p.applyMatrix4(lightRot);
-    this.sun.target.position.copy(p);
-    this.sun.position.copy(p).addScaledVector(dir, 200);
-    this.sun.target.updateMatrixWorld();
+    if (shadowNow) {
+      this.sun.target.position.copy(p);
+      this.sun.position.copy(p).addScaledVector(dir, 200);
+      this.sun.target.updateMatrixWorld();
+    }
     // environment (sky IBL) refresh when the sky has changed enough
     this.envT -= dt;
     const key = `${Math.round(S.elev * 2)}|${Math.round(t * 20)}`;
@@ -403,7 +411,7 @@ export class GrassSky {
     A.uSunUV.value.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5);
     const facing = dir.dot(new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion));
     A.uSunVis.value = THREE.MathUtils.smoothstep(facing, 0.0, 0.35) * THREE.MathUtils.smoothstep(S.elev, -4, 2);
-    A.uRayCol.value.copy(S.halo).lerp(S.sun, 0.5).multiplyScalar(0.24);
+    A.uRayCol.value.copy(S.halo).lerp(S.sun, 0.5).multiplyScalar(0.18);
     A.uRays.value = this.raysOn === false ? 0 : 1;
     A.uSamples.value = engine.qualityName === 'low' ? 16 : engine.qualityName === 'high' ? 40 : 28;
     // post grade

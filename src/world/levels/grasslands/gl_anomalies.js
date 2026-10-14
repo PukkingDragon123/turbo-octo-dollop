@@ -233,6 +233,7 @@ export class GrassAnomalies {
   }
 
   unload(rec) {
+    for (const d of rec.roomDevices || []) this.level.unregisterProxy?.(d);
     if (rec.photos) this.level.anomalyList = (this.level.anomalyList || []).filter((p) => p.rec !== rec);
     this.poles = this.poles.filter((p) => p.rec !== rec);
     this.doors = this.doors.filter((d) => d.rec !== rec);
@@ -509,6 +510,7 @@ export class GrassAnomalies {
     }
     dev.root.visible = true;
     (rec.roomDevices = rec.roomDevices || []).push(dev);
+    this.level.registerProxy?.(dev, { near: 12, far: 62, shadows: true });
     return dev;
   }
 

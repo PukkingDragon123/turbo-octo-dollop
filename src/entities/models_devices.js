@@ -23,6 +23,8 @@ import * as Mat from '../gfx/materials.js';
 import * as Tex from '../gfx/textures.js';
 import { labelTexture } from '../gfx/textures.js';
 import { RNG } from '../core/rng.js';
+import { NEW_BUILDERS } from './devices/index.js';
+import { cloneDevMat } from './devices/mats.js';
 
 const PI = Math.PI, TAU = Math.PI * 2, HP = Math.PI / 2;
 const DEG = Math.PI / 180;
@@ -4237,6 +4239,7 @@ const BUILDERS = {
   server_rack: b_server_rack,
   photocopier: b_photocopier,
   pipe_cluster: b_pipe_cluster,
+  ...NEW_BUILDERS,
 };
 
 function stable(o) {
@@ -4277,7 +4280,7 @@ function instantiate(tpl) {
     if (!o.isMesh) return;
     const m = o.material;
     if (m && m.userData.unique) {
-      if (!mats.has(m)) mats.set(m, m.clone());
+      if (!mats.has(m)) mats.set(m, m.userData.dvMode ? cloneDevMat(m) : m.clone());
       o.material = mats.get(m);
     }
   });

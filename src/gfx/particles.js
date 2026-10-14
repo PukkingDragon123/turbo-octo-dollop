@@ -14,6 +14,8 @@ const VERT = /* glsl */`
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
     gl_PointSize = aSize * uScale / max(0.05, -mv.z);
+    // ambient dust (flagged with aSpin >= 2) fades out near the lens instead of swelling into blurry discs
+    if (aSpin > 1.5) vColor.a *= smoothstep(0.35, 1.1, -mv.z);
   }
 `;
 const FRAG = /* glsl */`
@@ -80,6 +82,7 @@ class PointPool {
     this.grav[i] = grav; this.drag[i] = drag;
     this.floorY[i] = floorY; this.bounce[i] = bounce;
     this.spin[i] = Math.random();
+    return i;
   }
 
   update(dt) {
@@ -113,6 +116,7 @@ class PointPool {
     this.geo.attributes.position.needsUpdate = true;
     this.geo.attributes.aColor.needsUpdate = true;
     this.geo.attributes.aSize.needsUpdate = true;
+    this.geo.attributes.aSpin.needsUpdate = true;
   }
 
   _copy(from, to) {
@@ -317,12 +321,14 @@ export class FX {
     const vis = Math.min(1, Math.max(0.12, lum * 0.9));
     while (this.dustTimer > 1) {
       this.dustTimer -= 1;
-      _p.set(center.x + (Math.random() - 0.5) * 7, center.y + (Math.random() - 0.35) * 2.6, center.z + (Math.random() - 0.5) * 7);
-      _v.set((Math.random() - 0.5) * 0.06, (Math.random() - 0.45) * 0.025, (Math.random() - 0.5) * 0.06);
-      const big = Math.random() < 0.08;
-      const s = big ? 0.02 + Math.random() * 0.012 : 0.006 + Math.random() * 0.007;
-      const a = (big ? 0.18 : 0.42) * vis;
-      this.alpha.add(_p, _v, 6 + Math.random() * 6, s, s * (0.8 + Math.random() * 0.4), 0.95 * lr, 0.9 * lg, 0.78 * lb, a, -0.0015, 0.02);
+      // spawn in a shell 1.2..4.5 m around the viewer (motes right at the lens read as blurry blobs)
+      const ang = Math.random() * Math.PI * 2, rad = 1.2 + Math.random() * 3.3;
+      _p.set(center.x + Math.cos(ang) * rad, center.y + (Math.random() - 0.35) * 2.4, center.z + Math.sin(ang) * rad);
+      _v.set((Math.random() - 0.5) * 0.05, (Math.random() - 0.45) * 0.02, (Math.random() - 0.5) * 0.05);
+      const s = 0.004 + Math.random() * 0.006;
+      const a = 0.38 * vis;
+      const i = this.alpha.add(_p, _v, 6 + Math.random() * 6, s, s * (0.8 + Math.random() * 0.4), 0.95 * lr, 0.9 * lg, 0.78 * lb, a, -0.0015, 0.02);
+      this.alpha.spin[i] += 2; // near-lens fade flag (see VERT)
     }
   }
 

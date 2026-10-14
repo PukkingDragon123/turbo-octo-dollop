@@ -198,7 +198,7 @@ export class RockSystem {
     this.mat = mat;
     const low = engine.qualityName === 'low';
     this.boulders = [];
-    for (let v = 0; v < N_BOULDER; v++) this.boulders.push([boulderGeometry(v, low ? 5 : 8), boulderGeometry(v, 2)]);
+    for (let v = 0; v < N_BOULDER; v++) this.boulders.push([boulderGeometry(v, low ? 5 : 8), boulderGeometry(v, 3)]);
     this.cliffGeos = [];
     for (let v = 0; v < N_CLIFF; v++) this.cliffGeos.push([cliffGeometry(v, 0), cliffGeometry(v, 1)]);
     // hull points (LOD1) for colliders

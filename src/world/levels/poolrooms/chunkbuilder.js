@@ -303,33 +303,35 @@ export function* buildChunkSteps(level, cx, cz) {
     mesh.receiveShadow = true;
     mesh.castShadow = !!opts.cast;
     mesh.matrixAutoUpdate = false;
+    // submerged / small detail meshes are skipped by the mirrored water pass
+    if (opts.noRefl) mesh.userData.noRefl = true;
     meshes.push(mesh);
   };
   yield* add(B.wall, surface(BASE.wallTile(), field, {}), { cast: true, bake: { bounce: 0.55 } });
   yield* add(B.floor, surface(BASE.deckTile(), field, { wet: true }), { bake: { bounce: 0.5 } });
-  yield* add(B.floorSub, surface(BASE.deckTile(), field, { sub: true }), { bake: { bounce: 0.5 } });
-  yield* add(B.pool, surface(BASE.mosaic(), field, { sub: true }), { bake: { bounce: 0.45 } });
+  yield* add(B.floorSub, surface(BASE.deckTile(), field, { sub: true }), { bake: { bounce: 0.5 }, noRefl: true });
+  yield* add(B.pool, surface(BASE.mosaic(), field, { sub: true }), { bake: { bounce: 0.45 }, noRefl: true });
   yield* add(B.trim, surface(BASE.coping(), field, {}), { cast: true, bake: { bounce: 0.5, mode: 'fast' } });
   yield* add(B.chrome, surface(BASE.chrome(), field, {}), { cast: true, bake: { mode: 'fast' } });
-  yield* add(B.rope, surface(BASE.rope(), field, {}), { bake: { mode: 'fast' } });
+  yield* add(B.rope, surface(BASE.rope(), field, {}), { bake: { mode: 'fast' }, noRefl: true });
   yield* add(B.emit, surface(BASE.diffuser(), field, { emit: 0.9, noCaust: true }), { own: true });
   yield* add(B.sky, surface(BASE.sky(), field, { emit: 0.75, noCaust: true }), { own: true });
   yield* add(B.port, surface(BASE.porthole(), field, { emit: 1.4, noCaust: true }), { bake: { mode: 'fast' } });
-  yield* add(B.lamp, surface(BASE.lamp(), field, { lamp: true, noCaust: true }), { bake: { mode: 'fast' } });
-  yield* add(B.wallSub, surface(BASE.wallTile(), field, { sub: true }), { bake: { bounce: 0.5 } });
+  yield* add(B.lamp, surface(BASE.lamp(), field, { lamp: true, noCaust: true }), { bake: { mode: 'fast' }, noRefl: true });
+  yield* add(B.wallSub, surface(BASE.wallTile(), field, { sub: true }), { bake: { bounce: 0.5 }, noRefl: true });
   yield* add(B.steel, surface(BASE.steel(), field, {}), { cast: true, bake: { mode: 'fast' } });
-  yield* add(B.wood, surface(BASE.wood(), field, {}), { cast: true, bake: { mode: 'fast' } });
-  yield* add(B.rescue, surface(BASE.rescue(), field, {}), { cast: true, bake: { mode: 'fast' } });
-  yield* add(B.pipe, surface(BASE.pvc(), field, {}), { cast: true, bake: { mode: 'fast' } });
-  yield* add(B.tank, surface(BASE.tank(), field, {}), { cast: true, bake: { mode: 'fast' } });
-  yield* add(B.red, surface(BASE.red(), field, {}), { bake: { mode: 'fast' } });
-  yield* add(B.concrete, surface(BASE.plantFloor(), field, { wet: false }), { bake: { bounce: 0.45 } });
-  yield* add(B.yWall, surface(Mat.get('wallpaper'), field, {}), { cast: true, bake: { bounce: 0.4 } });
-  yield* add(B.yFloor, surface(Mat.get('carpet'), field, {}), { bake: { bounce: 0.4 } });
-  yield* add(B.yCeil, surface(Mat.get('ceiling'), field, {}), { bake: { bounce: 0.55, direct: 0.3 } });
-  yield* add(B.sign, surface(signBaseMaterial(), field, {}), { bake: { mode: 'fast' } });
+  yield* add(B.wood, surface(BASE.wood(), field, {}), { cast: true, bake: { mode: 'fast' }, noRefl: true });
+  yield* add(B.rescue, surface(BASE.rescue(), field, {}), { cast: true, bake: { mode: 'fast' }, noRefl: true });
+  yield* add(B.pipe, surface(BASE.pvc(), field, {}), { cast: true, bake: { mode: 'fast' }, noRefl: true });
+  yield* add(B.tank, surface(BASE.tank(), field, {}), { cast: true, bake: { mode: 'fast' }, noRefl: true });
+  yield* add(B.red, surface(BASE.red(), field, {}), { bake: { mode: 'fast' }, noRefl: true });
+  yield* add(B.concrete, surface(BASE.plantFloor(), field, { wet: false }), { bake: { bounce: 0.45 }, noRefl: true });
+  yield* add(B.yWall, surface(Mat.get('wallpaper'), field, {}), { cast: true, bake: { bounce: 0.4 }, noRefl: true });
+  yield* add(B.yFloor, surface(Mat.get('carpet'), field, {}), { bake: { bounce: 0.4 }, noRefl: true });
+  yield* add(B.yCeil, surface(Mat.get('ceiling'), field, {}), { bake: { bounce: 0.55, direct: 0.3 }, noRefl: true });
+  yield* add(B.sign, surface(signBaseMaterial(), field, {}), { bake: { mode: 'fast' }, noRefl: true });
   yield* add(B.slide, surface(BASE.slide(), field, {}), { cast: true, bake: { mode: 'fast' } });
-  yield* add(B.slideIn, surface(BASE.slideIn(), field, {}), { bake: { mode: 'fast' } });
+  yield* add(B.slideIn, surface(BASE.slideIn(), field, {}), { bake: { mode: 'fast' }, noRefl: true });
   for (const m of meshes) { group.add(m); rec.meshes.push(m); }
   if (B.shafts.length) {
     const sm = new THREE.Mesh(shaftGeometry(B.shafts), shaftMaterial(field));
@@ -354,6 +356,7 @@ export function* buildChunkSteps(level, cx, cz) {
   // rope floats
   if (B.floats.length) {
     const im = level.floatMesh(B.floats);
+    im.userData.noRefl = true;
     group.add(im);
     rec.floatMesh = im;
   }

@@ -498,7 +498,7 @@ export function bakedMaterial(base, field, grimeKind = 0, opts = {}) {
   const grid = opts.grid || 0;
   const mix = opts.mix || [1, grid ? 1 : 0.22];
   const aoMode = opts.ao === 'floor' ? 1 : opts.ao === 'ceil' ? 2 : opts.ao === 'wall' ? 3 : 0;
-  const flags = `${grimeKind}|${opts.emissiveLights ? 1 : 0}|${opts.wet ? 1 : 0}|g${grid}|a${aoMode}|t${opts.tiles ? 1 : 0}|m${opts.macro || 0}|s${opts.spec ?? 1}|l${opts.lens ? 1 : 0}`;
+  const flags = `${grimeKind}|${opts.emissiveLights ? 1 : 0}|${opts.wet ? 1 : 0}|g${grid}|a${aoMode}|t${opts.tiles ? 1 : 0}|m${opts.macro || 0}|s${opts.spec ?? 1}|l${opts.lens || 0}`;
   const key = `${base.uuid}|${flags}|${mix.join(',')}`;
   if (bakedCache.has(key)) return bakedCache.get(key);
   const m = base.clone();
@@ -767,6 +767,13 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
           float band = exp(-pow((lu.y - 0.3) * 7.0, 2.0)) + exp(-pow((lu.y - 0.7) * 7.0, 2.0));
           float edgeF = smoothstep(0.0, 0.1, min(lu.x, 1.0 - lu.x)) * smoothstep(0.0, 0.16, min(lu.y, 1.0 - lu.y));
           totalEmissiveRadiance *= (0.62 + band * 0.42) * (0.75 + 0.25 * edgeF);
+          ${opts.lens === 'louvre' ? `
+          // parabolic louvre: 8 x 3 cells with dark aluminium blades between bright wells
+          vec2 gq = fract(vec2(lu.x * 8.0, lu.y * 3.0));
+          float well = smoothstep(0.0, 0.09, min(gq.x, 1.0 - gq.x)) * smoothstep(0.0, 0.13, min(gq.y, 1.0 - gq.y));
+          float cup = 1.0 - pow(length((gq - 0.5) * vec2(1.0, 1.4)), 2.0) * 1.2;
+          totalEmissiveRadiance *= mix(0.12, 1.15, well) * mix(0.7, 1.0, clamp(cup, 0.0, 1.0));
+          diffuseColor.rgb *= mix(0.45, 1.0, well);` : ''}
         #endif` : ''}
       }` : `
       {

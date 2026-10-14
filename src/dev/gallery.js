@@ -205,7 +205,16 @@ async function main() {
     const fill = new THREE.DirectionalLight(0xc8d8ff, 0.6);
     scene.add(key, fill, key.target);
     let obj;
+    const tBuild = performance.now();
     try { obj = it.build(); } catch (e) { console.error('build failed', it.key, e); obj = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshBasicMaterial({ color: 0xff00ff })); }
+    // &stats=1: draw calls / triangles / build time per model (also in window.__galleryStats)
+    if (P.get('stats')) {
+      const ms = performance.now() - tBuild;
+      let draws = 0, tris = 0;
+      obj.traverse((o) => { if (o.isMesh && o.visible) { draws++; const g = o.geometry; tris += g.index ? g.index.count / 3 : g.attributes.position.count / 3; } });
+      it.stat = `${draws}dc ${Math.round(tris / 100) / 10}kt ${ms.toFixed(0)}ms`;
+      (window.__galleryStats = window.__galleryStats || {})[it.key] = { draws, tris, ms: +ms.toFixed(1), info: obj.userData.stats || null };
+    }
     scene.add(obj);
     obj.updateMatrixWorld(true);
     const cam = new THREE.PerspectiveCamera(32, cw / ch, 0.01, 100);
@@ -234,7 +243,7 @@ async function main() {
     const col = i % cols, row = Math.floor(i / cols);
     cells.push({ scene, cam, obj, it, x: col * cw, y: H - (row + 1) * ch, w: cw, h: ch });
     const lab = document.createElement('div');
-    lab.textContent = it.key;
+    lab.textContent = it.stat ? `${it.key}  ${it.stat}` : it.key;
     lab.style.left = col * cw + 4 + 'px';
     lab.style.top = row * ch + 4 + 'px';
     labels.appendChild(lab);

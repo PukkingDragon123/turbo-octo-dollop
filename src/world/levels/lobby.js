@@ -685,29 +685,55 @@ class DispatchLever extends ModelDevice {
 }
 
 function hazardTexture() {
+  // floor-paint dispatch marking: safety-yellow chevrons and stencil text on sealed concrete, scuffed by
+  // carts and boots, chipped at the stripe edges, darker in the traffic lane
+  const S = 1024;
   const c = document.createElement('canvas');
-  c.width = 512; c.height = 512;
+  c.width = S; c.height = S;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(0, 0, 512, 512);
+  let seed = 1337;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  ctx.fillStyle = '#3a3936';
+  ctx.fillRect(0, 0, S, S);
+  // mottled sealer
+  for (let k = 0; k < 900; k++) {
+    ctx.fillStyle = `rgba(${rnd() < 0.5 ? '20,20,18' : '90,88,82'},${0.03 + rnd() * 0.05})`;
+    ctx.beginPath(); ctx.ellipse(rnd() * S, rnd() * S, 10 + rnd() * 60, 6 + rnd() * 40, rnd() * 3, 0, 7); ctx.fill();
+  }
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, 0, 512, 512);
-  ctx.rect(40, 40, 432, 432);
+  ctx.rect(0, 0, S, S);
+  ctx.rect(80, 80, S - 160, S - 160);
   ctx.clip('evenodd');
-  for (let i = -512; i < 1024; i += 56) {
-    ctx.fillStyle = '#e8b81c';
+  for (let i = -S; i < S * 2; i += 112) {
+    ctx.fillStyle = '#d9a91c';
     ctx.beginPath();
-    ctx.moveTo(i, 0); ctx.lineTo(i + 28, 0); ctx.lineTo(i + 28 - 512, 512); ctx.lineTo(i - 512, 512);
+    ctx.moveTo(i, 0); ctx.lineTo(i + 56, 0); ctx.lineTo(i + 56 - S, S); ctx.lineTo(i - S, S);
     ctx.fill();
   }
   ctx.restore();
-  ctx.fillStyle = 'rgba(232,184,28,0.85)';
-  ctx.font = 'bold 54px "Arial Black", Arial';
+  ctx.fillStyle = 'rgba(217,169,28,0.9)';
+  ctx.font = 'bold 108px "Arial Black", Arial';
   ctx.textAlign = 'center';
-  ctx.fillText('STAND HERE', 256, 250);
-  ctx.font = 'bold 30px "IBM Plex Mono", monospace';
-  ctx.fillText('DISPATCH ZONE', 256, 300);
+  ctx.fillText('STAND HERE', S / 2, S * 0.49);
+  ctx.font = 'bold 60px "IBM Plex Mono", monospace';
+  ctx.fillText('DISPATCH ZONE', S / 2, S * 0.59);
+  // wear: chipped paint (sealer showing through), boot scuffs, a darker trafficked lane
+  for (let k = 0; k < 2600; k++) {
+    const x = rnd() * S, y = rnd() * S, r = 1 + rnd() * rnd() * 7;
+    ctx.fillStyle = `rgba(52,51,48,${0.5 + rnd() * 0.5})`;
+    ctx.beginPath(); ctx.ellipse(x, y, r, r * (0.4 + rnd()), rnd() * 3, 0, 7); ctx.fill();
+  }
+  for (let k = 0; k < 260; k++) {
+    ctx.strokeStyle = `rgba(16,15,14,${0.05 + rnd() * 0.12})`;
+    ctx.lineWidth = 2 + rnd() * 10;
+    const x = rnd() * S, y = rnd() * S, a = rnd() * Math.PI, l = 20 + rnd() * 90;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + Math.cos(a) * l * 0.5 + (rnd() - 0.5) * 20, y + Math.sin(a) * l * 0.5, x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke();
+  }
+  const g = ctx.createLinearGradient(0, 0, 0, S);
+  g.addColorStop(0, 'rgba(10,10,9,0.18)'); g.addColorStop(0.5, 'rgba(10,10,9,0.04)'); g.addColorStop(1, 'rgba(10,10,9,0.2)');
+  ctx.fillStyle = g;
+  ctx.fillRect(S * 0.3, 0, S * 0.4, S);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;

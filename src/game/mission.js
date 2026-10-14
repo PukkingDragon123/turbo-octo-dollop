@@ -393,7 +393,8 @@ export class Mission {
       const a = ids[j.a], b = ids[j.b];
       if (!a?.body || !b?.body) continue;
       const jd = RAPIER.JointData.spherical({ x: j.anchorA[0], y: j.anchorA[1], z: j.anchorA[2] }, { x: j.anchorB[0], y: j.anchorB[1], z: j.anchorB[2] });
-      this.world.physics.world.createImpulseJoint(jd, a.body, b.body, true);
+      const joint = this.world.physics.world.createImpulseJoint(jd, a.body, b.body, true);
+      joint.setContactsEnabled?.(false); // jointed limbs overlap at the joint; contacts between them only cause jitter
     }
     for (const p of Object.values(ids)) this.world.physics.setBodyGroups(p.body, GROUPS.ragdoll | 0);
     this.bodies.set(id, Object.values(ids).map((p) => p.id));
@@ -408,7 +409,7 @@ export class Mission {
 
   // decorative remains of an earlier clone (static)
   decorDeadClone(rec, pos, rng) {
-    const a = new Avatar({ suit: rng.pick(['yellow', 'orange', 'white']), hat: rng.pick(['none', 'hardhat', 'beanie']), visor: 'dark', face: 'dots', backpack: 'tank', accessory: 'none' });
+    const a = new Avatar({ suit: rng.pick(['yellow', 'orange', 'white']), hat: rng.pick(['none', 'hardhat', 'beanie']), visor: rng.pick(['none', 'gas_mask_up', 'face_shield']), face: 'dots', backpack: 'tank', accessory: 'none' });
     a.update(0.016, { speed: 0, grounded: true, dead: true, expression: 'dead', moveDir: new THREE.Vector2() });
     a.root.position.copy(pos).setY(0.12);
     a.root.rotation.set(-Math.PI / 2 + 0.15, rng.next() * 6, 0.2);
