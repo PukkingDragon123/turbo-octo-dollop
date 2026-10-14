@@ -10,7 +10,7 @@ import { registerRecipe } from '../../gfx/texsynth.js';
 // p0: x strips per tile, y columns per strip, z motif rows per tile, w motif strength
 // p1: x style (0 = Level 0 stripes, 1 = manila damask), y foxing, z seam strength, w paper grain
 registerRecipe('env_wallpaper', {
-  defaults: { c0: 0xcbb46a, c1: 0xb39c55, c2: 0x6e5a2c, c3: 0xd9c77f, p0: [3, 8, 24, 1], p1: [0, 0.5, 1, 1], wear: 0.3, meters: 1.59, bump: 1.6, size: 1024 },
+  defaults: { c0: 0xcbb46a, c1: 0xb39c55, c2: 0x6e5a2c, c3: 0xd9c77f, p0: [3, 8, 24, 1.35], p1: [0, 0.5, 1, 1], wear: 0.3, meters: 1.59, bump: 1.6, size: 1024 },
   glsl: `S surface(vec2 uv){
     float strips = uP0.x;
     float sx = uv.x * strips; float si = mod(floor(sx), strips); float su = fract(sx);

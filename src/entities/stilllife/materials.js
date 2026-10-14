@@ -79,13 +79,13 @@ const BODY_FRAG_MAP = /* glsl */`
   vec3 slGapC = mix( slBase * 0.35, vec3( 0.02, 0.014, 0.01 ), slThin );
   cSk = mix( cSk, slGapC, slGap * ( 0.3 + 0.65 * slThin ) );
   // hazmat: mottled coating, grime packed into creases
-  vec3 cSu = slBase * ( 0.92 + ( sH.r - 0.92 ) * 1.2 ) * ( 1.0 - sH.g * ( 0.06 + slDirt * 0.18 ) );
+  vec3 cSu = slBase * ( 0.92 + ( sH.r - 0.92 ) * 1.2 ) * ( 1.0 - sH.g * ( 0.06 + slDirt * 0.18 ) ) * ( 0.8 + sG.r * 0.4 );
   vec3 cRu = slBase * ( 0.85 + ( sR.r - 0.9 ) * 0.8 + sG.b * 0.25 );
   vec3 cFl = slBase * ( 0.55 + sF.r * 0.55 );
   vec3 cIn = slBase * ( 0.6 + sG.b * 0.3 );
   vec3 slC = cSk * wSk + cSu * wSuit + cRu * wRub + cFl * wFl + cIn * wIn;
   // texture-scale grime blotches on top of the baked stains
-  float slGm = smoothstep( 0.45, 0.85, sG.a * 0.7 + sG.r * 0.55 - 0.1 + slDirt * 0.35 ) * ( 0.25 + slDirt * 0.55 ) * ( 1.0 - wIn );
+  float slGm = smoothstep( 0.4, 0.8, sG.a * 0.7 + sG.r * 0.55 - 0.1 + slDirt * 0.4 ) * ( 0.3 + slDirt * 0.6 ) * ( 1.0 - wIn );
   slC *= mix( vec3( 1.0 ), vec3( 0.5, 0.41, 0.3 ), slGm );
   diffuseColor.rgb *= slC;
   slRough = ( 0.93 - sB.g * 0.08 ) * wSk + ( 0.66 + sH.g * 0.15 + slGm * 0.2 + ( sG.r - 0.5 ) * 0.2 ) * wSuit + ( 0.42 + sG.b * 0.3 ) * wRub + 1.0 * wFl + 0.5 * wIn;

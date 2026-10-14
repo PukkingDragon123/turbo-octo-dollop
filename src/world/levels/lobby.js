@@ -229,7 +229,7 @@ export class LobbyLevel {
     this._dev('vending_snack', 'vend_snack', 15.2, 0, -5.45, 0);
     this._dev('vending_drink', 'vend_drink', 16.5, 0, -5.45, 0);
     this._dev('water_cooler', 'cooler_break', 18.2, 0, -5.6, 0);
-    this._dev('coffee_machine', 'coffee', 21.3, 0.92, -5.55, 0);
+    this._dev('coffee_machine', 'coffee', 21.3, 0.76, -5.55, 0);
     this._static('table_folding', 21.3, 0, -5.5, 0);
     this._dev('fridge', 'fridge', 23.45, 0, -4.2, -Math.PI / 2);
     this._dev('aquarium', 'aquarium', 23.55, 0, 1.8, -Math.PI / 2, { critterModels: Critters });
@@ -284,23 +284,45 @@ export class LobbyLevel {
   }
 
   _elevator(x, z) {
-    // sealed elevator bank on the south wall (local +z faces the room)
+    // sealed elevator bank on the south wall (local +z faces the room): brushed stainless frame with
+    // chamfered jambs, two door leaves, a grooved sill, the floor indicator and a call station
     const g = new THREE.Group();
-    const steel = Mat.get('steel'), chrome = Mat.get('chrome');
-    const add = (w, h, d, mat, px, py, pz) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(px, py, pz);
-      g.add(m);
-      return m;
+    const steel = Mat.get('stainless');
+    const meshOf = (eg, mat) => { const geo = eg.build(); for (const k of ['aCell', 'aAO', 'aRoom']) geo.deleteAttribute(k); const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; g.add(m); return m; };
+    const shaft = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 2.3), Mat.get('plastic_black'));
+    shaft.position.set(0, 1.15, -0.07);
+    g.add(shaft);
+    const fr = new EnvGeo({ cellSize: 1000 });
+    for (const sx of [-1, 1]) fr.chamferBox(sx < 0 ? -1.74 : 1.5, 0, -0.08, sx < 0 ? -1.5 : 1.74, 2.42, 0.1, 0.014, 'pz', { nz: true, ny: true }, (px, py) => [py * 0.5, px]);
+    fr.chamferBox(-1.74, 2.28, -0.08, 1.74, 2.5, 0.1, 0.014, 'pz', { nz: true }, (px, py) => [px * 0.5, py]);
+    fr.chamferBox(-1.5, 0, -0.12, 1.5, 0.007, 0.12, 0.003, 'py', { ny: true }, (px, py, pz) => [px * 0.5, pz * 4]);
+    // call station
+    fr.chamferBox(1.86, 1.0, 0.0, 2.0, 1.32, 0.012, 0.004, 'pz', { nz: true }, (px, py) => [px, py]);
+    meshOf(fr, steel);
+    const mkDoor = (x0, x1) => {
+      const d = new EnvGeo({ cellSize: 1000 });
+      d.chamferBox(x0, 0.012, -0.05, x1, 2.28, -0.012, 0.004, 'pz', { nz: true }, (px, py) => [py * 0.5, px]);
+      d.chamferBox(x0 + 0.02, 0.012, -0.012, x1 - 0.02, 0.25, -0.009, 0.002, 'pz', { nz: true }, (px, py) => [px * 0.5, py]);
+      return meshOf(d, steel);
     };
-    add(3.0, 2.3, 0.04, Mat.get('plastic_black'), 0, 1.15, -0.08); // shaft darkness behind the door seam
-    for (const s of [-1, 1]) add(0.2, 2.5, 0.16, steel, s * 1.6, 1.25, 0);
-    add(3.4, 0.22, 0.16, steel, 0, 2.39, 0);
-    const doorL = add(1.49, 2.28, 0.05, chrome, -0.755, 1.14, -0.02);
-    const doorR = add(1.49, 2.28, 0.05, chrome, 0.755, 1.14, -0.02);
-    add(0.6, 0.12, 0.03, Mat.get('emissive_amber'), 0, 2.39, 0.09); // floor indicator
-    add(0.12, 0.3, 0.02, steel, 1.92, 1.15, -0.0); // call panel
-    add(0.05, 0.05, 0.02, Mat.get('emissive_amber'), 1.92, 1.18, 0.02);
+    const doorL = mkDoor(-1.49, -0.004);
+    const doorR = mkDoor(0.004, 1.49);
+    // buttons (up lit)
+    const btn = new EnvGeo({ cellSize: 1000 });
+    btn.tube('z', 0.012, 0.022, 1.93, 1.2, 0.022, 14, [false, true]);
+    btn.tube('z', 0.012, 0.022, 1.93, 1.11, 0.022, 14, [false, true]);
+    const bm = meshOf(btn, Mat.get('emissive_amber'));
+    bm.castShadow = false;
+    // floor indicator: amber segment display behind dark glass
+    const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+    const cx = c.getContext('2d');
+    cx.fillStyle = '#120a04'; cx.fillRect(0, 0, 256, 64);
+    cx.fillStyle = '#ff9a2a'; cx.font = 'bold 44px "VT323", monospace'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillText('B4  \u25bc', 128, 34);
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const ind = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.125), new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 1.8, roughness: 0.2 }));
+    ind.position.set(0, 2.39, 0.102);
+    g.add(ind);
     g.position.set(x, 0, z);
     g.rotation.y = Math.PI;
     this.world.group.add(g);
@@ -392,7 +414,7 @@ export class LobbyLevel {
     for (let k = 0; k < 4; k++) S('chair_wood', -6.2, 0, 8.4 + k * 0.9, Math.PI / 2);
     this.uncanny.chairId = S('chair_wood', -5.2, 0, 14.2, 2.4)?.id;
     S('table_round', -5.4, 0, 12.2, 0);
-    S('paper_stack', -5.4, 0.72, 12.2, 0.4);
+    S('paper_stack', -5.4, 0.73, 12.2, 0.4);
     S('chair_office', 0.2, 0, 9.0, Math.PI);
     S('trash_can', 2.4, 0, 9.5, 0);
     S('wet_floor_sign', 3.2, 0, 13.5, 0.6);
@@ -400,10 +422,10 @@ export class LobbyLevel {
     for (let k = 0; k < 4; k++) {
       const x = -5.5 + (k % 2) * 6, z = -1.8 + Math.floor(k / 2) * 4;
       S('desk_cubicle_panel', x, 0, z - 0.85, 0);
-      S('desk', x, 0, z, Math.PI);
+      S('desk', x, 0, z, 0);  // workstation faces the chair on +Z
       S('chair_office', x + 0.1, 0, z + 0.85, Math.PI + 0.3 * (k - 1.5));
-      S('crt_monitor', x - 0.15, 0.76, z - 0.15, Math.PI);
-      S('keyboard', x - 0.15, 0.76, z + 0.2, Math.PI);
+      S('crt_monitor', x - 0.15, 0.76, z - 0.15, 0);
+      S('keyboard', x - 0.15, 0.76, z + 0.2, 0);
       S(['mug', 'desk_phone', 'binder', 'lamp_desk'][k], x + 0.55, 0.76, z - 0.1, k);
     }
     S('filing_cabinet', -11.5, 0, -5.4, Math.PI / 2);
@@ -427,7 +449,7 @@ export class LobbyLevel {
     S('table_round', 19, 0, -1.6, 0);
     S('table_round', 19, 0, 2.2, 0);
     for (const [x, z, r] of [[18.2, -1.6, 1.4], [19.8, -1.6, -1.4], [18.2, 2.2, 1.6], [19.8, 2.2, -1.6]]) S('chair_folding', x, 0, z, r);
-    S('mug', 19, 0.72, -1.6, 0);
+    S('mug', 19, 0.73, -1.6, 0);
     S('microwave', 21.6, 0.76, 5.5, Math.PI);
     S('table_folding', 21.6, 0, 5.5, 0);
     S('table_folding', 18, 0, 3.8, 0);

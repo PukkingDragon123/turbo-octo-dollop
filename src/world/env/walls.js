@@ -107,6 +107,7 @@ export function emitWallEdge(ctx, i, j, axis, type) {
         const fr = { axis, plane: plane + side * T / 2 + (style === 'concrete' ? 0 : 0), side };
         const r = h(side > 0 ? 1 : 2);
         const span = B - A;
+        if (style === 'concrete' && h(side > 0 ? 31 : 32) < 0.45) conduit(ctx, fr, A, B, h(side > 0 ? 33 : 34));
         if (style !== 'pool') {
           if (r < 0.3) Fx.outlet(ctx.G.fixture, fr, A + 0.35 + h(side > 0 ? 3 : 4) * (span - 0.7), 0.3);
           else if (r < 0.34 && style !== 'concrete') Fx.thermostat(ctx.G.fixture, fr, A + 0.4 + h(5) * (span - 0.8), 1.5);
@@ -119,6 +120,30 @@ export function emitWallEdge(ctx, i, j, axis, type) {
   if (type === W.DOOR) doorway(ctx, axis, plane, start + (len - DOOR_W) / 2, h, styleP, styleN);
   if (type === W.ARCH) archway(ctx, axis, plane, start + (len - ARCH_W) / 2, h, styleP, styleN);
   if (type === W.WINDOW) windowSill(ctx, axis, plane, start + 0.4, start + len - 0.4);
+}
+
+// EMT conduit along a block wall under the ceiling: tube on spacer straps, a drop to a junction box
+function conduit(ctx, fr, A, B, h) {
+  const m = ctx.G.metal;
+  const r = 0.011, off = 0.022, y = 2.42 + h * 0.2;
+  const w = fr.plane + fr.side * off;
+  const u0 = A + 0.12, u1 = B - 0.12;
+  m.ao = 0.95;
+  if (fr.axis === 'x') m.tube('x', u0, u1, y, w, r, 8); else m.tube('z', u0, u1, w, y, r, 8);
+  // one-hole straps
+  for (let u = u0 + 0.3; u < u1 - 0.1; u += 0.9) {
+    const a = fr.plane, b = fr.plane + fr.side * (off + r + 0.004);
+    if (fr.axis === 'x') m.box(u - 0.012, y - r - 0.004, Math.min(a, b), u + 0.012, y + r + 0.004, Math.max(a, b), { [fr.side > 0 ? 'nz' : 'pz']: true });
+    else m.box(Math.min(a, b), y - r - 0.004, u - 0.012, Math.max(a, b), y + r + 0.004, u + 0.012, { [fr.side > 0 ? 'nx' : 'px']: true });
+  }
+  // vertical drop to a box
+  if (h < 0.6) {
+    const ud = u0 + 0.3 + h * (u1 - u0 - 0.6) / 0.6;
+    const yb = 1.32 + h * 0.3;
+    if (fr.axis === 'x') m.tube('y', yb + 0.06, y, ud, w, r, 8); else m.tube('y', yb + 0.06, y, w, ud, r, 8);
+    Fx.junctionBox(ctx.G.fixture, fr, ud, yb);
+  }
+  m.ao = 1;
 }
 
 // subdivided planar face of a wall at plane coordinate p, facing `side`

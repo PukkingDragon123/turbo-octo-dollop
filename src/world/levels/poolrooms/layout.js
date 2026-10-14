@@ -545,11 +545,15 @@ function placeDetails(layout, rng, seed) {
       else if (h > 0.93 && !c.special) layout.grilles.push({ li, lj, side });
     }
   }
-  // lifeguard chairs & benches beside pools
+  // lifeguard chairs beside the big pools; a tube slide spirals into some deep ends
   for (const p of layout.pools) {
     if (p.kind === 'deep' || p.kind === 'lap') {
       const side = p.ladders[0]?.side ? -p.ladders[0].side : 1;
       layout.decor.push({ kind: 'lifeguard', pool: p.id, s: p.L * 0.5, side });
+      const tall = layout.cells[p.rz * CHUNK + p.rx].ceil > HEIGHT + 0.5;
+      if (p.kind === 'deep' && p.L >= 9 && tall && hash01(layout.cx * 13 + p.rx, layout.cz * 7 + p.rz, 83, seed) < 0.6) {
+        layout.decor.push({ kind: 'slide', pool: p.id, s: p.L - 2.3, side });
+      }
     }
   }
   void rng;
@@ -608,8 +612,9 @@ function spawnPoolProps(layout, p, rng, seed) {
     for (let k = 0; k < n; k++) {
       if (!rng.chance(0.6)) continue;
       const s = 1.1 + k * 2.2;
-      // keep clear of the lifeguard chair, the ladders and the stairs' handrail posts
+      // keep clear of the lifeguard chair, the slide, the ladders and the stairs' handrail posts
       if (guard && guard.side === side && Math.abs(guard.s - s) < 1.3) continue;
+      if (layout.decor.some((d) => d.kind === 'slide' && d.pool === p.id && d.side === side && s > d.s - 1.4)) continue;
       if (p.ladders.some((ld) => ld.side === side && Math.abs(ld.s - s) < 0.9)) continue;
       if (s < 0.9) continue;
       const t = side < 0 ? -1.15 / across : 1 + 1.15 / across;

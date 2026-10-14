@@ -138,7 +138,7 @@ export function template() {
       const x = -0.035 + i * 0.018;
       const a = HEAD_F.p(x, 0.16, -0.165), b2 = HEAD_F.p(x + 0.005, 0.09 + (i % 2) * 0.03, -0.17);
       const m = add3(add3(a, b2, 0), [0, 0, 0], 0);
-      parts.add(G.tube([a, [(a[0] + b2[0]) / 2, (a[1] + b2[1]) / 2 - 0.01, (a[2] + b2[2]) / 2 - 0.012], b2], 0.0024, 4), { color: PAL.thread, pbr: [0.8, 0, 0, 0.12], uv: 'thread', bone: 'jaw' });
+      parts.add(G.tube([a, [(a[0] + b2[0]) / 2, (a[1] + b2[1]) / 2 - 0.01, (a[2] + b2[2]) / 2 - 0.012], b2], 0.0024, 4), { color: PAL.thread, pbr: [0.95, 0, 0, 0.1], uv: 'thread', bone: 'jaw' });
     }
   }
   headSeams(head, parts, H, { bone: 'head' });

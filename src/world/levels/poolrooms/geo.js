@@ -317,8 +317,8 @@ export class Mesher {
     }
   }
 
-  // Tube along a polyline (radius r, rs radial segments); caps optional
-  tube(points, r, rs = 10, caps = true) {
+  // Tube along a polyline (radius r, rs radial segments); caps optional; inward = inner surface
+  tube(points, r, rs = 10, caps = true, inward = false) {
     const n = points.length;
     if (n < 2) return;
     const T = [], N = [], B = [];
@@ -345,21 +345,23 @@ export class Mesher {
     }
     const base = this.vcount;
     let len = 0;
+    const sg = inward ? -1 : 1;
     for (let i = 0; i < n; i++) {
       if (i > 0) len += points[i].distanceTo(points[i - 1]);
       for (let k = 0; k <= rs; k++) {
         const a = (k / rs) * Math.PI * 2;
         const c = Math.cos(a), s = Math.sin(a);
         const nx = N[i].x * c + B[i].x * s, ny = N[i].y * c + B[i].y * s, nz = N[i].z * c + B[i].z * s;
-        this.vert(points[i].x + nx * r, points[i].y + ny * r, points[i].z + nz * r, nx, ny, nz, len, (k / rs) * Math.PI * 2 * r);
+        this.vert(points[i].x + nx * r, points[i].y + ny * r, points[i].z + nz * r, nx * sg, ny * sg, nz * sg, len, (k / rs) * Math.PI * 2 * r);
       }
     }
     for (let i = 0; i < n - 1; i++) {
       for (let k = 0; k < rs; k++) {
         const a = base + i * (rs + 1) + k, b = a + 1, c = a + rs + 1, d = c + 1;
-        this.idx.push(a, b, c, b, d, c);
+        if (!inward) this.idx.push(a, b, c, b, d, c); else this.idx.push(a, c, b, b, c, d);
       }
     }
+    if (inward) return;
     if (caps) {
       for (const [i, sgn] of [[0, -1], [n - 1, 1]]) {
         const t = T[i];

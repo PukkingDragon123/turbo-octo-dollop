@@ -168,6 +168,33 @@ const scenarios = {
     console.log('after', await ev(() => ({ type: __game.world.type, depth: __game.run.depth, dead: __game.local.dead, credits: __game.run.credits })));
     await shot('m_next', 3000);
   },
+  async diag() {
+    await page.goto(base + '?auto=solo&level=grasslands' + extra);
+    console.log('loaded', await waitLoaded());
+    await clearCut();
+    await hookInfo();
+    const sh = await ev(() => { const s = __game.world.level.gw.structures.find((x) => x.kind === 'gen_mech'); return [s.cx, s.cz, s.z0, s.z1, s.x0, s.x1]; });
+    console.log('shed', sh);
+    await tp([sh[0], 0.02, (sh[2] + sh[3]) / 2 + 0.4], 0, -0.45);
+    await shot('d_shed_in', 3000);
+    console.log('diag', JSON.stringify(await ev(() => {
+      const lvl = __game.world.level; const out = { list: lvl._interiorList?.map((b) => [b.cx, b.cz, b.hx, b.hz, b.y0, b.y1, b.open, b.strength]) };
+      const mats = new Set(); lvl.structures.group.traverse((o) => { if (o.isMesh) mats.add(o.material); });
+      out.mats = [...mats].slice(0, 30).map((m) => {
+        const pr = __engine.renderer.properties.get(m);
+        const prog = pr.currentProgram;
+        const u = prog ? Object.keys(prog.getUniforms().map) : null;
+        return { name: m.name, key: m.customProgramCacheKey?.().slice(-30), compiled: !!prog, hasInt: u ? u.some((k) => k.startsWith('uInt')) : null, n: pr.uniforms?.uIntN?.value };
+      });
+      return out;
+    })));
+    // the same view with the occlusion switched off
+    await ev(() => { const lvl = __game.world.level; let m = null; lvl.structures.group.traverse((o) => { if (o.isMesh && !m && __engine.renderer.properties.get(o.material).uniforms?.uIntN) m = o.material; }); window.__intU = m && __engine.renderer.properties.get(m).uniforms; window.__intN = window.__intU?.uIntN.value; if (window.__intU) window.__intU.uIntN.value = 0; lvl._interiorList = []; });
+    await shot('d_shed_off', 1500);
+    await ev(() => { const lvl = __game.world.level; lvl._interiorList = [...lvl.structures.interiors]; });
+    await tp([sh[0], 0.02, sh[3] + 2.2], 0, -0.25);
+    await shot('d_shed_door', 3000);
+  },
   async views() {
     await page.goto(base + '?auto=solo&level=grasslands' + extra);
     console.log('loaded', await waitLoaded());
@@ -208,6 +235,23 @@ const scenarios = {
     for (const sh of sheds || []) {
       await tp([sh[1], 0.02, sh[3] + 2.2], 0, -0.25);
       await shot('v_shed_' + sh[0], 3000);
+    }
+    // the wrong things in the valley: the nearest anomaly of each kind
+    const anoms = await ev(() => {
+      const gw = __game.world.level.gw; const out = {};
+      for (let r = 0; r <= 4; r++) for (let cz = -r; cz <= r; cz++) for (let cx = -r; cx <= r; cx++) {
+        if (Math.max(Math.abs(cx), Math.abs(cz)) !== r) continue;
+        const a = gw.chunkCells(cx, cz, 0).anomaly;
+        if (a && !out[a.kind]) out[a.kind] = [a.x, a.z, a.rot];
+      }
+      return out;
+    });
+    console.log('anomalies', JSON.stringify(anoms));
+    for (const k of ['door', 'poles', 'phone', 'chair', 'powerline', 'clone']) {
+      const a = anoms?.[k]; if (!a) continue;
+      const ang = a[2] + 0.6, fx = a[0] + Math.sin(ang) * 5.5, fz = a[1] + Math.cos(ang) * 5.5;
+      await tp([fx, null, fz], yawTo(fx, fz, a[0], a[1]), -0.05);
+      await shot('v_anom_' + k, 3000);
     }
     // later days: golden hour (day 3), dusk (day 5), the sick last day
     for (const [t, name] of [[2.6, 'v_day3'], [4.6, 'v_day5'], [6.5, 'v_day7']]) {

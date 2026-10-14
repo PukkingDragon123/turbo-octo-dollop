@@ -7,6 +7,7 @@ import { audio } from '../../../audio/audio.js';
 import { CELL } from './layout.js';
 
 const _v = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
 
 export class PoolFX {
   constructor(level) {
@@ -88,7 +89,7 @@ export class PoolFX {
         this.world.fx.splash(_v.set(d.x, lvl.waterLevel + 0.01, d.z), 3, lvl.waterLevel);
         if (Math.hypot(d.x - cam.x, d.z - cam.z) < 12) audio.play('drip', { pos: _v.set(d.x, lvl.waterLevel, d.z), volume: 0.55 });
       } else if (Math.random() < 0.5) {
-        this.world.fx.alpha.add(_v.set(d.x, d.y, d.z), _v.clone().set(0, d.vy, 0), 0.05, 0.012, 0.01, 0.8, 0.9, 0.95, 0.6, 0, 0);
+        this.world.fx.alpha.add(_v.set(d.x, d.y, d.z), _v2.set(0, d.vy, 0), 0.05, 0.012, 0.01, 0.8, 0.9, 0.95, 0.6, 0, 0);
       }
     }
     // ---- uncanny: something moves under the surface ----

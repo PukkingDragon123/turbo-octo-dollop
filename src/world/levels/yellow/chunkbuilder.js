@@ -11,11 +11,12 @@ import { buildModel } from '../../../entities/catalog.js';
 import { hash01 } from '../../../core/rng.js';
 import { EnvGeo, fr } from '../../env/builder.js';
 import { GridBaker } from '../../env/gridbake.js';
-import { ceilingCell } from '../../env/ceiling.js';
+import { ceilingCell, ceilingVoid } from '../../env/ceiling.js';
 import { emitWallEdge, pillar } from '../../env/walls.js';
 import { pipeRun } from '../../env/pipes.js';
 import { fixtureMaterial } from '../../env/fixtures.js';
 import { lightVolumes } from '../../env/haze.js';
+import { floatingDebris } from '../../env/debris.js';
 
 export const LIGHT_TONES = [
   new THREE.Color(1.0, 0.92, 0.72),  // 0 warm fluorescent
@@ -103,6 +104,30 @@ function wetOfCell(c) {
   return c.wet * 0.6;
 }
 
+// square cast floor drain: frame, slotted grate over a dark sump, a rust bloom around it
+function floorDrain(G, x, z) {
+  const m = G.metal, pl = G.plenum;
+  const s = 0.13, y = 0.004;
+  pl.ao = 0.15;
+  pl.rect([x - s, 0.0015, z - s], [x + s, 0.0015, z - s], [x + s, 0.0015, z + s], [x - s, 0.0015, z + s], [0, 1, 0]);
+  pl.ao = 1;
+  m.ao = 0.9;
+  const t = 0.018;
+  m.box(x - s - t, 0, z - s - t, x + s + t, y, z - s, { ny: true });
+  m.box(x - s - t, 0, z + s, x + s + t, y, z + s + t, { ny: true });
+  m.box(x - s - t, 0, z - s, x - s, y, z + s, { ny: true });
+  m.box(x + s, 0, z - s, x + s + t, y, z + s, { ny: true });
+  for (let k = 1; k < 8; k++) {
+    const zz = z - s + (k * 2 * s) / 8;
+    m.box(x - s, 0.001, zz - 0.006, x + s, y - 0.0005, zz + 0.006, { ny: true });
+  }
+  m.ao = 1;
+}
+
+// maintenance block walls: the same synthesized set as the HQ, older paint (tinted)
+let _cmuDirty = null;
+function cmuDirty() { return _cmuDirty || (_cmuDirty = Mat.make('cmu', { color: 0xbcb4a0 })); }
+
 // per-chunk build statistics (ms, accumulated) for profiling tools
 export const buildStats = { geo: 0, bake: 0, mat: 0, decor: 0, phys: 0, water: 0, verts: 0, tris: 0, meshes: 0, n: 0 };
 
@@ -126,9 +151,16 @@ export function buildChunk(level, cx, cz) {
     trim: new EnvGeo({ cap: 4096 }), rubber: new EnvGeo(), metal: new EnvGeo(), fixture: new EnvGeo({ color: true }),
     carpet: new EnvGeo({ edge: true, wet: true, cap: 2048 }), slab: new EnvGeo({ edge: true, wet: true }), tile: new EnvGeo({ edge: true }),
     ceil: new EnvGeo({ edge: true, wet: true, cap: 4096 }), enamel: new EnvGeo({ cap: 2048 }), lens: new EnvGeo(), plenum: new EnvGeo(), debris: new EnvGeo(),
-    pipe: new EnvGeo(), insul: new EnvGeo(),
+    pipe: new EnvGeo(), insul: new EnvGeo(), paper: new EnvGeo(),
   };
 
+  // the spawn room's ceiling is torn open where the clones fall through
+  let cut = null;
+  for (const r of layout.specials) {
+    if (r.kind !== 'spawn') continue;
+    const cxm = (cx * N + r.rx + r.w / 2) * CELL, czm = (cz * N + r.rz + r.h / 2) * CELL;
+    cut = { x0: cxm - 1.2, z0: czm - 1.2, x1: cxm + 1.2, z1: czm + 1.2 };
+  }
   // --- floors & ceilings ---
   const wetAt = (x, z) => {
     // average wetness of the cells touching a floor vertex: soft transitions instead of cell squares
@@ -145,9 +177,10 @@ export function buildChunk(level, cx, cz) {
     g.edge0 = e0; g.edge1 = e1; g.ao = 1;
     if (g.Wt) g.wetFn = (x, y, z) => wetAt(x, z);
     g.grid([x0, 0, z0 + CELL], [CELL, 0, 0], [0, 0, -CELL], [0, 1, 0], fr(3), fr(3), (x, y, z) => [x, z]);
-    ceilingCell(G, baker, c, seed);
+    ceilingCell(G, baker, c, seed, cut);
     if (c.water) rec.waterCells.push(c);
   }
+  if (cut) ceilingVoid(G, cut, hash01(cx, cz, 5, seed));
 
   // --- walls on owned edges (N & W of each cell) ---
   const ctx = {
@@ -175,7 +208,12 @@ export function buildChunk(level, cx, cz) {
     if (c.zone !== 'maintenance' || c.reserved) continue;
     const h = hash01(c.i, c.j, 82, seed);
     if (h < 0.1 && layout.edgesW[c.lj * N + c.li] === W.FULL) pipeRun(G, c.i, c.j, h * 10, solidN(c.i, c.j), solidN(c.i, c.j + 1), 'z');
+    if (c.floor === 'concrete') {
+      const hd = hash01(c.i, c.j, 83, seed);
+      if (hd < 0.22) floorDrain(G, c.i * CELL + 0.6 + hd * 7.5, c.j * CELL + 0.6 + hash01(c.i, c.j, 84, seed) * 1.8);
+    }
   }
+  if (rec.waterCells.length) floatingDebris(G, rec.waterCells, seed);
   lap('geo');
 
   // --- materials & meshes ---
@@ -200,7 +238,7 @@ export function buildChunk(level, cx, cz) {
   };
   add(G.wall, Mat.get('wallpaper'), 2, { ao: 'wall', wallAO: true, cast: true, macro: 0.06 });
   add(G.manila, Mat.get('wallpaper_manila'), 2, { ao: 'wall', wallAO: true, cast: true, macro: 0.06 });
-  add(G.concrete, Mat.get('cmu'), 4, { ao: 'wall', wallAO: true, cast: true });
+  add(G.concrete, cmuDirty(), 4, { ao: 'wall', wallAO: true, cast: true });
   add(G.pool, Mat.get('tile_pool'), 0, { ao: 'wall', wallAO: true, cast: true });
   add(G.trim, Mat.get('trim'), 0, { quant: 0.2 });
   add(G.rubber, Mat.get('rubber_base'), 0, { quant: 0.2 });
@@ -216,6 +254,7 @@ export function buildChunk(level, cx, cz) {
   add(G.debris, Mat.get('ceiling'), 0, { quant: 0.3 });
   add(G.pipe, Mat.get('pipe_paint'), 0, { quant: 0.3, cast: true });
   add(G.insul, Mat.get('insulation'), 0, { quant: 0.3, cast: true });
+  add(G.paper, Mat.get('paper'), 0, { quant: 0.3 });
   // faint light shafts in the humid air under each fixture
   if (level.hazeOn !== false) {
     const haze = lightVolumes(layout, level);

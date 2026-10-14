@@ -14,6 +14,7 @@ export const interiorUniforms = {
   uIntB: { value: Array.from({ length: MAX_INTERIORS }, () => new THREE.Vector4()) },  // floor y, roof y, cos(yaw), sin(yaw)
   uIntC: { value: Array.from({ length: MAX_INTERIORS }, () => new THREE.Vector4()) },  // open side (local -z..+z: -1/0/+1), soft, strength, -
   uIntF: { value: Array.from({ length: MAX_INTERIORS }, () => new THREE.Vector3()) },  // fill irradiance
+  uIntBounce: { value: new THREE.Color(0.15, 0.14, 0.1) },  // daylight bounced in from the sunlit ground outside
 };
 
 const DECL = /* glsl */`
@@ -22,6 +23,7 @@ uniform vec4 uIntA[${MAX_INTERIORS}];
 uniform vec4 uIntB[${MAX_INTERIORS}];
 uniform vec4 uIntC[${MAX_INTERIORS}];
 uniform vec3 uIntF[${MAX_INTERIORS}];
+uniform vec3 uIntBounce;
 `;
 
 const APPLY = /* glsl */`
@@ -50,7 +52,7 @@ const APPLY = /* glsl */`
     intOcc = max(intOcc, m);
     intFill += uIntF[i] * m;
   }
-  iblIrradiance = iblIrradiance * (1.0 - intOcc * 0.86) + intFill;
+  iblIrradiance = mix(iblIrradiance, uIntBounce, intOcc * 0.86) + intFill;
   irradiance *= 1.0 - intOcc * 0.6;
   #if defined( RE_IndirectSpecular )
     radiance *= 1.0 - intOcc * 0.9;
@@ -68,6 +70,7 @@ function interiorCompile(prev, mat) {
     shader.uniforms.uIntB = interiorUniforms.uIntB;
     shader.uniforms.uIntC = interiorUniforms.uIntC;
     shader.uniforms.uIntF = interiorUniforms.uIntF;
+    shader.uniforms.uIntBounce = interiorUniforms.uIntBounce;
     if (!shader.fragmentShader.includes('#include <lights_fragment_maps>')) return;
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\n' + DECL)

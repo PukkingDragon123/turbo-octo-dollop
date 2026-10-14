@@ -116,14 +116,14 @@ export class EnvGeo {
 
   // single quad with explicit corners (p0..p3 counter-clockwise seen from the front) and normal
   rect(p0, p1, p2, p3, n, uvFn = null) {
-    const cx = (p0[0] + p2[0]) * 0.5, cz = (p0[2] + p2[2]) * 0.5;
-    this.autoCell(cx, cz, n[0], n[2]);
-    const ps = [p0, p1, p2, p3];
+    this.autoCell((p0[0] + p2[0]) * 0.5, (p0[2] + p2[2]) * 0.5, n[0], n[2]);
     const base = this.vc;
-    for (const p of ps) {
-      const uv = uvFn ? uvFn(p[0], p[1], p[2]) : planarUV(p[0], p[1], p[2], n);
-      this.v(p[0], p[1], p[2], n[0], n[1], n[2], uv[0], uv[1]);
-    }
+    const nx = n[0], ny = n[1], nz = n[2];
+    let uv;
+    uv = uvFn ? uvFn(p0[0], p0[1], p0[2]) : planarUV(p0[0], p0[1], p0[2], n); this.v(p0[0], p0[1], p0[2], nx, ny, nz, uv[0], uv[1]);
+    uv = uvFn ? uvFn(p1[0], p1[1], p1[2]) : planarUV(p1[0], p1[1], p1[2], n); this.v(p1[0], p1[1], p1[2], nx, ny, nz, uv[0], uv[1]);
+    uv = uvFn ? uvFn(p2[0], p2[1], p2[2]) : planarUV(p2[0], p2[1], p2[2], n); this.v(p2[0], p2[1], p2[2], nx, ny, nz, uv[0], uv[1]);
+    uv = uvFn ? uvFn(p3[0], p3[1], p3[2]) : planarUV(p3[0], p3[1], p3[2], n); this.v(p3[0], p3[1], p3[2], nx, ny, nz, uv[0], uv[1]);
     this.quad(base, base + 1, base + 2, base + 3);
   }
 
@@ -202,7 +202,8 @@ export class EnvGeo {
     const [ua, va] = others;
     b = Math.min(b, (hi[ua] - lo[ua]) * 0.45, (hi[va] - lo[va]) * 0.45, (hi[ax] - lo[ax]) * 0.9);
     const wF = sg > 0 ? hi[ax] : lo[ax], wB = sg > 0 ? lo[ax] : hi[ax], wC = wF - sg * b;
-    const P = (u, v, w) => { const o = {}; o[ua] = u; o[va] = v; o[ax] = w; return [o.x, o.y, o.z]; };
+    const iu = ua === 'x' ? 0 : ua === 'y' ? 1 : 2, iv = va === 'x' ? 0 : va === 'y' ? 1 : 2, iw = ax === 'x' ? 0 : ax === 'y' ? 1 : 2;
+    const P = (u, v, w) => { const o = [0, 0, 0]; o[iu] = u; o[iv] = v; o[iw] = w; return o; };
     const nF = P(0, 0, sg);
     const u0 = lo[ua], u1 = hi[ua], v0 = lo[va], v1 = hi[va];
     // front face (inset)
@@ -353,6 +354,59 @@ export class EnvGeo {
     }
   }
 
+  // box with arbitrary orientation: centre c, unit axes u, v, w (orthonormal), half sizes hu, hv, hw.
+  // uvFn as usual; skip: { pw, nw, pu, nu, pv, nv }
+  orientedBox(c, u, v, w, hu, hv, hw, uvFn = null, skip = {}) {
+    const P = (a, b, d) => [c[0] + u[0] * a + v[0] * b + w[0] * d, c[1] + u[1] * a + v[1] * b + w[1] * d, c[2] + u[2] * a + v[2] * b + w[2] * d];
+    const neg = (n) => [-n[0], -n[1], -n[2]];
+    const faces = [
+      ['pw', w, [P(-hu, -hv, hw), P(hu, -hv, hw), P(hu, hv, hw), P(-hu, hv, hw)]],
+      ['nw', neg(w), [P(-hu, -hv, -hw), P(hu, -hv, -hw), P(hu, hv, -hw), P(-hu, hv, -hw)]],
+      ['pu', u, [P(hu, -hv, -hw), P(hu, hv, -hw), P(hu, hv, hw), P(hu, -hv, hw)]],
+      ['nu', neg(u), [P(-hu, -hv, -hw), P(-hu, hv, -hw), P(-hu, hv, hw), P(-hu, -hv, hw)]],
+      ['pv', v, [P(-hu, hv, -hw), P(hu, hv, -hw), P(hu, hv, hw), P(-hu, hv, hw)]],
+      ['nv', neg(v), [P(-hu, -hv, -hw), P(hu, -hv, -hw), P(hu, -hv, hw), P(-hu, -hv, hw)]],
+    ];
+    for (const [k, n, pts] of faces) if (!skip[k]) this.rectOriented(pts, n, uvFn);
+  }
+
+  // tube along an arbitrary polyline (cables, wires, bent rods); parallel-transported frames
+  tubePath(pts, r, seg = 6) {
+    if (pts.length < 2) return;
+    const mid = pts[Math.floor(pts.length / 2)];
+    this.autoCell(mid[0], mid[2], 0, 0);
+    const base = this.vc, t0 = this.I.n;
+    let prevN = null;
+    let len = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+      let tx = b[0] - a[0], ty = b[1] - a[1], tz = b[2] - a[2];
+      const tl = Math.hypot(tx, ty, tz) || 1; tx /= tl; ty /= tl; tz /= tl;
+      let n;
+      if (!prevN) { n = Math.abs(ty) < 0.9 ? [0, 1, 0] : [1, 0, 0]; }
+      else n = prevN;
+      // make n perpendicular to t
+      const d = n[0] * tx + n[1] * ty + n[2] * tz;
+      n = [n[0] - tx * d, n[1] - ty * d, n[2] - tz * d];
+      const nl = Math.hypot(n[0], n[1], n[2]) || 1; n = [n[0] / nl, n[1] / nl, n[2] / nl];
+      prevN = n;
+      const bnv = [ty * n[2] - tz * n[1], tz * n[0] - tx * n[2], tx * n[1] - ty * n[0]];
+      if (i > 0) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
+      for (let k = 0; k <= seg; k++) {
+        const ang = (k / seg) * Math.PI * 2, ca = Math.cos(ang), sa = Math.sin(ang);
+        const nx = n[0] * ca + bnv[0] * sa, ny = n[1] * ca + bnv[1] * sa, nz = n[2] * ca + bnv[2] * sa;
+        const p = pts[i];
+        this.v(p[0] + nx * r, p[1] + ny * r, p[2] + nz * r, nx, ny, nz, len, ang * r);
+      }
+    }
+    const row = seg + 1;
+    for (let i = 0; i < pts.length - 1; i++) for (let k = 0; k < seg; k++) {
+      const k0 = base + i * row + k, k1 = k0 + 1, k2 = k0 + row, k3 = k2 + 1;
+      this.tri(k0, k1, k3); this.tri(k0, k3, k2);
+    }
+    this._fixWinding(t0);
+  }
+
   // flat disc / ring in a horizontal plane (y), facing up (+1) or down (-1)
   ring(cx, y, cz, r0, r1, seg, up = 1) {
     this.autoCell(cx, cz, 0, 0);
@@ -395,12 +449,12 @@ export function fr(n) {
   return a;
 }
 
-// planar UVs in meters chosen by the dominant normal axis
+// planar UVs in meters chosen by the dominant normal axis (returns a shared scratch pair: consume at once)
+const _uv = [0, 0];
 export function planarUV(x, y, z, n) {
   const ax = Math.abs(n[0]), ay = Math.abs(n[1]), az = Math.abs(n[2]);
-  if (ay >= ax && ay >= az) return [x, z];
-  if (ax >= az) return [z, y];
-  return [x, y];
+  if (ay >= ax && ay >= az) { _uv[0] = x; _uv[1] = z; } else if (ax >= az) { _uv[0] = z; _uv[1] = y; } else { _uv[0] = x; _uv[1] = y; }
+  return _uv;
 }
 
 function cross3(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }

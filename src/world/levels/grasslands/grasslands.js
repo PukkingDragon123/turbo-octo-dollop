@@ -26,7 +26,7 @@ import { RockSystem } from './rocks.js';
 import { WaterSystem } from './water.js';
 import { terrainUniforms } from './terrain.js';
 import { Structures, slabMaterial } from './structures.js';
-import { patchInteriorObject, unpatchAllInterior, setInteriors } from './interior.js';
+import { patchInteriorObject, unpatchAllInterior, setInteriors, interiorUniforms } from './interior.js';
 import { GrassAnomalies } from './gl_anomalies.js';
 import { registerGrassAudio } from './gaudio.js';
 import { MistSystem } from './mist.js';
@@ -54,6 +54,7 @@ export class GrasslandsLevel {
     this.seed = desc.seed >>> 0;
     this.depth = desc.depth || 1;
     this.name = 'LEVEL 1.1 — THE GRASSLANDS';
+    this.feedName = 'LEVEL 1.1: THE GRASSLANDS';
     this.field = world.field;
     this.gw = new GrassWorld(this.seed);
     this.chunks = new Map();
@@ -362,6 +363,7 @@ export class GrasslandsLevel {
     const ci = Math.floor(lp.x / CELL), cj = Math.floor(lp.z / CELL);
     for (let j = cj - 1; j <= cj + 1; j++) for (let i = ci - 1; i <= ci + 1; i++) this.visited.add(`${i},${j}`);
     this.structures.update(dt, this.time, this.mission);
+    interiorUniforms.uIntBounce.value.copy(this.sky.envGround.value).multiplyScalar(Math.PI * 0.42);
     setInteriors(this._interiorList);
     this.mission.update(dt);
     this.monsters.update(dt);
@@ -555,6 +557,15 @@ export class GrasslandsLevel {
         }
       }
     }
+    // the local player never ends up under the valley floor (a bad teleport, a physics tunnel): put them back
+    // on the surface right away instead of letting them fall out of the world and get sky-dropped
+    {
+      const l = this.game.local;
+      if (l && !l.dead && this.isChunkLoaded(l.pos.x, l.pos.z)) {
+        const g = this.groundAt(l.pos.x, l.pos.z);
+        if (l.pos.y < g - 1.2) l.teleport(new THREE.Vector3(l.pos.x, g + 0.08, l.pos.z));
+      }
+    }
     // props pick up the roofed-space light occlusion (shared catalog materials, restored on dispose)
     {
       const seen = this._patchedProps || (this._patchedProps = new WeakSet());
@@ -584,12 +595,17 @@ export class GrasslandsLevel {
     this._cullT = 8;
     const cam = engine.camera.position;
     const hid = this._culled || (this._culled = new Set());
-    const test = (o, r, held) => {
-      const far = o.position.distanceToSquared(cam) > r * r;
+    const test = (o, r, held, blind = false) => {
+      const far = blind || o.position.distanceToSquared(cam) > r * r;
       if (far && o.visible && !held) { o.visible = false; hid.add(o); } else if (!far && hid.has(o)) { o.visible = true; hid.delete(o); }
     };
     for (const d of this.structures.devices) if (d.root) test(d.root, 60, false);
-    for (const g of this.mission.generators) test(g.root, 52, false);
+    // the machines in the two sheds can only be seen through their open south side
+    for (const g of this.mission.generators) {
+      const st = (g.id === 'gen_diesel' || g.id === 'gen_mech') && this.gw.structures.find((x) => x.kind === g.id);
+      const blind = !!st && cam.z < st.z1 - 0.3 && !(cam.x > st.x0 - 0.5 && cam.x < st.x1 + 0.5 && cam.z > st.z0 - 0.5);
+      test(g.root, 55, false, blind);
+    }
     for (const p of this.world.props.props.values()) test(p.root, 65, p.isHeld?.());
     for (const o of hid) if (!o.parent) hid.delete(o);
   }
@@ -706,6 +722,16 @@ export class GrasslandsLevel {
     const b = this.gw.cellAt(i + DIRS[d][0], j + DIRS[d][1], this.variantFn);
     if (!b || b.blocked || b.occupied) return false;
     return this.gw.edgeOpen(i, j, d);
+  }
+
+  // watch map: outline the walkable valley (cliff feet, structure walls, fallen logs)
+  mapWall(i, j, west) {
+    const d = west ? 3 : 0;
+    const a = this.cell((i + 0.5) * CELL, (j + 0.5) * CELL);
+    const b = this.cell((i + DIRS[d][0] + 0.5) * CELL, (j + DIRS[d][1] + 0.5) * CELL);
+    if (!a && !b) return false;
+    if (!a || !b) return true;
+    return !this.passable(i, j, d);
   }
 
   cellCost(i, j) {

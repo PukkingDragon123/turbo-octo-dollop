@@ -31,7 +31,7 @@ const ARM_OUT = 0.045, ARM_R = 0.066, LEG_R = 0.086;
 function frames() {
   const armCy = Y.chest - ARM_LEN / 2 + 0.03;
   return {
-    torso: { o: V(0, 0.56, 0), shift: V() },
+    torso: { o: V(0, 0.58, 0.04), shift: V() },
     head: { o: V(0, Y.head + SACK.cy, 0), shift: V() },
     armL: { o: V(-(DIM.shX + ARM_OUT), armCy, 0), shift: V(-ARM_OUT, 0, 0) },
     armR: { o: V(DIM.shX + ARM_OUT, armCy, 0), shift: V(ARM_OUT, 0, 0) },
@@ -164,7 +164,7 @@ export function buildRagdoll(cosmetics = {}) {
   ];
   const armHH = Math.max(0.02, ARM_LEN / 2 - ARM_R), legHH = Math.max(0.02, DIM.pelvisY / 2 - LEG_R);
   const parts = {
-    torso: { mesh: groups.torso, half: [0.25, 0.29, 0.24] },
+    torso: { mesh: groups.torso, half: [0.28, 0.3, 0.32] },
     head: { mesh: groups.head, radius: 0.245 },
     armL: { mesh: groups.armL, radius: ARM_R, halfHeight: armHH },
     armR: { mesh: groups.armR, radius: ARM_R, halfHeight: armHH },

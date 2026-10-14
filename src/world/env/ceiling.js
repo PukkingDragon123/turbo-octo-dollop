@@ -18,17 +18,24 @@ const DAMAGE = {
 };
 
 // tile kinds
-const T_NORMAL = 0, T_TROFFER = 1, T_MISSING = 2, T_DISPLACED = 3, T_SAG = 4;
+const T_NORMAL = 0, T_TROFFER = 1, T_MISSING = 2, T_DISPLACED = 3, T_SAG = 4, T_VOID = 5;
 
 // G: { ceil, enamel, lens, plenum, debris } EnvGeo builders; baker: GridBaker; seed
-export function ceilingCell(G, baker, c, seed) {
+// cut: optional world rect {x0, z0, x1, z1} where the ceiling is torn open (no tiles, see ceilingVoid)
+export function ceilingCell(G, baker, c, seed, cut = null) {
   const x0 = c.i * CELL, z0 = c.j * CELL;
   const kind = new Uint8Array(25);
+  if (cut) {
+    for (let b = 0; b < 5; b++) for (let a = 0; a < 5; a++) {
+      const X = x0 + (a + 0.5) * TILE, Z = z0 + (b + 0.5) * TILE;
+      if (X > cut.x0 && X < cut.x1 && Z > cut.z0 && Z < cut.z1) kind[b * 5 + a] = T_VOID;
+    }
+  }
   // troffer: 2x4 along x (lightRot) or z, centred on the middle row/column, aligned to the tile grid
   let trof = null;
   if (c.light) {
-    if (c.lightRot) { kind[2 * 5 + 1] = kind[2 * 5 + 2] = T_TROFFER; trof = { a0: 1, a1: 3, b0: 2, b1: 3, alongX: true }; }
-    else { kind[1 * 5 + 2] = kind[2 * 5 + 2] = T_TROFFER; trof = { a0: 2, a1: 3, b0: 1, b1: 3, alongX: false }; }
+    if (c.lightRot) { if (!kind[11] && !kind[12]) { kind[2 * 5 + 1] = kind[2 * 5 + 2] = T_TROFFER; trof = { a0: 1, a1: 3, b0: 2, b1: 3, alongX: true }; } }
+    else if (!kind[7] && !kind[12]) { kind[1 * 5 + 2] = kind[2 * 5 + 2] = T_TROFFER; trof = { a0: 2, a1: 3, b0: 1, b1: 3, alongX: false }; }
   }
   const dmg = DAMAGE[c.zone] || DAMAGE.halls;
   const k = c.special ? 0.4 : 1;
@@ -61,7 +68,7 @@ export function ceilingCell(G, baker, c, seed) {
   // --- damaged tiles
   for (let b = 0; b < 5; b++) for (let a = 0; a < 5; a++) {
     const t = kind[b * 5 + a];
-    if (t < T_MISSING) continue;
+    if (t < T_MISSING || t === T_VOID) continue;
     const X0 = x0 + a * TILE, Z0 = z0 + b * TILE;
     const h2 = hash01(c.i * 5 + a, c.j * 5 + b, 72, seed);
     if (t === T_SAG) { sagTile(ce, X0, Z0, 0.03 + h2 * 0.05); continue; }
@@ -217,5 +224,86 @@ function fallenPieces(db, X0, Z0, h) {
   }
   db.ao = 1;
 }
+
+// The ceiling torn open over the spawn point (clones fall through it): a black shaft rising into the
+// plenum, broken T-bars and tiles hanging off the rim, dangling cables, tile rubble on the floor.
+// rect: {x0, z0, x1, z1} aligned to the 0.6 m grid. h: hash for variation.
+export function ceilingVoid(G, rect, h = 0.5) {
+  const pl = G.plenum, en = G.enamel, ce = G.ceil, wires = G.metal;
+  const { x0, z0, x1, z1 } = rect;
+  const top = H + 2.6;
+  // shaft walls (inward), getting darker with depth
+  pl.ao = 0.35;
+  pl.rectOriented([[x0, H, z0], [x1, H, z0], [x1, top, z0], [x0, top, z0]], [0, 0, 1]);
+  pl.rectOriented([[x0, H, z1], [x1, H, z1], [x1, top, z1], [x0, top, z1]], [0, 0, -1]);
+  pl.rectOriented([[x0, H, z0], [x0, H, z1], [x0, top, z1], [x0, top, z0]], [1, 0, 0]);
+  pl.rectOriented([[x1, H, z0], [x1, H, z1], [x1, top, z1], [x1, top, z0]], [-1, 0, 0]);
+  // a duct and joists crossing high up, barely visible
+  pl.ao = 0.25;
+  pl.box(x0, H + 1.1, z0 + 0.6, x1, H + 1.45, z0 + 1.05, { px: true, nx: true });
+  pl.box(x0 + 0.4, H + 1.9, z0, x0 + 0.55, H + 2.1, z1, { pz: true, nz: true });
+  pl.box(x1 - 0.7, H + 1.9, z0, x1 - 0.55, H + 2.1, z1, { pz: true, nz: true });
+  pl.ao = 1;
+  // T-bar rim (exposed half flanges + webs) all around the opening
+  const f = 0.012, yb = H - 0.004, yt = H + 0.038;
+  const D = [0, -1, 0];
+  en.ao = 0.9;
+  en.rect([x0, yb, z0], [x1, yb, z0], [x1, yb, z0 + f], [x0, yb, z0 + f], D);
+  en.rect([x0, yb, z1 - f], [x1, yb, z1 - f], [x1, yb, z1], [x0, yb, z1], D);
+  en.rect([x0, yb, z0 + f], [x0 + f, yb, z0 + f], [x0 + f, yb, z1 - f], [x0, yb, z1 - f], D);
+  en.rect([x1 - f, yb, z0 + f], [x1, yb, z0 + f], [x1, yb, z1 - f], [x1 - f, yb, z1 - f], D);
+  // broken cross tees and torn tiles hanging into the room
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  const rnd = (k) => { const v = Math.sin((h * 97.1 + k) * 12.9898) * 43758.5453; return v - Math.floor(v); };
+  for (let k = 0; k < 4; k++) {
+    // tee stub hanging from the rim at a steep angle
+    const side = k % 4;
+    const along = 0.25 + rnd(k) * 0.5;
+    const px = side === 0 ? x0 + (x1 - x0) * along : side === 1 ? x1 : side === 2 ? x0 + (x1 - x0) * along : x0;
+    const pz = side === 0 ? z0 : side === 1 ? z0 + (z1 - z0) * along : side === 2 ? z1 : z0 + (z1 - z0) * along;
+    const inx = side === 1 ? -1 : side === 3 ? 1 : 0, inz = side === 0 ? 1 : side === 2 ? -1 : 0;
+    const L = 0.35 + rnd(k + 10) * 0.35, ang = 0.6 + rnd(k + 20) * 0.6;
+    const dir = [inx * Math.cos(ang), -Math.sin(ang), inz * Math.cos(ang)];
+    const c3 = [px + dir[0] * L / 2, H - 0.01 + dir[1] * L / 2, pz + dir[2] * L / 2];
+    const side3 = norm3(cross(dir, [0, 1, 0]));
+    const up3 = norm3(cross(side3, dir));
+    en.orientedBox(c3, dir, up3, side3, L / 2, 0.006, 0.012, (x, y, z) => [x + z, y]);
+  }
+  ce.ao = 0.85;
+  for (let k = 0; k < 5; k++) {
+    // torn tile fragments hinged on the rim
+    const side = (k + 1) % 4;
+    const along = 0.1 + rnd(k + 30) * 0.7;
+    const w = 0.22 + rnd(k + 40) * 0.25, dpt = 0.18 + rnd(k + 50) * 0.22;
+    const px = side === 0 ? x0 + (x1 - x0) * along : side === 1 ? x1 : side === 2 ? x0 + (x1 - x0) * along : x0;
+    const pz = side === 0 ? z0 : side === 1 ? z0 + (z1 - z0) * along : side === 2 ? z1 : z0 + (z1 - z0) * along;
+    const inx = side === 1 ? -1 : side === 3 ? 1 : 0, inz = side === 0 ? 1 : side === 2 ? -1 : 0;
+    const ang = 0.5 + rnd(k + 60) * 0.9;
+    const dir = [inx * Math.cos(ang), -Math.sin(ang), inz * Math.cos(ang)];
+    const across = [inz !== 0 ? 1 : 0, 0, inx !== 0 ? 1 : 0];
+    const nrm = norm3(cross(across, dir));
+    const c3 = [px + dir[0] * dpt / 2, H - 0.006 + dir[1] * dpt / 2, pz + dir[2] * dpt / 2];
+    ce.orientedBox(c3, across, dir, nrm, w / 2, dpt / 2, 0.008, (x, y, z) => [x, z + y]);
+  }
+  ce.ao = 1;
+  // dangling cables
+  wires.ao = 0.9;
+  for (let k = 0; k < 3; k++) {
+    const sx = cx + (rnd(k + 70) - 0.5) * (x1 - x0) * 0.8, sz = cz + (rnd(k + 80) - 0.5) * (z1 - z0) * 0.8;
+    const drop = 0.5 + rnd(k + 90) * 0.9;
+    const pts = [];
+    for (let q = 0; q <= 8; q++) {
+      const t = q / 8;
+      pts.push([sx + Math.sin(t * 2.2 + k) * 0.08 * t, H + 1.2 - t * (1.2 + drop), sz + Math.cos(t * 1.7 + k) * 0.08 * t]);
+    }
+    wires.tubePath(pts, 0.007, 5);
+  }
+  wires.ao = 1;
+  // tile rubble on the floor under the hole
+  if (G.debris) for (let k = 0; k < 4; k++) fallenPieces(G.debris, x0 + rnd(k + 100) * (x1 - x0 - 0.6), z0 + rnd(k + 110) * (z1 - z0 - 0.6), rnd(k + 120));
+}
+
+function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+function norm3(a) { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
 
 export { TILE, FACE_Y };

@@ -68,7 +68,7 @@ export function assembleBody(pieces, look = {}) {
         r += (ROT_LIN[0] * 0.6 - r) * f; g += (ROT_LIN[1] * 0.6 - g) * f; b += (ROT_LIN[2] * 0.55 - b) * f;
       }
       // floor grime creeping up from the feet + dirt attribute
-      const fg = clamp((1 - smoothstep(0.0, 0.7, y)) * floor + dirt * 0.65 * (0.4 + n1), 0, 0.9) * (1 - wIn);
+      const fg = clamp((1 - smoothstep(0.0, 0.85, y)) * floor * (0.8 + n1 * 0.4) + dirt * 0.7 * (0.4 + n1), 0, 0.92) * (1 - wIn);
       r += (G_LIN[0] - r) * fg * 0.6; g += (G_LIN[1] - g) * fg * 0.6; b += (G_LIN[2] - b) * fg * 0.6;
       // rust-brown stains (old, some still wet)
       const sN = fbm3(x * 2.7 + sd * 3, y * 2.7 - 2, z * 2.7, 4);

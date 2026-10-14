@@ -42,7 +42,7 @@ export function todState(t, out = {}) {
 // ---------------------------------------------------------------------------
 export const SKY_GLSL = /* glsl */`
   uniform vec3 uSunDir, uZenith, uHorizon, uHalo, uSunCol, uGround;
-  uniform float uSunDisk, uCloud, uTime, uSick, uNoSun;
+  uniform float uSunDisk, uCloud, uTime, uSick, uNoSun, uDesat;
   uniform sampler2D tNoise;
   vec3 skyColor(vec3 d) {
     float h = d.y;
@@ -71,6 +71,8 @@ export const SKY_GLSL = /* glsl */`
     }
     float disk = smoothstep(uSunDisk, uSunDisk + 0.00002, dot(d, uSunDir));
     col += uSunCol * disk * 40.0 * (1.0 - uNoSun);
+    // (the lighting dome: multiple scattering and haze make sky light far less saturated than the zenith)
+    col = mix(col, vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), uDesat);
     return col;
   }`;
 
@@ -236,7 +238,7 @@ export class GrassSky {
     this.uniforms = {
       uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uZenith: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() },
       uHalo: { value: new THREE.Color() }, uSunCol: { value: new THREE.Color() }, uGround: { value: new THREE.Color(0x2a2e22) },
-      uSunDisk: { value: Math.cos(0.0105) }, uCloud: { value: 0.45 }, uTime: { value: 0 }, uSick: { value: 0 },
+      uSunDisk: { value: Math.cos(0.0105) }, uCloud: { value: 0.45 }, uTime: { value: 0 }, uSick: { value: 0 }, uDesat: { value: 0 },
       tNoise: { value: noiseTexture() },
     };
     this.skyGlsl = SKY_GLSL;
@@ -268,7 +270,7 @@ export class GrassSky {
     // floor: warm golden-green meadow and dark conifers, not the blue haze)
     this.envScene = new THREE.Scene();
     this.envGround = { value: new THREE.Color(0x2a2e22) };
-    const envDome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), skyMaterial({ ...this.uniforms, uGround: this.envGround }, 1));
+    const envDome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), skyMaterial({ ...this.uniforms, uGround: this.envGround, uDesat: { value: 0.38 } }, 1));
     this.envScene.add(envDome);
     this.envRT = null;
     this.envT = 0;

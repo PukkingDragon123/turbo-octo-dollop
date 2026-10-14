@@ -169,10 +169,16 @@ function register() {
 }
 
 // texture set with its own repeat (shares the GPU upload): { map, normalMap, orm, meters }
+function flatSet(meters = 0.3) {
+  // fallback when GPU synthesis is unavailable: neutral albedo, flat normal, mid roughness
+  const mk = (r, g, b, srgb) => { const t = new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.needsUpdate = true; return t; };
+  return { map: mk(225, 225, 225, true), normalMap: mk(128, 128, 255, false), orm: mk(255, 150, 0, false), meters };
+}
 export function synth(name, opts = {}, repeat = null) {
   register();
   return cached('dtex_' + name + JSON.stringify(opts) + (repeat ?? ''), () => {
-    const t = Synth.pbr(name, opts);
+    let t;
+    try { t = Synth.pbr(name, opts); } catch (e) { console.warn('doll: texture synthesis failed for', name, e); t = flatSet(); }
     const r = repeat ?? 1 / t.meters;
     const cl = (tex) => { const c = tex.clone(); c.repeat.set(r, r); c.wrapS = c.wrapT = THREE.RepeatWrapping; c.needsUpdate = true; return c; };
     return { map: cl(t.map), normalMap: cl(t.normalMap), orm: cl(t.orm), meters: t.meters };

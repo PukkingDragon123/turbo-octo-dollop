@@ -43,6 +43,8 @@ const _c = new THREE.Color();
 const _fogLit = new THREE.Color(0.5, 0.6, 0.62);
 const _fogDark = new THREE.Color(0.018, 0.026, 0.03);
 const _fogWater = new THREE.Color(0.05, 0.27, 0.32);
+const _fogBlood = new THREE.Color(0.08, 0.02, 0.02);
+const _c2 = new THREE.Color();
 
 // ---------------------------------------------------------------------------
 // Chrome pool ladder: E climbs out of / down into the pool (the clone cannot swim)
@@ -349,12 +351,21 @@ export class PoolroomsLevel extends YellowLevel {
     if (this.job) {
       const t0 = performance.now();
       let r;
-      do { r = this.job.it.next(); } while (!r.done && performance.now() - t0 < SLICE_MS);
-      this.job.ms += performance.now() - t0;
+      let ts = t0;
+      do {
+        r = this.job.it.next();
+        const now = performance.now();
+        this.job.step = Math.max(this.job.step || 0, now - ts);
+        ts = now;
+      } while (!r.done && ts - t0 < SLICE_MS);
+      this.job.ms += ts - t0;
       if (r.done) {
         const job = this.job;
         this.job = null;
         this.buildMs = (this.buildMs || 0) * 0.8 + job.ms * 0.2;
+        // dev stats: total main-thread ms per streamed chunk and its longest single step
+        (this.buildLog = this.buildLog || []).push({ k: job.key, ms: +job.ms.toFixed(1), step: +job.step.toFixed(1) });
+        if (this.buildLog.length > 32) this.buildLog.shift();
         if (!this.chunks.has(job.key)) this._finishChunk(job.key, r.value);
       }
     }
@@ -480,8 +491,8 @@ export class PoolroomsLevel extends YellowLevel {
     const u = this.underwater;
     const fogC = scene.fog.color;
     fogC.copy(_fogDark).lerp(_fogLit, k * (1 - inst * 0.35));
-    fogC.lerp(_fogWater.clone().multiplyScalar(0.25 + k * 0.75 + PU.uPoolGlow.value * 0.3), u);
-    if (col > 0) fogC.lerp(new THREE.Color(0.08, 0.02, 0.02), col * 0.6);
+    fogC.lerp(_c2.copy(_fogWater).multiplyScalar(0.25 + k * 0.75 + PU.uPoolGlow.value * 0.3), u);
+    if (col > 0) fogC.lerp(_fogBlood, col * 0.6);
     scene.fog.density = 0.011 + inst * 0.012 + col * 0.03 + u * 0.21;
     scene.background.copy(fogC);
     scene.environmentIntensity = (0.05 + 0.2 * k) * (1 - col * 0.5);
@@ -524,7 +535,8 @@ export class PoolroomsLevel extends YellowLevel {
       const i0 = Math.floor(c.pos.x / CELL), j0 = Math.floor(c.pos.z / CELL);
       if (ok(i0, j0)) continue;
       let best = null;
-      for (let r = 1; r <= 4 && !best; r++) {
+      // the radio may sit in a tall natatorium: look up to ~24 m for a normal ceiling
+      for (let r = 1; r <= 8 && !best; r++) {
         for (let dj = -r; dj <= r && !best; dj++) for (let di = -r; di <= r; di++) {
           if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
           if (ok(i0 + di, j0 + dj)) { best = [i0 + di, j0 + dj]; break; }

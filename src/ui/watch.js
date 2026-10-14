@@ -271,7 +271,7 @@ export class Watch {
         ctx.strokeStyle = pal.fg;
         ctx.lineWidth = 2;
         const vf = lvl.variantFn;
-        const n = wallN(lvl.seed, i, j, vf), wv = wallW(lvl.seed, i, j, vf);
+        const n = lvl.mapWall ? lvl.mapWall(i, j, false) : wallN(lvl.seed, i, j, vf), wv = lvl.mapWall ? lvl.mapWall(i, j, true) : wallW(lvl.seed, i, j, vf);
         if (n && n !== W.ARCH) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + cs, y); ctx.stroke(); }
         if (wv && wv !== W.ARCH) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + cs); ctx.stroke(); }
       }

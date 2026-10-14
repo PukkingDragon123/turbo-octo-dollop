@@ -311,7 +311,7 @@ export class UI {
     // leaving the run-over screen must also release menuOpen, or the clone can't move in the lobby
     if (this.screens.runover.classList.contains('show')) this._show(null);
     this.hud.classList.remove('hidden');
-    if (desc.type !== 'lobby') this.feed(`${desc.depth > 1 ? 'SECTOR ' + desc.depth + ' — ' : ''}LEVEL 0: THE YELLOW ROOMS. DAY 1/7.`, 'hq', 'HQ');
+    if (desc.type !== 'lobby') this.feed(`${desc.depth > 1 ? 'SECTOR ' + desc.depth + ' — ' : ''}${this.game?.world?.level?.feedName || 'LEVEL 0: THE YELLOW ROOMS'}. DAY 1/7.`, 'hq', 'HQ');
     else this.feed('Welcome back to Sublevel B4. Pull the dispatch lever when your team is ready.', 'hq', 'HQ');
   }
 

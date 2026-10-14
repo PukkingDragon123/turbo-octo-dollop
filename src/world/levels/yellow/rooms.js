@@ -8,6 +8,24 @@ import { buildModel, modelHalfHeight } from '../../../entities/catalog.js';
 import { RNG, hash3 } from '../../../core/rng.js';
 import { makeDevice } from '../../../game/devicekinds.js';
 import { CRATE_LOOT } from '../../../game/itemdefs.js';
+import { bakedMaterial } from '../../../gfx/bakedlight.js';
+import { EnvGeo } from '../../env/builder.js';
+import { GridBaker } from '../../env/gridbake.js';
+
+// merged static room geometry, lit by the chunk's grid light field like the rest of the level
+function bakeInto(level, rec, g, mat, o = {}) {
+  if (g.isEmpty()) return null;
+  const geo = g.build();
+  const baker = rec._roomBaker || (rec._roomBaker = new GridBaker(level.seed, level.variantFn, rec.cx, rec.cz));
+  const mix = o.mix || [1, 0.3];
+  baker.bake(geo, { direct: mix[0], bounce: mix[1], quant: o.quant ?? 0.15 });
+  const m = new THREE.Mesh(geo, bakedMaterial(mat, level.field, o.grime ?? 0, { grid: 1, mix }));
+  m.receiveShadow = true;
+  m.castShadow = !!o.cast;
+  m.matrixAutoUpdate = false;
+  rec.group.add(m);
+  return m;
+}
 
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
@@ -63,6 +81,10 @@ function addDevice(level, rec, kind, id, pos, rotY, opts = {}) {
   return dev;
 }
 
+let _stairPaint = null, _doorPaint = null;
+function stairPaint() { return _stairPaint || (_stairPaint = Mat.make('trim_paint', { color: 0xb8ab88 })); }
+function doorPaint() { return _doorPaint || (_doorPaint = Mat.make('trim', { color: 0xd8c4a8 })); }
+
 // ---------------------------------------------------------------------------
 export function decorateRoom(level, room, rec) {
   const b = roomBounds(room, rec);
@@ -70,20 +92,7 @@ export function decorateRoom(level, room, rec) {
   const rng = new RNG(hash3(rec.cx, rec.cz, 4242, level.seed));
   switch (room.kind) {
     case 'spawn': {
-      // hole in the ceiling where the clones fall through
-      const hole = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshBasicMaterial({ color: 0x000000 }));
-      hole.rotation.x = Math.PI / 2;
-      hole.position.set(b.cx, HEIGHT - 0.004, b.cz);
-      rec.group.add(hole);
-      // dangling broken tiles
-      for (let k = 0; k < 6; k++) {
-        const t = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.02, 0.3), Mat.get('ceiling'));
-        const a = (k / 6) * Math.PI * 2;
-        t.position.set(b.cx + Math.cos(a) * 1.22, HEIGHT - 0.1, b.cz + Math.sin(a) * 1.22);
-        t.rotation.set(Math.cos(a) * 0.45, a, Math.sin(a) * 0.45);
-        rec.group.add(t);
-        level.prepStatic(t, rec);
-      }
+      // the torn-open ceiling (shaft, hanging tiles / tees, cables) is built with the chunk ceiling
       break;
     }
     case 'workshop': {
@@ -98,7 +107,7 @@ export function decorateRoom(level, room, rec) {
     case 'office_room':
     case 'fuse_office': {
       addDevice(level, rec, 'lore_terminal', `term:${rid}`, new THREE.Vector3(b.cx, 0.76, b.z0 + 0.55), 0, { lore: rng.int(0, 99) });
-      placeStatic(level, rec, 'desk', b.cx, 0, b.z0 + 0.65, Math.PI, { collide: true });
+      placeStatic(level, rec, 'desk', b.cx, 0, b.z0 + 0.65, 0, { collide: true });
       break;
     }
     case 'tv_room': {
@@ -111,39 +120,73 @@ export function decorateRoom(level, room, rec) {
       break;
     }
     case 'stairs_nowhere': {
-      const steps = 12;
-      const g = new THREE.Group();
-      const mat = Mat.get('wood_dark');
+      // a solid timber staircase climbing straight into the drop ceiling: nosed treads, painted risers
+      // and closed strings (colliders are the same stepped blocks as always)
+      const steps = 12, d = 0.32, hw = 0.6;
+      const tread = new EnvGeo(), paint = new EnvGeo();
       for (let s = 0; s < steps; s++) {
-        const h = (s + 1) * (HEIGHT / steps);
-        const d = 0.32;
-        const step = new THREE.Mesh(new THREE.BoxGeometry(1.2, h, d), mat);
-        const z = b.z0 + 0.3 + s * d + d / 2;
-        step.position.set(b.cx, h / 2, z);
-        step.castShadow = true;
-        step.receiveShadow = true;
-        g.add(step);
-        const c = level.world.physics.addStaticBox(b.cx, h / 2, z, 0.6, h / 2, d / 2, { kind: 'static', surface: 'wood' });
+        const h = (s + 1) * (HEIGHT / steps), hp = s * (HEIGHT / steps);
+        const z0 = b.z0 + 0.3 + s * d, z1 = z0 + d;
+        // tread with a rounded nosing over the riser
+        tread.ao = 1;
+        tread.chamferBox(b.cx - hw - 0.012, h - 0.032, z0 - 0.028, b.cx + hw + 0.012, h, z1, 0.01, 'nz', { pz: true }, (x, y, z) => [x, z + y]);
+        // riser (front) and the closed side strings
+        paint.ao = 0.92;
+        paint.rectOriented([[b.cx - hw, hp, z0], [b.cx + hw, hp, z0], [b.cx + hw, h - 0.032, z0], [b.cx - hw, h - 0.032, z0]], [0, 0, -1], (x, y) => [x, y]);
+        paint.ao = 1;
+        for (const sx of [-1, 1]) {
+          const x = b.cx + sx * hw;
+          paint.rectOriented([[x, 0, z0], [x, 0, z1], [x, h - 0.032, z1], [x, h - 0.032, z0]], [sx, 0, 0], (xx, y, z) => [z, y]);
+        }
+        const c = level.world.physics.addStaticBox(b.cx, h / 2, z0 + d / 2, hw, h / 2, d / 2, { kind: 'static', surface: 'wood' });
         rec.physicsColliders.push(c);
       }
-      rec.group.add(g);
-      level.prepStatic(g, rec);
+      // back of the flight
+      {
+        const zb = b.z0 + 0.3 + steps * d;
+        paint.rectOriented([[b.cx - hw, 0, zb], [b.cx + hw, 0, zb], [b.cx + hw, HEIGHT, zb], [b.cx - hw, HEIGHT, zb]], [0, 0, 1], (x, y) => [x, y]);
+      }
+      // skirting along both strings
+      const sk = new EnvGeo();
+      for (const sx of [-1, 1]) sk.extrude([[0.014, 0], [0.014, 0.074], [0.0075, 0.094], [0, 0.1]], 'z', b.cx + sx * hw, sx, b.z0 + 0.3, b.z0 + 0.3 + steps * d, [true, true]);
+      bakeInto(level, rec, tread, Mat.get('trim'), { cast: true });
+      bakeInto(level, rec, paint, stairPaint(), { cast: true });
+      bakeInto(level, rec, sk, Mat.get('trim'));
       break;
     }
     case 'many_doors': {
-      // a wall of identical doors that lead nowhere
+      // a wall of identical six-panel doors that lead nowhere: cased frames, raised panels, brass knobs
+      const leaf = new EnvGeo(), frame = new EnvGeo(), brass = new EnvGeo();
+      const wz = b.z0 + 0.08;
       for (let k = 0; k < room.w * 2; k++) {
         const x = b.x0 + 0.75 + k * 1.5;
-        const door = new THREE.Group();
-        const frame = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.1, 0.05), Mat.get('wood'));
-        frame.position.y = 1.05;
-        const knob = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), Mat.get('brass'));
-        knob.position.set(0.38, 1.0, 0.04);
-        door.add(frame, knob);
-        door.position.set(x, 0, b.z0 + 0.11);
-        rec.group.add(door);
-        level.prepStatic(door, rec);
+        const dw = 0.46, dh = 2.04, t = 0.04;
+        leaf.ao = 1;
+        leaf.chamferBox(x - dw, 0.012, wz + 0.02, x + dw, dh, wz + 0.02 + t, 0.006, 'pz', { nz: true }, (px, py) => [py, px]);
+        // six raised panels (2 x 3)
+        const fz = wz + 0.02 + t;
+        for (const [u0, u1] of [[-0.36, -0.04], [0.04, 0.36]]) {
+          for (const [v0, v1] of [[0.14, 0.86], [0.98, 1.56], [1.68, 1.92]]) {
+            leaf.chamferBox(x + u0, v0, fz - 0.002, x + u1, v1, fz + 0.006, 0.006, 'pz', { nz: true }, (px, py) => [py, px]);
+          }
+        }
+        // casing
+        frame.ao = 1;
+        const cw = 0.065, cd = 0.018;
+        frame.chamferBox(x - dw - cw, 0, wz, x - dw + 0.004, dh + cw, wz + 0.02 + cd + 0.02, 0.005, 'pz', { nz: true, ny: true }, (px, py) => [py, px]);
+        frame.chamferBox(x + dw - 0.004, 0, wz, x + dw + cw, dh + cw, wz + 0.02 + cd + 0.02, 0.005, 'pz', { nz: true, ny: true }, (px, py) => [py, px]);
+        frame.chamferBox(x - dw - cw, dh - 0.004, wz, x + dw + cw, dh + cw, wz + 0.02 + cd + 0.02, 0.005, 'pz', { nz: true }, (px, py) => [px, py]);
+        // knob + rose, hinges
+        brass.ao = 1;
+        const kx = x + dw - 0.07;
+        brass.tube('z', fz, fz + 0.012, kx, 1.0, 0.03, 12, [false, true]);
+        brass.tube('z', fz + 0.012, fz + 0.055, kx, 1.0, 0.009, 8, [false, false]);
+        brass.tube('z', fz + 0.05, fz + 0.075, kx, 1.0, 0.027, 12, [true, true]);
+        for (const hy of [0.25, 1.0, 1.8]) brass.box(x - dw - 0.006, hy - 0.05, fz - 0.01, x - dw + 0.004, hy + 0.05, fz + 0.002, { nz: true });
       }
+      bakeInto(level, rec, leaf, doorPaint(), { cast: true });
+      bakeInto(level, rec, frame, Mat.get('trim'));
+      bakeInto(level, rec, brass, Mat.get('brass'), { quant: 0.3 });
       break;
     }
     case 'poolrooms_glimpse': {
@@ -248,7 +291,7 @@ export function populateRoom(level, room, rec, rng) {
     case 'tv_room': {
       sp(level, 'couch', b.cx, 0, b.z1 - 0.8, Math.PI);
       sp(level, 'table_round', b.cx, 0, b.cz, 0);
-      sp(level, 'mug', b.cx, 0.72, b.cz, 0);
+      sp(level, 'mug', b.cx, 0.73, b.cz, 0);
       break;
     }
     case 'storage': {
@@ -286,9 +329,9 @@ export function populateRoom(level, room, rec, rng) {
       for (let k = 0; k < 4; k++) {
         const x = b.x0 + 1.2 + (k % 2) * 4.2, z = b.z0 + 1.2 + Math.floor(k / 2) * 2.8;
         sp(level, 'desk_cubicle_panel', x, 0, z - 0.8, 0);
-        sp(level, 'desk', x, 0, z, Math.PI);
+        sp(level, 'desk', x, 0, z, 0);
         sp(level, 'chair_office', x + r(0.3), 0, z + 0.8, rng.next() * 6);
-        if (rng.chance(0.7)) sp(level, 'crt_monitor', x, 0.76, z - 0.1, Math.PI);
+        if (rng.chance(0.7)) sp(level, 'crt_monitor', x, 0.76, z - 0.1, 0);
         if (rng.chance(0.3)) sp(level, rng.pick(['desk_phone', 'mug', 'binder', 'keyboard']), x + 0.4, 0.76, z, rng.next() * 6);
       }
       if (rng.chance(0.5)) sp(level, rng.pick(['chips', 'soda_can', 'candy_bar']), b.cx, 0.78, b.cz, 0);

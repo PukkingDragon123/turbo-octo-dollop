@@ -12,9 +12,9 @@ import { Mesher, archWall, groinVault } from './geo.js';
 import { Baker } from './bake.js';
 import { surface, BASE } from './poolmat.js';
 import { buildPool, poolRect, poolWaterQuads, drainGrate, TINT_NOSE } from './pools.js';
-import { poolPoint } from './layout.js';
+import { poolPoint, poolCoords, poolFloorAt } from './layout.js';
 import * as Mat from '../../../gfx/materials.js';
-import { lifeguardChair, bench, showerColumn, pipeRun, filterTank, tileDebris, shaftGeometry, shaftMaterial } from './decor.js';
+import { lifeguardChair, bench, showerColumn, pipeRun, filterTank, tileDebris, shaftGeometry, shaftMaterial, waterslide } from './decor.js';
 import { SIGN, signQuad, signBaseMaterial } from './signs.js';
 import { hash01 } from '../../../core/rng.js';
 
@@ -220,6 +220,8 @@ export function* buildChunkSteps(level, cx, cz) {
     yFloor: new Mesher({ seg: 0.75 }),
     yCeil: new Mesher({ seg: 0.75 }),
     sign: new Mesher({ seg: 3 }),
+    slide: new Mesher({ seg: 3 }),
+    slideIn: new Mesher({ seg: 3 }),
     boxes: [], rboxes: [], lamps: [], ladders: [], floats: [], shafts: [],
     water: { pos: [], floor: [], idx: [] }, spill: { pos: [], floor: [], idx: [] },
     windows: new Map(), grilles: new Map(), drains: [],
@@ -246,6 +248,25 @@ export function* buildChunkSteps(level, cx, cz) {
   for (const c of layout.cells) {
     if (c.floor === 'sunk' && c.water) { waterCell(B.water, c, WATER_Y, SUNK_Y); rec.waterCells.push(c); }
     else if (c.spill && !c.pool) waterCell(B.spill, c, 0, 0);
+  }
+  // tube slides
+  for (const d of layout.decor) {
+    if (d.kind !== 'slide') continue;
+    const p = layout.pools[d.pool];
+    const A = (p.axis === 'x' ? p.h : p.w) * CELL;
+    const out = (m) => (d.side < 0 ? -m / A : 1 + m / A); // m metres outside the long side (negative = inside)
+    const P = (s, m, y) => { const [x, z] = poolPoint(p, ox, oz, s, out(m)); return new THREE.Vector3(x, y, z); };
+    const s0 = d.s;
+    const ceil = layout.cells[p.rz * CHUNK + p.rx].ceil;
+    const pts = [P(s0 + 1.55, 1.75, ceil + 0.6), P(s0 + 1.6, 1.8, ceil - 0.5), P(s0 + 1.2, 2.25, 3.25), P(s0 + 0.2, 2.2, 2.55), P(s0 - 0.6, 1.5, 1.85), P(s0 - 0.45, 0.6, 1.2), P(s0 + 0.15, -0.25, 0.62), P(s0 + 0.45, -1.1, WATER_Y + 0.42)];
+    const ground = (x, z) => {
+      const c = Q.cellAt(Math.floor(x / CELL), Math.floor(z / CELL));
+      if (!c) return 0;
+      if (!c.pool) return floorOf(c);
+      const pr = c.pool, [ss, tt] = poolCoords(pr, (c.i - c.li) * CELL, (c.j - c.lj) * CELL, x, z);
+      return poolFloorAt(pr, Math.max(0, Math.min(pr.L - 1e-3, ss)), Math.max(0, Math.min(1, tt)));
+    };
+    for (const b of waterslide(B, pts, ceil, ground)) B.boxes.push(b);
   }
   // lifeguard chairs beside the big pools
   for (const d of layout.decor) {
@@ -307,6 +328,8 @@ export function* buildChunkSteps(level, cx, cz) {
   yield* add(B.yFloor, surface(Mat.get('carpet'), field, {}), { bake: { bounce: 0.4 } });
   yield* add(B.yCeil, surface(Mat.get('ceiling'), field, {}), { bake: { bounce: 0.55, direct: 0.3 } });
   yield* add(B.sign, surface(signBaseMaterial(), field, {}), { bake: { mode: 'fast' } });
+  yield* add(B.slide, surface(BASE.slide(), field, {}), { cast: true, bake: { mode: 'fast' } });
+  yield* add(B.slideIn, surface(BASE.slideIn(), field, {}), { bake: { mode: 'fast' } });
   for (const m of meshes) { group.add(m); rec.meshes.push(m); }
   if (B.shafts.length) {
     const sm = new THREE.Mesh(shaftGeometry(B.shafts), shaftMaterial(field));

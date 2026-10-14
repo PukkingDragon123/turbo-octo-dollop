@@ -137,6 +137,55 @@ export function filterTank(B, x, z, h = 1.25, r = 0.38) {
   return [{ min: [x - r, 0, z - r], max: [x + r, 0.2 + h, z + r] }];
 }
 
+// Tube waterslide spiralling out of the ceiling into a pool. pts: centreline (THREE.Vector3[]),
+// returns collider boxes for the low part of the tube and the supports.
+export function waterslide(B, pts, ceilY, groundAt) {
+  const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+  const line = curve.getSpacedPoints(90);
+  const R = 0.44, r = 0.4;
+  B.slide.setTint(1, 1, 1);
+  B.slide.tube(line, R, 22, false);
+  B.slideIn.setTint(1, 1, 1);
+  B.slideIn.tube(line, r, 22, false, true);
+  // flanged joints every ~1.6 m (the slide is bolted together from sections)
+  let acc = 0;
+  for (let i = 1; i < line.length - 1; i++) {
+    acc += line[i].distanceTo(line[i - 1]);
+    if (acc < 1.6) continue;
+    acc = 0;
+    const t = new THREE.Vector3().subVectors(line[i + 1], line[i - 1]).normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), t);
+    B.slide.setTint(0.86, 0.9, 0.95);
+    B.slide.lathe([[R + 0.001, -0.03], [R + 0.03, -0.025], [R + 0.032, 0.025], [R + 0.001, 0.03]], 22, new THREE.Matrix4().compose(line[i], q, new THREE.Vector3(1, 1, 1)));
+    B.slide.setTint(1, 1, 1);
+  }
+  // exit lip: rolled rim joining outer and inner skins
+  const e = line[line.length - 1], ep = line[line.length - 2];
+  const te = new THREE.Vector3().subVectors(e, ep).normalize();
+  B.slide.lathe([[r, -0.005], [r + 0.01, 0.012], [(R + r) / 2, 0.02], [R - 0.01, 0.012], [R, -0.005]], 22, new THREE.Matrix4().compose(e, new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), te), new THREE.Vector3(1, 1, 1)));
+  // ceiling collar where the tube disappears
+  const top = line.find((p) => p.y < ceilY - 0.05) || line[0];
+  B.chrome.lathe([[R + 0.02, 0.0], [R + 0.12, 0.0], [R + 0.12, -0.03], [R + 0.02, -0.03]], 24, new THREE.Matrix4().makeTranslation(top.x, ceilY - 0.002, top.z));
+  // supports: steel columns from the ground to the underside at a few points
+  const boxes = [];
+  for (const f of [0.38, 0.62, 0.84]) {
+    const p = curve.getPointAt(f);
+    if (p.y < 0.9) continue;
+    const g = groundAt(p.x, p.z);
+    B.steel.tube([V(p.x, g, p.z), V(p.x, p.y - R + 0.02, p.z)], 0.06, 12, true);
+    B.steel.lathe([[0.0, 0.0], [0.14, 0.0], [0.14, 0.02], [0.07, 0.05]], 14, new THREE.Matrix4().makeTranslation(p.x, g, p.z));
+    B.steel.lathe([[0.06, 0.0], [0.2, 0.0], [0.2, 0.03], [0.0, 0.04]], 14, new THREE.Matrix4().makeTranslation(p.x, p.y - R - 0.03, p.z));
+    boxes.push({ min: [p.x - 0.08, g, p.z - 0.08], max: [p.x + 0.08, p.y - R, p.z + 0.08] });
+  }
+  // the low run of the tube blocks movement
+  for (let i = 0; i < line.length; i += 4) {
+    const p = line[i];
+    if (p.y > 2.2) continue;
+    boxes.push({ min: [p.x - R * 0.85, p.y - R, p.z - R * 0.85], max: [p.x + R * 0.85, p.y + R, p.z + R * 0.85] });
+  }
+  return boxes;
+}
+
 // fallen ceiling tiles on the spawn room floor
 export function tileDebris(B, x, z, seed = 1) {
   let s = seed * 9301 + 49297;

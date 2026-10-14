@@ -13,6 +13,8 @@ import { createLevel, LEVELS } from '../world/levels/registry.js';
 import { DayCycle, DAY_LENGTH } from './daycycle.js';
 import { Tools } from './tools.js';
 import { buildRagdoll } from '../entities/avatar.js';
+import { buildStillLife, prewarmStillLifes } from '../entities/stilllife_model.js';
+import { BacteriaBody } from '../entities/monsters/bacteria_body.js';
 import { itemDef } from './itemdefs.js';
 
 const _v = new THREE.Vector3();
@@ -357,12 +359,19 @@ export class Game {
     }
     // compile every shader now (behind the loading screen) instead of stuttering later
     this.ui.setLoadingProgress(1, 'COMPILING SHADERS');
+    const warmups = desc.type !== 'lobby' ? await this._monsterWarmups(world, sp.pos) : [];
     try {
       await new Promise((r) => setTimeout(r, 0));
       engine.camera.position.copy(sp.pos).setY(sp.pos.y + 1.2);
       await engine.renderer.compileAsync(engine.scene, engine.camera);
       await engine.renderer.compileAsync(engine.vmScene, engine.vmCamera);
     } catch (e) { /* older drivers */ }
+    for (const w of warmups) {
+      world.unregisterDynamic(w.root);
+      w.root.removeFromParent();
+      w.root.userData.dispose?.();
+      w.dispose?.();
+    }
     if (this.world !== world) { this.loading = false; return; }
     this.loading = false;
     this.ui.setLoading(false);
@@ -516,6 +525,25 @@ export class Game {
     for (const r of this.roster.values()) r.dead = false;
     this.unlockAll('first_day');
     this.hostLoadWorld({ type, seed: (Math.random() * 1e9) | 0, depth, arrival: true, carry, fresh: true });
+  }
+
+  // Temporary, probe-lit monster instances placed in the scene while shaders compile, so the first
+  // Bacteria / Still Life sighting doesn't stall on shader compilation (they share materials).
+  async _monsterWarmups(world, at) {
+    const out = [];
+    try {
+      await Promise.race([prewarmStillLifes(), new Promise((r) => setTimeout(r, 4000))]);
+      const sl = buildStillLife('watcher', 1);
+      out.push(sl);
+      const bac = new BacteriaBody(-1);
+      out.push(bac);
+      for (const m of out) {
+        m.root.position.copy(at).add(new THREE.Vector3(0, -30, 0));
+        world.group.add(m.root);
+        world.registerDynamic(m.root);
+      }
+    } catch (e) { console.warn('[game] monster warmup', e); }
+    return out;
   }
 
   // ------------------------------------------------------------------

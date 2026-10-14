@@ -441,6 +441,7 @@ class StillLifeAI extends Agent {
             this.cooldown = 2.2;
             mgr.damagePlayer(near, 18, 'bite', this.pos, 'a Still Life');
             mgr.sound('stilllife_scream', this.pos, 0.9);
+            this.attackT = 1;
           }
         } else {
           this.state = 'roam';
@@ -576,6 +577,7 @@ class MonsterView {
     this.presence?.stop(0.4);
     this.mgr.world.unregisterDynamic(this.root);
     this.root.removeFromParent();
+    this.root.userData.dispose?.(); // Still Life instance resources (shared geometry/materials stay cached)
     this.body?.dispose?.();
     if (this.collider) { try { this.mgr.world.physics.removeCollider(this.collider); } catch (e) { /* freed */ } }
   }

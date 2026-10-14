@@ -91,6 +91,7 @@ const synth = {
   pipe_rust: { r: 'rust', o: { wear: 0.6, meters: 0.6, size: 512 }, ns: 1.0, metal: 1 },
   galvanized: { r: 'metal', o: { c0: 0xb4b8b8, c1: 0x868a8a, c2: 0x5a5448, p0: [0.4, 0.42, 0.25, 0], wear: 0.5, meters: 0.5, size: 512 }, ns: 0.8, metal: 1 },
   insulation: { r: 'env_insulation', o: {}, ns: 1.0, metal: 1 },
+  stainless: { r: 'metal', o: { c0: 0xd2d6d8, c1: 0xa6aaad, c2: 0x6a6660, p0: [1, 0.24, 0.06, 0], wear: 0.22, meters: 0.6, size: 512 }, ns: 0.6, metal: 1, envMapIntensity: 1.3 },
   plenum: { r: 'concrete', o: { c0: 0x4a4740, c1: 0x34322c, c2: 0x1e1c18, c3: 0x5a564c, p0: [40, 0.2, 0.5, 0.6], wear: 0.6, meters: 2, size: 512 }, ns: 0.8 },
 };
 

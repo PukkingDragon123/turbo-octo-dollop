@@ -242,6 +242,8 @@ export const BASE = {
   porthole: () => once('porthole', () => new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xf2f9ff, emissiveIntensity: 5.0, roughness: 0.15, name: 'pool_porthole' })),
   lamp: () => once('lamp', () => new THREE.MeshStandardMaterial({ color: 0xdff6ff, emissive: 0x9fe4ff, emissiveIntensity: 4.0, roughness: 0.1, name: 'pool_lamp' })),
   void: () => once('void', () => new THREE.MeshBasicMaterial({ color: 0x010202, name: 'pool_void' })),
+  slide: () => once('slide', () => Synth.pbrMaterial('plastic', { c0: 0x1f86c8, c1: 0x1a78b8, c2: 0x0e3a5a, p0: [0.16, 0.15, 0, 0], wear: 0.25, size: 256, repeat: [3, 3], name: 'pool_slide', physical: true, clearcoat: 0.8, clearcoatRoughness: 0.12 })),
+  slideIn: () => once('slideIn', () => Synth.pbrMaterial('plastic', { c0: 0x2c9ad8, c1: 0x2a8cc8, c2: 0x10405a, p0: [0.12, 0.1, 0, 0], wear: 0.2, size: 256, repeat: [3, 3], name: 'pool_slide_in' })),
   rescue: () => once('rescue', () => Synth.pbrMaterial('vinyl', { c0: 0xd8301f, c1: 0xc42a1b, p0: [200, 0.35, 0, 0], wear: 0.25, size: 256, repeat: [2, 2], name: 'pool_rescue' })),
   pvc: () => once('pvc', () => Synth.pbrMaterial('plastic', { c0: 0x8e979c, c1: 0x7c858a, c2: 0x3c4040, p0: [0.42, 0.3, 0, 0], wear: 0.35, size: 256, repeat: [2, 2], name: 'pool_pvc' })),
   tank: () => once('tank', () => Synth.pbrMaterial('plastic', { c0: 0x2f68a8, c1: 0x285c94, c2: 0x1a2c3c, p0: [0.28, 0.2, 0, 0], wear: 0.3, size: 256, repeat: [2, 2], name: 'pool_tank' })),
