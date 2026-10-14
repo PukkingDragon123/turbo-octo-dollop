@@ -1,13 +1,12 @@
 // R.O.O.M. items — crafting materials & crafted traps: plank, metal scrap, screws, cloth, wire spool,
 // short pipe, gear, spike trap, barricade panel.
 import * as THREE from 'three';
-import { Kit, def, PI, TAU, V3, sstep, clamp, lerp, hash, fillet, latheGeo, sheetGeo, extrudeGeo, polyGeo, rrectShape, rrectPath, roundedShape, curve, circlePath } from './core.js';
+import { Kit, def, PI, TAU, V3, sstep, lerp, latheGeo, sheetGeo, extrudeGeo, circlePath } from './core.js';
 import { mat, clear, S } from './mats.js';
 import { RNG } from '../../core/rng.js';
 import {
-  atlas, txt, para, rect, rrect, circle, line, noise, mottle, wear, edgeGrime, rubEdge, barcode, roomIcon, brand, lgrad, rgrad,
-  hazardStripes, warnTri, inkStamp, endGrain, woodGrain,
-  SANS, COND, MONO, SERIF, HAND, INK, ROOM_YELLOW,
+  atlas, txt, rect, rrect, line, noise, mottle, wear, edgeGrime, barcode, roomIcon, brand, lgrad, rgrad,
+  hazardStripes, inkStamp, endGrain, MONO, INK,
 } from './paint.js';
 
 // Shared decal atlas for lumber: grade stamps, spray-painted stencils, end grain, hazard tape (RGBA).

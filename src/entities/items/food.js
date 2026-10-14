@@ -1,13 +1,13 @@
 // R.O.O.M. items — food & drink: wrapped bars, almond milk carton, almond water bottle, cans, mystery stew,
 // chips, paper cup. Printed packaging is drawn as a flat "dieline" per item (what the printer would get).
 import * as THREE from 'three';
-import { Kit, def, PI, TAU, V3, sstep, clamp, lerp, hash, fillet, latheGeo, loftGeo, superSection, capRound, sheetGeo, extrudeGeo, polyGeo, roundedShape, rrectShape } from './core.js';
-import { mat, clear, S } from './mats.js';
+import { Kit, def, PI, TAU, V3, sstep, lerp, superSection, sheetGeo, extrudeGeo, polyGeo, roundedShape } from './core.js';
+import { mat, clear } from './mats.js';
 import { RNG } from '../../core/rng.js';
 import {
-  atlas, txt, para, rect, rrect, circle, line, noise, mottle, wear, edgeGrime, rubEdge, barcode, roomIcon, brand, lgrad, rgrad,
-  almond, leaf, drawClone, nutrition, starburst, halftone, recycle, colorBar, regMark, warnTri,
-  SANS, COND, MONO, SERIF, VT, INK, NAVY, ROOM_YELLOW,
+  atlas, txt, para, rect, rrect, circle, line, noise, mottle, wear, rubEdge, barcode, roomIcon, brand, lgrad,
+  rgrad, almond, leaf, drawClone, nutrition, starburst, halftone, recycle, colorBar, warnTri, SANS, MONO,
+  SERIF, NAVY, ROOM_YELLOW,
 } from './paint.js';
 
 // ============================================================================ wrapped bars

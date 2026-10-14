@@ -479,7 +479,9 @@ export function b_vending_drink(o) {
   k.label(side, 0.4, 0.84, -W / 2 - 0.0008, 1.05, -0.02, { rot: [0, -HP, 0] });
   k.push(0.2, 0.42, -D / 2, [0, PI, 0]);
   P.slotVent(k, 0, 0, 0, 0.3, 0.2, 8, { mo: { tint: 0x2a2b2e } });
-  P.slotVent(k, -0.42, -0.12, 0, 0.36, 0.16, 6, { mo: { tint: 0x2a2b2e } });
+  k.pop();
+  k.push(-0.16, 0.24, -D / 2, [0, PI, 0]);
+  P.slotVent(k, 0, 0, 0, 0.36, 0.16, 6, { mo: { tint: 0x2a2b2e } });
   k.pop();
   const serial = k.reg('cola_serial', 200, 70, (c, w, h) => { c.fillStyle = '#c9c9c4'; c.fillRect(0, 0, w, h); txt(c, 'COLD-VEND 9', w / 2, h * 0.28, h * 0.22, { col: '#111' }); txt(c, '115V 60Hz 6.8A  R-134a 9.5oz', w / 2, h * 0.58, h * 0.13, { col: '#222', f: 'mono', maxW: w * 0.92 }); txt(c, 'R.O.O.M. FACILITIES DIV.', w / 2, h * 0.82, h * 0.12, { col: '#222', f: 'mono' }); }, 'b');
   k.push(-0.2, 1.4, -D / 2, [0, PI, 0]);

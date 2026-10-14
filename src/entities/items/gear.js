@@ -1,14 +1,14 @@
 // R.O.O.M. items — field gear & paperwork: glowstick, road flare, sample jar, sample kit, keycard, dart,
 // instant photo, clipboard, noise maker, fuel can.
 import * as THREE from 'three';
-import { Kit, def, PI, TAU, V3, sstep, clamp, lerp, fillet, latheGeo, sheetGeo, extrudeGeo, polyGeo, rrectShape, rrectPath, roundedShape, curve, circlePath, HelixCurve } from './core.js';
-import { mat, clear, tinted, glow, S } from './mats.js';
+import { Kit, def, PI, TAU, V3, sstep, clamp, lerp, sheetGeo, extrudeGeo, rrectShape, rrectPath, curve, circlePath } from './core.js';
+import { mat, clear, glow, S } from './mats.js';
 import { flameGeos, flameMaterial, flicker } from './tools.js';
 import { RNG } from '../../core/rng.js';
 import {
-  atlas, txt, para, rect, rrect, circle, line, noise, mottle, wear, edgeGrime, rubEdge, barcode, roomIcon, brand, lgrad, rgrad,
-  starburst, warnTri, hazardStripes, hazardDiamond, biohazard, drawClone, scribble, checkmark, inkStamp, colorBar, halftone,
-  SANS, COND, MONO, SERIF, HAND, VT, INK, NAVY, ROOM_YELLOW,
+  atlas, txt, rect, rrect, circle, noise, mottle, wear, barcode, roomIcon, brand, lgrad, rgrad, hazardStripes,
+  hazardDiamond, biohazard, drawClone, scribble, checkmark, inkStamp, halftone, MONO, SERIF, HAND, INK,
+  ROOM_YELLOW,
 } from './paint.js';
 
 // ============================================================================ glowstick
@@ -367,8 +367,8 @@ def('dart', () => {
   k.lathe([[0.0029, -0.0655], [0.003, -0.0628, 0.0004], [0.0024, -0.0622]], steel, { seg: 12, col: 0xc8ccd0 });
   k.pop();
   k.colBox([0.007, 0.007, 0.145], [0, 0, -0.0085]);
-  k.colBox([0.026, 0.026, 0.036], [0, 0, 0.045]);
-  return { kit: k, meta: { mass: 0.022, material: 'metal', hold: { grip: [0, 0, -0.016], rot: [0.12, 0.05, 0], off: [-0.01, 0.04, 0] } } };
+  k.colBox([0.0276, 0.0276, 0.036], [0, 0, 0.045]); // flight tips incl. dihedral
+  return { kit: k, meta: { mass: 0.02, material: 'metal', hold: { grip: [0, 0, -0.016], rot: [0.12, 0.05, 0], off: [-0.01, 0.04, 0] } } };
 });
 
 // ============================================================================ photo (instant film)
@@ -564,7 +564,7 @@ def('clipboard', () => {
   k.pop();
   k.colBox([W, 0.0058, H], [0, 0.0015, 0]);
   k.colBox([0.11, 0.034, 0.03], [0, 0.017, cz - 0.01]);
-  return { kit: k, meta: { mass: 0.4, material: 'wood', hold: { grip: [W / 2 - 0.03, 0, 0.06], rot: [1.12, 0.08, 0.05], off: [-0.05, 0.03, 0] } } };
+  return { kit: k, meta: { mass: 0.35, material: 'wood', hold: { grip: [W / 2 - 0.03, 0, 0.06], rot: [1.12, 0.08, 0.05], off: [-0.05, 0.03, 0] } } };
 });
 
 // ============================================================================ noise_maker (crafted alarm-clock trap)

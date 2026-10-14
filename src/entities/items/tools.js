@@ -1,12 +1,12 @@
 // R.O.O.M. items — hand tools & equipment: flashlight, multitool, welder, crowbar, wrench, lighter,
 // disposable camera, battery, tape, fuse.
 import * as THREE from 'three';
-import { Kit, def, PI, TAU, V3, sstep, clamp, lerp, fillet, latheGeo, loftGeo, capRound, sweepGeo, extrudeGeo, rrectShape, roundedShape, curve, HelixCurve, sheetGeo } from './core.js';
+import { Kit, def, PI, TAU, V3, sstep, clamp, lerp, latheGeo, loftGeo, capRound, sweepGeo, extrudeGeo, roundedShape, curve, HelixCurve, sheetGeo } from './core.js';
 import { RNG } from '../../core/rng.js';
 import { mat, clear, S, flameMat } from './mats.js';
 import {
-  atlas, txt, rect, rrect, noise, mottle, wear, rubEdge, barcode, roomIcon, brand, hazardStripes, warnTri, lgrad,
-  hazardDiamond, starburst, circle, SANS, COND, MONO, VT, INK, ROOM_YELLOW,
+  atlas, txt, rect, rrect, noise, mottle, wear, rubEdge, barcode, roomIcon, brand, warnTri, lgrad, starburst,
+  SANS, MONO, VT, INK, ROOM_YELLOW,
 } from './paint.js';
 
 // ============================================================================ flashlight
@@ -537,7 +537,7 @@ def('wrench', () => {
   k.add(new THREE.PlaneGeometry(0.084, 0.0105), decal, { r: [-PI / 2, 0, -PI / 2], p: [0, ht * (1 - 0.36) + 0.00012, -0.012], keepUV: true });
   k.colBox([0.046, 0.0086, 0.104], [0, 0, -0.068]);
   k.colBox([0.036, 0.0098, 0.128], [0, lift * 0.55, 0.054]);
-  return { kit: k, meta: { mass: 0.32, material: 'metal', hold: { grip: [0, 0, 0.065], rot: [0.5, 0, -0.35] } } };
+  return { kit: k, meta: { mass: 0.25, material: 'metal', hold: { grip: [0, 0, 0.065], rot: [0.5, 0, -0.35] } } };
 });
 
 // ============================================================================ lighter

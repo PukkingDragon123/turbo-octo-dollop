@@ -1,12 +1,11 @@
 // R.O.O.M. items — medical: gauze roll, first-aid case, Rx vial, blister pack, field splint.
 import * as THREE from 'three';
-import { Kit, def, PI, TAU, V3, sstep, clamp, lerp, fillet, latheGeo, sheetGeo, extrudeGeo, polyGeo, rrectShape, roundedShape, curve, circlePath, rrectPath } from './core.js';
+import { Kit, def, PI, TAU, V3, clamp, lerp, latheGeo, sheetGeo, extrudeGeo, rrectShape } from './core.js';
 import { mat, clear, tinted, S } from './mats.js';
 import { RNG } from '../../core/rng.js';
 import {
-  atlas, txt, para, rect, rrect, circle, line, noise, mottle, wear, edgeGrime, rubEdge, barcode, roomIcon, brand, lgrad, rgrad,
-  nutrition, starburst, warnTri, recycle, inkStamp, woodGrain, endGrain, colorBar,
-  SANS, COND, MONO, SERIF, HAND, VT, INK, NAVY, ROOM_YELLOW,
+  atlas, txt, rect, rrect, circle, line, noise, mottle, wear, edgeGrime, barcode, roomIcon, lgrad, warnTri,
+  MONO, HAND, INK,
 } from './paint.js';
 
 const RED = '#c8241c';
@@ -390,7 +389,7 @@ def('splint', () => {
     for (const s2 of [-1, 1]) k.add(sheetGeo(2, 6, (u, v) => [xb + s2 * v * 0.03 + (u - 0.5) * 0.009, y1 + 0.003 - v * v * 0.009 + Math.sin(v * 5) * 0.001, 0.006 + s2 * v * 0.008 + (u - 0.5) * 0.002]), cloth, { uv: A.R(0, 260, 256, 64, 1) });
   }
   k.colBox([L, Tb + 0.0139, Wb + 0.003], [0, (Tb + 0.012) / 2 - 0.00095, 0]); // rests on the two ties (1.9 mm under the board)
-  return { kit: k, meta: { mass: 0.3, material: 'wood', hold: { grip: [-0.09, 0, 0], rot: [0.45, 1.35, 0.0], off: [0, 0.01, 0] } } };
+  return { kit: k, meta: { mass: 0.25, material: 'wood', hold: { grip: [-0.09, 0, 0], rot: [0.45, 1.35, 0.0], off: [0, 0.01, 0] } } };
 });
 // flat strip swept along a closed path (normal = outward from the path centroid)
 function sweepFlat(path, width, thick) {

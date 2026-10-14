@@ -258,6 +258,21 @@ const scenarios = {
     console.log('[prof] total ms', (tot / 1000).toFixed(0));
     for (const [k, v] of Object.entries(self).sort((a, b) => b[1] - a[1]).slice(0, +(process.env.TOP || 30))) console.log(`${(v / tot * 100).toFixed(1).padStart(5)}%  ${(v / 1000).toFixed(1).padStart(7)}ms  ${k}`);
   },
+  // A/B: same view with the light-volume haze hidden and with wall specular off (env VIEW="x,z,yaw,pitch", NaN yaw = auto)
+  async ab() {
+    await loadYellow();
+    const v = (process.env.VIEW || '12,12,NaN,0').split(',').map(Number);
+    await tp([v[0], 0, v[1]], 0, 0);
+    await page.waitForTimeout(4000);
+    if (Number.isNaN(v[2])) v[2] = await bestYaw([v[0], v[1]]);
+    console.log('yaw', v[2]);
+    await tp([v[0], 0, v[1]], v[2], v[3]);
+    await shot('ab_base', 4000);
+    await ev(() => { __engine.scene.traverse((o) => { if (o.isMesh && o.material?.uniforms?.uHaze) o.visible = false; }); });
+    await shot('ab_nohaze', 2500);
+    await ev(() => { __engine.scene.traverse((o) => { if (o.isMesh && o.material?.uniforms?.uHaze) o.visible = true; if (o.isMesh && o.material?.userData?.baked && /wallpaper/.test(o.material.name)) { const u = o.material.userData.bkUniforms?.uSpecMul; if (u) u.value = 0; } }); });
+    await shot('ab_nospec', 2500);
+  },
   async one() {
     await loadYellow();
     const v = (process.env.VIEW || '12,12,0,0').split(',').map(Number);

@@ -615,6 +615,7 @@ const ATLAS_SCALE = {
   soda_can: 0.75, energy_drink: 0.75, almond_milk: 0.75, almond_water: 0.75, canned_food: 0.75,
   protein_bar: 0.75, candy_bar: 0.75, camera_disposable: 0.75, painkillers: 0.75, photo: 0.75, keycard: 0.75,
   flare: 0.75, gear: 0.75, lighter: 0.75, fuse: 0.75, antibiotics: 0.5, multitool: 0.5, dart: 0.5,
+  medkit: 0.75, chips: 0.75, lumber_decals: 0.75,
 };
 let atlasMs = 0;
 

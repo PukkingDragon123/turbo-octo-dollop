@@ -87,7 +87,9 @@ export function lightVolumes(layout, level) {
     const grow = 0.55;
     const tb = [[X0, Z0], [X1, Z0], [X1, Z1], [X0, Z1]];
     const cxm = (X0 + X1) / 2, czm = (Z0 + Z1) / 2;
-    const bb = tb.map(([x, z]) => [cxm + (x - cxm) * (1 + grow * 1.6), czm + (z - czm) * (1 + grow * 2.4)]);
+    // the spread stays 0.3 m inside the cell: a card reaching into a wall shows as a hard-edged wedge on it
+    const m = 0.3, cl = (v, a) => Math.min(a + CELL - m, Math.max(a + m, v));
+    const bb = tb.map(([x, z]) => [cl(cxm + (x - cxm) * (1 + grow * 1.6), x0), cl(czm + (z - czm) * (1 + grow * 2.4), z0)]);
     for (let s = 0; s < 4; s++) {
       const a = s, b = (s + 1) % 4;
       const quad = [[tb[a][0], top, tb[a][1], 0, 0], [tb[b][0], top, tb[b][1], 1, 0], [bb[b][0], bot, bb[b][1], 1, 1], [bb[a][0], bot, bb[a][1], 0, 1]];

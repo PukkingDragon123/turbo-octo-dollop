@@ -147,10 +147,19 @@ async function listModels() {
     });
   }
   if (set === 'critters') {
+    // &speed=m/s (animate the gait in place) &frames=N&fdt=0.04 (time strip of the first key) &t=secs pre-roll
     const C = await import('../entities/critter_models.js');
     const fish = C.FISH_KINDS || [];
-    const list = [{ key: 'rat', m: C.buildRat(2) }, { key: 'cockroach', m: C.buildCockroach(2) }, ...fish.map((f) => ({ key: f, m: C.buildFish(f, 2) }))];
-    return pick(list.map((x) => x.key)).map((k) => { const x = list.find((y) => y.key === k); return { key: k, build: () => x.m.root, update: (dt) => x.m.update?.(dt, { speed: 0 }) }; });
+    const make = { rat: () => C.buildRat(2), cockroach: () => C.buildCockroach(2) };
+    for (const f of fish) make[f] = () => C.buildFish(f, 2);
+    const speed = +(P.get('speed') || 0), frames = +(P.get('frames') || 0), fdt = +(P.get('fdt') || 0.04), t0 = +(P.get('t') || 0);
+    const keys = pick(Object.keys(make));
+    const cells = frames ? Array.from({ length: frames }, (_, i) => ({ k: keys[0], off: i * fdt })) : keys.map((k) => ({ k, off: 0 }));
+    return cells.map(({ k, off }) => {
+      const m = make[k]();
+      const pre = t0 + off;
+      return { key: k + (frames ? ` t=${pre.toFixed(2)}` : ''), build: () => m.root, update: (dt) => m.update?.(dt, { speed }), pre: pre || undefined };
+    });
   }
   if (set === 'clones') {
     const C = await import('../entities/clone_models.js');

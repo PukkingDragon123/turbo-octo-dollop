@@ -3,7 +3,8 @@
 // Layering: a print atlas (uv, sRGB albedo with wear) x vertex colour (tint + baked occlusion) on top of a
 // shared tiling *surface detail* set (uv1: normal + ORM from GPU-synthesised recipes in texsynth.js) that
 // supplies micro relief, roughness breakup and cavity AO at real-world scale (dm = meters per detail tile).
-// Detail sets are tiny (128–256 px), generated once and shared by every item.
+// Detail sets are small (mostly 128 px, a few 256, lumber 512 with colour), generated once and shared by every
+// item: ~8 MB in total. Print atlas resolution is set per atlas in paint.js (ATLAS_SCALE).
 import * as THREE from 'three';
 import * as Synth from '../../gfx/texsynth.js';
 
