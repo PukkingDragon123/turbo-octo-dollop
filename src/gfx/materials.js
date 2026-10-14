@@ -72,10 +72,10 @@ const synth = {
   cmu: { r: 'env_cmu', o: {}, ns: 1.0 },
   office_carpet: { r: 'env_carpet_tile', o: {}, ns: 1.0, aniso: 16 },
   linoleum: { r: 'env_vct', o: {}, ns: 0.8, aniso: 16, envMapIntensity: 1.0 },
-  paint: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a }, color: 0xddd2b9, ns: 0.8 },
-  paint_green: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a }, color: 0x93a890, ns: 0.8 },
-  paint_blue: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a }, color: 0x8fa0b3, ns: 0.8 },
-  paint_white: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a }, color: 0xeae7e0, ns: 0.8 },
+  paint: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a, size: 512, meters: 1.0 }, color: 0xddd2b9, ns: 0.8 },
+  paint_green: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a, size: 512, meters: 1.0 }, color: 0x93a890, ns: 0.8 },
+  paint_blue: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a, size: 512, meters: 1.0 }, color: 0x8fa0b3, ns: 0.8 },
+  paint_white: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a, size: 512, meters: 1.0 }, color: 0xeae7e0, ns: 0.8 },
   panel: { r: 'env_panel', o: {}, ns: 1.0 },
   tile: { r: 'env_ceramic', o: { size: 512 }, ns: 1.0, envMapIntensity: 1.0 },
   tile_green: { r: 'env_ceramic', o: { size: 512 }, color: 0xb4d8bd, ns: 1.0, envMapIntensity: 1.0 },
@@ -93,7 +93,7 @@ const synth = {
   // brushed stainless shares the galvanized synthesis (brighter tint, smoother)
   stainless: { r: 'metal', o: { c0: 0xb4b8b8, c1: 0x868a8a, c2: 0x5a5448, p0: [0.4, 0.42, 0.25, 0], wear: 0.5, meters: 0.5, size: 512 }, color: 0xf4f6f8, rough: 0.7, ns: 0.6, metal: 1, envMapIntensity: 1.3 },
   // dark plenum / soffit concrete shares the generic concrete synthesis
-  plenum: { r: 'concrete', o: { c0: 0xa8a49a, c1: 0x86827a, c2: 0x4e4a44, c3: 0xbdb7aa, p0: [70, 0.35, 0.6, 0.45], wear: 0.35, meters: 2, size: 512 }, color: 0x4a4740, ns: 0.8 },
+  plenum: { r: 'concrete', o: { c0: 0xa8a49a, c1: 0x86827a, c2: 0x4e4a44, c3: 0xbdb7aa, p0: [70, 0.35, 0.6, 0.45], wear: 0.35, meters: 2, size: 512 }, color: 0x575249, ns: 0.8 },
 };
 
 const shared = new Map();

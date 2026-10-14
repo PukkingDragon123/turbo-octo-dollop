@@ -151,6 +151,9 @@ const DET = {
   gauze: { r: 'fabric', o: { p0: [20, 20, 0, 0.4], p1: [0.0, 0, 0, 0], wear: 0.1, size: 256, bump: 3.5 }, dm: 0.014, gm: 0.86 },
   wood: { r: 'wood', o: { c0: 0xa8784a, c1: 0xd9b07a, c2: 0x5a3a1e, p0: [14, 1.2, 0.8, 0.78], wear: 0.3, size: 512, bump: 2.4 }, dm: 0.5, gm: 0.75, albedo: true },
   rust: { r: 'rust', o: { wear: 0.6, size: 256 }, dm: 0.12, gm: 0.8, albedo: true },
+  thread: { r: 'item_turned', o: { p0: [15, 1.8, 0, 0], wear: 0.3, bump: 3.0 }, dm: 0.02, gm: 0.5 },
+  coil: { r: 'item_turned', o: { p0: [12, 1.6, 0, 0], wear: 0.2, bump: 3.0 }, dm: 0.019, gm: 0.5 },
+  roughwood: { r: 'wood', o: { c0: 0x8a5a30, c1: 0xd2a26a, c2: 0x4a2c14, p0: [56, 1.3, 1.0, 0.86], wear: 0.5, size: 512, bump: 3.2, seed: 7 }, dm: 0.6, gm: 0.86, albedo: true },
 };
 export const DETAIL_NAMES = Object.keys(DET);
 

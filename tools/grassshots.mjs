@@ -247,7 +247,7 @@ const scenarios = {
     // inside the generator sheds (interior light)
     const sheds = await ev(() => __game.world.level.gw.structures.filter((s) => ['gen_diesel', 'gen_mech'].includes(s.kind)).map((s) => [s.kind, s.cx, s.cz, s.z1]));
     for (const sh of sheds || []) {
-      await tp([sh[1], 0.02, sh[3] + 2.2], 0, -0.25);
+      await tp([sh[1], null, sh[3] + 2.2], 0, -0.25);
       await shot('v_shed_' + sh[0], 3000);
     }
     // the wrong things in the valley: the nearest anomaly of each kind

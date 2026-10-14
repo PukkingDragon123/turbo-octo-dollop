@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import {
   PI, TAU, HP, NO, clamp, V3, toV, FIN, latheGeo, cylGeo, boxGeo, tubeGeo, curvePts, roundPath, extrudeGeo, axisGeo,
-  rrShape, rrHole, frameShape, circleShape, polyShape, quadGeo, Geo, torusGeo,
+  rrShape, rrHole, frameShape, circleShape, polyShape, quadGeo, Geo, torusGeo, qUp,
 } from './core.js';
 import { lampMat, CLEAR } from './mats.js';
 import { drawScrewHead, drawStreak, drawStain, drawScuffs, drawHandprint, drawDial, txt } from './atlas.js';
@@ -37,14 +37,14 @@ export function screw(k, x, y, z, o = NO) {
   let h;
   if (kind === 'hex') {
     h = r * 0.62;
-    k.cyl(slot, r * 1.42, r * 0.16, 0, 0, r * 0.08, { ...opt, axis: 'z', seg: 12 });
-    k.cyl(slot, r, h, 0, 0, r * 0.16 + h / 2, { ...opt, axis: 'z', seg: 6, bev: r * 0.1, rot: [0, 0, roll] });
+    k.cyl(slot, r * 1.42, r * 0.16, 0, 0, r * 0.08, { ...opt, axis: 'z', seg: 10 });
+    k.cyl(slot, r, h, 0, 0, r * 0.16 + h / 2, { ...opt, axis: 'z', seg: 6, bev: r * 0.1, bevSeg: 1, rot: [0, 0, roll] });
     if (o.thread) k.cyl(slot, r * 0.52, o.thread, 0, 0, r * 0.16 + h + o.thread / 2, { ...opt, axis: 'z', seg: 8 });
   } else {
     const prof = kind === 'flat'
       ? [[0, 0], [r, 0, 1], [r, r * 0.12, 2], [r * 0.94, r * 0.2], [0, r * 0.22]]
-      : kind === 'rivet' || kind === 'button'
-        ? [[0, 0], [r, 0, 1], [r * 0.96, r * 0.2], [r * 0.78, r * 0.5], [r * 0.42, r * 0.68], [0, r * 0.72]]
+      : kind === 'rivet' ? [[0, 0], [r, 0, 1], [r * 0.86, r * 0.42], [r * 0.45, r * 0.66], [0, r * 0.7]]
+        : kind === 'button' ? [[0, 0], [r, 0, 1], [r * 0.96, r * 0.2], [r * 0.78, r * 0.5], [r * 0.42, r * 0.68], [0, r * 0.72]]
         : [[0, 0], [r, 0, 1], [r * 0.98, r * 0.28, 2], [r * 0.8, r * 0.52], [r * 0.4, r * 0.62], [0, r * 0.64]];
     h = prof[prof.length - 1][1];
     k.lathe(slot, prof, 0, 0, 0, { ...opt, axis: 'z', seg, uv: 'cyl' });
@@ -77,8 +77,8 @@ export function hingeHalf(k, x, y, z, h, o = NO) {
   const opt = { ...fin, rust: o.rust ?? k.wear.rust, chip: 0, ...(o.mo || {}) };
   const part = o.part ?? 0;
   const sl = h / n;
-  for (let i = 0; i < n; i++) if (i % 2 === part) k.cyl(slot, r, sl - gap, x, y - h / 2 + (i + 0.5) * sl, z, { ...opt, seg: 10, bev: r * 0.18 });
-  if (part === 0) { k.cyl(slot, r * 0.62, 0.003, x, y + h / 2 + 0.0015, z, { ...opt, seg: 10, bev: 0.0008 }); k.cyl(slot, r * 0.62, 0.003, x, y - h / 2 - 0.0015, z, { ...opt, seg: 10, bev: 0.0008 }); }
+  for (let i = 0; i < n; i++) if (i % 2 === part) k.cyl(slot, r, sl - gap, x, y - h / 2 + (i + 0.5) * sl, z, { ...opt, seg: 8, bev: r * 0.16, bevSeg: 1 });
+  if (part === 0) { k.cyl(slot, r * 0.62, 0.003, x, y + h / 2 + 0.0015, z, { ...opt, seg: 8, bev: 0.0008, bevSeg: 1 }); k.cyl(slot, r * 0.62, 0.003, x, y - h / 2 - 0.0015, z, { ...opt, seg: 8, bev: 0.0008, bevSeg: 1 }); }
   if (o.leaf) {
     const lw = o.leafW ?? 0.024, lt = 0.0018, lz = z + (o.leafZ ?? -r + lt / 2);
     k.box(slot, lw, h * 0.94, lt, x + o.leaf * (r * 0.6 + lw / 2), y, lz, { ...opt, r: 0.0006 });
@@ -119,7 +119,8 @@ export function flutedGeo(r, h, n = 18, depth = 0.08) {
 // rotary knob: returns group (rotate around local Z). o: h, tint, flutes, skirt (false), pointer colour, name
 export function knob(k, x, y, z, r, o = NO) {
   const g = k.grp(x, y, z, { name: o.name || 'knob' });
-  k.inside(g, () => {
+  if (o.angle) g.rotation.z = o.angle;
+  k.within(g, () => {
     const h = o.h ?? r * 0.9;
     if (o.skirt !== false) k.cyl('metal', r * 1.3, 0.0024, 0, 0, 0.0012, { ...(o.skirtFin ?? FIN.alu), axis: 'z', seg: 28, bev: 0.0007 });
     const z0 = o.skirt !== false ? 0.0024 : 0;
@@ -139,12 +140,13 @@ export function toggle(k, x, y, z, o = NO) {
   if (o.guard) for (const s of [-1, 1]) k.box('metal', 0.002, 0.03, 0.016, s * 0.0085, 0.004, 0.012, { ...fin, r: 0.0008 });
   k.pop();
   const g = k.grp(x, y, z + 0.0126, { name: o.name || 'toggle' });
-  k.inside(g, () => {
-    k.sph('metal', 0.0036, 0, 0, 0, { ...fin, ws: 10, hs: 6 });
-    k.lathe('metal', [[0.0014, 0], [0.0024, 0.004], [0.0017, 0.019], [0.0034, 0.0215], [0.0033, 0.024], [0, 0.0252]], 0, 0, 0, { ...fin, seg: 10, uv: 'cyl' });
-    if (o.tip) k.sph(o.tip, 0.0042, 0, 0.023, 0, { ws: 10, hs: 8 });
-  });
   g.rotation.x = o.on ? -0.45 : 0.45;
+  const ls = o.leverSlot ?? 'metal';
+  k.within(g, () => {
+    k.sph(ls, 0.0036, 0, 0, 0, { ...fin, ws: 10, hs: 6 });
+    k.lathe(ls, [[0.0014, 0], [0.0024, 0.004], [0.0017, 0.019], [0.0034, 0.0215], [0.0033, 0.024], [0, 0.0252]], 0, 0, 0, { ...fin, seg: 10, uv: 'cyl' });
+    if (o.tip) k.sph(o.tip, 0.0042, 0, 0.023, 0, { ws: 10, hs: 8 });
+  }, o.static);
   return g;
 }
 // push button: bezel ring + cap. Returns the cap group (translate local Z to press)
@@ -152,11 +154,11 @@ export function pushButton(k, x, y, z, r, o = NO) {
   const ringFin = o.ringFin ?? FIN.chrome;
   k.lathe(o.ringSlot ?? 'metal', [[r * 1.02, 0], [r * 1.42, 0, 1], [r * 1.42, 0.004, 2], [r * 1.3, 0.0085, 2], [r * 1.04, 0.0095, 2], [r * 1.04, 0.002]], x, y, z, { ...ringFin, axis: 'z', seg: 20 });
   const g = k.grp(x, y, z + 0.0095, { name: o.name || 'button' });
-  k.inside(g, () => {
+  k.within(g, () => {
     const h = o.h ?? r * 0.55, dome = o.dome ?? r * 0.22;
     const prof = [[0, -0.006], [r * 0.98, -0.006], [r, h * 0.7, 2], [r * 0.9, h + dome * 0.4], [r * 0.55, h + dome * 0.85], [0, h + dome]];
     k.lathe(o.slot ?? 'plastic', prof, 0, 0, 0, { tint: o.tint ?? 0xc8231b, rough: o.rough ?? 0.5, axis: 'z', seg: 20, chip: 0.3 });
-  });
+  }, o.static);
   return g;
 }
 // pilot lamp / LED with bezel; returns the lens mesh (own emissive material)
@@ -186,30 +188,43 @@ export function gauge(k, x, y, z, r, o = NO) {
   k.lathe('metal', [[r * 1.18, 0], [r * 1.2, 0.003, 2], [r * 1.16, 0.0075, 2], [r * 1.07, 0.0085, 2], [r * 1.0, 0.004, 2], [r * 0.97, 0.0005]], x, y, z, { ...bez, axis: 'z', seg: 28 });
   k.dlabel(reg, r * 0.985, x, y, z + 0.001, { seg: 28 });
   const piv = k.grp(x, y, z + 0.0035, { name: o.name || 'needle' });
-  k.inside(piv, () => {
+  piv.rotation.z = gaugeAngle(o.value ?? 0.3);
+  k.within(piv, () => {
     const s = new THREE.Shape();
     s.moveTo(-r * 0.04, -r * 0.2); s.lineTo(r * 0.04, -r * 0.2); s.lineTo(r * 0.013, r * 0.78); s.lineTo(0, r * 0.84); s.lineTo(-r * 0.013, r * 0.78); s.closePath();
     k.ext(o.needle ?? '#d42a1a:g', s, 0.0012, 0, 0, 0);
-    k.cyl('metal', r * 0.075, 0.003, 0, 0, 0.0015, { ...FIN.black, axis: 'z', seg: 10, bev: 0.0006 });
-  });
+    k.cyl(o.hub ?? '#18181a:m', r * 0.075, 0.003, 0, 0, 0.0015, { axis: 'z', seg: 10, bev: 0.0006, bevSeg: 1 });
+  }, o.static);
   if (o.glass !== false) k.lathe('glass', [[r * 1.0, 0.0062], [r * 0.6, 0.008], [0, 0.0085]], x, y, z, { axis: 'z', seg: 24 });
   if (o.screws) for (let i = 0; i < 3; i++) { const a = HP + (i * TAU) / 3; screw(k, x + Math.cos(a) * r * 1.14, y + Math.sin(a) * r * 1.14, z + 0.006, { r: 0.0018, kind: 'slot' }); }
-  piv.rotation.z = gaugeAngle(o.value ?? 0.3);
   return piv;
 }
 
 // ---------------------------------------------------------------------------
 // Vents
 // ---------------------------------------------------------------------------
-// stamped louvres: dark cavity, angled blades, pressed frame
+// stamped louvres. raised (default): lips pressed out of a solid panel (opening downward) over a dark
+// backing; o.raised === false: recessed blades in a real opening (cavity behind z)
 export function louvre(k, x, y, z, w, h, n, o = NO) {
   const slot = o.slot ?? 'paint', mo = o.mo ?? {};
+  const pitch = h / n;
+  if (o.raised !== false) {
+    const phi = o.angle ?? 0.5, lh = pitch * 0.92;
+    k.box('#08080a', w - 0.004, h - 0.004, 0.0008, x, y, z + 0.0004, { r: 0 });
+    for (let i = 0; i < n; i++) {
+      const yy = y - h / 2 + (i + 0.5) * pitch;
+      const zc = z + 0.0008 + (lh / 2) * Math.sin(phi);
+      k.box(slot, w - 0.006, lh, 0.0012, x, yy, zc, { ...mo, r: 0, rot: [-phi, 0, 0], edge: 1.4 });
+      for (const sx of [-1, 1]) k.box(slot, 0.0012, lh * 0.55, lh * Math.sin(phi) * 0.9, x + sx * (w / 2 - 0.0035), yy - lh * 0.2, z + 0.0008 + lh * Math.sin(phi) * 0.45, { ...mo, r: 0 });
+    }
+    if (o.frame !== false) k.ext(slot, frameShape(w + (o.fw ?? 0.012), h + (o.fw ?? 0.012), 0.004, w, h, 0.002), 0.0016, x, y, z, { ...mo, bev: 0.0006, bevSeg: 1, curveSeg: 2 });
+    return;
+  }
   const depth = o.depth ?? 0.01;
   k.box('#08080a', w, h, 0.002, x, y, z - depth);
   for (const sx of [-1, 1]) k.box(slot, 0.002, h, depth, x + sx * (w / 2 - 0.001), y, z - depth / 2, { ...mo, r: 0 });
-  const pitch = h / n;
-  for (let i = 0; i < n; i++) k.box(slot, w - 0.003, pitch * 1.02, 0.0012, x, y - h / 2 + (i + 0.5) * pitch, z - depth * 0.45, { ...mo, r: 0.0005, rot: [-0.72, 0, 0], edge: 1.4 });
-  if (o.frame !== false) k.ext(slot, frameShape(w + (o.fw ?? 0.014), h + (o.fw ?? 0.014), 0.004, w, h, 0.002), 0.0035, x, y, z - 0.0015, { ...mo, bev: 0.0012 });
+  for (let i = 0; i < n; i++) k.box(slot, w - 0.003, pitch * 1.02, 0.0012, x, y - h / 2 + (i + 0.5) * pitch, z - depth * 0.45, { ...mo, r: 0, rot: [-0.72, 0, 0], edge: 1.4 });
+  if (o.frame !== false) k.ext(slot, frameShape(w + (o.fw ?? 0.014), h + (o.fw ?? 0.014), 0.004, w, h, 0.002), 0.0035, x, y, z - 0.0015, { ...mo, bev: 0.0012, bevSeg: 1, curveSeg: 2 });
 }
 // punched slot vent plate (applied over a surface): plate with rounded slots over a dark back
 export function slotVent(k, x, y, z, w, h, n, o = NO) {
@@ -248,7 +263,9 @@ export function cable(k, pts, r = 0.006, o = NO) {
   for (let i = 1; i < P.length; i++) len += P[i].distanceTo(P[i - 1]);
   const n = o.n ?? Math.max(6, Math.min(64, Math.ceil(len / Math.max(0.012, r * 3))));
   const path = P.length > 2 ? curvePts(P, n) : P;
-  return k.tube(o.slot ?? 'dark', path, r, { tint: o.tint ?? 0x1c1c1d, rough: o.rough ?? 0.85, radial: o.radial ?? 7, caps: o.caps ?? true, ...(o.mo || {}) });
+  // insulation: palette swatch through the atlas material by default (no extra draw call)
+  const slot = o.slot ?? (k.A ? '#' + (o.tint ?? 0x1c1c1d).toString(16).padStart(6, '0') + (o.gloss ? ':s' : ':p') : 'dark');
+  return k.tube(slot, path, r, { tint: o.tint ?? 0x1c1c1d, rough: o.rough ?? 0.85, radial: o.radial ?? 7, caps: o.caps ?? true, ...(o.mo || {}) });
 }
 // cable gland on a surface facing +Z: hex body, dome nut, cable leaving along `dir` (cable drawn by caller)
 export function gland(k, x, y, z, r = 0.009, o = NO) {
@@ -366,7 +383,7 @@ export function angleIron(k, slot, L, a, b, t, x, y, z, o = NO) {
 // rectangular hollow section / C-channel helper: thin-walled box tube along X
 export function rhs(k, slot, L, w, h, t, x, y, z, o = NO) {
   const s = frameShape(w, h, Math.min(0.004, t * 1.5), w - 2 * t, h - 2 * t, Math.min(0.002, t), 0, 0);
-  const g = extrudeGeo(s, L, { bev: Math.min(0.0015, t * 0.4) });
+  const g = extrudeGeo(s, L, { bev: Math.min(0.0015, t * 0.4), bevSeg: 1, curveSeg: 2 });
   g.rotY(-HP);
   g.translate(L / 2, 0, 0);
   k.put(slot, g, x, y, z, o);
@@ -376,11 +393,28 @@ export function weld(k, pts, r = 0.003, o = NO) {
   const P = pts.length > 2 ? curvePts(pts.map(toV), Math.max(8, pts.length * 6)) : pts.map(toV);
   const path = [];
   for (let i = 1; i < P.length; i++) {
-    const m = Math.max(1, Math.ceil(P[i].distanceTo(P[i - 1]) / (r * 1.2)));
+    const m = Math.max(1, Math.ceil(P[i].distanceTo(P[i - 1]) / (r * 2.2)));
     for (let j = 0; j < m; j++) path.push(P[i - 1].clone().lerp(P[i], j / m));
   }
   path.push(P[P.length - 1]);
-  k.tube('metal', path, (t, i) => r * (0.82 + 0.32 * Math.abs(Math.sin(i * 1.7))), { ...(o.fin ?? { tint: 0x6a6662, rough: 1.2 }), radial: 6, caps: 'round', rust: o.rust ?? k.wear.rust * 1.5 });
+  k.tube('metal', path, (t, i) => r * (0.82 + 0.32 * Math.abs(Math.sin(i * 1.7))), { ...(o.fin ?? { tint: 0x6a6662, rough: 1.2 }), radial: 5, caps: true, rust: o.rust ?? k.wear.rust * 1.5 });
+}
+
+// C-channel along X: web in the XY plane at z, flanges of width b toward +Z (o.flip: toward -Z)
+export function channel(k, slot, L, h, b, t, x, y, z, o = NO) {
+  const s = polyShape([[0, -h / 2], [b, -h / 2], [b, -h / 2 + t], [t, -h / 2 + t], [t, h / 2 - t], [b, h / 2 - t], [b, h / 2], [0, h / 2]]);
+  const g = extrudeGeo(s, L, { bev: Math.min(0.0015, t * 0.3), bevSeg: 1, curveSeg: 2 });
+  g.rotY(-HP);
+  g.translate(L / 2, 0, 0);
+  if (o.flip) g.scale(1, 1, -1);
+  k.put(slot, g, x, y, z, o);
+}
+// cylinder / rod between two points (in the current frame)
+export function rod(k, slot, a, b, r, o = NO) {
+  const A = toV(a), B = toV(b), L = A.distanceTo(B);
+  const q = qUp(B.clone().sub(A));
+  const m = A.clone().add(B).multiplyScalar(0.5);
+  k.put(slot, cylGeo(r, L, { seg: o.seg ?? 10, r2: o.r2, bev: o.bev, bevSeg: o.bevSeg ?? 1, caps: o.caps }), m.x, m.y, m.z, { ...o, q });
 }
 
 export { CLEAR, txt };

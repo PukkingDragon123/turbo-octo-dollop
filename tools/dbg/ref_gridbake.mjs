@@ -1,0 +1,256 @@
+// Per-chunk light baking for the Level 0 cell grid (see the GRID path in src/gfx/bakedlight.js).
+// For every vertex: 2D wall transmission towards the 8 fixtures around its origin cell (Uint8), and the
+// pre-weighted contribution of the 12 fixtures in the next ring (Uint16, w / OUT_SCALE). Walls around the
+// chunk are copied once into a small typed-array grid so the DDA never touches the layout maps.
+// Also provides the packed edge / corner-post info used for analytic floor & ceiling AO, and corner AO
+// for wall faces.
+import * as THREE from 'three';
+import { CELL, CHUNK, HEIGHT, W, wallN, wallW, wallTransmission, cellInfo, getLayout, floorDiv } from '../../src/world/levels/yellow/layout.js';
+import { OUT_SCALE } from '../../src/gfx/bakedlight.js';
+
+const LY = HEIGHT - 0.04;   // fixture height
+const RADIUS = 9;
+export const IN_OFF = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+export const OUT_OFF = [[-2, -1], [-2, 0], [-2, 1], [2, -1], [2, 0], [2, 1], [-1, -2], [0, -2], [1, -2], [-1, 2], [0, 2], [1, 2]];
+const MARGIN = 4;
+
+// solid at the start (u = 0) / end (u = CELL) of an edge, for floors (f) and ceilings (c)
+const SOLID_START_F = [0, 1, 1, 1, 1, 0, 1, 1];
+const SOLID_END_F = [0, 1, 1, 1, 0, 1, 1, 1];
+const SOLID_START_C = [0, 1, 1, 1, 1, 0, 0, 1];
+const SOLID_END_C = [0, 1, 1, 1, 0, 1, 0, 1];
+
+export class GridBaker {
+  constructor(seed, variantFn, cx, cz) {
+    this.seed = seed;
+    this.variantFn = variantFn;
+    this.I0 = cx * CHUNK - MARGIN;
+    this.J0 = cz * CHUNK - MARGIN;
+    this.Wd = CHUNK + MARGIN * 2;
+    const n = this.Wd * this.Wd;
+    this.tN = new Float32Array(n);
+    this.tW = new Float32Array(n);
+    this.rN = new Uint8Array(n);
+    this.rW = new Uint8Array(n);
+    this.lit = new Uint8Array(n);
+    for (let lj = 0; lj < this.Wd; lj++) {
+      for (let li = 0; li < this.Wd; li++) {
+        const i = this.I0 + li, j = this.J0 + lj, k = lj * this.Wd + li;
+        const a = wallN(seed, i, j, variantFn), b = wallW(seed, i, j, variantFn);
+        this.rN[k] = a; this.rW[k] = b;
+        this.tN[k] = wallTransmission(a); this.tW[k] = wallTransmission(b);
+        this.lit[k] = cellInfo(seed, i, j, variantFn).light ? 1 : 0;
+      }
+    }
+    // pillars at cell corners (owned by the cell whose NW corner they sit on)
+    this.posts = new Map();
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const l = getLayout(seed, cx + dx, cz + dz, variantFn(cx + dx, cz + dz));
+      for (const p of l.pillars) this.posts.set(this._ck((cx + dx) * CHUNK + p.li, (cz + dz) * CHUNK + p.lj), p.size / 2);
+    }
+  }
+
+  _ck(i, j) { return (i + 32768) * 65536 + (j + 32768); }
+  _in(i, j) { const li = i - this.I0, lj = j - this.J0; return li >= 0 && lj >= 0 && li < this.Wd && lj < this.Wd ? lj * this.Wd + li : -1; }
+  edgeN(i, j) { const k = this._in(i, j); return k >= 0 ? this.rN[k] : wallN(this.seed, i, j, this.variantFn); }
+  edgeW(i, j) { const k = this._in(i, j); return k >= 0 ? this.rW[k] : wallW(this.seed, i, j, this.variantFn); }
+  isLit(i, j) { const k = this._in(i, j); return k >= 0 ? this.lit[k] === 1 : !!cellInfo(this.seed, i, j, this.variantFn).light; }
+
+  // 2D transmission from (x0, z0) to (x1, z1) across cell edges (DDA)
+  trans(x0, z0, x1, z1) {
+    let i = Math.floor(x0 / CELL), j = Math.floor(z0 / CELL);
+    const ie = Math.floor(x1 / CELL), je = Math.floor(z1 / CELL);
+    if (i === ie && j === je) return 1;
+    const dx = x1 - x0, dz = z1 - z0;
+    const sI = dx > 0 ? 1 : -1, sJ = dz > 0 ? 1 : -1;
+    const adx = Math.abs(dx), adz = Math.abs(dz);
+    const tDx = adx > 1e-9 ? CELL / adx : 1e9, tDz = adz > 1e-9 ? CELL / adz : 1e9;
+    let tMx = adx > 1e-9 ? (dx > 0 ? (i + 1) * CELL - x0 : x0 - i * CELL) / adx : 1e9;
+    let tMz = adz > 1e-9 ? (dz > 0 ? (j + 1) * CELL - z0 : z0 - j * CELL) / adz : 1e9;
+    let tr = 1;
+    const Wd = this.Wd, I0 = this.I0, J0 = this.J0;
+    for (let n = 0; n < 10 && (i !== ie || j !== je); n++) {
+      if (tMx < tMz) {
+        const wi = sI > 0 ? i + 1 : i;
+        const li = wi - I0, lj = j - J0;
+        tr *= li >= 0 && lj >= 0 && li < Wd && lj < Wd ? this.tW[lj * Wd + li] : wallTransmission(wallW(this.seed, wi, j, this.variantFn));
+        i += sI; tMx += tDx;
+      } else {
+        const wj = sJ > 0 ? j + 1 : j;
+        const li = i - I0, lj = wj - J0;
+        tr *= li >= 0 && lj >= 0 && li < Wd && lj < Wd ? this.tN[lj * Wd + li] : wallTransmission(wallN(this.seed, i, wj, this.variantFn));
+        j += sJ; tMz += tDz;
+      }
+      if (tr < 0.01) return 0;
+    }
+    return tr;
+  }
+
+  // transmissions (8 inner + 12 outer) from sample point (sx, sz) for origin cell (ci, cj) into out[o..o+20)
+  _transInto(sx, sz, ci, cj, out, o, litIn, litOut) {
+    for (let k = 0; k < 8; k++) {
+      out[o + k] = litIn[k] ? this.trans(sx, sz, (ci + IN_OFF[k][0] + 0.5) * CELL, (cj + IN_OFF[k][1] + 0.5) * CELL) : 0;
+    }
+    for (let k = 0; k < 12; k++) {
+      out[o + 8 + k] = litOut[k] ? this.trans(sx, sz, (ci + OUT_OFF[k][0] + 0.5) * CELL, (cj + OUT_OFF[k][1] + 0.5) * CELL) : 0;
+    }
+  }
+
+  // Bake a geometry built by EnvGeo (needs position, normal, aCell, aAO).
+  // opts: direct / bounce multipliers (match the material's mix), quant (>= 0.1: detail mesh, vertices in the
+  //       same bucket share the whole result), wallAO (corner occlusion for vertical faces)
+  bake(geo, opts = {}) {
+    const direct = opts.direct ?? 1, bounce = opts.bounce ?? 1;
+    const q = opts.quant ?? 0.02;
+    const pos = geo.attributes.position.array, nor = geo.attributes.normal.array, cell = geo.attributes.aCell.array;
+    const aoA = geo.attributes.aAO.array;
+    const n = pos.length / 3;
+    const Ta = new Uint8Array(n * 4), Tb = new Uint8Array(n * 4);
+    const Oa = new Uint16Array(n * 4), Ob = new Uint16Array(n * 4), Oc = new Uint16Array(n * 4);
+    const Os = [Oa, Ob, Oc];
+    const k16 = 65535 / OUT_SCALE;
+    const coarse = q >= 0.1;
+    const fullMaps = coarse ? new Array(256) : null;
+    const bx = this.I0 * CELL, bz = this.J0 * CELL;
+    // per origin-cell cache: which of the 20 surrounding cells have a fixture
+    const litIn = new Uint8Array(8), litOut = new Uint8Array(12);
+    let lci = NaN, lcj = NaN;
+    // small ring cache of recent sample points (wall columns, coincident vertices)
+    const RC = 32;
+    const rcX = new Float64Array(RC), rcZ = new Float64Array(RC), rcI = new Int32Array(RC), rcJ = new Int32Array(RC), rcT = new Float32Array(RC * 20);
+    let rcN = 0, rcHead = 0;
+    for (let v = 0; v < n; v++) {
+      const px = pos[v * 3], py = pos[v * 3 + 1], pz = pos[v * 3 + 2];
+      const nx = nor[v * 3], ny = nor[v * 3 + 1], nz = nor[v * 3 + 2];
+      const sx = px + nx * 0.05, sy = py + ny * 0.05, sz = pz + nz * 0.05;
+      const ci = cell[v * 2], cj = cell[v * 2 + 1];
+      if (ci !== lci || cj !== lcj) {
+        lci = ci; lcj = cj;
+        for (let k = 0; k < 8; k++) litIn[k] = this.isLit(ci + IN_OFF[k][0], cj + IN_OFF[k][1]) ? 1 : 0;
+        for (let k = 0; k < 12; k++) litOut[k] = this.isLit(ci + OUT_OFF[k][0], cj + OUT_OFF[k][1]) ? 1 : 0;
+      }
+      if (coarse) {
+        const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+        const nk = ay >= ax && ay >= az ? (ny > 0 ? 0 : 1) : ax >= az ? (nx > 0 ? 2 : 3) : (nz > 0 ? 4 : 5);
+        const cl = ((ci - this.I0) * 16 + (cj - this.J0)) & 255;
+        const lx = Math.min(511, Math.max(0, Math.round((sx - bx) / q))), lz = Math.min(511, Math.max(0, Math.round((sz - bz) / q)));
+        const ly = Math.min(63, Math.max(0, Math.round((sy + 0.5) / q)));
+        const key = ((lx * 512 + lz) * 64 + ly) * 8 + nk;
+        let fm = fullMaps[cl];
+        if (!fm) fm = fullMaps[cl] = new Map();
+        const src = fm.get(key);
+        if (src !== undefined) {
+          const a = v * 4, b = src * 4;
+          Ta[a] = Ta[b]; Ta[a + 1] = Ta[b + 1]; Ta[a + 2] = Ta[b + 2]; Ta[a + 3] = Ta[b + 3];
+          Tb[a] = Tb[b]; Tb[a + 1] = Tb[b + 1]; Tb[a + 2] = Tb[b + 2]; Tb[a + 3] = Tb[b + 3];
+          Oa[a] = Oa[b]; Oa[a + 1] = Oa[b + 1]; Oa[a + 2] = Oa[b + 2]; Oa[a + 3] = Oa[b + 3];
+          Ob[a] = Ob[b]; Ob[a + 1] = Ob[b + 1]; Ob[a + 2] = Ob[b + 2]; Ob[a + 3] = Ob[b + 3];
+          Oc[a] = Oc[b]; Oc[a + 1] = Oc[b + 1]; Oc[a + 2] = Oc[b + 2]; Oc[a + 3] = Oc[b + 3];
+          continue;
+        }
+        fm.set(key, v);
+      }
+      // transmissions: ring cache by exact sample point
+      let slot = -1;
+      for (let r = 0; r < rcN; r++) {
+        if (rcX[r] === sx && rcZ[r] === sz && rcI[r] === ci && rcJ[r] === cj) { slot = r; break; }
+      }
+      if (slot < 0) {
+        slot = rcHead;
+        rcHead = (rcHead + 1) % RC;
+        if (rcN < RC) rcN++;
+        rcX[slot] = sx; rcZ[slot] = sz; rcI[slot] = ci; rcJ[slot] = cj;
+        this._transInto(sx, sz, ci, cj, rcT, slot * 20, litIn, litOut);
+      }
+      const o = slot * 20;
+      const a = v * 4;
+      Ta[a] = rcT[o] * 255 + 0.5; Ta[a + 1] = rcT[o + 1] * 255 + 0.5; Ta[a + 2] = rcT[o + 2] * 255 + 0.5; Ta[a + 3] = rcT[o + 3] * 255 + 0.5;
+      Tb[a] = rcT[o + 4] * 255 + 0.5; Tb[a + 1] = rcT[o + 5] * 255 + 0.5; Tb[a + 2] = rcT[o + 6] * 255 + 0.5; Tb[a + 3] = rcT[o + 7] * 255 + 0.5;
+      for (let k = 0; k < 12; k++) {
+        let w = 0;
+        if (litOut[k]) {
+          const t = rcT[o + 8 + k];
+          const lx = (ci + OUT_OFF[k][0] + 0.5) * CELL, lz = (cj + OUT_OFF[k][1] + 0.5) * CELL;
+          const dx = lx - sx, dy = LY - sy, dz = lz - sz;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 < RADIUS * RADIUS) {
+            const d = Math.sqrt(d2);
+            const e2 = d2 / (RADIUS * RADIUS);
+            const fall = (1 - e2 * e2) / (1 + 0.16 * d2);
+            const id = 1 / Math.max(d, 1e-3);
+            const ndl = Math.max(0, (dx * nx + dy * ny + dz * nz) * id);
+            const emit = Math.max(0.12, Math.min(1, dy * id * 1.2 + 0.15));
+            w = fall * (ndl * emit * t * direct + 0.5 * (0.35 + 0.65 * t) * bounce);
+          }
+        }
+        const val = w * k16 + 0.5;
+        Os[k >> 2][a + (k & 3)] = val > 65535 ? 65535 : val;
+      }
+      if (opts.wallAO && Math.abs(ny) < 0.5) aoA[v] *= this.wallCornerAO(px, py, pz, nx, nz, ci, cj);
+    }
+    geo.setAttribute('aTa', new THREE.BufferAttribute(Ta, 4, true));
+    geo.setAttribute('aTb', new THREE.BufferAttribute(Tb, 4, true));
+    geo.setAttribute('aOa', new THREE.BufferAttribute(Oa, 4, true));
+    geo.setAttribute('aOb', new THREE.BufferAttribute(Ob, 4, true));
+    geo.setAttribute('aOc', new THREE.BufferAttribute(Oc, 4, true));
+    geo.attributes.aAO.needsUpdate = true;
+    return geo;
+  }
+
+  // inside-corner occlusion on a vertical face: perpendicular walls meeting this face within the origin cell
+  wallCornerAO(px, py, pz, nx, nz, ci, cj) {
+    const x0 = ci * CELL, z0 = cj * CELL;
+    let d = 9;
+    if (Math.abs(nz) >= Math.abs(nx)) {
+      // face runs along x; perpendicular walls are the W edges of (ci, cj) and (ci + 1, cj)
+      const north = nz > 0; // face sits on the north side of its cell
+      for (const [ei, fx] of [[ci, x0 + 0.08], [ci + 1, x0 + CELL - 0.08]]) {
+        const t = this.edgeW(ei, cj);
+        if (!t) continue;
+        const touches = north ? SOLID_START_F[t] : SOLID_END_F[t];
+        if (!touches || (t === W.LOW && py > 1.05)) continue;
+        d = Math.min(d, Math.abs(px - fx));
+      }
+    } else {
+      const west = nx > 0;
+      for (const [ej, fz] of [[cj, z0 + 0.08], [cj + 1, z0 + CELL - 0.08]]) {
+        const t = this.edgeN(ci, ej);
+        if (!t) continue;
+        const touches = west ? SOLID_START_F[t] : SOLID_END_F[t];
+        if (!touches || (t === W.LOW && py > 1.05)) continue;
+        d = Math.min(d, Math.abs(pz - fz));
+      }
+    }
+    if (d >= 0.9) return 1;
+    const a = 1 - smooth(0, 0.55, d);
+    return 1 - a * a * 0.38;
+  }
+
+  // packed edge types (N, E, S, W) and corner-post half sizes (NW, NE, SE, SW) for analytic plane AO
+  edgeInfo(i, j, ceiling = false) {
+    const eN = this.edgeN(i, j), eS = this.edgeN(i, j + 1), eW = this.edgeW(i, j), eE = this.edgeW(i + 1, j);
+    const packed = eN + 8 * eE + 64 * eS + 512 * eW;
+    const S0 = ceiling ? SOLID_START_C : SOLID_START_F, S1 = ceiling ? SOLID_END_C : SOLID_END_F;
+    const post = (ci, cj, outsideA, aEnd, outsideB, bEnd) => {
+      // pillar at this corner, or a wall arriving from a neighbouring cell
+      let s = this.posts.get(this._ck(ci, cj)) || 0;
+      const ta = outsideA, tb = outsideB;
+      if (ta && (aEnd ? S1[ta] : S0[ta])) s = Math.max(s, 0.1);
+      if (tb && (bEnd ? S1[tb] : S0[tb])) s = Math.max(s, 0.1);
+      return Math.min(15, Math.round(s / 0.05));
+    };
+    // NW corner (i, j): N edge of (i-1, j) [ends here], W edge of (i, j-1) [ends here]
+    const pNW = post(i, j, this.edgeN(i - 1, j), true, this.edgeW(i, j - 1), true);
+    // NE corner (i+1, j): N edge of (i+1, j) [starts here], W edge of (i+1, j-1) [ends here]
+    const pNE = post(i + 1, j, this.edgeN(i + 1, j), false, this.edgeW(i + 1, j - 1), true);
+    // SE corner (i+1, j+1): N edge of (i+1, j+1) [starts], W edge of (i+1, j+1) [starts]
+    const pSE = post(i + 1, j + 1, this.edgeN(i + 1, j + 1), false, this.edgeW(i + 1, j + 1), false);
+    // SW corner (i, j+1): N edge of (i-1, j+1) [ends], W edge of (i, j+1) [starts]
+    const pSW = post(i, j + 1, this.edgeN(i - 1, j + 1), true, this.edgeW(i, j + 1), false);
+    return [packed, pNW + 16 * pNE + 256 * pSE + 4096 * pSW];
+  }
+}
+
+function smooth(a, b, x) { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+
+export { floorDiv };

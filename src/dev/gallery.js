@@ -163,17 +163,51 @@ async function listModels() {
     return (H.HEALTHITY_FACES || ['happy']).slice(0, 8).map((f) => { const m = H.buildHealthity(); m.setFace?.(f); return { key: f, build: () => m.root, update: (dt) => m.update?.(dt) }; });
   }
   if (set === 'bacteria') {
+    // &state=idle|wander|listen|investigate|stalk|chase|attack|smash|retreat|flee|stunned
+    // &speed=m/s &walk=1 (root moves) &frames=N&fdt=0.2 (time strip) &yaws=0,1.57,3.14 (turntable)
+    // &t=secs pre-roll &int=0..1 intensity &frozen=1 &look=0 (no look target) &dissolve=0..1 &seed=3
     const B = await import('../entities/monsters/bacteria_body.js');
-    const scene = new THREE.Scene();
-    const body = new B.BacteriaBody(scene, { seed: 3 });
-    return [{ key: 'bacteria', build: () => body.root || body.group || scene, update: (dt) => body.update?.(dt, {}) }];
+    const st = P.get('state') || 'idle', speed = +(P.get('speed') || 0), walk = !!P.get('walk');
+    const frames = +(P.get('frames') || 0), fdt = +(P.get('fdt') || 0.2), seed = +(P.get('seed') || 3);
+    const inten = P.get('int') != null ? +P.get('int') : st === 'chase' ? 1 : st === 'stalk' ? 0.6 : 0.4;
+    let cells = frames ? Array.from({ length: frames }, (_, i) => ({ off: i * fdt })) : [{ off: 0 }];
+    if (P.get('yaws')) { const ys = P.get('yaws').split(',').map(Number); cells = cells.flatMap((c) => ys.map((y) => ({ ...c, yaw: y }))); }
+    // &bones=head:2.8,handR:0.4 : one close-up cell per bone[:yaw]
+    if (P.get('bones')) cells = P.get('bones').split(',').map((b) => { const [bn, y] = b.split(':'); return { off: 0, yaw: y != null ? +y : undefined, bone: bn }; });
+    return cells.map(({ off, yaw: cyaw, bone: cbone }) => {
+      const t0 = performance.now();
+      const body = new B.BacteriaBody(seed);
+      console.log('bacteria build', (performance.now() - t0).toFixed(0) + 'ms', JSON.stringify(window.__bacStats || {}));
+      if (P.get('dissolve')) body.setDissolve(+P.get('dissolve'));
+      const root = body.root;
+      const vel = new THREE.Vector3(), look = new THREE.Vector3();
+      let tt = 0;
+      const upd = (dt, cam) => {
+        tt += dt;
+        if (walk && speed > 0) root.position.z -= speed * dt;
+        vel.set(0, 0, walk ? -speed : 0);
+        let atk = 0;
+        if (st === 'attack') atk = Math.min(1, (tt % 1.6) / 0.75);
+        else if (st === 'smash') atk = 0.6 * (Math.floor(tt / 0.9) % 2) + 0.01 * Math.floor(tt / 0.9);
+        if (cam) look.copy(cam.position); else look.set(0, 1.4, -4);
+        body.update(dt, { velocity: vel, state: st, lookTarget: P.get('look') === '0' ? null : look, attackT: atk, ceilingY: 2.9, intensity: inten, frozen: !!P.get('frozen') });
+      };
+      const pre = +(P.get('t') || 0) + off;
+      // &bone=head|handR|footL|sp3...&fr=0.3 : frame a close-up around one bone of the posed body
+      const bone = cbone || P.get('bone'), fr = +(P.get('fr') || 0.3);
+      const box = () => {
+        if (bone && body.id[bone] != null) { const c = body.bPos[body.id[bone]]; return new THREE.Box3(c.clone().addScalar(-fr), c.clone().addScalar(fr)); }
+        return new THREE.Box3(new THREE.Vector3(-0.95, 0, -0.95).add(root.position), new THREE.Vector3(0.95, 2.75, 0.95).add(root.position));
+      };
+      return { key: `${st}${bone ? ' ' + bone : ''}${frames ? ' t=' + pre.toFixed(2) : ''}${cyaw != null ? ' y=' + cyaw : ''}`, build: () => root, update: (dt, t, cam) => upd(dt, cam), pre: pre || 1 / 30, follow: walk, yaw: cyaw, box, floorY: 0 };
+    });
   }
   return [];
 }
 
-function frame(obj, cam, aspect, yawOverride = null) {
+function frame(obj, cam, aspect, yawOverride = null, boxFn = null) {
   const yaw = yawOverride ?? yaw0;
-  const box = new THREE.Box3().setFromObject(obj);
+  const box = boxFn ? boxFn() : new THREE.Box3().setFromObject(obj);
   const c = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
   let r = Math.max(0.05, size.length() / 2);
@@ -220,16 +254,16 @@ async function main() {
     const cam = new THREE.PerspectiveCamera(32, cw / ch, 0.01, 100);
     if (it.pre) {
       // pre-roll the animation (camera placed first so lookTarget is meaningful)
-      frame(obj, cam, cw / ch, it.yaw);
+      frame(obj, cam, cw / ch, it.yaw, it.box);
       for (let k = 0, n = Math.round(it.pre * 30); k < n; k++) { it.update(1 / 30, 0, cam); obj.updateMatrixWorld(true); }
-    } else if (it.update) { frame(obj, cam, cw / ch, it.yaw); it.update(1 / 30, 0, cam); }
+    } else if (it.update) { frame(obj, cam, cw / ch, it.yaw, it.box); it.update(1 / 30, 0, cam); }
     obj.updateMatrixWorld(true);
-    const f = frame(obj, cam, cw / ch, it.yaw);
+    const f = frame(obj, cam, cw / ch, it.yaw, it.box);
     it.camOff = cam.position.clone().sub(obj.position);
     // floor + shadows
     const floor = new THREE.Mesh(new THREE.CircleGeometry(f.r * 4, 48), new THREE.MeshStandardMaterial({ color: 0x55565c, roughness: 0.9 }));
     floor.rotation.x = -Math.PI / 2;
-    floor.position.y = f.box.min.y - 0.001;
+    floor.position.y = (it.floorY ?? f.box.min.y) - 0.001;
     floor.receiveShadow = true;
     scene.add(floor);
     key.position.copy(f.c).add(new THREE.Vector3(f.r * 2.2, f.r * 3.2, f.r * 2.6));

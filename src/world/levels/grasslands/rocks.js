@@ -283,7 +283,8 @@ export class RockSystem {
         const d = Math.hypot(r.x - cam.x, r.z - cam.z);
         if (d > R) continue;
         const lod = d < (r.kind === 'b' ? LOD_D : LOD_C) ? 0 : 1;
-        if (r.kind === 'b' && lod === 1 && r.sx < 0.5 && d > 90) continue;
+        // small boulders vanish into the grass and forest long before the fog does
+        if (r.kind === 'b' && lod === 1 && ((r.sx < 0.5 && d > 70) || (r.sx < 0.75 && d > 140))) continue;
         const meshes = r.kind === 'b' ? this.bMesh[r.v] : this.cMesh[r.v];
         const cnt = r.kind === 'b' ? counts.b[r.v] : counts.c[r.v];
         if (cnt[lod] >= meshes[lod].instanceMatrix.count) continue;

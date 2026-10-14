@@ -287,7 +287,14 @@ export class LobbyLevel {
     // sealed elevator bank on the south wall (local +z faces the room): brushed stainless frame with
     // chamfered jambs, two door leaves, a grooved sill, the floor indicator and a call station
     const g = new THREE.Group();
-    const steel = Mat.get('stainless');
+    // own brushed-steel instance: it gets a local reflection probe of the reception once the room is lit
+    // (see update); metal ignores the diffuse light probe, so it is left out of the probe swap
+    const steel = Mat.get('stainless').clone();
+    steel.name = 'elevator_steel';
+    steel.color.set(0xe6e9ec);
+    steel.roughness = 0.5;
+    steel.userData = { ...steel.userData, noProbe: true };
+    this.elevatorSteel = steel;
     const meshOf = (eg, mat) => { const geo = eg.build(); for (const k of ['aCell', 'aAO', 'aRoom']) geo.deleteAttribute(k); const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; g.add(m); return m; };
     const shaft = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 2.3), Mat.get('plastic_black'));
     shaft.position.set(0, 1.15, -0.07);
@@ -485,6 +492,14 @@ export class LobbyLevel {
   update(dt) {
     this.time += dt;
     const t = this.time;
+    // one-off reflection probe for the elevator steel, captured once the lit room has rendered a few frames
+    this._frames = (this._frames || 0) + 1;
+    if (this.elevatorSteel && !this._elevEnv && this._frames > 3) {
+      this._elevEnv = engine.captureEnvironment(new THREE.Vector3(0, 1.5, 13.6), 0.1, 40);
+      this.elevatorSteel.envMap = this._elevEnv;
+      this.elevatorSteel.envMapIntensity = 1.0;
+      this.elevatorSteel.needsUpdate = true;
+    }
     // muzak gets slightly warbly over time (uncanny)
     this.muzak?.setParam('warble', Math.min(0.6, t / 600));
     // receptionist: watches you, but only moves when nobody looks
@@ -596,6 +611,8 @@ export class LobbyLevel {
   onImpact() {}
 
   dispose() {
+    this._elevEnv?.dispose();
+    this._elevEnv = null;
     this.amb?.stop(0.5);
     this.muzak?.stop(0.5);
     this.muzak2?.stop(0.5);

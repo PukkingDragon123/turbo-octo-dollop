@@ -131,7 +131,7 @@ function colorChunk(mode) {
 ${mode === 0 ? `
   vec4 orm = texture2D(roughnessMap, vRoughnessMapUv);
   float wa = vDW.x;
-  float th = 1.0 - wa * 0.58;
+  float th = 0.86 - wa * 0.36;
   float on = step(0.01, wa);
   float chip = smoothstep(th - 0.012, th + 0.012, orm.r) * on;
   float primer = smoothstep(th - 0.085, th - 0.018, orm.r) * (1.0 - chip) * on;
@@ -179,7 +179,7 @@ ${mode === 0 ? `
   col = mix(col, dirty, dvGrime);
   col *= mix(1.0, vDF.r, uDVA.w);
   float dn = dvN(P * 17.0) * 0.6 + dvN(P * 63.0 + 5.0) * 0.4;
-  dvDust = vDF.a * smoothstep(0.3, 0.74, dn) * (0.35 + 0.65 * vDF.r);
+  dvDust = vDF.a * (0.3 + 0.5 * smoothstep(0.28, 0.8, dn)) * (0.35 + 0.65 * vDF.r);
   col = mix(col, uDVDust, dvDust);
   diffuseColor.rgb = col;
 }

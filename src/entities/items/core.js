@@ -263,19 +263,37 @@ export function sheetGeo(nu, nv, f, o = {}) {
   return g;
 }
 
-// Superellipse sweep ("loft") along Z: sec(v) -> { x, y, z, w, h, n?, n2? } (section centre, half extents,
-// exponent; n2 = exponent for the lower half). u runs around starting at the bottom (-Y), through +X, top, -X.
-// Ends close smoothly when w, h -> 0. Normals are welded across the seam.
-export function loftGeo(nu, nv, sec, o = {}) {
-  return sheetGeo(nu, nv, (u, v) => {
-    const s = sec(v);
-    const a = u * TAU - PI / 2;
+// Superellipse section with ARC-LENGTH parametrisation: returns f(u) -> [x, y], u in [0, 1] starting at the
+// bottom (-Y) going through +X, top, -X (so printed panels map evenly onto flat faces and corners).
+export function superSection(w, h, n = 3, n2 = null, N = 96) {
+  const P = [], S = [0];
+  for (let i = 0; i <= N; i++) {
+    const a = (i / N) * TAU - PI / 2;
     const ca = Math.cos(a), sa = Math.sin(a);
-    const n = sa < 0 && s.n2 ? s.n2 : (s.n ?? 3);
-    const e = 2 / n;
-    const x = Math.sign(ca) * Math.pow(Math.abs(ca), e) * s.w;
-    const y = Math.sign(sa) * Math.pow(Math.abs(sa), e) * s.h;
-    return [s.x + x, s.y + y, s.z];
+    const nn = sa < 0 && n2 ? n2 : n;
+    const e = 2 / nn;
+    P.push([Math.sign(ca) * Math.pow(Math.abs(ca), e) * w, Math.sign(sa) * Math.pow(Math.abs(sa), e) * h]);
+    if (i) S.push(S[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+  }
+  const L = S[N] || 1;
+  return (u) => {
+    const s = clamp(u, 0, 1) * L;
+    let lo = 0, hi = N;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S[m] <= s) lo = m; else hi = m; }
+    const f = (s - S[lo]) / Math.max(1e-12, S[hi] - S[lo]);
+    return [P[lo][0] + (P[hi][0] - P[lo][0]) * f, P[lo][1] + (P[hi][1] - P[lo][1]) * f];
+  };
+}
+
+// Superellipse sweep ("loft") along Z: sec(v) -> { x, y, z, w, h, n?, n2? } (section centre, half extents,
+// exponent; n2 = exponent for the lower half). u runs around (arc length) from the bottom (-Y), through +X,
+// top, -X. Ends close smoothly when w, h -> 0. Normals are welded across the seam.
+export function loftGeo(nu, nv, sec, o = {}) {
+  let rowV = -1, rowS = null, rowF = null;
+  return sheetGeo(nu, nv, (u, v) => {
+    if (v !== rowV) { rowV = v; rowS = sec(v); rowF = superSection(Math.max(rowS.w, 1e-6), Math.max(rowS.h, 1e-6), rowS.n ?? 3, rowS.n2); }
+    const [x, y] = rowF(u);
+    return [rowS.x + x, rowS.y + y, rowS.z];
   }, { metric: true, dm: o.dm, wrapU: true, poles: o.poles, flip: o.flip });
 }
 // rounded end factor for lofts: 0 at the very end -> 1 after `len` (circular profile)
@@ -465,7 +483,19 @@ export class Kit {
     if (o.deform) {
       const pos = g.attributes.position, v = V3();
       for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i); o.deform(v, i); pos.setXYZ(i, v.x, v.y, v.z); }
-      if (g.index) g.computeVertexNormals();
+      if (g.index) {
+        g.computeVertexNormals();
+        const L = g.userData.lathe;
+        if (L) { // weld the lathe seam normals again
+          const na = g.attributes.normal;
+          for (let j = 0; j < L.n; j++) {
+            const a = j, b = L.seg * L.n + j;
+            const x = na.getX(a) + na.getX(b), y = na.getY(a) + na.getY(b), z = na.getZ(a) + na.getZ(b);
+            const l = Math.hypot(x, y, z) || 1;
+            na.setXYZ(a, x / l, y / l, z / l); na.setXYZ(b, x / l, y / l, z / l);
+          }
+        }
+      }
     }
     if (g.index) g = g.toNonIndexed();
     for (const k of Object.keys(g.attributes)) if (!KEEP.has(k)) g.deleteAttribute(k);
@@ -524,14 +554,18 @@ export class Kit {
     g.applyMatrix4(M);
     // detail uv1 (tiles): keep generator-provided coordinates, else box-project in item space
     const dm = o.dm ?? mat.userData?.dm ?? 0.02;
-    if (!g.attributes.uv1 || o.d === 'box') {
+    if (!g.attributes.uv1 || o.d === 'box' || o.dU) {
+      // box projection in item space; dU ('x' | 'y' | 'z') forces that axis onto U (grain direction)
       const uv1 = new Float32Array(n * 2);
+      const ax = o.dU === 'x' ? 0 : o.dU === 'y' ? 1 : o.dU === 'z' ? 2 : -1;
       for (let i = 0; i < n; i++) {
         const nx = Math.abs(nrm.getX(i)), ny = Math.abs(nrm.getY(i)), nz = Math.abs(nrm.getZ(i));
-        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        const P3 = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+        const dom = nx >= ny && nx >= nz ? 0 : ny >= nz ? 1 : 2;
         let a, b;
-        if (nx >= ny && nx >= nz) { a = z; b = y; } else if (ny >= nz) { a = x; b = z; } else { a = x; b = y; }
-        uv1[i * 2] = a / dm; uv1[i * 2 + 1] = b / dm;
+        if (ax >= 0 && ax !== dom) { a = P3[ax]; b = P3[3 - ax - dom]; }
+        else if (dom === 0) { a = P3[2]; b = P3[1]; } else if (dom === 1) { a = P3[0]; b = P3[2]; } else { a = P3[0]; b = P3[1]; }
+        uv1[i * 2] = (a + (o.dOff || 0)) / dm; uv1[i * 2 + 1] = (b + (o.dOff || 0) * 0.37) / dm;
       }
       g.setAttribute('uv1', new THREE.BufferAttribute(uv1, 2));
     } else if (o.dm && geo.attributes.uv1 && o.dmScale) {

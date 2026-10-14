@@ -46,7 +46,7 @@ export class Baker {
     return geo;
   }
 
-  // mode: 'full' | 'fast'; yields every ~1200 vertices so chunk builds can be time-sliced
+  // mode: 'full' | 'fast'; yields every 256 vertices so chunk builds can be time-sliced finely
   *bakeIter(geo, opts = {}) {
     const ctx = this.ctx;
     const fast = opts.mode === 'fast';
@@ -61,7 +61,7 @@ export class Baker {
     const topK = [0, 0, 0, 0], topW = [0, 0, 0, 0];
     const aoC = new Map();
     for (let i = 0; i < count; i++) {
-      if ((i & 1023) === 1023) yield 'bake';
+      if ((i & 255) === 255) yield 'bake';
       _p.fromBufferAttribute(pos, i);
       _n.fromBufferAttribute(nor, i);
       const sx = _p.x + _n.x * 0.05, sy = _p.y + _n.y * 0.05, sz = _p.z + _n.z * 0.05;

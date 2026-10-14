@@ -26,7 +26,7 @@ export function b_fuse_box(o) {
   for (const sx of [-1, 1]) k.box('paint', 0.003, H, dd, sx * (W / 2 - 0.0015), 0, dd / 2, { ...body, r: 0.0013, div: 0.08, dent: 0.0008 });
   for (const sy of [-1, 1]) k.box('paint', W - 0.004, 0.003, dd, 0, sy * (H / 2 - 0.0015), dd / 2, { ...body, r: 0.0013 });
   // front return flange around the opening
-  k.ext('paint', frameShape(W, H, 0.004, W - 0.026, H - 0.026, 0.003), 0.003, 0, 0, dd - 0.003, { ...body, bev: 0.001 });
+  k.ext('paint', frameShape(W, H, 0.004, W - 0.026, H - 0.026, 0.003), 0.003, 0, 0, dd - 0.003, { ...body, bev: 0.001, bevSeg: 1, curveSeg: 3 });
   // interior: galvanised mounting plate, DIN rails, breakers, bus bar, wiring
   k.box('metal', W - 0.034, H - 0.034, 0.002, 0, 0, 0.012, { ...FIN.zinc, r: 0.001, rust: 0.05 });
   P.cornerScrews(k, W - 0.034, H - 0.034, 0, 0, 0.013, 0.012, { r: 0.003 });
@@ -38,10 +38,10 @@ export function b_fuse_box(o) {
     k.box('metal', 0.09, 0.3, 0.004, x, 0.02, 0.016, { ...FIN.zinc, r: 0.0008, wear: 0 });
     for (let r = 0; r < 6; r++) {
       const y = 0.13 - r * 0.045;
-      k.box('#1e1e20:p', 0.072, 0.038, 0.024, x, y, 0.03, { r: 0.0015, wear: 0 });
-      k.box('#e9e4d6', 0.03, 0.006, 0.0006, x - 0.02, y + 0.013, 0.0423, { r: 0, wear: 0 });
+      k.box('#1e1e20:p', 0.072, 0.038, 0.024, x, y, 0.03, { r: 0, wear: 0, skip: { nz: true } });
+      k.box('#e9e4d6', 0.03, 0.006, 0.0006, x - 0.02, y + 0.013, 0.0423, { r: 0, wear: 0, skip: { nz: true } });
       const ry = (r === 3 && col === 1) ? -0.5 : 0.5;
-      k.box('#d8d2c2:s', 0.016, 0.012, 0.016, x + 0.012, y, 0.042 + 0.007, { r: 0.0015, wear: 0, rot: [0, ry, 0] });
+      k.box('#d8d2c2:s', 0.016, 0.012, 0.016, x + 0.012, y, 0.042 + 0.007, { r: 0, wear: 0, rot: [0, ry, 0], skip: { nz: true } });
       const t = k.grp(x + 0.012, y, 0.042, { name: `breaker_${col * 6 + r}` });
       t.rotation.y = ry;
       k.parts.breakers.push(t);
@@ -125,8 +125,8 @@ export function b_fuse_box(o) {
   for (const y of [-0.15, 0.15]) P.hingeHalf(k, -W / 2, y, D + 0.008, 0.06, { part: 0 });
   // conduits up to the ceiling with locknut fittings + straps
   for (const x of [-0.1, 0.0, 0.1]) {
-    k.cyl('metal', 0.016, 0.014, x, H / 2 + 0.007, 0.05, { ...FIN.zinc, seg: 6, bev: 0.002 });
-    k.cyl('metal', 0.0135, 0.012, x, H / 2 + 0.02, 0.05, { ...FIN.zinc, seg: 14, bev: 0.002 });
+    k.cyl('metal', 0.016, 0.014, x, H / 2 + 0.007, 0.05, { ...FIN.zinc, seg: 6, bev: 0.0012, bevSeg: 1 });
+    k.cyl('metal', 0.0135, 0.012, x, H / 2 + 0.02, 0.05, { ...FIN.zinc, seg: 12, bev: 0.0015, bevSeg: 1 });
     P.conduit(k, [x, H / 2 + 0.026, 0.05], [x, H / 2 + 0.62, 0.05], 0.0115, { couplings: 0 });
     // stand-off clamp to the wall
     k.box('metal', 0.022, 0.026, 0.038, x, H / 2 + 0.36, 0.019, { ...FIN.zinc, r: 0.002 });

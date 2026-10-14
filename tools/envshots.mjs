@@ -42,15 +42,28 @@ const stats = async (label) => {
   const s = await ev(() => {
     const r = __engine.renderer, lv = __game.world.level;
     const chunks = lv.chunks ? [...lv.chunks.values()] : [];
-    let tris = 0, draws = 0, verts = 0;
+    let tris = 0, draws = 0, verts = 0, envDraws = 0, envTris = 0;
+    const envMats = new Set();
     for (const rec of chunks) {
       rec.group.traverse((o) => {
         if (!o.isMesh || !o.geometry) return;
         const g = o.geometry; const n = g.index ? g.index.count / 3 : g.attributes.position.count / 3;
         const inst = o.isInstancedMesh ? o.count : 1;
         tris += n * inst; draws += 1; verts += g.attributes.position.count;
+        if (o.parent === rec.group) { envDraws++; envTris += n * inst; envMats.add(o.material); }
       });
     }
+    if (lv.shell) lv.shell.traverse?.((o) => { if (o.isMesh) envMats.add(o.material); });
+    const texOf = (mats) => {
+      const seen = new Set(); let t = 0;
+      for (const m of mats) for (const k of ['map', 'normalMap', 'roughnessMap', 'aoMap', 'metalnessMap', 'emissiveMap', 'alphaMap']) {
+        const x = m?.[k]; if (!x || !x.image) continue;
+        const img = x.source?.data || x.image; if (seen.has(img)) continue; seen.add(img);
+        t += (img.width || 0) * (img.height || 0) * 4 * 1.333;
+      }
+      return t;
+    };
+    const texWorld = texOf(envMats);
     // texture memory estimate (unique images)
     const seen = new Set(); let tex = 0;
     __engine.scene.traverse((o) => {
@@ -63,6 +76,7 @@ const stats = async (label) => {
     });
     return { buildMs: +(lv.buildMs || 0).toFixed(1), chunkBuilds: lv._buildTimes ? lv._buildTimes.slice(-12) : null, chunks: chunks.length,
       perChunkDraws: chunks.length ? +(draws / chunks.length).toFixed(1) : 0, perChunkTris: chunks.length ? Math.round(tris / chunks.length) : 0,
+      envDrawsPerChunk: chunks.length ? +(envDraws / chunks.length).toFixed(1) : 0, envTrisPerChunk: chunks.length ? Math.round(envTris / chunks.length) : 0, texMBWorld: +(texWorld / 1048576).toFixed(1),
       frameCalls: r.info.render.calls, frameTris: r.info.render.triangles, texMB: +(tex / 1048576).toFixed(1), gpuTextures: r.info.memory.textures, geometries: r.info.memory.geometries, programs: r.info.programs?.length };
   });
   console.log('[stats]', label, JSON.stringify(s));

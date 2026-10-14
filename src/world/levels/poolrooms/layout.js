@@ -533,6 +533,12 @@ function placeDetails(layout, rng, seed) {
       layout.drains.push({ li: c.li, lj: c.lj, x: c.li * CELL + 0.6 + hash01(c.i, c.j, 72, seed) * 1.8, z: c.lj * CELL + 0.6 + hash01(c.i, c.j, 73, seed) * 1.8 });
     }
   }
+  // machine rooms drain through a floor grate (a critter exit) in their far corner cell
+  for (const room of layout.specials) {
+    if (room.kind !== 'pump_room' && room.kind !== 'workshop') continue;
+    const li = room.rx + room.w - 1, lj = room.rz + room.h - 1;
+    layout.drains.push({ li, lj, x: li * CELL + 1.0, z: lj * CELL + 1.0 });
+  }
   // porthole windows (glowing, recessed) on full walls
   for (let lj = 0; lj < N; lj++) for (let li = 0; li < N; li++) {
     const c = cells[lj * N + li];

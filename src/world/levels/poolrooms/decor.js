@@ -98,10 +98,18 @@ export function pipeRun(B, x0, z0, x1, z1, n, yBase = 2.15) {
   const runs = [[yBase, 0.075, Pp], [yBase + 0.26, 0.055, C], [yBase - 0.3, 0.045, Pp]];
   const dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz);
   const ux = dx / len, uz = dz / len;
+  const flangeQ = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), V(n[0], 0, n[1]));
   for (const [y, r, M] of runs) {
     const o = off + r;
     const a = V(x0 + n[0] * o, y, z0 + n[1] * o), b = V(x1 + n[0] * o, y, z1 + n[1] * o);
-    M.tube([a, b], r, 14, true);
+    M.tube([a, b], r, 14, false);
+    // both ends turn through an elbow back into the wall, with a wall flange
+    for (const e of [a, b]) {
+      const w = V(e.x - n[0] * (o - 0.01), y, e.z - n[1] * (o - 0.01));
+      M.tube([e, w], r, 14, false);
+      M.lathe([[0.0, -r], [r * 0.72, -r * 0.7], [r * 1.02, 0.0], [r * 0.72, r * 0.7], [0.0, r]], 14, new THREE.Matrix4().compose(e, flangeQ, new THREE.Vector3(1, 1, 1)));
+      C.lathe([[r * 1.05, 0.0], [r * 1.9, 0.0], [r * 1.9, 0.018], [r * 1.05, 0.03]], 16, new THREE.Matrix4().compose(V(e.x - n[0] * (o - 0.012), y, e.z - n[1] * (o - 0.012)), flangeQ, new THREE.Vector3(1, 1, 1)));
+    }
     // flanges & brackets every ~1.5 m
     for (let s = 0.6; s < len - 0.3; s += 1.5) {
       const c = V(x0 + ux * s + n[0] * o, y, z0 + uz * s + n[1] * o);
@@ -109,6 +117,7 @@ export function pipeRun(B, x0, z0, x1, z1, n, yBase = 2.15) {
       C.box(V(Math.min(c.x, c.x - n[0] * o) - 0.015, y - 0.015, Math.min(c.z, c.z - n[1] * o) - 0.015), V(Math.max(c.x, c.x - n[0] * o) + 0.015, y + 0.015, Math.max(c.z, c.z - n[1] * o) + 0.015));
     }
   }
+  if (len < 1.2) return;
   // valve wheel on the big pipe
   const vs = len * 0.35;
   const vc = V(x0 + ux * vs + n[0] * (off + 0.075), yBase + 0.12, z0 + uz * vs + n[1] * (off + 0.075));
@@ -119,11 +128,61 @@ export function pipeRun(B, x0, z0, x1, z1, n, yBase = 2.15) {
   // pressure gauge
   const gc = V(x0 + ux * len * 0.7 + n[0] * (off + 0.075), yBase + 0.14, z0 + uz * len * 0.7 + n[1] * (off + 0.075));
   C.tube([V(gc.x, yBase, gc.z), gc], 0.012, 8, true);
-  const gq = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), V(n[0], 0, n[1]));
-  C.lathe([[0.0, -0.02], [0.06, -0.02], [0.065, 0.0], [0.06, 0.02], [0.0, 0.022]], 18, new THREE.Matrix4().compose(V(gc.x, gc.y + 0.06, gc.z), gq, new THREE.Vector3(1, 1, 1)));
+  C.lathe([[0.0, -0.02], [0.06, -0.02], [0.065, 0.0], [0.06, 0.02], [0.0, 0.022]], 18, new THREE.Matrix4().compose(V(gc.x, gc.y + 0.06, gc.z), flangeQ, new THREE.Vector3(1, 1, 1)));
 }
 
-// blue fibreglass sand-filter tank with domed ends, legs and a multiport valve
+// Circulation pump on a skid (shaft along x): finned blue motor, coupling guard, red volute,
+// suction dropping into a floor sump and a gate-valved riser feeding the wall main at (riser.y, wallZ).
+// Returns collider boxes.
+export function pumpUnit(B, xc, zc, mainY, mainZ) {
+  const S = B.steel, Tk = B.tank || B.steel, R = B.red || B.steel, Pp = B.pipe || B.steel, C = B.chrome;
+  const qx = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), V(1, 0, 0));
+  const at = (x, y, z) => new THREE.Matrix4().compose(V(x, y, z), qx, new THREE.Vector3(1, 1, 1));
+  const yA = 0.3;
+  // skid
+  S.setTint(0.55, 0.6, 0.62);
+  S.box(V(xc - 0.56, 0, zc - 0.24), V(xc + 0.56, 0.07, zc + 0.24));
+  S.setTint(1, 1, 1);
+  // motor: finned housing with end bells and feet
+  const mx = xc - 0.2;
+  Tk.lathe([[0.0, -0.28], [0.1, -0.28], [0.14, -0.26], [0.16, -0.23], [0.16, 0.21], [0.14, 0.25], [0.07, 0.27], [0.0, 0.27]], 28, at(mx, yA, zc));
+  for (let k = 0; k < 8; k++) {
+    const y = -0.19 + k * 0.053;
+    Tk.lathe([[0.158, y - 0.007], [0.182, y - 0.005], [0.182, y + 0.005], [0.158, y + 0.007]], 28, at(mx, yA, zc));
+  }
+  Tk.box(V(mx - 0.08, yA + 0.15, zc - 0.07), V(mx + 0.06, yA + 0.25, zc + 0.07)); // terminal box
+  for (const fx of [-0.17, 0.15]) S.box(V(mx + fx - 0.04, 0.07, zc - 0.15), V(mx + fx + 0.04, yA - 0.1, zc + 0.15));
+  // shaft coupling guard
+  R.box(V(xc + 0.08, yA - 0.07, zc - 0.07), V(xc + 0.2, yA + 0.07, zc + 0.07));
+  // volute casing + pedestal
+  const vx = xc + 0.3;
+  R.lathe([[0.0, -0.07], [0.14, -0.07], [0.17, -0.05], [0.175, 0.0], [0.17, 0.05], [0.14, 0.07], [0.0, 0.07]], 28, at(vx, yA, zc));
+  R.box(V(vx - 0.06, 0.07, zc - 0.12), V(vx + 0.06, yA - 0.12, zc + 0.12));
+  // suction: out of the eye, down into the floor sump
+  Pp.tube([V(vx + 0.06, yA, zc), V(xc + 0.58, yA, zc)], 0.055, 14, false);
+  Pp.lathe([[0.0, -0.055], [0.04, -0.04], [0.056, 0.0], [0.04, 0.04], [0.0, 0.055]], 14, new THREE.Matrix4().makeTranslation(xc + 0.58, yA, zc));
+  Pp.tube([V(xc + 0.58, yA, zc), V(xc + 0.58, -0.02, zc)], 0.055, 14, false);
+  C.lathe([[0.056, 0.0], [0.12, 0.0], [0.12, 0.02], [0.056, 0.03]], 16, new THREE.Matrix4().makeTranslation(xc + 0.58, 0.0, zc));
+  // riser with gate valve and gauge, elbow into the wall main
+  const ry = mainY;
+  Pp.tube([V(vx, yA + 0.16, zc), V(vx, ry, zc)], 0.045, 14, false);
+  Pp.lathe([[0.0, -0.045], [0.032, -0.032], [0.046, 0.0], [0.032, 0.032], [0.0, 0.045]], 14, new THREE.Matrix4().makeTranslation(vx, ry, zc));
+  Pp.tube([V(vx, ry, zc), V(vx, ry, mainZ)], 0.045, 14, false);
+  C.lathe([[0.0, -0.06], [0.07, -0.06], [0.08, -0.03], [0.08, 0.03], [0.07, 0.06], [0.0, 0.06]], 18, new THREE.Matrix4().makeTranslation(vx, 1.0, zc));
+  C.tube([V(vx, 1.06, zc), V(vx, 1.2, zc)], 0.014, 8, true);
+  const wheel = new THREE.TorusGeometry(0.085, 0.012, 8, 20);
+  wheel.rotateX(Math.PI / 2);
+  R.append(wheel, new THREE.Matrix4().makeTranslation(vx, 1.2, zc));
+  const gq = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), V(0, 0, 1));
+  C.tube([V(vx, 0.72, zc), V(vx, 0.72, zc + 0.1)], 0.01, 8, true);
+  C.lathe([[0.0, -0.02], [0.055, -0.02], [0.06, 0.0], [0.055, 0.02], [0.0, 0.022]], 18, new THREE.Matrix4().compose(V(vx, 0.72, zc + 0.12), gq, new THREE.Vector3(1, 1, 1)));
+  return [
+    { min: [xc - 0.56, 0, zc - 0.24], max: [xc + 0.62, yA + 0.2, zc + 0.24] },
+    { min: [vx - 0.06, yA, zc - 0.06], max: [vx + 0.06, ry, zc + 0.06] },
+  ];
+}
+
+// Sand-filter vessel on three legs with a chrome dome valve and outlet. Returns collider boxes.
 export function filterTank(B, x, z, h = 1.25, r = 0.38) {
   const T = B.tank || B.steel;
   T.lathe([[0.0, 0.18], [r * 0.6, 0.2], [r * 0.92, 0.26], [r, 0.34], [r, 0.18 + h - 0.16], [r * 0.92, 0.18 + h - 0.08], [r * 0.6, 0.18 + h - 0.02], [0.0, 0.18 + h]], 28, new THREE.Matrix4().makeTranslation(x, 0, z));

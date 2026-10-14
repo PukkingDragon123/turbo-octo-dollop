@@ -3,10 +3,10 @@
 import * as THREE from 'three';
 import { Kit, def, PI, TAU, V3, sstep, clamp, lerp, fillet, latheGeo, loftGeo, capRound, sweepGeo, extrudeGeo, rrectShape, roundedShape, curve, HelixCurve, sheetGeo } from './core.js';
 import { RNG } from '../../core/rng.js';
-import { mat, clear, S } from './mats.js';
+import { mat, clear, S, flameMat } from './mats.js';
 import {
   atlas, txt, rect, rrect, noise, mottle, wear, rubEdge, barcode, roomIcon, brand, hazardStripes, warnTri, lgrad,
-  hazardDiamond, SANS, COND, MONO, VT, INK, ROOM_YELLOW,
+  hazardDiamond, starburst, circle, SANS, COND, MONO, VT, INK, ROOM_YELLOW,
 } from './paint.js';
 
 // ============================================================================ flashlight
@@ -453,7 +453,7 @@ def('crowbar', () => {
   sw(tS, tB, 34, paint, { add: pmap((tS - tA) / (tB - tA), 1) });
   // ground claw end: flattened, flared wedge that forks into two tines (fishtail nail claw)
   const sSplit = L - 0.02, tSp = tAt(sSplit);
-  sw(tB, tSp - 0.0015, 14, steel, { cap1: true, add: { col: 0xff3030 } });
+  sw(tB, tSp - 0.0015, 14, steel, { cap1: true, add: { col: 0xb8bcc0 } });
   for (const sb of [-1, 1]) {
     k.add(sweepGeo(path, (t) => {
       const f = clamp((t * L - sSplit) / (L - sSplit), 0, 1);
@@ -471,10 +471,450 @@ def('crowbar', () => {
         const h = ((H * 1.02 - g) / 2) * (1 - 0.18 * f * f);
         return [0, sb * (g + h)];
       },
-    }), steel, { col: (p) => (sb > 0 ? 0x30ff30 : 0x3030ff) });
+    }), steel, { col: 0xc4c8cc });
   }
   // colliders
   k.colBox([0.022, 0.022, 0.5], [0.002, 0, 0.06]);
   k.colBox([0.118, 0.028, 0.07], [0.048, 0, -0.205]);
   return { kit: k, meta: { mass: 1.8, material: 'metal', hold: { grip: [0, 0, 0.2], rot: [0.42, 0.25, -1.2], off: [0, -0.02, 0] } } };
+});
+
+// ============================================================================ wrench
+// 19 mm chrome-vanadium combination wrench: dog-bone shank with recessed channels and a stamped size /
+// brand decal, 15-degree open end with jaw relief, raised (offset) 12-point box end. Lies flat.
+def('wrench', () => {
+  const D = atlas('wrench_decal', 512, 64, (c) => {
+    c.clearRect(0, 0, 512, 64);
+    const ink = 'rgba(30,32,36,0.92)';
+    txt(c, 'R.O.O.M.', 70, 33, { size: 30, color: ink, weight: '900', ls: 3 });
+    txt(c, '19', 196, 33, { size: 40, color: ink, weight: '900' });
+    txt(c, 'mm', 238, 38, { size: 18, color: ink, weight: '900' });
+    txt(c, 'CR-V', 316, 33, { size: 28, color: ink, weight: '900', ls: 2 });
+    txt(c, 'DROP FORGED', 440, 33, { size: 20, color: ink, fam: MONO, weight: 'bold' });
+  }, { clear: true, plain: false });
+  const chrome = S.chrome();
+  const decal = mat({ name: 'wrench_decal', map: D, color: 0xffffff, rough: 0.5, metal: 0.6, transparent: true, depthWrite: false, polygonOffset: true, vc: false, alphaTest: 0.05 });
+  const k = new Kit();
+  // ---- shank: dog-bone section swept along Z with an S-bend raising the box end
+  const zA = -0.084, zB = 0.094, lift = 0.0052;
+  const path = curve([[0, 0, zA], [0, 0, -0.02], [0, 0, 0.05], [0, lift * 0.5, 0.072], [0, lift, 0.085], [0, lift, zB]], 0.35);
+  const ht = 0.0029;
+  const hw = (t) => lerp(0.0086, 0.0098, t);
+  const chan = (t) => sstep(0.06, 0.16, t) * (1 - sstep(0.62, 0.72, t));
+  k.add(sweepGeo(path, (t) => [hw(t), ht], {
+    seg: 30, sides: 48, up: [0, 1, 0], cap0: false, cap1: false, dm: chrome.userData.dm,
+    shape: (a, t) => {
+      const c = Math.cos(a), s2 = Math.sin(a);
+      const x = Math.sign(c) * Math.pow(Math.abs(c), 2 / 7), y = Math.sign(s2) * Math.pow(Math.abs(s2), 2 / 7);
+      const rec = chan(t) * 0.36 * Math.exp(-Math.pow(x / 0.62, 6));
+      return [x, y * (1 - rec)];
+    },
+  }), chrome, { col: (p) => (Math.abs(p.x) < 0.005 && p.z > -0.07 && p.z < 0.05 ? 0xb8bcc0 : 0xffffff) });
+  // ---- open end (15 degrees), outline with jaw slot + relief, bevelled
+  const zc = -0.0985, Rh = 0.0218, sw2 = 0.0096, ang = 0.26;
+  const d = [Math.sin(ang), -Math.cos(ang)], n = [Math.cos(ang), Math.sin(ang)];
+  const pts = [];
+  const ext = Math.sqrt(Rh * Rh - sw2 * sw2);
+  const a1 = Math.atan2(d[1] * ext + n[1] * sw2, d[0] * ext + n[0] * sw2);
+  const a2 = Math.atan2(d[1] * ext - n[1] * sw2, d[0] * ext - n[0] * sw2);
+  // long arc from slot edge +n to slot edge -n (going around the back of the head)
+  let da = a2 - a1; while (da <= 0) da += TAU;
+  for (let i = 0; i <= 28; i++) { const a = a1 + (da * i) / 28; pts.push([Math.cos(a) * Rh, Math.sin(a) * Rh]); }
+  // inner jaw edge -n down to the relief, semicircle relief, back out along +n
+  const bot = -0.0045;
+  pts.push([d[0] * bot - n[0] * sw2, d[1] * bot - n[1] * sw2]);
+  for (let i = 1; i < 10; i++) { const a = PI + (i / 10) * PI; pts.push([d[0] * (bot + Math.sin(a) * sw2 * 0.25) + n[0] * Math.cos(a) * sw2, d[1] * (bot + Math.sin(a) * sw2 * 0.25) + n[1] * Math.cos(a) * sw2]); }
+  pts.push([d[0] * bot + n[0] * sw2, d[1] * bot + n[1] * sw2]);
+  const oe = new THREE.Shape();
+  pts.forEach(([x, y], i) => (i ? oe.lineTo(x, -y) : oe.moveTo(x, -y)));
+  oe.closePath();
+  k.add(extrudeGeo(oe, 0.0062, 0.0011, { bevelSegments: 2, curveSegments: 4 }), chrome, { p: [0, 0, zc], r: [-PI / 2, 0, 0] });
+  // ---- 12-point box end, raised
+  const re = new THREE.Shape();
+  re.absarc(0, 0, 0.0172, 0, TAU, false);
+  const hole = new THREE.Path();
+  for (let i = 0; i <= 24; i++) { const a = (i / 24) * TAU, rr = i % 2 ? 0.0104 : 0.0118; const x = Math.cos(a) * rr, y = Math.sin(a) * rr; if (i === 0) hole.moveTo(x, y); else hole.lineTo(x, y); }
+  re.holes.push(hole);
+  k.add(extrudeGeo(re, 0.0074, 0.0012, { bevelSegments: 2, curveSegments: 28 }), chrome, { p: [0, lift, 0.1005], r: [-PI / 2, 0, 0] });
+  // ---- stamped decal in the channel (top face)
+  k.add(new THREE.PlaneGeometry(0.084, 0.0105), decal, { r: [-PI / 2, 0, -PI / 2], p: [0, ht * (1 - 0.36) + 0.00012, -0.012], keepUV: true });
+  k.colBox([0.046, 0.0086, 0.104], [0, 0, -0.068]);
+  k.colBox([0.036, 0.0098, 0.128], [0, lift * 0.55, 0.054]);
+  return { kit: k, meta: { mass: 0.32, material: 'metal', hold: { grip: [0, 0, 0.065], rot: [0.5, 0, -0.35] } } };
+});
+
+// ============================================================================ lighter
+// Disposable flint lighter: oval moulded body with printed wrap, stamped steel hood with vent slots,
+// knurled spark wheels, red thumb fork, brass burner. Lies flat; burner toward -Z. Flame part when lit.
+let _flameTex = null;
+function flameTex() {
+  if (_flameTex) return _flameTex;
+  _flameTex = atlas('flame_grad', 64, 256, (c) => {
+    const g = c.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.3, 'rgba(255,255,255,0.3)');
+    g.addColorStop(0.7, 'rgba(255,255,255,0.85)');
+    g.addColorStop(1, 'rgba(255,255,255,1)');
+    c.fillStyle = g; c.fillRect(0, 0, 64, 256);
+  }, { clear: true, plain: false });
+  return _flameTex;
+}
+// Teardrop flame built along -Z from `tip` (outer envelope + hot core) as one part; flicker() keeps it
+// pointing up in world space with a cheap scale jitter.
+export function flameGeos(k, fmat, tip, len, rad, part, outer, inner) {
+  const prof = [];
+  for (let i = 0; i <= 10; i++) { const t = i / 10; prof.push([rad * Math.sin(Math.pow(t, 0.55) * PI) * (1 - t * 0.35) + 1e-5, t * len, false]); }
+  k.push({ p: tip, r: [-PI / 2, 0, 0] });
+  k.add(latheGeo(prof, { seg: 14 }), fmat, { part, keepUV: true, uvFn: (p) => [0.5, 1 - p.y / len], col: outer, bounds: false });
+  k.add(latheGeo(prof.map(([x, y]) => [x * 0.46, y * 0.55, false]), { seg: 12 }), fmat, { part, keepUV: true, uvFn: (p) => [0.5, 1 - p.y / (len * 0.55)], col: inner, bounds: false });
+  k.pop();
+  k.pivot(part, tip);
+}
+export function flameMaterial() { return flameMat(flameTex().tex); }
+const _qUp = new THREE.Quaternion().setFromUnitVectors(V3(0, 0, -1), V3(0, 1, 0)), _qw = new THREE.Quaternion();
+export function flicker(part, upright = 1) {
+  const meshes = [];
+  part.traverse((o) => { if (o.isMesh) meshes.push(o); });
+  const q0 = part.quaternion.clone();
+  let t = Math.random() * 10, last = 0;
+  const tick = () => {
+    const now = performance.now();
+    if (now - last < 8) return;
+    t += Math.min(0.05, (now - (last || now)) / 1000) || 0.016;
+    last = now;
+    part.scale.set(1 + Math.sin(t * 23) * 0.05, 1 + Math.sin(t * 19 + 1) * 0.05, 1 + Math.sin(t * 31) * 0.07 + Math.sin(t * 17.3) * 0.05);
+    if (upright && part.parent) {
+      part.parent.getWorldQuaternion(_qw).invert();
+      _qw.multiply(_qUp);
+      part.quaternion.copy(q0).slerp(_qw, upright);
+    }
+    part.updateMatrixWorld(true);
+  };
+  for (const m of meshes) {
+    const prev = m.onBeforeRender;
+    m.onBeforeRender = function (...a) { tick(); if (prev && prev !== THREE.Object3D.prototype.onBeforeRender) prev.apply(this, a); };
+  }
+}
+def('lighter', () => {
+  const A = atlas('lighter', 512, 256, (c) => {
+    // body wrap (0,0,512,160): x = around (u = 0 bottom face, 0.5 top face), y = along (burner end at top)
+    const Y = ROOM_YELLOW;
+    rect(c, 0, 0, 512, 160, Y);
+    mottle(c, 0, 0, 512, 160, 9, 2, 0.5);
+    // top face (x ~ 256)
+    roomIcon(c, 256, 52, 30, INK, null, 0.11);
+    txt(c, 'R.O.O.M.', 256, 92, { size: 26, color: INK, weight: '900', maxW: 110 });
+    txt(c, 'CORPORATE FIRE', 256, 116, { size: 10, color: INK, fam: MONO, weight: 'bold', maxW: 110 });
+    // bottom face (x ~ 0 / 512)
+    for (const x0 of [0, 512]) {
+      txt(c, 'PROPERTY OF R.O.O.M.', x0, 50, { size: 10, color: INK, fam: MONO, weight: 'bold', maxW: 110 });
+      txt(c, 'KEEP AWAY FROM', x0, 80, { size: 9, color: INK, fam: MONO, maxW: 110 });
+      txt(c, 'CHILDREN & ENTITIES', x0, 94, { size: 9, color: INK, fam: MONO, maxW: 110 });
+      txt(c, 'CHILD-RESISTANT', x0, 120, { size: 9, color: '#a8221a', fam: MONO, weight: 'bold', maxW: 110 });
+    }
+    wear(c, 0, 0, 512, 160, 3, 3, { edge: false, lightRatio: 0.7 });
+    // grime toward the bottom end
+    const g = lgrad(c, 0, 120, 0, 160, [[0, 'rgba(60,40,10,0)'], [1, 'rgba(60,40,10,0.25)']]);
+    c.fillStyle = g; c.fillRect(0, 120, 512, 40);
+  }, { plain: '#f0c418' });
+  const body = mat({ name: 'lighter_body', map: A, rough: 0.34, det: 'gloss', ns: 0.4 });
+  const steel = S.steel();
+  const flame = flameMaterial();
+  const k = new Kit();
+  const W = 0.0125, T = 0.0067, L = 0.062, zt = -L / 2; // half width, half thickness, length, top (burner end) z
+  k.add(loftGeo(28, 26, (v) => {
+    const z = lerp(zt, -zt, v);
+    const f = capRound(1 - v, 0.13) * (0.985 + 0.015 * capRound(v, 0.04));
+    return { x: 0, y: 0, z, w: W * Math.pow(f, 0.8), h: T * Math.pow(f, 0.6), n: 2.3 };
+  }, { poles: true }), body, { uv: A.R(0, 0, 512, 160, 2) });
+  // top deck (plastic) the hood sits on
+  k.rbox(W * 1.94, T * 1.9, 0.004, 0.0018, body, { p: [0, 0, zt - 0.0012], rs: 2, col: 0x2a2a2a });
+  // stamped steel hood (chimney) with the burner opening at the front and side vents
+  k.rbox(W * 1.62, T * 1.5, 0.0118, 0.0017, steel, { p: [0, -0.0004, zt - 0.0072], rs: 2, col: 0xd6d8da });
+  k.rbox(W * 1.2, T * 0.8, 0.0008, 0.0003, body, { p: [0, -0.0004, zt - 0.0132], rs: 1, col: 0x0c0c0c });
+  for (const sx of [-1, 1]) for (let i = 0; i < 2; i++) k.rbox(0.0006, 0.0034, 0.0022, 0.0002, body, { p: [sx * W * 0.81, -0.0012, zt - 0.0052 - i * 0.0038], rs: 1, col: 0x101010 });
+  // burner nozzle, knurled spark wheel pair (axis X) on the front-top, flint tube
+  k.cyl(0.0014, 0.003, S.brass(), { p: [0, -0.0008, zt - 0.0138], r: [PI / 2, 0, 0], seg: 10, bevel: 0.0003 });
+  k.push({ p: [0, 0.0036, zt - 0.0122], r: [0, 0, PI / 2] });
+  k.lathe([[0.0042, -0.0046], [0.0042, 0.0046]], steel, { seg: 32, rmod: (phi, y, r) => r + 0.00035 * Math.pow(0.5 + 0.5 * Math.cos(phi * 18), 2), col: 0x9a9ea2 });
+  k.cyl(0.0044, 0.0011, steel, { p: [0, -0.0051, 0], seg: 20, col: 0xb0b4b8, bevel: 0.0002 });
+  k.cyl(0.0044, 0.0011, steel, { p: [0, 0.0051, 0], seg: 20, col: 0xb0b4b8, bevel: 0.0002 });
+  k.pop();
+  // red thumb fork (gas lever) below the wheel on the logo side
+  k.push({ p: [0, 0.0058, zt - 0.0046], r: [-0.25, 0, 0] });
+  k.rbox(0.0104, 0.0034, 0.0076, 0.0014, body, { rs: 2, col: 0xc0261e });
+  k.pop();
+  flameGeos(k, flame, [0, -0.0008, zt - 0.0158], 0.034, 0.0058, 'flame', 0xd8620a, 0x9ab8ff);
+  k.colBox([W * 2, T * 2, L + 0.016], [0, 0, -0.006]);
+  k.anchor('tip', [0, -0.0008, zt - 0.017]);
+  return {
+    kit: k,
+    meta: {
+      mass: 0.02, material: 'plastic', hold: { grip: [0, 0, 0.012], rot: [PI / 2 - 0.1, -0.25, 0.0], off: [0, 0.02, 0] },
+      init(inst, opts) {
+        const f = inst.parts.flame;
+        inst.object.userData.setLit = (on) => { f.visible = !!on; };
+        inst.object.userData.setLit(!!opts.lit);
+        flicker(f);
+      },
+    },
+  };
+});
+// ============================================================================ battery
+// 6 V lantern battery: printed card wrapper over a steel can with rolled vertical edges, black moulded top
+// with raised polarity marks, two conical spring terminals on brass bases.
+def('battery', () => {
+  const A = atlas('battery', 512, 512, (c) => {
+    // wrapper panels (each 128 x 384): x0 front (+Z), 128 right (+X), 256 back, 384 left
+    rect(c, 0, 0, 512, 384, '#18191b');
+    mottle(c, 0, 0, 512, 384, 8, 7, 0.7);
+    rect(c, 0, 230, 512, 96, ROOM_YELLOW);
+    c.save(); c.beginPath(); c.rect(0, 230, 512, 96); c.clip();
+    c.fillStyle = '#e8661c';
+    for (let x = -60; x < 560; x += 40) { c.beginPath(); c.moveTo(x, 230); c.lineTo(x + 20, 230); c.lineTo(x - 10, 326); c.lineTo(x - 30, 326); c.fill(); }
+    c.restore();
+    rect(c, 0, 228, 512, 4, '#0d0d0d'); rect(c, 0, 324, 512, 4, '#0d0d0d');
+    for (const x0 of [0, 256]) {
+      brand(c, x0 + 64, 26, 13, ROOM_YELLOW);
+      txt(c, '6V', x0 + 64, 88, { size: 74, color: '#fff', weight: '900', maxW: 116, ls: -2 });
+      txt(c, 'POWER CELL', x0 + 64, 142, { size: 17, color: ROOM_YELLOW, weight: '900', maxW: 116 });
+      txt(c, 'HEAVY DUTY • LANTERN', x0 + 64, 164, { size: 8, color: '#ddd', fam: MONO, weight: 'bold', maxW: 116 });
+      c.fillStyle = '#111';
+      c.beginPath(); c.moveTo(x0 + 74, 240); c.lineTo(x0 + 48, 280); c.lineTo(x0 + 64, 280); c.lineTo(x0 + 54, 316); c.lineTo(x0 + 82, 272); c.lineTo(x0 + 66, 272); c.closePath(); c.fill();
+      txt(c, 'DO NOT RECHARGE', x0 + 64, 352, { size: 9, color: '#bbb', fam: MONO, weight: 'bold' });
+    }
+    for (const x0 of [128, 384]) {
+      warnTri(c, x0 + 64, 34, 30, ROOM_YELLOW, INK);
+      txt(c, 'DO NOT LICK', x0 + 64, 70, { size: 14, color: ROOM_YELLOW, weight: '900', maxW: 116 });
+      txt(c, 'TERMINALS', x0 + 64, 86, { size: 14, color: ROOM_YELLOW, weight: '900', maxW: 116 });
+      txt(c, 'PROPERTY OF', x0 + 64, 118, { size: 10, color: '#fff', fam: MONO, weight: 'bold' });
+      txt(c, 'R.O.O.M.', x0 + 64, 132, { size: 12, color: '#fff', weight: '900' });
+      txt(c, 'Do not discharge', x0 + 64, 156, { size: 9, color: '#bbb', fam: MONO });
+      txt(c, 'into Dimension 0.', x0 + 64, 168, { size: 9, color: '#bbb', fam: MONO });
+      if (x0 === 384) barcode(c, x0 + 22, 182, 84, 36, 62, true, '#111');
+      else txt(c, 'LOT 0451 • EXP ∞', x0 + 64, 200, { size: 9, color: '#bbb', fam: MONO });
+    }
+    // wrapper seam on the left-back corner, rubbed corners
+    rect(c, 508, 0, 4, 384, 'rgba(255,255,255,0.08)');
+    for (const x of [0, 128, 256, 384, 512]) { const g = lgrad(c, x - 6, 0, x + 6, 0, [[0, 'rgba(255,255,255,0)'], [0.5, 'rgba(200,190,170,0.22)'], [1, 'rgba(255,255,255,0)']]); c.fillStyle = g; c.fillRect(x - 6, 0, 12, 384); }
+    wear(c, 0, 0, 512, 384, 8, 2.2, { lightRatio: 0.7 });
+    // top cap (0,388,120,120)
+    rect(c, 0, 388, 120, 120, '#1b1b1d');
+    noise(c, 0, 388, 120, 120, 10, 3);
+    txt(c, '+', 30, 450, { size: 30, color: '#c8352a', weight: '900' });
+    txt(c, '−', 90, 450, { size: 30, color: '#9a9a9a', weight: '900' });
+    txt(c, '6V', 60, 410, { size: 13, color: '#8a8a8a', fam: MONO, weight: 'bold' });
+  }, { plain: '#1b1b1d' });
+  const p = mat({ name: 'battery_wrap', map: A, rough: 0.55, det: 'card', ns: 0.4 });
+  const steel = S.steel();
+  const k = new Kit();
+  const Sz = 0.0672, H = 0.098;
+  k.rbox(Sz, H, Sz, 0.0065, p, { p: [0, H / 2, 0], rs: 3, faces: { pz: A.R(0, 0, 128, 384), px: A.R(128, 0, 128, 384), nz: A.R(256, 0, 128, 384), nx: A.R(384, 0, 128, 384), py: A.plain, ny: A.plain } });
+  // moulded top with a lip and raised terminal bosses
+  k.rbox(Sz + 0.0012, 0.011, Sz + 0.0012, 0.004, p, { p: [0, H + 0.0035, 0], rs: 2, faces: { py: A.R(0, 388, 120, 120, 1) }, col: 0xffffff });
+  for (const sx of [-1, 1]) {
+    k.cyl(0.0065, 0.0026, p, { p: [sx * 0.0172, H + 0.0102, 0], seg: 18, col: 0x2a2a2c, bevel: 0.0008 });
+    k.cyl(0.0048, 0.003, S.brass(), { p: [sx * 0.0172, H + 0.012, 0], seg: 16, bevel: 0.0006 });
+    // conical coil spring: wide at the base, narrowing upward, ground flat end
+    k.add(new THREE.TubeGeometry(new HelixCurve(0.0052, 0.024, 5.5, 0.0034), 90, 0.00085, 6, false), steel, { p: [sx * 0.0172, H + 0.0128, 0], col: 0xd0d2d4 });
+  }
+  k.colBox([Sz, H + 0.009, Sz], [0, (H + 0.009) / 2, 0]);
+  return { kit: k, meta: { mass: 0.8, material: 'metal', hold: { grip: [0, 0.05, 0], rot: [0.12, -0.3, 0.04], off: [0, 0.01, 0] } } };
+});
+
+// ============================================================================ tape_roll
+// 48 mm duct tape on a printed cardboard core: cloth-scrim tape with a PE sheen, slightly telescoped
+// layers on the faces, peeled tail with a torn end and curl. Lies on its face.
+def('tape_roll', () => {
+  const A = atlas('tape_roll', 512, 512, (c) => {
+    // tape face (0,0,512,160): u around, v across the width
+    rect(c, 0, 0, 512, 160, '#9ea2a7');
+    for (let x = 0; x < 512; x += 3) rect(c, x, 0, 1, 160, 'rgba(255,255,255,0.07)');
+    for (let y = 0; y < 160; y += 4) rect(c, 0, y, 512, 1, 'rgba(0,0,0,0.07)');
+    mottle(c, 0, 0, 512, 160, 12, 2, 0.6);
+    wear(c, 0, 0, 512, 160, 3, 1.6, { edge: false, lightRatio: 0.3, dirt: 1.5 });
+    // ring faces (0,164,256,256): concentric layers (planar, centre 128,292)
+    rect(c, 0, 164, 256, 256, '#8f9398');
+    const r = new RNG(5);
+    for (let rr = 70; rr < 128; rr += 0.9) {
+      const v = r.next();
+      c.strokeStyle = v < 0.5 ? `rgba(40,42,46,${0.25 + v * 0.4})` : `rgba(215,220,226,${0.15 + (v - 0.5) * 0.4})`;
+      c.lineWidth = 0.8; c.beginPath(); c.arc(128, 292, rr, 0, TAU); c.stroke();
+    }
+    const g = c.createRadialGradient(128, 292, 70, 128, 292, 128);
+    g.addColorStop(0, 'rgba(30,30,30,0.0)'); g.addColorStop(0.92, 'rgba(30,30,30,0.0)'); g.addColorStop(1, 'rgba(30,25,15,0.35)');
+    c.fillStyle = g; c.fillRect(0, 164, 256, 256);
+    // core print (260,164,252,120), seen from inside
+    rect(c, 260, 164, 252, 120, '#b98f5c');
+    noise(c, 260, 164, 252, 120, 18, 8);
+    for (let x = 260; x < 512; x += 84) {
+      txt(c, 'R.O.O.M. DUCT', x + 42, 196, { size: 15, color: '#3a2412', weight: '900', maxW: 80 });
+      txt(c, '48mm × 55m', x + 42, 222, { size: 11, color: '#3a2412', fam: MONO });
+      txt(c, 'FIXES MOST', x + 42, 244, { size: 9, color: '#3a2412', fam: MONO });
+      txt(c, 'THINGS', x + 42, 256, { size: 9, color: '#3a2412', fam: MONO });
+    }
+    // adhesive side (260,290,252,60)
+    rect(c, 260, 290, 252, 60, '#c6c8c2');
+    noise(c, 260, 290, 252, 60, 12, 9);
+    for (let x = 260; x < 512; x += 3) rect(c, x, 290, 1, 60, 'rgba(90,90,80,0.12)');
+    // cardboard edge (260,356,252,40)
+    rect(c, 260, 356, 252, 40, '#a8804e');
+    noise(c, 260, 356, 252, 40, 20, 3);
+  }, { plain: '#9ea2a7' });
+  const tape = mat({ name: 'tape_cloth', map: A, rough: 0.46, metal: 0.25, det: 'weave', ns: 0.45 });
+  const card = mat({ name: 'tape_core', map: A, rough: 0.88, det: 'card', ns: 0.6 });
+  const k = new Kit();
+  const ri = 0.038, ro = 0.055, H = 0.048;
+  k.lathe([[ro - 0.0004, 0.0003], [ro, 0.0012, 0.0006], [ro, H - 0.0012, 0.0006], [ro - 0.0004, H - 0.0003]], tape, { seg: 56, vFromY: [0, H], uv: A.R(0, 0, 512, 160), raw: false });
+  // faces: slightly telescoped layer bands
+  const face = (top) => {
+    const y0 = top ? H : 0, sg = top ? 1 : -1;
+    const pts = [];
+    const bands = [[ro - 0.0004, 0], [0.051, 0.0003], [0.0505, 0.0001], [0.046, 0.0006], [0.0455, 0.0002], [0.0415, 0.0004], [ri + 0.0012, 0.0001]];
+    for (const [r, dz] of bands) pts.push([r, y0 + sg * dz]);
+    pts.push([ri + 0.0003, y0]);
+    const prof = top ? pts : pts.slice().reverse();
+    k.lathe(prof.map(([r, y]) => [r, y]), tape, { seg: 56, raw: true, planar: { rect: A.R(0, 164, 256, 256), R: 0.0562 } });
+  };
+  face(true); face(false);
+  // cardboard core: inner wall (printed) + rims
+  k.lathe([[ri + 0.0006, H + 0.0004], [ri - 0.0028, H + 0.0004, 's'], [ri - 0.0028, -0.0004, 's'], [ri + 0.0006, -0.0004]], card, { seg: 48, raw: true, vFromY: [-0.0004, H + 0.0004], uv: A.R(260, 164, 252, 120, 4) });
+  // peeled tail: lifts off the roll, hangs with a slight curl, torn zig-zag end
+  const a0 = 0.35, Lt = 0.034;
+  const tail = (u, v, off) => {
+    const s = v * Lt;
+    const y = 0.0015 + u * (H - 0.003);
+    const R0 = ro + off;
+    const a = a0 + Math.min(s, 0.01) / R0;
+    if (s < 0.01) return [Math.sin(a) * R0, y, Math.cos(a) * R0];
+    const tx = Math.cos(a), tz = -Math.sin(a), d = s - 0.01;
+    const curl = d * d * 10;
+    const torn = v > 0.97 ? (Math.sin(u * 47) * 0.5 + 0.5) * 0.0018 : 0;
+    return [Math.sin(a) * R0 + tx * (d - torn) + Math.sin(a) * curl, y - d * 0.15, Math.cos(a) * R0 + tz * (d - torn) + Math.cos(a) * curl];
+  };
+  k.add(sheetGeo(4, 12, (u, v) => tail(1 - u, v, 0.0005)), tape, { uv: A.R(0, 0, 512, 160, 1) });
+  k.add(sheetGeo(4, 12, (u, v) => tail(u, v, 0.0002)), tape, { uv: A.R(260, 290, 252, 60, 1), col: 0xd8d8d0 });
+  k.colCyl(ro, H, [0, H / 2, 0]);
+  return { kit: k, meta: { mass: 0.3, material: 'soft', hold: { grip: [0.035, H / 2, 0], rot: [1.3, 0.25, 0.1], off: [0, 0.02, 0] } } };
+});
+
+// ============================================================================ fuse
+// Industrial knife-blade cartridge fuse (60 A / 250 V, class RK5): printed vulcanised-fibre tube,
+// brass ferrules with rolled edges and crimp dimples, tin-plated copper blades with mounting slots.
+def('fuse', () => {
+  const A = atlas('fuse', 512, 256, (c) => {
+    // tube wrap (0,0,512,200): u around (top at x = 256), v along (blade end -> other end)
+    rect(c, 0, 0, 512, 200, '#5a2b1e');
+    mottle(c, 0, 0, 512, 200, 12, 3, 0.5);
+    noise(c, 0, 0, 512, 200, 10, 3);
+    // printed white label band
+    rect(c, 140, 22, 232, 156, '#efe9d8');
+    c.save(); c.beginPath(); c.rect(140, 22, 232, 156); c.clip();
+    rect(c, 140, 22, 232, 20, '#b02a20'); rect(c, 140, 158, 232, 20, '#b02a20');
+    txt(c, 'R.O.O.M.', 256, 32, { size: 13, color: '#fff', weight: '900', ls: 2 });
+    txt(c, '60A', 222, 82, { size: 40, color: INK, weight: '900' });
+    txt(c, '250V', 308, 84, { size: 22, color: INK, weight: '900' });
+    txt(c, 'TIME-DELAY • CLASS RK5', 256, 112, { size: 11, color: INK, fam: MONO, weight: 'bold' });
+    txt(c, 'I.R. 200kA AC', 256, 128, { size: 10, color: INK, fam: MONO });
+    txt(c, 'REALITY GRADE', 256, 144, { size: 10, color: '#b02a20', fam: MONO, weight: 'bold' });
+    txt(c, 'DO NOT BYPASS', 256, 168, { size: 10, color: '#fff', fam: MONO, weight: 'bold' });
+    c.restore();
+    wear(c, 0, 0, 512, 200, 5, 2.4, { edge: false, lightRatio: 0.4, dirt: 1.3 });
+  }, { plain: '#5a2b1e' });
+  const tube = mat({ name: 'fuse_tube', map: A, rough: 0.6, det: 'paper', ns: 0.5 });
+  const brass = S.brass();
+  const k = new Kit();
+  const R = 0.0132, L = 0.07;
+  k.push({ r: [-PI / 2, 0, 0] });
+  k.lathe([[R, -L / 2], [R, L / 2]], tube, { seg: 32, phi0: PI, vFromY: [-L / 2, L / 2], uv: A.R(0, 0, 512, 200) });
+  for (const sy of [-1, 1]) {
+    k.push({ p: [0, sy * (L / 2 + 0.0065), 0], r: sy < 0 ? [PI, 0, 0] : [0, 0, 0] });
+    // ferrule: rolled edge onto the tube, body with crimp dimples, domed end with blade slot
+    k.lathe([[R - 0.0004, -0.0102], [R + 0.0011, -0.0098, 0.0005], [R + 0.0012, -0.007], [R + 0.0009, -0.0062], [R + 0.0012, -0.0054], [R + 0.0012, 0.0042, 0.0012], [R - 0.0006, 0.0072, 0.002], [0.006, 0.0076], [0.0035, 0.0077]], brass, {
+      seg: 36, col: 0xe8d8a8,
+      rmod: (phi, y, r) => r - (y > -0.004 && y < 0.0 ? 0.0007 * Math.pow(Math.max(0, Math.cos(phi * 2)), 24) : 0),
+    });
+    // knife blade with mounting slot
+    const bs = new THREE.Shape();
+    bs.moveTo(-0.0066, 0); bs.lineTo(0.0066, 0); bs.lineTo(0.0066, 0.0228); bs.quadraticCurveTo(0.0066, 0.0262, 0.0036, 0.0264); bs.lineTo(-0.0036, 0.0264); bs.quadraticCurveTo(-0.0066, 0.0262, -0.0066, 0.0228); bs.closePath();
+    const h = new THREE.Path(); h.absarc(0, 0.0165, 0.0023, 0, TAU, true); bs.holes.push(h);
+    k.add(extrudeGeo(bs, 0.0021, 0.00035, { curveSegments: 10, bevelSegments: 1 }), S.steel(), { p: [0, 0.006, 0], col: 0xe6c8a0 });
+    k.pop();
+  }
+  k.pop();
+  k.colCyl(R + 0.0012, L + 0.026, [0, 0, 0], [PI / 2, 0, 0]);
+  k.colBox([0.0132, 0.0029, L + 0.07], [0, 0, 0]);
+  return { kit: k, meta: { mass: 0.12, material: 'metal', hold: { grip: [0, 0, 0], rot: [0.3, 0.9, 0.1], off: [0, 0.03, 0] } } };
+});
+
+// ============================================================================ camera_disposable
+// 90s single-use camera: black ABS body in a printed card sleeve, lens barrel with glass, frosted flash
+// window with Fresnel ridges, viewfinder windows front & back, shutter + flash buttons, frame counter,
+// knurled film-advance thumbwheel.
+def('camera_disposable', () => {
+  const A = atlas('camera_disposable', 512, 512, (c) => {
+    // sleeve front (0,0,512,200): lens on the right (x ~ 330)
+    rect(c, 0, 0, 512, 200, ROOM_YELLOW);
+    mottle(c, 0, 0, 512, 200, 10, 3, 0.6);
+    rect(c, 0, 0, 512, 34, INK);
+    brand(c, 120, 17, 16, ROOM_YELLOW);
+    txt(c, '27 EXP', 440, 17, { size: 15, color: ROOM_YELLOW, fam: MONO, weight: 'bold' });
+    txt(c, 'SNAPSHOT', 150, 76, { size: 46, color: INK, weight: '900', italic: true, maxW: 250, ls: -1 });
+    txt(c, 'ISO 400 • 35mm • WITH FLASH', 150, 108, { size: 13, color: INK, fam: MONO, weight: 'bold', maxW: 250 });
+    starburst(c, 72, 150, 30, 12, '#c8301f');
+    txt(c, 'FLASH!', 72, 151, { size: 13, color: '#fff', weight: '900', rot: -0.15 });
+    rect(c, 0, 172, 512, 28, INK);
+    txt(c, 'DOCUMENT ANOMALIES FOR CORPORATE', 256, 186, { size: 13, color: ROOM_YELLOW, fam: MONO, weight: 'bold', maxW: 480 });
+    wear(c, 0, 0, 512, 200, 5, 1.8, { lightRatio: 0.7 });
+    // sleeve back (0,204,512,200)
+    rect(c, 0, 204, 512, 200, '#1d1d1f');
+    rect(c, 0, 344, 512, 60, ROOM_YELLOW);
+    txt(c, 'PROPERTY OF R.O.O.M.', 256, 374, { size: 22, color: INK, weight: '900', maxW: 460 });
+    txt(c, 'DO NOT PHOTOGRAPH DIMENSION 0', 256, 290, { size: 14, color: ROOM_YELLOW, fam: MONO, weight: 'bold', maxW: 300 });
+    txt(c, 'SUBMIT ALL FILM TO SUBLEVEL 2 FOR PROCESSING', 256, 312, { size: 10, color: '#bbb', fam: MONO, maxW: 300 });
+    txt(c, '◄ WIND', 90, 236, { size: 16, color: ROOM_YELLOW, weight: '900' });
+    barcode(c, 380, 228, 110, 44, 33, true, '#111');
+    wear(c, 0, 204, 512, 200, 6, 1.8, { lightRatio: 0.8 });
+    // sleeve top/bottom strip (0,408,384,50)
+    rect(c, 0, 408, 384, 50, '#1d1d1f');
+    txt(c, 'R.O.O.M. SNAPSHOT', 120, 433, { size: 16, color: ROOM_YELLOW, weight: '900' });
+    txt(c, 'FLASH ⚡ ON', 300, 433, { size: 12, color: '#ddd', fam: MONO, weight: 'bold' });
+    // flash window: frosted with Fresnel ridges (388,408,120,50)
+    rect(c, 388, 408, 120, 50, '#efeee6');
+    for (let x = 388; x < 508; x += 4) rect(c, x, 408, 2, 50, 'rgba(120,120,110,0.18)');
+    // frame counter (0,462,60,44)
+    rect(c, 0, 462, 60, 44, '#111');
+    rrect(c, 8, 470, 44, 28, 3, '#e8e2cc');
+    txt(c, '24', 30, 485, { size: 22, color: '#111', fam: VT });
+  }, { plain: '#1d1d1f' });
+  const sleeve = mat({ name: 'camera_sleeve', map: A, rough: 0.62, det: 'card', ns: 0.4 });
+  const black = S.plasticBlack();
+  const glass = mat({ name: 'camera_glass', color: 0x0c1016, rough: 0.05, metal: 0.3, cc: 1, ccr: 0.04, env: 1.5, vc: false });
+  const k = new Kit();
+  const W = 0.108, H = 0.058, D = 0.034;
+  // black body shell
+  k.rbox(W, H, D, 0.0055, black, { rs: 3 });
+  // card sleeve wraps front, top, back, bottom (ends show the black body)
+  k.rbox(W - 0.012, H + 0.0012, D + 0.0012, 0.0045, sleeve, { rs: 2, faces: { nz: A.R(0, 0, 512, 200), pz: A.R(0, 204, 512, 200), py: A.R(0, 408, 384, 50), ny: A.R(0, 408, 384, 50, 2), px: A.plain, nx: A.plain } });
+  // lens: barrel + bezel + glass element (front = -Z)
+  const lx = -0.022, ly = -0.003, zf = -D / 2 - 0.0006;
+  k.push({ p: [lx, ly, zf], r: [-PI / 2, 0, 0] });
+  k.lathe([[0.0145, -0.002], [0.0148, 0.002, 0.001], [0.0126, 0.0062, 0.0016], [0.0098, 0.0072, 0.0008], [0.0082, 0.0066], [0.0074, 0.0052]], black, { seg: 32 });
+  k.lathe([[0.0074, 0.0052], [0.0036, 0.0058], [0, 0.0059]], glass, { seg: 24 });
+  k.pop();
+  // flash window + reflector frame (front top-left)
+  k.rbox(0.033, 0.016, 0.004, 0.0015, black, { p: [0.028, 0.0175, -D / 2 - 0.0006], rs: 2 });
+  k.rbox(0.029, 0.012, 0.004, 0.0012, sleeve, { p: [0.028, 0.0175, -D / 2 - 0.0012], rs: 1, faces: { nz: A.R(388, 408, 120, 50) }, col: 0xffffff });
+  // viewfinder windows (front & back)
+  k.rbox(0.012, 0.009, 0.004, 0.0015, glass, { p: [-0.034, 0.0185, -D / 2 - 0.0008], rs: 1 });
+  k.rbox(0.011, 0.008, 0.004, 0.0015, glass, { p: [-0.034, 0.0185, D / 2 + 0.0008], rs: 1 });
+  // top: shutter button, frame counter, flash charge button (front)
+  k.lathe([[0.0048, -0.002], [0.0048, 0.0012, 0.0008], [0.0034, 0.0022, 0.0012], [0, 0.0024]], black, { p: [-0.036, H / 2 + 0.0006, 0.004], seg: 18, col: 0xc0261e });
+  k.rbox(0.014, 0.002, 0.01, 0.0008, sleeve, { p: [-0.012, H / 2 + 0.0008, 0.006], rs: 1, faces: { py: A.R(0, 462, 60, 44, 1) }, col: 0xffffff });
+  k.rbox(0.009, 0.013, 0.004, 0.0016, black, { p: [-0.049, -0.001, -D / 2 - 0.0012], rs: 2, col: 0x2a2a2c });
+  // knurled film-advance wheel (back top right, partly sunk into the body)
+  k.lathe([[0.0105, -0.0036], [0.0105, 0.0036]], black, { p: [0.04, H / 2 - 0.0035, D / 2 - 0.006], seg: 40, rmod: (phi, y, r) => r + 0.0005 * Math.pow(0.5 + 0.5 * Math.cos(phi * 30), 3) });
+  k.cyl(0.0106, 0.0012, black, { p: [0.04, H / 2 + 0.0001, D / 2 - 0.006], seg: 24, bevel: 0.0004 });
+  k.colBox([W, H, D + 0.008], [0, 0, -0.003]);
+  return { kit: k, meta: { mass: 0.12, material: 'plastic', hold: { grip: [-0.03, 0, 0], rot: [0.05, 0.12, 0], off: [-0.02, 0.03, 0] } } };
 });

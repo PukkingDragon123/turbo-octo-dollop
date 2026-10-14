@@ -205,7 +205,7 @@ function axisEntries(H, r, s, wear, div) {
   const out = [];
   const inner = Math.max(0, H - r);
   if (r > 1e-5) for (let k = s; k >= 1; k--) out.push({ c: -inner, t: -Math.tan((PI / 4) * (k / s)), e: k / s });
-  const ws = wear > 0 && H > 0.02 && inner - wear > inner * 0.25 ? wear : 0;
+  const ws = wear > 0 && H > 0.035 && r < 0.01 && inner - wear > inner * 0.25 ? wear : 0;
   const eIn = r > 1e-5 ? (ws ? 0.45 : 0) : (ws ? 0.8 : 0);
   out.push({ c: -inner, t: 0, e: eIn });
   const a = -inner + ws, b = inner - ws;
@@ -221,8 +221,9 @@ function axisEntries(H, r, s, wear, div) {
 //   skip: { px, nx, py, ny, pz, nz } faces to omit }
 export function boxGeo(w, h, d, o = NO) {
   const half = [w / 2, h / 2, d / 2];
-  const r = Math.max(0, Math.min(o.r ?? 0.002, half[0] - 1e-4, half[1] - 1e-4, half[2] - 1e-4));
-  const s = r < 0.004 ? 1 : (o.seg ?? (r > 0.008 ? 3 : 2));
+  let r = Math.max(0, Math.min(o.r ?? 0.002, half[0] - 1e-4, half[1] - 1e-4, half[2] - 1e-4));
+  if (r < 0.0012 && !o.keepBevel) r = 0;
+  const s = o.seg ?? (r < 0.006 || Math.min(w, h, d) < 0.02 ? 1 : r < 0.04 ? 2 : 3);
   const wear = o.wear ?? Math.min(0.012, Math.min(w, h, d) * 0.3);
   const grain = o.grain !== undefined ? AX.indexOf(o.grain) : -1;
   const skip = o.skip || null;
@@ -270,8 +271,23 @@ export function dentGeo(g, amp, seed = 1, freq = 7) {
 
 // Lathe around Y. pts: [[r, y, flags?, edge?], ...] bottom -> top for an outward-facing surface.
 // flags: 1 = hard crease, 2 = edge (wear). o: { seg, phi0, phiLen, uv:'cyl', swap }
-export function latheGeo(pts, segs = 24, o = NO) {
+export function latheGeo(pts0, segs = 24, o = NO) {
   const phi0 = o.phi0 ?? 0, phiLen = o.phiLen ?? TAU;
+  // wear rings: long segments leaving / entering an edge row get an extra row ~1 cm in with edge 0,
+  // so the edge factor does not smear over the whole surface
+  const eOf = (p) => ((p[2] || 0) & 2 ? 1 : (p[3] ?? 0));
+  const pts = [];
+  for (let i = 0; i < pts0.length; i++) {
+    const a = pts0[i];
+    pts.push(a);
+    if (i === pts0.length - 1) break;
+    const b = pts0[i + 1], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (o.rings === false || len < 0.024) continue;
+    const ea = eOf(a) > 0, eb = eOf(b) > 0;
+    const w = Math.min(0.01, len * 0.3) / len;
+    if (ea) pts.push([a[0] + (b[0] - a[0]) * w, a[1] + (b[1] - a[1]) * w, 0, 0]);
+    if (eb) pts.push([b[0] - (b[0] - a[0]) * w, b[1] - (b[1] - a[1]) * w, 0, 0]);
+  }
   const n = pts.length;
   const segMode = [];
   for (let j = 0; j < n - 1; j++) {
@@ -330,11 +346,12 @@ export function cylGeo(r, h, o = NO) {
   const caps = (o.caps ?? true) && !o.open;
   if (caps) pts.push([0, y0, 0]);
   if (bv > 0) {
+    const bs = o.bevSeg ?? (bv < 0.003 ? 2 : 3);
     if (caps) pts.push([rb - bv, y0, 2]);
-    for (let k = 1; k < 3; k++) { const a = (k / 3) * HP; pts.push([rb - bv + Math.sin(a) * bv, y0 + bv - Math.cos(a) * bv, 2]); }
-    pts.push([rb, y0 + bv, 0, 0.5]);
-    pts.push([rt, y1 - bv, 0, 0.5]);
-    for (let k = 1; k < 3; k++) { const a = (k / 3) * HP; pts.push([rt - bv + Math.cos(a) * bv, y1 - bv + Math.sin(a) * bv, 2]); }
+    for (let k = 1; k < bs; k++) { const a = (k / bs) * HP; pts.push([rb - bv + Math.sin(a) * bv, y0 + bv - Math.cos(a) * bv, 2]); }
+    pts.push([rb, y0 + bv, 0, 0.35]);
+    pts.push([rt, y1 - bv, 0, 0.35]);
+    for (let k = 1; k < bs; k++) { const a = (k / bs) * HP; pts.push([rt - bv + Math.cos(a) * bv, y1 - bv + Math.sin(a) * bv, 2]); }
     if (caps) pts.push([rt - bv, y1, 2]);
   } else {
     pts.push([rb, y0, caps ? 1 | 2 : 2]);
@@ -827,6 +844,7 @@ export const FIN = {
   bronze: { tint: 0x9a7448, rough: 1.1 },
 };
 const SHADOWLESS = new Set(['decal', 'glass']);
+const PROF = typeof location !== 'undefined' && new URLSearchParams(location.search).get('dvprof') === '1';
 
 export class DKit {
   constructor(name, o = {}) {
@@ -869,6 +887,17 @@ export class DKit {
     try { fn(obj); } finally { [this.tgt, this.cur, this.stack] = save; }
     return obj;
   }
+  // build fn's geometry in obj's local frame but merge it into the current target (static). Used for
+  // contract parts the game never animates: the pivot group stays (empty) for API compatibility.
+  insideStatic(obj, fn) {
+    obj.updateMatrix();
+    const save = [this.cur, this.stack];
+    this.cur = obj.matrix.clone(); this.stack = [new THREE.Matrix4()];
+    try { fn(obj); } finally { [this.cur, this.stack] = save; }
+    return obj;
+  }
+  // inside() or insideStatic() depending on `stat`
+  within(obj, fn, stat = false) { return stat ? this.insideStatic(obj, fn) : this.inside(obj, fn); }
   // local point of the current frame -> target space
   pt(x, y, z) { return V3(x, y, z).applyMatrix4(this.cur); }
   _place(obj, x, y, z, o) {
@@ -884,7 +913,7 @@ export class DKit {
   grp(x = 0, y = 0, z = 0, o = NO) { return this._place(new THREE.Group(), x, y, z, o); }
   // ---- core ----
   _attrs(cls, o) {
-    const t = o.tint ?? DEF_TINT[cls] ?? 0xffffff;
+    const t = cls === 'atlas' || cls === 'decal' ? (o.atlasTint ?? 0xffffff) : (o.tint ?? DEF_TINT[cls] ?? 0xffffff);
     return [((t >> 16) & 255) / 255, ((t >> 8) & 255) / 255, (t & 255) / 255, clamp(((o.rough ?? 1) - 0.25) / 1.5, 0, 1),
       o.chip ?? this.wear.chip, o.rust ?? this.wear.rust, (o.grime ?? 1) * this.wear.grime, (o.dust ?? 1) * this.wear.dust];
   }
@@ -906,6 +935,11 @@ export class DKit {
       key = cls = 'atlas';
     } else if (slot && slot.isMaterial) cls = 'mat';
     if (o.uvs) geo.uvMap(o.uvs, o.uvs);
+    if (PROF) {
+      const st = new Error().stack.split('\n').slice(2, 7).map((l) => (l.match(/(\w+\.js):(\d+)/) || [])[0]).filter((x) => x && !x.startsWith('core.js'));
+      const key = st.slice(0, 2).join(' < ');
+      (this._prof = this._prof || {})[key] = (this._prof[key] || 0) + geo.idx.length / 3;
+    }
     const uvOff = hasClass(cls) && o.uvOff !== false ? [this.rng.next() * 3.7, this.rng.next() * 3.7] : null;
     this._bucket(target, key, cls).geo.append(geo, m, uvOff, (o.edge ?? 1) * this.wear.edge, this._attrs(cls, o));
     return geo;
@@ -1046,6 +1080,7 @@ export class DKit {
       }
       const bg = toBuffer(g, it.ao, grime, up);
       tris += g.idx.length / 3; verts += n;
+      (this._dbg = this._dbg || []).push(`${it.single ? 'S:' + (it.single.mesh.name || '?') : (it.target === this.root ? 'root' : it.target.name)}/${it.cls}:${g.idx.length / 3}`);
       if (it.single) { it.single.mesh.geometry = bg; draws++; continue; }
       const mat = this._matFor(it);
       const mesh = new THREE.Mesh(bg, mat);
@@ -1061,7 +1096,8 @@ export class DKit {
     draws += Object.keys(this.screens).length;
     this.buckets.clear();
     this.singles = [];
-    const stats = { tris, verts, draws, buildMs: +(performance.now() - this.t0).toFixed(1), aoMs: +(tb - ta).toFixed(1), packMs: +(performance.now() - tb0).toFixed(1), atlas: this.A ? `${this.A.W}x${this.A.H2}` : null };
+    const prof = this._prof ? Object.entries(this._prof).sort((a, b) => b[1] - a[1]).slice(0, 30).map(([k2, v]) => `${v} ${k2}`) : undefined;
+    const stats = { tris, verts, draws, buckets: this._dbg, prof, buildMs: +(performance.now() - this.t0).toFixed(1), aoMs: +(tb - ta).toFixed(1), packMs: +(performance.now() - tb0).toFixed(1), atlas: this.A ? `${this.A.W}x${this.A.H2}` : null };
     this.root.userData.stats = stats;
     return {
       object: this.root,

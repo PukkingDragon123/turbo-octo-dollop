@@ -14,7 +14,7 @@ import { surface, BASE } from './poolmat.js';
 import { buildPool, poolRect, poolWaterQuads, drainGrate, TINT_NOSE } from './pools.js';
 import { poolPoint, poolCoords, poolFloorAt } from './layout.js';
 import * as Mat from '../../../gfx/materials.js';
-import { lifeguardChair, bench, showerColumn, pipeRun, filterTank, tileDebris, shaftGeometry, shaftMaterial, waterslide } from './decor.js';
+import { lifeguardChair, bench, showerColumn, pipeRun, pumpUnit, filterTank, tileDebris, shaftGeometry, shaftMaterial, waterslide } from './decor.js';
 import { SIGN, signQuad, signBaseMaterial } from './signs.js';
 import { hash01 } from '../../../core/rng.js';
 
@@ -186,7 +186,8 @@ export function buildChunk(level, cx, cz) {
   return r.value;
 }
 
-export function* buildChunkSteps(level, cx, cz) {
+// `out.rec` exposes the chunk record while it is being built, so an aborted build can be undone
+export function* buildChunkSteps(level, cx, cz, out = null) {
   const seed = level.seed;
   const layout = getLayout(seed, cx, cz, level.variantFn(cx, cz));
   const N = CHUNK;
@@ -195,6 +196,7 @@ export function* buildChunkSteps(level, cx, cz) {
   const group = new THREE.Group();
   group.name = `chunk:${cx},${cz}`;
   const rec = { colliders: [], group, layout, cx, cz, statics: [], waterCells: [], physicsColliders: [], extraBodies: [], ladders: [], vents: [], meshes: [] };
+  if (out) out.rec = rec;
   const B = {
     wall: new Mesher({ seg: 0.75 }),
     floor: new Mesher({ wet: true, seg: 0.75 }),
@@ -229,13 +231,14 @@ export function* buildChunkSteps(level, cx, cz) {
   for (const w of layout.windows) B.windows.set(`${w.li},${w.lj},${w.side}`, w);
   for (const g of layout.grilles) B.grilles.set(`${g.li},${g.lj},${g.side}`, g);
 
-  emitFloors(B, Q, layout, ox, oz);
+  yield* emitFloors(B, Q, layout, ox, oz);
   yield 'floors';
-  emitCeilings(B, Q, layout, ox, oz);
+  yield* emitCeilings(B, Q, layout, ox, oz);
   yield 'ceilings';
-  emitWalls(B, Q, layout, ox, oz, rec);
+  yield* emitWalls(B, Q, layout, ox, oz, rec);
   yield 'walls';
   emitPillars(B, Q, layout, ox, oz);
+  yield 'pillars';
   for (const p of layout.pools) {
     const nl = B.lamps.length;
     buildPool(B, p, ox, oz);
@@ -244,6 +247,7 @@ export function* buildChunkSteps(level, cx, cz) {
     poolWaterQuads(B.water, p, ox, oz);
     for (let j = p.rz; j < p.rz + p.h; j++) for (let i = p.rx; i < p.rx + p.w; i++) rec.waterCells.push(layout.cells[j * N + i]);
   }
+  yield 'pools';
   // sunk-cell water + spill sheets
   for (const c of layout.cells) {
     if (c.floor === 'sunk' && c.water) { waterCell(B.water, c, WATER_Y, SUNK_Y); rec.waterCells.push(c); }
@@ -278,6 +282,7 @@ export function* buildChunkSteps(level, cx, cz) {
     const [px, pz] = poolPoint(p, ox, oz, d.s, 0.5);
     for (const b of lifeguardChair(B, x, z, Math.atan2(px - x, pz - z))) B.boxes.push(b);
   }
+  yield 'decor';
   // room set dressing
   for (const room of layout.specials) roomGeometry(B, Q, room, layout, ox, oz);
   // light shafts under skylights
@@ -297,6 +302,7 @@ export function* buildChunkSteps(level, cx, cz) {
   const add = function* (M, mat, opts = {}) {
     if (M.isEmpty()) return;
     const geo = M.build();
+    yield 'mesh';
     if (opts.own) bakeOwn(geo, opts.ownW ?? 1);
     else yield* baker.bakeIter(geo, opts.bake || {});
     const mesh = new THREE.Mesh(geo, mat);
@@ -363,7 +369,7 @@ export function* buildChunkSteps(level, cx, cz) {
 
   // ---- colliders ----
   yield 'water';
-  buildColliders(level, B, layout, ox, oz, rec);
+  yield* buildColliders(level, B, layout, ox, oz, rec);
   rec.ladders = B.ladders;
   group.updateMatrixWorld(true);
   return rec;
@@ -421,7 +427,7 @@ function* waterMesh(Wm, baker, mat, baseY) {
 }
 
 // ---------------------------------------------------------------------------
-function emitFloors(B, Q, layout, ox, oz) {
+function* emitFloors(B, Q, layout, ox, oz) {
   const drains = new Map();
   for (const d of layout.drains) {
     const k = `${d.li},${d.lj}`;
@@ -429,7 +435,9 @@ function emitFloors(B, Q, layout, ox, oz) {
     drains.get(k).push(d);
   }
   const wetFn = (p) => Q.wetAt(p.x, p.z);
+  let n = 0;
   for (const c of layout.cells) {
+    if ((++n & 15) === 0) yield 'floor';
     if (c.pool) continue;
     const x0 = c.i * CELL, z0 = c.j * CELL, x1 = x0 + CELL, z1 = z0 + CELL;
     if (c.floor === 'sunk') {
@@ -465,10 +473,12 @@ function emitFloors(B, Q, layout, ox, oz) {
 }
 
 // ---------------------------------------------------------------------------
-function emitCeilings(B, Q, layout, ox, oz) {
+function* emitCeilings(B, Q, layout, ox, oz) {
   const N = CHUNK;
   const spawn = layout.specials.find((r) => r.kind === 'spawn');
+  let n = 0;
   for (const c of layout.cells) {
+    if ((++n & 7) === 0) yield 'ceil';
     const x0 = c.i * CELL, z0 = c.j * CELL, x1 = x0 + CELL, z1 = z0 + CELL;
     const cxm = x0 + CELL / 2, czm = z0 + CELL / 2;
     const y = c.ceil;
@@ -581,9 +591,11 @@ function spawnHole(B, x, y, z) {
 // Walls
 const DOOR_A = 0.9, DOOR_B = 2.1, DOOR_SPRING = 1.6;
 
-function emitWalls(B, Q, layout, ox, oz, rec) {
+function* emitWalls(B, Q, layout, ox, oz, rec) {
   const N = CHUNK;
+  let n = 0;
   for (const c of layout.cells) {
+    if ((++n & 7) === 0) yield 'wall';
     const tN = layout.edgesN[c.lj * N + c.li];
     if (tN) emitEdge(B, Q, c, Q.cellAt(c.i, c.j - 1), 'x', tN, rec);
     else bulkhead(B, Q, c, Q.cellAt(c.i, c.j - 1), 'x', 0, CELL);
@@ -898,6 +910,18 @@ function barrelVault(M, x0, z0, x1, z1, top, room) {
   M.setTint(1, 1, 1);
 }
 
+// runs [i0, i1) of door-free cell edges along a room's N or S wall (chunk-local columns)
+function doorFreeRuns(room, side) {
+  const runs = [];
+  let start = null;
+  for (let i = room.rx; i <= room.rx + room.w; i++) {
+    const free = i < room.rx + room.w && !room.doors.some((d) => d.side === side && d.i === i);
+    if (free && start === null) start = i;
+    if (!free && start !== null) { runs.push([start, i]); start = null; }
+  }
+  return runs;
+}
+
 function roomGeometry(B, Q, room, layout, ox, oz) {
   const x0 = ox + room.rx * CELL, z0 = oz + room.rz * CELL;
   const x1 = x0 + room.w * CELL, z1 = z0 + room.h * CELL;
@@ -906,15 +930,31 @@ function roomGeometry(B, Q, room, layout, ox, oz) {
   switch (room.kind) {
     case 'spawn': tileDebris(B, ox + (room.rx + 1) * CELL, oz + (room.rz + 1) * CELL, layout.cx * 31 + layout.cz); break;
     case 'gen_diesel': case 'gen_electric': case 'gen_mech': case 'pump_room': {
-      // pipework along the north wall, filter tank in a corner away from the doors
+      // pipework along the north wall (only over door-free cells), filter tank in a corner away from
+      // the doors; the pump room also gets its circulation pump feeding the main
+      const yb = room.kind === 'pump_room' ? 1.6 : 2.15;
       const zW = z0 + h;
-      pipeRun(B, x0 + h + 0.05, zW, x1 - h - 0.05, zW, [0, 1], room.kind === 'pump_room' ? 1.6 : 2.15);
+      for (const [i0, i1] of doorFreeRuns(room, 'N')) pipeRun(B, ox + i0 * CELL + h + 0.05, zW, ox + i1 * CELL - h - 0.05, zW, [0, 1], yb);
       const corners = [[x1 - 0.75, z1 - 0.75, 'E', 'S'], [x0 + 0.75, z1 - 0.75, 'W', 'S']];
       for (const [tx, tz, s1, s2] of corners) {
         if (doorSides.has(s1) || doorSides.has(s2)) continue;
         for (const b of filterTank(B, tx, tz, 1.25, 0.36)) B.boxes.push(b);
         break;
       }
+      if (room.kind === 'pump_room') {
+        const run = doorFreeRuns(room, 'N').find(([a, b]) => b - a >= 1);
+        if (run) {
+          const xc = ox + ((run[0] + run[1]) / 2) * CELL - 0.3;
+          for (const b of pumpUnit(B, xc, z0 + 0.68, yb, zW + 0.18 + 0.075)) B.boxes.push(b);
+        }
+      }
+      break;
+    }
+    case 'workshop': {
+      // service pipework along a side wall without doors (the workbench stands at the north wall)
+      const walls = [['E', x1 - h, z0 + h + 0.05, x1 - h, z1 - h - 0.05, [-1, 0]], ['W', x0 + h, z0 + h + 0.05, x0 + h, z1 - h - 0.05, [1, 0]], ['S', x0 + h + 0.05, z1 - h, x1 - h - 0.05, z1 - h, [0, -1]]];
+      const w = walls.find((q) => !doorSides.has(q[0]));
+      if (w) pipeRun(B, w[1], w[2], w[3], w[4], w[5], 2.15);
       break;
     }
     case 'locker_room': {
@@ -972,7 +1012,7 @@ function emitPillars(B, Q, layout, ox, oz) {
 }
 
 // ---------------------------------------------------------------------------
-function buildColliders(level, B, layout, ox, oz, rec) {
+function* buildColliders(level, B, layout, ox, oz, rec) {
   const phys = level.world.physics;
   const N = CHUNK;
   const cols = rec.physicsColliders;
@@ -1004,7 +1044,10 @@ function buildColliders(level, B, layout, ox, oz, rec) {
       li = e;
     }
   }
+  yield 'colliders';
+  let n = 0;
   for (const b of B.boxes) {
+    if ((++n & 63) === 0) yield 'colliders';
     const hx = (b.max[0] - b.min[0]) / 2, hy = (b.max[1] - b.min[1]) / 2, hz = (b.max[2] - b.min[2]) / 2;
     if (hx < 0.002 || hy < 0.002 || hz < 0.002) continue;
     cols.push(phys.addStaticBox((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2, hx, hy, hz, b.kind === 'coping' ? { kind: 'static', surface: 'floor' } : udWorld));

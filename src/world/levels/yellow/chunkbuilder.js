@@ -260,7 +260,7 @@ export function buildChunk(level, cx, cz) {
   add(G.enamel, Mat.get('enamel'), 0, { quant: 0.3, mix: [0.5, 0.6] });
   add(G.lens, Mat.get('lightpanel'), 0, { emissive: true, lens: true, quant: 0.6, mix: [0.2, 0.4] });
   add(G.lensLouvre, Mat.get('lightpanel'), 0, { emissive: true, lens: 'louvre', quant: 0.6, mix: [0.2, 0.4] });
-  add(G.plenum, Mat.get('plenum'), 0, { quant: 0.3, mix: [0.3, 0.2] });
+  add(G.plenum, Mat.get('plenum'), 0, { quant: 0.3, mix: [0.3, 0.32] });
   add(G.debris, Mat.get('ceiling'), 0, { quant: 0.3 });
   add(G.pipe, Mat.get('pipe_paint'), 0, { quant: 0.3, cast: true });
   add(G.insul, Mat.get('insulation'), 0, { quant: 0.3, cast: true });

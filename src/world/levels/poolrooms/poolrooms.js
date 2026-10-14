@@ -128,9 +128,16 @@ export class PoolroomsLevel extends YellowLevel {
   async build(onProgress) {
     onProgress?.(0, 'LEVEL 37 — THE POOLROOMS · FILLING THE POOLS');
     const scene = engine.scene;
+    this.prevEnv = { env: scene.environment, int: scene.environmentIntensity, exp: engine.renderer.toneMappingExposure, bloom: engine.post.bloom?.strength, bg: scene.background };
+    // remember the post stack's grade so dispose() hands it back untouched
+    this.prevPost = {};
+    for (const k of ['uTint', 'uSat', 'uGrain', 'uVignette', 'uExposure', 'uLift', 'uGamma', 'uGain', 'uRolloff', 'uContrast']) {
+      const v = engine.post.params[k]?.value;
+      if (typeof v === 'number') this.prevPost[k] = v;
+      else if (v?.isColor || v?.isVector2 || v?.isVector3 || v?.isVector4) this.prevPost[k] = v.clone();
+    }
     scene.background = new THREE.Color(0x9fb4b6);
     scene.fog = new THREE.FogExp2(_fogLit.getHex(), 0.024);
-    this.prevEnv = { env: scene.environment, int: scene.environmentIntensity, exp: engine.renderer.toneMappingExposure, bloom: engine.post.bloom?.strength };
     scene.environment = poolEnvironment();
     scene.environmentIntensity = 0.25;
     this.field.uniforms.uAmbient.value.setRGB(0.02, 0.024, 0.026);
@@ -359,7 +366,8 @@ export class PoolroomsLevel extends YellowLevel {
       if (next) {
         const [cx, cz] = next[0].split(',').map(Number);
         this._ensureLights(cx, cz);
-        this.job = { key: next[0], cx, cz, it: buildChunkSteps(this, cx, cz), ms: 0 };
+        const out = {};
+        this.job = { key: next[0], cx, cz, it: buildChunkSteps(this, cx, cz, out), out, ms: 0 };
       }
     }
     if (this.job) {
@@ -391,9 +399,24 @@ export class PoolroomsLevel extends YellowLevel {
     }
   }
 
+  // drop a half-built chunk: its colliders may already be in the physics world
+  _abortJob() {
+    const job = this.job;
+    this.job = null;
+    const rec = job?.out?.rec;
+    if (!rec) return;
+    for (const c of rec.physicsColliders) this.world.physics.removeCollider(c);
+    rec.physicsColliders.length = 0;
+    rec.group.traverse((o) => {
+      if (o === rec.waterMesh || o === rec.spillMesh) this.reflection.meshes.delete(o);
+      if (o === rec.shaftMesh) this.reflection.hide.delete(o);
+      if (o.isMesh && o.geometry && !o.userData.sharedGeo) o.geometry.dispose();
+    });
+  }
+
   shiftChunk(cx, cz, variant) {
     const key = this._key(cx, cz);
-    if (this.job?.key === key) this.job = null;
+    if (this.job?.key === key) this._abortJob();
     super.shiftChunk(cx, cz, variant);
   }
 
@@ -847,6 +870,7 @@ export class PoolroomsLevel extends YellowLevel {
 
   // ---------------------------------------------------------------
   dispose() {
+    if (this.job) this._abortJob();
     const i = this.world.physics.beforeStep.indexOf(this._buoy);
     if (i >= 0) this.world.physics.beforeStep.splice(i, 1);
     this.dripLoop?.stop(0.3);
@@ -861,12 +885,14 @@ export class PoolroomsLevel extends YellowLevel {
       engine.renderer.toneMappingExposure = this.prevEnv.exp;
       if (engine.post.bloom && this.prevEnv.bloom !== undefined) { engine.post.bloom.strength = this.prevEnv.bloom; engine.post.bloom.threshold = this.prevEnv.thr ?? 0.92; }
     }
-    s.background = new THREE.Color(0x000000);
+    s.background = this.prevEnv?.bg ?? new THREE.Color(0x000000);
     const pp = engine.post.params;
-    pp.uTint.value.setRGB(1, 1, 1);
-    pp.uSat.value = 1;
-    if (pp.uLift) { pp.uExposure.value = 1; pp.uLift.value.set(0, 0, 0); pp.uGamma.value.set(1, 1, 1); pp.uGain.value.set(1, 1, 1); pp.uRolloff.value = 0; }
-    if (pp.uContrast) pp.uContrast.value = 1.04;
+    for (const [k, v] of Object.entries(this.prevPost || {})) {
+      const u = pp[k];
+      if (!u) continue;
+      if (typeof v === 'number') u.value = v;
+      else u.value.copy(v);
+    }
   }
 }
 

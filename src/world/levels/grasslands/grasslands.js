@@ -576,7 +576,12 @@ export class GrasslandsLevel {
       const l = this.game.local;
       if (l && !l.dead && this.isChunkLoaded(l.pos.x, l.pos.z)) {
         const g = this.groundAt(l.pos.x, l.pos.z);
-        if (l.pos.y < g - 1.2) l.teleport(new THREE.Vector3(l.pos.x, g + 0.08, l.pos.z));
+        if (l.pos.y < g - 1.2) {
+          l.teleport(new THREE.Vector3(l.pos.x, g + 0.08, l.pos.z));
+          // the fall under the surface must not count as a landing impact
+          l.fallSpeed = 0;
+          l.arrivalGrace = Math.max(l.arrivalGrace || 0, 0.5);
+        }
       }
     }
     // props pick up the roofed-space light occlusion (shared catalog materials, restored on dispose)
@@ -654,7 +659,7 @@ export class GrasslandsLevel {
       const d2 = o.position.distanceToSquared(cam);
       const far = d2 > 65 * 65;
       if (far && o.visible && !p.isHeld?.()) { o.visible = false; hid.add(o); } else if (!far && hid.has(o)) { o.visible = true; hid.delete(o); }
-      const cast = d2 < 20 * 20;
+      const cast = d2 < 14 * 14;
       if (cast !== !o.userData.glNoShadow) {
         o.userData.glNoShadow = !cast;
         o.traverse((m) => {

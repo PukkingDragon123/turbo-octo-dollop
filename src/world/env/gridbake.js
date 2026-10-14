@@ -13,6 +13,7 @@ const RADIUS = 9;
 export const IN_OFF = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
 export const OUT_OFF = [[-2, -1], [-2, 0], [-2, 1], [2, -1], [2, 0], [2, 1], [-1, -2], [0, -2], [1, -2], [-1, 2], [0, 2], [1, 2]];
 const MARGIN = 4;
+const DIAG = [0, 2, 5, 7];
 
 // solid at the start (u = 0) / end (u = CELL) of an edge, for floors (f) and ceilings (c)
 const SOLID_START_F = [0, 1, 1, 1, 1, 0, 1, 1];
@@ -88,8 +89,34 @@ export class GridBaker {
 
   // transmissions (8 inner + 12 outer) from sample point (sx, sz) for origin cell (ci, cj) into out[o..o+20)
   _transInto(sx, sz, ci, cj, out, o, litIn, litOut) {
-    for (let k = 0; k < 8; k++) {
-      out[o + k] = litIn[k] ? this.trans(sx, sz, (ci + IN_OFF[k][0] + 0.5) * CELL, (cj + IN_OFF[k][1] + 0.5) * CELL) : 0;
+    const li = ci - this.I0, lj = cj - this.J0, Wd = this.Wd;
+    if (Math.floor(sx / CELL) === ci && Math.floor(sz / CELL) === cj && li >= 1 && lj >= 1 && li < Wd - 1 && lj < Wd - 1) {
+      // sample inside its origin cell: a ray to an axis neighbour's centre stays in the shared strip and
+      // crosses exactly one edge; to a diagonal neighbour it crosses two, in the order the DDA would visit
+      // them (same arithmetic as trans(), so the result is identical)
+      const tN = this.tN, tW = this.tW, k0 = lj * Wd + li;
+      out[o + 1] = litIn[1] ? tN[k0] : 0;
+      out[o + 3] = litIn[3] ? tW[k0] : 0;
+      out[o + 4] = litIn[4] ? tW[k0 + 1] : 0;
+      out[o + 6] = litIn[6] ? tN[k0 + Wd] : 0;
+      for (let q = 0; q < 4; q++) {
+        const k = DIAG[q];
+        if (!litIn[k]) { out[o + k] = 0; continue; }
+        const di = IN_OFF[k][0], dj = IN_OFF[k][1];
+        const x1 = (ci + di + 0.5) * CELL, z1 = (cj + dj + 0.5) * CELL;
+        const dx = x1 - sx, dz = z1 - sz, adx = Math.abs(dx), adz = Math.abs(dz);
+        const tMx = (dx > 0 ? (ci + 1) * CELL - sx : sx - ci * CELL) / adx;
+        const tMz = (dz > 0 ? (cj + 1) * CELL - sz : sz - cj * CELL) / adz;
+        const kw = di > 0 ? 1 : 0, kn = dj > 0 ? Wd : 0;   // W edge on the x side, N edge on the z side
+        const tr = tMx < tMz
+          ? tW[k0 + kw] * tN[k0 + di + kn]                 // x first: W edge of (ci|ci+1, cj), then N edge in column ci+di
+          : tN[k0 + kn] * tW[k0 + dj * Wd + kw];           // z first: N edge of (ci, cj|cj+1), then W edge in row cj+dj
+        out[o + k] = tr < 0.01 ? 0 : tr;
+      }
+    } else {
+      for (let k = 0; k < 8; k++) {
+        out[o + k] = litIn[k] ? this.trans(sx, sz, (ci + IN_OFF[k][0] + 0.5) * CELL, (cj + IN_OFF[k][1] + 0.5) * CELL) : 0;
+      }
     }
     for (let k = 0; k < 12; k++) {
       out[o + 8 + k] = litOut[k] ? this.trans(sx, sz, (ci + OUT_OFF[k][0] + 0.5) * CELL, (cj + OUT_OFF[k][1] + 0.5) * CELL) : 0;
@@ -113,12 +140,11 @@ export class GridBaker {
     const fullMaps = coarse ? new Array(256) : null;
     const bx = this.I0 * CELL, bz = this.J0 * CELL;
     // per origin-cell cache: which of the 20 surrounding cells have a fixture
-    const litIn = new Uint8Array(8), litOut = new Uint8Array(12);
+    const litIn = new Uint8Array(8), litOut = new Uint8Array(12), outX = new Float64Array(12), outZ = new Float64Array(12);
     let lci = NaN, lcj = NaN;
-    // small ring cache of recent sample points (wall columns, coincident vertices)
-    const RC = 32;
-    const rcX = new Float64Array(RC), rcZ = new Float64Array(RC), rcI = new Int32Array(RC), rcJ = new Int32Array(RC), rcT = new Float32Array(RC * 20);
-    let rcN = 0, rcHead = 0;
+    // direct-mapped cache of sample points (wall columns, coincident vertices share one DDA pass)
+    const RC = 512;
+    const rcX = new Float64Array(RC).fill(NaN), rcZ = new Float64Array(RC), rcI = new Int32Array(RC), rcJ = new Int32Array(RC), rcT = new Float32Array(RC * 20);
     for (let v = 0; v < n; v++) {
       const px = pos[v * 3], py = pos[v * 3 + 1], pz = pos[v * 3 + 2];
       const nx = nor[v * 3], ny = nor[v * 3 + 1], nz = nor[v * 3 + 2];
@@ -127,7 +153,10 @@ export class GridBaker {
       if (ci !== lci || cj !== lcj) {
         lci = ci; lcj = cj;
         for (let k = 0; k < 8; k++) litIn[k] = this.isLit(ci + IN_OFF[k][0], cj + IN_OFF[k][1]) ? 1 : 0;
-        for (let k = 0; k < 12; k++) litOut[k] = this.isLit(ci + OUT_OFF[k][0], cj + OUT_OFF[k][1]) ? 1 : 0;
+        for (let k = 0; k < 12; k++) {
+          litOut[k] = this.isLit(ci + OUT_OFF[k][0], cj + OUT_OFF[k][1]) ? 1 : 0;
+          outX[k] = (ci + OUT_OFF[k][0] + 0.5) * CELL; outZ[k] = (cj + OUT_OFF[k][1] + 0.5) * CELL;
+        }
       }
       if (coarse) {
         const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
@@ -150,15 +179,9 @@ export class GridBaker {
         }
         fm.set(key, v);
       }
-      // transmissions: ring cache by exact sample point
-      let slot = -1;
-      for (let r = 0; r < rcN; r++) {
-        if (rcX[r] === sx && rcZ[r] === sz && rcI[r] === ci && rcJ[r] === cj) { slot = r; break; }
-      }
-      if (slot < 0) {
-        slot = rcHead;
-        rcHead = (rcHead + 1) % RC;
-        if (rcN < RC) rcN++;
+      // transmissions: cached by exact sample point
+      const slot = (Math.imul((sx * 1024) | 0, 73856093) ^ Math.imul((sz * 1024) | 0, 19349663) ^ Math.imul(ci, 83492791) ^ Math.imul(cj, 1640531527)) & (RC - 1);
+      if (rcX[slot] !== sx || rcZ[slot] !== sz || rcI[slot] !== ci || rcJ[slot] !== cj) {
         rcX[slot] = sx; rcZ[slot] = sz; rcI[slot] = ci; rcJ[slot] = cj;
         this._transInto(sx, sz, ci, cj, rcT, slot * 20, litIn, litOut);
       }
@@ -170,8 +193,7 @@ export class GridBaker {
         let w = 0;
         if (litOut[k]) {
           const t = rcT[o + 8 + k];
-          const lx = (ci + OUT_OFF[k][0] + 0.5) * CELL, lz = (cj + OUT_OFF[k][1] + 0.5) * CELL;
-          const dx = lx - sx, dy = LY - sy, dz = lz - sz;
+          const dx = outX[k] - sx, dy = LY - sy, dz = outZ[k] - sz;
           const d2 = dx * dx + dy * dy + dz * dz;
           if (d2 < RADIUS * RADIUS) {
             const d = Math.sqrt(d2);
@@ -203,22 +225,18 @@ export class GridBaker {
     let d = 9;
     if (Math.abs(nz) >= Math.abs(nx)) {
       // face runs along x; perpendicular walls are the W edges of (ci, cj) and (ci + 1, cj)
-      const north = nz > 0; // face sits on the north side of its cell
-      for (const [ei, fx] of [[ci, x0 + 0.08], [ci + 1, x0 + CELL - 0.08]]) {
-        const t = this.edgeW(ei, cj);
-        if (!t) continue;
-        const touches = north ? SOLID_START_F[t] : SOLID_END_F[t];
-        if (!touches || (t === W.LOW && py > 1.05)) continue;
-        d = Math.min(d, Math.abs(px - fx));
+      const S = nz > 0 ? SOLID_START_F : SOLID_END_F; // face sits on the north / south side of its cell
+      for (let e = 0; e < 2; e++) {
+        const t = this.edgeW(ci + e, cj);
+        if (!t || !S[t] || (t === W.LOW && py > 1.05)) continue;
+        d = Math.min(d, Math.abs(px - (e ? x0 + CELL - 0.08 : x0 + 0.08)));
       }
     } else {
-      const west = nx > 0;
-      for (const [ej, fz] of [[cj, z0 + 0.08], [cj + 1, z0 + CELL - 0.08]]) {
-        const t = this.edgeN(ci, ej);
-        if (!t) continue;
-        const touches = west ? SOLID_START_F[t] : SOLID_END_F[t];
-        if (!touches || (t === W.LOW && py > 1.05)) continue;
-        d = Math.min(d, Math.abs(pz - fz));
+      const S = nx > 0 ? SOLID_START_F : SOLID_END_F;
+      for (let e = 0; e < 2; e++) {
+        const t = this.edgeN(ci, cj + e);
+        if (!t || !S[t] || (t === W.LOW && py > 1.05)) continue;
+        d = Math.min(d, Math.abs(pz - (e ? z0 + CELL - 0.08 : z0 + 0.08)));
       }
     }
     if (d >= 0.9) return 1;

@@ -14,6 +14,7 @@ import { makeDevice } from '../../../game/devicekinds.js';
 import { CRATE_LOOT } from '../../../game/itemdefs.js';
 import { CELL, PAD_Y, WATER_Y } from './layout.js';
 import { texSize, noiseTexture } from './textures.js';
+import { buildProxy } from './proxy.js';
 
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
@@ -428,6 +429,8 @@ export class Structures {
     const rng = new RNG(hash3(this.level.seed, 1, 2, 3));
     const sp = this.gw.spawn;
     const kit = new Kit('landing');
+    // fallen ceiling tiles: placed as catalog models, then merged into one static mesh per material
+    const tiles = new THREE.Group();
     for (let k = 0; k < 9; k++) {
       const a = rng.next() * Math.PI * 2, r = 1.5 + rng.next() * 4.5;
       const x = sp.x + Math.cos(a) * r, z = sp.z + Math.sin(a) * r;
@@ -435,9 +438,7 @@ export class Structures {
       const tile = buildModel('ceiling_tile', { seed: k + 3 });
       tile.object.position.set(x, y + 0.02, z);
       tile.object.rotation.set(rng.range(-0.2, 0.2), rng.next() * 6.28, rng.range(-0.25, 0.25));
-      tile.object.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      this.group.add(tile.object);
-      tile.object.updateMatrixWorld(true);
+      tiles.add(tile.object);
     }
     // fallen 2x4 troffer with a cracked tube, still flickering
     const fx = sp.x + 2.8, fz = sp.z - 1.6, fy = this.gw.groundAt(fx, fz);
@@ -461,8 +462,11 @@ export class Structures {
       const t = buildModel('ceiling_tile', { seed: 40 + k });
       t.object.position.set(sp.x + Math.cos(a) * 1.5, H - 0.2 - rng.next() * 0.4, sp.z + Math.sin(a) * 1.5);
       t.object.rotation.set(0.6 + rng.next() * 0.6, a, rng.range(-0.3, 0.3));
-      this.group.add(t.object);
+      tiles.add(t.object);
     }
+    tiles.updateMatrixWorld(true);
+    const merged = buildProxy(tiles, { shadows: true });
+    if (merged) { merged.name = 'landing_tiles'; this.group.add(merged); } else this.group.add(tiles);
     this._finish(kit);
     this.skyHole = hole;
     this.photo.push({ pos: new THREE.Vector3(sp.x, H, sp.z), subject: 'HOLE IN THE SKY', key: 'st:skyhole', value: 80, maxD: 80 });

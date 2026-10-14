@@ -20,6 +20,10 @@
 import * as Legacy from './items/legacy.js';
 import * as Core from './items/core.js';
 import './items/tools.js';
+import './items/food.js';
+import './items/medical.js';
+import './items/gear.js';
+import './items/craft.js';
 
 export const ITEMS = {};
 const order = Object.keys(Legacy.ITEMS);

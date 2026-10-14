@@ -71,7 +71,7 @@ function drowned(mt) {
   return c;
 }
 
-const YELLOW_KINDS = new Set(['workshop', 'fuel_store', 'fuse_office', 'dead_clone', 'vending_lonely']);
+const YELLOW_KINDS = new Set(['fuel_store', 'fuse_office', 'dead_clone', 'vending_lonely']);
 
 export function decoratePoolRoom(level, room, rec) {
   rec._ventsDone = true; // our critter exits are registered by the level
@@ -81,14 +81,28 @@ export function decoratePoolRoom(level, room, rec) {
   switch (room.kind) {
     case 'lifeguard_office': yellowDecorate(level, { ...room, kind: 'office_room' }, rec); break;
     case 'locker_room': {
-      // rows of abandoned lockers (static set pieces; a few doors left hanging open)
-      const n = room.w * 2;
+      // one long bank of abandoned lockers per door-free wall run (a few doors left hanging open)
       const rng = new RNG(hash3(rec.cx, rec.cz, 77, level.seed));
-      for (let k = 0; k < n; k++) {
-        const x = b.x0 + 0.9 + k * 1.45;
-        if (x > b.x1 - 0.7) break;
-        const { m } = placeStatic(level, rec, 'locker_bank', x, 0, b.z0 + 0.32, 0, { collide: true, useHalf: false, modelOpts: { count: 3 } });
-        for (const d of m.parts?.doors || []) if (rng.chance(0.3)) d.rotation.y = -rng.range(0.4, 1.6);
+      const blocked = (side, i) => room.doors.some((d) => d.side === side && d.i === i);
+      for (const side of ['N', 'S']) {
+        if (side === 'S' && room.rz + room.h >= CHUNK) continue;
+        const runs = [];
+        let start = null;
+        for (let i = room.rx; i <= room.rx + room.w; i++) {
+          const free = i < room.rx + room.w && !blocked(side, i);
+          if (free && start === null) start = i;
+          if (!free && start !== null) { runs.push([start, i]); start = null; }
+        }
+        if (!runs.length) continue;
+        for (const [i0, i1] of runs) {
+          const x0 = (rec.cx * CHUNK + i0) * CELL + 0.32, x1 = (rec.cx * CHUNK + i1) * CELL - 0.32;
+          const count = Math.min(12, Math.floor((x1 - x0) / 0.45));
+          if (count < 2) continue;
+          const z = side === 'N' ? b.z0 + 0.32 : b.z1 - 0.32;
+          const { m } = placeStatic(level, rec, 'locker_bank', (x0 + x1) / 2, 0, z, side === 'N' ? 0 : Math.PI, { collide: true, useHalf: false, modelOpts: { count } });
+          for (const d of m.parts?.doors || []) if (rng.chance(0.3)) d.rotation.y = -rng.range(0.4, 1.6);
+        }
+        break;
       }
       break;
     }
@@ -110,14 +124,9 @@ export function decoratePoolRoom(level, room, rec) {
       }
       break;
     }
-    case 'pump_room': {
-      const { o, m } = placeStatic(level, rec, 'pipe_cluster', b.x1 - 0.15, 0, b.cz, -Math.PI / 2, { useHalf: false });
-      if (level.critters && m.anchors?.mouth) {
-        o.updateWorldMatrix(true, false);
-        const mouth = m.anchors.mouth.clone().applyMatrix4(o.matrixWorld);
-        const inside = (m.anchors.inside || m.anchors.mouth).clone().applyMatrix4(o.matrixWorld);
-        level.critters.addVent(mouth.setY(0.15), o, inside);
-      }
+    case 'workshop': {
+      // the bench (crafting device); pipework and the floor drain are part of the chunk geometry
+      addDevice(level, rec, 'workbench', `wb:${rid}`, new THREE.Vector3(b.cx, 0, b.z0 + 0.55), 0);
       break;
     }
     default: break;
@@ -133,7 +142,7 @@ function sp(level, type, x, y, z, rotY = 0, opts = {}) {
 export function populatePoolRoom(level, room, rec, rng) {
   const b = roomBounds(room, rec);
   const r = (a) => rng.range(-a, a);
-  if (YELLOW_KINDS.has(room.kind)) { yellowPopulate(level, room, rec, rng); return; }
+  if (YELLOW_KINDS.has(room.kind) || room.kind === 'workshop') { yellowPopulate(level, room, rec, rng); return; }
   switch (room.kind) {
     case 'lifeguard_office': {
       yellowPopulate(level, { ...room, kind: 'office_room' }, rec, rng);
@@ -157,7 +166,8 @@ export function populatePoolRoom(level, room, rec, rng) {
       break;
     }
     case 'pump_room': {
-      for (let k = 0; k < 3; k++) sp(level, rng.pick(['barrel', 'bucket', 'pipe', 'toolbox']), b.cx + r(1.2), 0, b.cz + r(0.6), rng.next() * 6);
+      // loose kit on the floor, clear of the pump skid along the north wall
+      for (let k = 0; k < 3; k++) sp(level, rng.pick(['barrel', 'bucket', 'pipe', 'toolbox']), b.cx + r(1.2), 0, b.cz + 0.35 + r(0.4), rng.next() * 6);
       break;
     }
     case 'sinking':
