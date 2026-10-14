@@ -151,6 +151,9 @@ const scenarios = {
       await ev(() => { __game.cutscene = null; __engine.post.params.uFade.value = 0; __engine.post.params.uGlitch.value = 0; });
       await sim(4);
       console.log('arrived', type, JSON.stringify(await ev(() => ({ depth: __game.run.depth, hp: __game.local.survival.hp, dead: __game.local.dead, props: __game.world.props.props.size, gens: __game.world.level.mission.generators.length }))), 'load', secs, 's');
+      // the arrival fade runs on wall-clock time: give it real seconds (and frames) before the screenshot
+      await page.waitForTimeout(4000);
+      console.log('view', JSON.stringify(await ev(() => ({ fade: +__engine.post.params.uFade.value.toFixed(2), cutscene: __game.cutscene?.kind || null, exposure: __engine.renderer.toneMappingExposure, envI: __engine.scene.environmentIntensity, fog: __engine.scene.fog?.density ?? null, pos: __game.local.pos.toArray().map((v) => +v.toFixed(1)), light: +(__game.local.lightLevel ?? -1).toFixed(2) }))));
       await shot(`chain_${type}_${await ev(() => __game.run.depth)}`, 2500);
       if (await ev(() => __game.run.depth) >= 4) break;
       // generators + uplinks, then a supply crate
