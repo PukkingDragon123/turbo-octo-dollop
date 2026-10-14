@@ -366,6 +366,13 @@ export class Game {
       await engine.renderer.compileAsync(engine.scene, engine.camera);
       await engine.renderer.compileAsync(engine.vmScene, engine.vmCamera);
     } catch (e) { /* older drivers */ }
+    // one real frame behind the loading screen compiles what compileAsync can't see: the post-processing
+    // chain and materials that switch variant on their first render (probe swaps, toggled parts). The lobby
+    // also warms the portrait rig (Employee of the Month renders clone portraits under its own lights).
+    try {
+      engine.render(1 / 60);
+      if (desc.type === 'lobby') this.ui.portrait?.(this.local.cosmetics);
+    } catch (e) { /* warm-up is best effort */ }
     for (const w of warmups) {
       world.unregisterDynamic(w.root);
       w.root.removeFromParent();
