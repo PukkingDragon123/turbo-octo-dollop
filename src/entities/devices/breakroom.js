@@ -1,7 +1,7 @@
 // Break room appliances: water cooler, aquarium, service bell, dart board cabinet, coffee brewer, fridge.
 // Floor devices: origin on the floor under the centre, front +Z. Wall devices: origin on the wall plane.
 import * as THREE from 'three';
-import { DKit, FIN, PI, HP, TAU, DEG, V3, cbox, ccyl, frameShape, rrShape, rrHole, Geo, boxGeo, cylGeo, latheGeo, axisGeo, gridGeo, discGeo, fromBuffer, lerp } from './core.js';
+import { DKit, FIN, PI, HP, TAU, DEG, V3, cbox, cframe, ccyl, frameShape, rrShape, rrHole, Geo, boxGeo, cylGeo, latheGeo, axisGeo, gridGeo, discGeo, fromBuffer, lerp } from './core.js';
 import * as P from './parts.js';
 import { txt, rrect, grime, rubOff, drawLogo, drawClone, canvasTex } from './atlas.js';
 import { RNG } from '../../core/rng.js';
@@ -110,6 +110,7 @@ export function b_water_cooler(o) {
   k.clabel(lab, 0.1356, 0.07, 2.2, 0, by + 0.265, 0, { seg: 18 });
   k.collide(cbox(W, top, D, 0, top / 2, 0));
   k.collide(ccyl(0.135, 0.49, 0, by + 0.245, 0));
+  k.collide(ccyl(0.046, 0.37, tx, 0.73, tz)); // side cup dispenser
   k.anchors.tap = V3(-0.05, 0.625, 0.11);
   k.anchors.tapHot = V3(0.05, 0.625, 0.11);
   k.anchors.cups = V3(tx, 0.55, tz);
@@ -204,6 +205,7 @@ export function b_coffee_machine(o) {
   k.box('plastic', 0.16, 0.012, 0.12, 0.0, 0.596, -0.13, { ...BODY, r: 0.004 });
   P.cable(k, [[0.1, 0.06, -D / 2], [0.12, 0.02, -D / 2 - 0.06], [0.2, 0.006, -D / 2 - 0.2]], 0.004, { tint: 0x161616 });
   k.collide(cbox(W, 0.62, D, 0, 0.31, 0));
+  k.collide(ccyl(0.08, 0.19, 0, 0.711, 0.05)); // spare carafe on the top warmer
   k.anchors.spout = V3(-0.08, 0.37, 0.06);
   k.anchors.cup = V3(-0.08, 0.052, 0.06);
   return k.done({ mass: 9, material: 'metal' });
@@ -338,22 +340,22 @@ export function b_aquarium(o) {
   const gmesh = k.mesh(gravelMat(), gb.append(gf), 0, ty, 0, { name: 'gravel', ao: false });
   linkTick(gmesh, fluidTick);
   // resin castle, rocks, driftwood
-  const ST = { tint: 0xa49c8c, rough: 1.1 };
+  const ST = { tint: 0xa49c8c, rough: 1.4, chip: 0.05 };
   k.push(-0.3, ty + 0.045, -0.06, [0, 0.3, 0]);
-  k.box('concrete', 0.16, 0.08, 0.1, 0, 0.04, 0, { ...ST, r: 0.004, dent: 0.002, div: 0.04 });
+  k.box('plastic', 0.16, 0.08, 0.1, 0, 0.04, 0, { ...ST, r: 0.004, dent: 0.002, div: 0.04 });
   for (const sx of [-1, 1]) {
-    k.cyl('concrete', 0.035, 0.16, sx * 0.075, 0.08, 0, { ...ST, seg: 14, bev: 0.003 });
-    k.cyl('concrete', 0.042, 0.02, sx * 0.075, 0.17, 0, { ...ST, seg: 14, bev: 0.003 });
-    if (sx > 0) for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; k.box('concrete', 0.014, 0.018, 0.014, sx * 0.075 + Math.cos(a) * 0.035, 0.188, Math.sin(a) * 0.035, { ...ST, r: 0.002, rot: [0, -a, 0] }); }
+    k.cyl('plastic', 0.035, 0.16, sx * 0.075, 0.08, 0, { ...ST, seg: 14, bev: 0.003 });
+    k.cyl('plastic', 0.042, 0.02, sx * 0.075, 0.17, 0, { ...ST, seg: 14, bev: 0.003 });
+    if (sx > 0) for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; k.box('plastic', 0.014, 0.018, 0.014, sx * 0.075 + Math.cos(a) * 0.035, 0.188, Math.sin(a) * 0.035, { ...ST, r: 0.002, rot: [0, -a, 0] }); }
     if (sx < 0) k.cyl('#9a2a1a:s', 0.001, 0.08, sx * 0.075, 0.22, 0, { seg: 14, r2: 0.047 });
   }
-  for (let i = 0; i < 4; i++) k.box('concrete', 0.02, 0.02, 0.1, -0.045 + i * 0.03, 0.09, 0, { ...ST, r: 0.003 });
+  for (let i = 0; i < 4; i++) k.box('plastic', 0.02, 0.02, 0.1, -0.045 + i * 0.03, 0.09, 0, { ...ST, r: 0.003 });
   k.box('#0a0a0a', 0.04, 0.05, 0.004, 0, 0.025, 0.051, { r: 0 });
   k.pop();
   for (let i = 0; i < 6; i++) {
     const s = r.range(0.025, 0.055), ys = r.range(0.5, 0.8);
     const g = new Geo().append(fromBuffer(new THREE.IcosahedronGeometry(s, 1))).deform((p) => { p.x *= 1 + Math.sin(p.y * 40 + i) * 0.15; p.y *= ys; });
-    k.put('concrete', g, r.range(-0.52, 0.52), ty + 0.045, r.range(-0.18, 0.08), { tint: [0x8a8478, 0x6e6a62, 0xa49c8c][i % 3], rough: 1.2, rot: [0, r.next() * 3, 0] });
+    k.put('plastic', g, r.range(-0.52, 0.52), ty + 0.045, r.range(-0.18, 0.08), { tint: [0x8a8478, 0x6e6a62, 0xa49c8c][i % 3], rough: 1.2, rot: [0, r.next() * 3, 0] });
   }
   k.tube('wood', [[0.15, ty + 0.05, -0.15], [0.25, ty + 0.1, -0.1], [0.32, ty + 0.2, -0.12], [0.36, ty + 0.27, -0.08]], 0.018, { tint: 0x4a3424, rough: 1.2, radial: 7, caps: true });
   k.tube('wood', [[0.25, ty + 0.1, -0.1], [0.2, ty + 0.16, -0.04], [0.17, ty + 0.2, -0.03]], 0.008, { tint: 0x4a3424, rough: 1.2, radial: 6, caps: true });

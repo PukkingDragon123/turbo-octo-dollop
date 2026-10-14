@@ -204,8 +204,8 @@ export function b_employee_of_month(o) {
 }
 
 // ---------------------------------------------------------------------------
-// Wall clock: moulded black case, aged dial, spade hands (parts.hour/minute/second rotate on Z,
-// clockwise = negative), domed crystal
+// Wall clock: moulded black case, aged dial, spade hands (parts.hour/minute/second: bones of one skinned
+// mesh, rotate on Z, clockwise = negative), domed crystal
 // ---------------------------------------------------------------------------
 export function b_wall_clock(o) {
   void o;
@@ -247,20 +247,23 @@ export function b_wall_clock(o) {
     s.holes.push(new THREE.Path().absarc(0, len * 0.76, wid * 0.22, 0, TAU, true));
     return s;
   };
-  const hand = (name, z, fn) => { const g = k.grp(0, 0, z, { name }); k.inside(g, fn); return g; };
-  const INK = '#111214:s';
-  k.parts.hour = hand('hour', 0.0128, () => { k.ext(INK, spade(0.075, 0.012, 0.018), 0.0012, 0, 0, 0, { curveSeg: 4 }); k.cyl(INK, 0.0068, 0.0012, 0, 0, 0.0006, { axis: 'z', seg: 16 }); });
-  k.parts.minute = hand('minute', 0.0144, () => { k.ext(INK, spade(0.115, 0.0095, 0.022), 0.0012, 0, 0, 0, { curveSeg: 4 }); k.cyl(INK, 0.0058, 0.0012, 0, 0, 0.0006, { axis: 'z', seg: 16 }); });
-  k.parts.second = hand('second', 0.016, () => {
-    const RED = '#c0201a:s';
-    k.box(RED, 0.0018, 0.16, 0.0008, 0, 0.125 - 0.08, 0.0004, { r: 0 });
-    k.cyl(RED, 0.0055, 0.0008, 0, -0.03, 0.0004, { axis: 'z', seg: 14 });
-    k.cyl(RED, 0.004, 0.0016, 0, 0, 0.0008, { axis: 'z', seg: 12 });
-  });
+  const INK = '#111214:s', RED = '#c0201a:s';
+  const handFns = [
+    () => { k.ext(INK, spade(0.075, 0.012, 0.018), 0.0012, 0, 0, 0, { curveSeg: 4 }); k.cyl(INK, 0.0068, 0.0012, 0, 0, 0.0006, { axis: 'z', seg: 16 }); },
+    () => { k.ext(INK, spade(0.115, 0.0095, 0.022), 0.0012, 0, 0, 0, { curveSeg: 4 }); k.cyl(INK, 0.0058, 0.0012, 0, 0, 0.0006, { axis: 'z', seg: 16 }); },
+    () => {
+      k.box(RED, 0.0018, 0.16, 0.0008, 0, 0.125 - 0.08, 0.0004, { r: 0 });
+      k.cyl(RED, 0.0055, 0.0008, 0, -0.03, 0.0004, { axis: 'z', seg: 14 });
+      k.cyl(RED, 0.004, 0.0016, 0, 0, 0.0008, { axis: 'z', seg: 12 });
+    },
+  ];
+  // the three hands share one skinned mesh; each is weighted to its own bone (= parts.hour/minute/second),
+  // built at a rest angle so the bones keep absolute rotation.z semantics
+  [k.parts.hour, k.parts.minute, k.parts.second] = k.bones('hands',
+    [[0, 0, 0.0128, [0, 0, -1.2], 'hour'], [0, 0, 0.0144, [0, 0, -3.9], 'minute'], [0, 0, 0.016, [0, 0, -0.5], 'second']], (i) => handFns[i]());
   k.lathe('metal', [[0, 0], [0.0035, 0, 1], [0.0034, 0.002, 2], [0.002, 0.0032], [0, 0.0034]], 0, 0, 0.0175, { ...FIN.brass, axis: 'z', seg: 12 });
   // domed crystal
   k.put('glass', axisGeo(sphereGeoCap(R - 0.009, 0.012), 'z'), 0, 0, D - 0.016);
-  k.parts.hour.rotation.z = -1.2; k.parts.minute.rotation.z = -3.9; k.parts.second.rotation.z = -0.5;
   k.collide(ccyl(R + 0.014, D, 0, 0, D / 2, [HP, 0, 0]));
   k.params.clockwise = -1;
   return k.done({ mass: 1.2, material: 'plastic' });

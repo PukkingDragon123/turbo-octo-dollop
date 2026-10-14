@@ -1,7 +1,7 @@
 // Workshop: crafting workbench (butcher-block, vise, pegboard of tools, diagnostic CRT, task lamp) and the
 // wall-mounted maintenance pipe cluster with its open floor duct (critter exit).
 import * as THREE from 'three';
-import { DKit, FIN, PI, HP, TAU, V3, cbox, frameShape, rrShape, Geo, boxGeo, latheGeo, lerp } from './core.js';
+import { DKit, FIN, PI, HP, TAU, V3, cbox, cframe, frameShape, rrShape, Geo, boxGeo, latheGeo, lerp } from './core.js';
 import * as P from './parts.js';
 import { txt, rrect, grime, rubOff, hazardTri, drawPerforation } from './atlas.js';
 import { emissiveMat } from './mats.js';
@@ -123,6 +123,8 @@ export function b_workbench(o) {
   k.collide(cbox(W, 0.07, D, 0, TY - 0.035, 0));
   k.collide(cbox(W - 0.06, TY - 0.07, D - 0.06, 0, (TY - 0.07) / 2, 0));
   k.collide(cbox(W, PB.h + 0.06, 0.06, 0, PB.y0 + PB.h / 2, PB.z - 0.02));
+  k.collide(cframe(cbox(0.285, 0.31, 0.27, 0, 0.155, -0.125), 0.58, TY, -0.12, [0, -0.3, 0])); // diagnostic CRT
+  k.collide(cbox(0.16, 0.15, 0.25, vx, TY + 0.075, vz - 0.09)); // vise body + jaws
   k.anchors.surfaceMin = V3(-0.5, TY, -0.15);
   k.anchors.surfaceMax = V3(0.3, TY, D / 2 - 0.05);
   k.anchors.vise = V3(vx, vy + 0.13, vz - 0.06);
@@ -217,15 +219,16 @@ export function b_pipe_cluster(o) {
   k.label(jb, 0.12, 0.06, 0.15, 0.7, 0.1206);
   // the open floor duct (critter exit): rusty collar, dark throat, bent grate hanging off
   const dR = 0.17, dy = 0.24, dx = -0.1;
-  k.cyl('rust', dR, 0.14, dx, dy, 0.07, { axis: 'z', seg: 22, open: true });
+  const RUST = { ...FIN.iron, tint: 0x7a4a2a, rust: 1, rough: 1.6 };
+  k.cyl('metal', dR, 0.14, dx, dy, 0.07, { ...RUST, axis: 'z', seg: 22, open: true });
   k.cyl('metal', dR + 0.03, 0.03, dx, dy, 0.02, { ...STEEL, axis: 'z', seg: 22, bev: 0.004 });
   k.tor('metal', dR + 0.01, 0.02, dx, dy, 0.14, { ...STEEL, rs: 6, ts: 26 });
   const throat = new Geo().append(cylGeoInside(dR - 0.005, 0.14, 20));
   k.put('#020202', throat, dx, dy, 0.07, { rot: [HP, 0, 0] });
   k.disc('#000000', dR, dx, dy, 0.004, { seg: 20 });
   k.push(dx + 0.05, dy - dR, 0.16, [0.9, 0.3, 0.2]);
-  k.tor('rust', dR - 0.01, 0.006, 0, dR, 0, { rs: 4, ts: 20 });
-  for (let i = -3; i <= 3; i++) k.box('rust', 0.006, Math.sqrt(Math.max(0, (dR - 0.01) ** 2 - (i * 0.04) ** 2)) * 2, 0.006, i * 0.04, dR, 0, { r: 0 });
+  k.tor('metal', dR - 0.01, 0.006, 0, dR, 0, { ...RUST, rs: 4, ts: 20 });
+  for (let i = -3; i <= 3; i++) k.box('metal', 0.006, Math.sqrt(Math.max(0, (dR - 0.01) ** 2 - (i * 0.04) ** 2)) * 2, 0.006, i * 0.04, dR, 0, { ...RUST, r: 0 });
   k.pop();
   for (const [x, y] of [[dx - dR - 0.015, dy], [dx + dR + 0.015, dy], [dx, dy + dR + 0.015]]) P.screw(k, x, y, 0.036, { kind: 'hex', r: 0.008, rust: 1, streak: 0.06 });
   P.stain(k, dx, 0.0008, 0.3, 0.5, 0.35, { col: '50,40,24', alpha: 0.45, rot: [-HP, 0, 0] });

@@ -1,7 +1,7 @@
 // Cloning laboratory: GENESIS-9 growth vat, clone control console, portable cloning pad.
 // Origin on the floor under the centre, front +Z.
 import * as THREE from 'three';
-import { DKit, FIN, PI, HP, TAU, V3, cbox, ccyl, frameShape, rrShape, Geo, boxGeo, cylGeo, latheGeo, discGeo, ringGeo, fromBuffer, lerp } from './core.js';
+import { DKit, FIN, PI, HP, TAU, V3, cbox, cframe, ccyl, frameShape, rrShape, Geo, boxGeo, cylGeo, latheGeo, discGeo, ringGeo, fromBuffer, lerp } from './core.js';
 import * as P from './parts.js';
 import { txt, rrect, grime, rubOff, drawLogo, drawPerforation, hazardTri } from './atlas.js';
 import { CLEAR, TINTED } from './mats.js';
@@ -105,6 +105,8 @@ export function b_clone_tube(o) {
   k.collide(ccyl(0.64, gy0, 0, gy0 / 2, 0));
   k.collide(ccyl(GR + 0.05, gy1 - gy0, 0, (gy0 + gy1) / 2, 0));
   k.collide(ccyl(0.57, 0.3, 0, gy1 + 0.13, 0));
+  k.collide(cbox(0.3, 0.17, 0.39, 0, gy1 + 0.33, 0.025)); // pump motor housing on the cap
+  k.collide(ccyl(0.05, gy1 + 0.4, -0.2, (gy1 + 0.4) / 2 + 0.02, -0.65)); // return pipe standing behind the vat
   k.anchors.specimen = V3(0, fy + fh * 0.5, 0);
   k.anchors.fluidTop = V3(0, fy + fh, 0);
   k.parts.fluid = fluid;
@@ -214,12 +216,12 @@ export function b_clone_console(o) {
   });
   const cover = k.grp(bx, by + 0.03, bz - 0.075, { name: 'cover' });
   cover.rotation.x = -1.9;
-  const cvm = TINTED(0xff9a80, 0.3);
+  const cvm = TINTED(0xff5a30, 0.42, { rough: 0.2, env: 0.8 });
   const cg = new Geo().append(boxGeo(0.15, 0.07, 0.15, { r: 0.008 }).translate(0, 0.035, 0.075));
   k.mesh(cvm, cg, 0, 0, 0, { to: cover, name: 'coverShell', shadow: false, ao: false });
   k.cyl('#c4c7ca:c', 0.006, 0.16, bx, by + 0.03, bz - 0.075, { axis: 'x', seg: 8 });
   k.collide(cbox(W, 1.0, 0.66, 0, 0.5, 0));
-  k.collide(cbox(W, 0.5, 0.2, 0, 1.25, -0.23));
+  k.collide(cbox(W, 0.5, 0.25, 0, 1.25, -0.205)); // incl. the scope housing / gauge bezels on its face
   k.parts.button = btn;
   k.parts.cover = cover;
   k.anchors.view = V3(-0.38, 1.285, 0.45);
@@ -285,6 +287,8 @@ export function b_clone_pad(o) {
   k.collide(ccyl(R, H, 0, H / 2, 0));
   k.collide(cbox(0.08, 0.95, 0.08, 0, H + 0.47, pz));
   k.collide(cbox(0.46, 0.05, 0.05, 0, H + 1.06, pz));
+  k.collide(cframe(cbox(0.22, 0.18, 0.09, 0, 0, 0.003), 0, H + 0.82, pz + 0.02, [-0.35, 0, 0])); // screen head
+  k.collide(cbox(0.2, 0.12, 0.12, 0.25, H + 0.06, pz + 0.12, [0, -0.4, 0])); // battery pack
   k.anchors.spawn = V3(0, H, 0);
   k.anchors.handles = [0, 1, 2, 3].map((i) => { const a = PI / 4 + (i * PI) / 2; return V3(Math.sin(a) * (R + 0.08), 0.15, Math.cos(a) * (R + 0.08)); });
   k.anchors.handleBar = V3(0, H + 1.06, pz);

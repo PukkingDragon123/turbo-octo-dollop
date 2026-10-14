@@ -2,7 +2,7 @@
 // Floor devices: origin on the floor under the centre, front faces +Z. Every contract part / anchor
 // (see src/game/generators.js) keeps its original position, pivot and meaning.
 import * as THREE from 'three';
-import { DKit, FIN, PI, HP, TAU, V3, cbox, ccyl, frameShape, rrShape, rrHole, circleShape, polyShape, curvePts, latheGeo, axisGeo, cylGeo, extrudeGeo, mat4 } from './core.js';
+import { DKit, FIN, PI, HP, TAU, V3, cbox, cframe, ccyl, frameShape, rrShape, rrHole, circleShape, polyShape, curvePts, latheGeo, axisGeo, cylGeo, extrudeGeo, mat4 } from './core.js';
 import * as P from './parts.js';
 import { txt, rrect, grime, rubOff, hazardTri, drawLogo, drawPerforation } from './atlas.js';
 
@@ -655,6 +655,13 @@ export function b_generator_mech(o) {
   k.collide(ccyl(FR + 0.01, 0.1, fx, fy, 0, [0, 0, HP]));
   k.collide(cbox(0.4, 0.6, 0.3, dyx, 1.05, 0));
   k.collide(ccyl(0.08, 0.8, -0.52, 1.25, -0.2));
+  // front pipework (the welder's raycast lands on the cracked pipe itself), gauge, bolt flange, junction box
+  k.collide(ccyl(cpr + 0.012, 0.86, -0.22, cy, cz, [0, 0, HP]));
+  k.collide(cbox(0.16, 0.34, 0.16, -0.62, 1.03, 0.1));
+  k.collide(cbox(0.12, 0.14, 0.2, 0.18, 1.0, 0.17));
+  k.collide(cbox(0.16, 0.36, 0.1, gx, 1.1, 0.15));
+  k.collide(ccyl(0.12, 0.2, bx0, by0, 0.36, [HP, 0, 0]));
+  k.collide(cbox(0.14, 0.14, 0.12, 0.4, 0.3, 0.37));
   k.parts.flywheel = fly;
   k.parts.crank = crank;
   return k.done({ mass: 650, material: 'metal' });

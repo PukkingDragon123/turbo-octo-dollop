@@ -1,7 +1,8 @@
 // Vending machines: 90s glass-front snack merchandiser and illuminated-panel soda machine.
 // Origin on the floor under the centre, front +Z. Contract (src/game/devicekinds.js VendingMachine):
 // parts.coils[i] (rotation.z spins), parts.products[i] (visible toggles), parts.buttonLights[i] (own
-// glow material, emissiveIntensity flashes), parts.flap, parts.light / parts.panel, screens.main,
+// glow material, emissiveIntensity flashes), parts.flap (hinge pivot; the game pins it shut, so its
+// geometry is merged statically), parts.light / parts.panel, screens.main,
 // anchors.slots[i] (drop points), anchors.tray.
 import * as THREE from 'three';
 import { DKit, FIN, PI, HP, TAU, V3, cbox, frameShape, rrShape, rrHole, Geo, tubeGeo, cylGeo, boxGeo, axisGeo, fromBuffer, crtGeo, lerp } from './core.js';
@@ -120,7 +121,8 @@ function pickupBin(k, bx, w, hy, hz, ybot, zback, o = {}) {
   k.cyl('#c4c7ca:c', 0.0055, w, bx, hy, hz, { axis: 'x', seg: 8 });
   const flap = k.grp(bx, hy, hz, { name: 'flap' });
   const push = k.reg('push', 128, 48, (c, w2, h2) => { c.fillStyle = '#1a1b1e'; c.fillRect(0, 0, w2, h2); txt(c, 'PUSH', w2 / 2, h2 * 0.55, h2 * 0.6, { col: '#d8d2c0' }); rubOff(c, w2, h2, 1, 4); });
-  k.inside(flap, () => {
+  // the game pins flap.rotation.x to 0 every frame: merged statically (the pivot stays for the contract)
+  k.insideStatic(flap, () => {
     k.box('#1d1e22:s', w - 0.008, o.fh ?? 0.205, 0.006, 0, -(o.fh ?? 0.205) / 2, 0, { r: 0.002 });
     k.box('#2a2b30:s', w - 0.008, 0.02, 0.012, 0, -(o.fh ?? 0.205) + 0.01, 0.004, { r: 0.004 });
     k.label(push, 0.1, 0.0375, 0, -0.07, 0.0036);

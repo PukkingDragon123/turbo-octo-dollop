@@ -568,7 +568,7 @@ export function creaseNormals(g, angle = 0.7) {
   return g;
 }
 // Extrusion of a THREE.Shape along +Z from z = 0 to z = depth (bevel stays inside the outline).
-// o: { bev, bevSeg, curveSeg, crease, center }
+// o: { bev, bevSeg, curveSeg, crease, center, tess (grid cell to slice the caps by: interior vertices for the AO bake) }
 // cap triangulation sanity check: a bevel that collapses a rounded corner (bevel >= corner radius) can make
 // earcut bridge across holes; the front+back caps then cover more than the shape's own area
 function capBroken(bg, shape, curveSeg) {
@@ -601,6 +601,64 @@ export function extrudeGeo(shape, depth, o = NO) {
     const nz = Math.abs(g.n[i * 3 + 2]);
     g.e[i] = bv > 0 ? clamp((1 - nz) * nz * 4.2, 0, 1) : (nz > 0.05 && nz < 0.95 ? 0.5 : 0);
   }
+  if (o.tess) tessCaps(g, o.tess);
+  return g;
+}
+// Slice the flat cap triangles (normal +-Z) of an extrusion along an axis-aligned grid of `cell` metres. AO,
+// grime and dust are baked per vertex: a large cap whose only vertices sit on its outline takes on the
+// outline's occlusion everywhere (a door leaf darkened by its frame next to a lighter panel mounted on it),
+// and plain midpoint subdivision of earcut's long diagonal triangles shows the diagonals in the shading.
+function tessCaps(g, cell) {
+  const EPS = 1e-7, P = g.p;
+  const cap = (i) => Math.abs(g.n[i * 3 + 2]) > 0.98;
+  const cut = (a, b, ax, L, cache) => {
+    const key = a < b ? a * 8388608 + b : b * 8388608 + a;
+    let m = cache.get(key);
+    if (m !== undefined) return m;
+    const t = (L - P[a * 3 + ax]) / (P[b * 3 + ax] - P[a * 3 + ax]);
+    const N = g.n, U = g.uv, E = g.e;
+    const x = P[a * 3] + (P[b * 3] - P[a * 3]) * t, y = P[a * 3 + 1] + (P[b * 3 + 1] - P[a * 3 + 1]) * t, z = P[a * 3 + 2] + (P[b * 3 + 2] - P[a * 3 + 2]) * t;
+    m = g.v(x, y, z, N[a * 3], N[a * 3 + 1], N[a * 3 + 2], U[a * 2] + (U[b * 2] - U[a * 2]) * t, U[a * 2 + 1] + (U[b * 2 + 1] - U[a * 2 + 1]) * t, E[a] + (E[b] - E[a]) * t);
+    cache.set(key, m);
+    return m;
+  };
+  // Sutherland-Hodgman: the part of convex polygon `poly` on side s (+1: coord <= L, -1: coord >= L)
+  const clip = (poly, ax, L, s, cache) => {
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const da = s * (P[a * 3 + ax] - L), db = s * (P[b * 3 + ax] - L);
+      if (da <= EPS) out.push(a);
+      if ((da < -EPS && db > EPS) || (da > EPS && db < -EPS)) out.push(cut(a, b, ax, L, cache));
+    }
+    return out;
+  };
+  const I = g.idx, out = [];
+  for (let t = 0; t < I.length; t += 3) {
+    const tri = [I[t], I[t + 1], I[t + 2]];
+    if (!(cap(tri[0]) && cap(tri[1]) && cap(tri[2]))) { out.push(tri[0], tri[1], tri[2]); continue; }
+    let pieces = [tri];
+    for (const ax of [0, 1]) {
+      const next = [];
+      for (const pc of pieces) {
+        let lo = Infinity, hi = -Infinity;
+        for (const v of pc) { lo = Math.min(lo, P[v * 3 + ax]); hi = Math.max(hi, P[v * 3 + ax]); }
+        let cur = pc;
+        for (let k = Math.floor(lo / cell) + 1; k * cell < hi - EPS && cur.length >= 3; k++) {
+          const L = k * cell;
+          if (L <= lo + EPS) continue;
+          const cache = new Map();
+          const below = clip(cur, ax, L, 1, cache);
+          cur = clip(cur, ax, L, -1, cache);
+          if (below.length >= 3) next.push(below);
+        }
+        if (cur.length >= 3) next.push(cur);
+      }
+      pieces = next;
+    }
+    for (const pc of pieces) for (let i = 1; i + 1 < pc.length; i++) out.push(pc[0], pc[i], pc[i + 1]);
+  }
+  g.idx = out;
   return g;
 }
 // flat quad facing +Z (uv: atlas region rect or meters)
@@ -733,6 +791,14 @@ const rotOf = (rot) => (rot ? { rot } : {});
 export const cbox = (w, h, d, x, y, z, rot) => ({ type: 'box', size: [w, h, d], pos: [x, y, z], ...rotOf(rot) });
 export const ccyl = (r, h, x, y, z, rot) => ({ type: 'cylinder', radius: r, height: h, pos: [x, y, z], ...rotOf(rot) });
 export const cball = (r, x, y, z) => ({ type: 'ball', radius: r, pos: [x, y, z] });
+// a collider given in a local frame (x, y, z, rot): e.g. for a part built inside k.push(x, y, z, rot)
+export function cframe(c, x, y, z, rot) {
+  const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rot?.[0] || 0, rot?.[1] || 0, rot?.[2] || 0, rot?.[3] || 'XYZ')).setPosition(x, y, z);
+  const p = V3(...(c.pos || [0, 0, 0])).applyMatrix4(m);
+  const q = new THREE.Quaternion().setFromRotationMatrix(m).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(c.rot?.[0] || 0, c.rot?.[1] || 0, c.rot?.[2] || 0)));
+  const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
+  return { ...c, pos: [p.x, p.y, p.z], rot: [e.x, e.y, e.z] };
+}
 
 // ---------------------------------------------------------------------------
 // Voxel ambient occlusion (per template at rest pose): voxelise occluder triangles into an

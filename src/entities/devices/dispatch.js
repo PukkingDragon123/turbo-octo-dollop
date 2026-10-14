@@ -2,7 +2,7 @@
 // supply crate, employee starter box. Door / lever: origin on the floor, front +Z.
 // Props (radio, crate, starter box): origin at the centre (halfHeight returned).
 import * as THREE from 'three';
-import { DKit, FIN, PI, HP, TAU, V3, cbox, frameShape, rrShape, rrHole, Geo, boxGeo, latheGeo, cylGeo, lerp } from './core.js';
+import { DKit, FIN, PI, HP, TAU, V3, cbox, cframe, frameShape, rrShape, rrHole, Geo, boxGeo, latheGeo, cylGeo, lerp } from './core.js';
 import * as P from './parts.js';
 import { txt, rrect, grime, rubOff, drawLogo, drawClone, drawPerforation, hazardTri } from './atlas.js';
 import { RNG } from '../../core/rng.js';
@@ -113,7 +113,7 @@ export function b_dispatch_door(o) {
       else { s.lineTo(t % 2 ? outX : inX, y0); s.lineTo(t % 2 ? outX : inX, y1); s.lineTo(t % 2 ? inX : outX, y1); s.lineTo(t % 2 ? inX : outX, y2); }
     }
     s.lineTo(out, LH); s.closePath();
-    k.ext('paint', s, LD, 0, 0, -LD / 2, { ...LEAF, bev: 0.01, bevSeg: 1, curveSeg: 1 });
+    k.ext('paint', s, LD, 0, 0, -LD / 2, { ...LEAF, bev: 0.01, bevSeg: 1, curveSeg: 1, tess: 0.2 });
     for (let r = 0; r < 4; r++) {
       const y = 0.55 + r * 0.6;
       k.box('paint', LW - 0.25, 0.06, 0.03, sx * 0.05, y, LD / 2 + 0.015, { ...FRAME, r: 0.005 });
@@ -194,6 +194,7 @@ export function b_dispatch_lever(o) {
   k.collide(cbox(0.5, 0.04, 0.45, 0, 0.02, 0));
   k.collide(cbox(0.24, 0.72, 0.22, 0, 0.4, 0));
   k.collide(cbox(0.36, 0.22, 0.3, 0, 0.87, 0));
+  k.collide(cframe(cbox(0.2, 0.17, 0.155, 0, 0, -0.047), 0.29, 1.0, 0.1, [-0.25, -0.35, 0])); // status CRT on its arm
   k.parts.handle = handle;
   k.anchors.grip = V3(0, 0.9 + 0.53 * Math.cos(-0.6), 0.53 * Math.sin(-0.6));
   k.params.handleRange = [-0.6, 0.6];

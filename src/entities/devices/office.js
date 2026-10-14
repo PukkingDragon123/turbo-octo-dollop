@@ -1,7 +1,7 @@
 // Office hardware: CRT terminal (monitor, keyboard, 486 tower), curved reception desk, photocopier,
 // server rack, lockers. Floor devices: origin on the floor under the centre, front +Z.
 import * as THREE from 'three';
-import { DKit, FIN, PI, HP, TAU, DEG, V3, cbox, frameShape, rrShape, rrHole, Geo, boxGeo, lerp, clamp } from './core.js';
+import { DKit, FIN, PI, HP, TAU, DEG, V3, cbox, cframe, frameShape, rrShape, rrHole, Geo, boxGeo, lerp, clamp } from './core.js';
 import * as P from './parts.js';
 import { txt, rrect, grime, rubOff, drawLogo, drawClone, drawPerforation } from './atlas.js';
 import { RNG } from '../../core/rng.js';
@@ -163,7 +163,7 @@ export function b_crt_terminal(o) {
   const monLed = { ...mon.led, geo: new Geo().append(mon.led.geo).translate(-0.06, 0, -0.1) };
   const leds = k.glow('leds', [monLed, tled(tx - 0.03, 0x30ff60), tled(tx + 0.03, 0xffa020)]);
   leds[0].name = 'powerLed'; leds[1].name = 'ledPower'; leds[2].name = 'ledDisk';
-  k.collide(cbox(mon.bw, mon.bh + 0.06, 0.34, -0.06, (mon.bh + 0.06) / 2, -0.24));
+  k.collide(cbox(mon.bw, mon.bh + 0.06, 0.38, -0.06, (mon.bh + 0.06) / 2, -0.26)); // CRT incl. its rear neck
   k.collide(cbox(0.46, 0.04, 0.17, -0.06, 0.02, 0.21));
   k.collide(cbox(tw, th + 0.01, td, tx, (th + 0.01) / 2, tz));
   k.anchors.view = V3(sc.x, sc.y, sc.z + 0.55);
@@ -282,14 +282,23 @@ export function b_reception_desk(o) {
   k.push(0.1, 0.75, seatZ + 0.33, [0, PI, 0]);
   keyboard(k, 0, 0, 0);
   k.pop();
-  // colliders: arc approximated with rotated boxes
+  // colliders: the counter arc (inner veneer wall to the front face) approximated with rotated boxes
   const nseg = 6;
   for (let i = 0; i < nseg; i++) {
-    const a = a0 + ((a1 - a0) * (i + 0.5)) / nseg, rr = R - 0.12;
+    const a = a0 + ((a1 - a0) * (i + 0.5)) / nseg, rr = R - 0.175;
     const len = 2 * R * Math.sin((a1 - a0) / nseg / 2) + 0.02;
-    k.collide(cbox(len, 1.075, 0.26, rr * Math.sin(a), 0.5375, zc + rr * Math.cos(a), [0, a, 0]));
+    k.collide(cbox(len, 1.075, 0.37, rr * Math.sin(a), 0.5375, zc + rr * Math.cos(a), [0, a, 0]));
   }
-  k.collide(cbox(1.9, 0.05, 0.6, 0, 0.735, zc + R - 0.65));
+  // receptionist side: curved work surface (R-1.0 .. R-0.34), its support panel, drawer pedestal, CRT
+  const ws0 = a0 + 0.02, wsp = (a1 - a0 - 0.04) / 8, wr = R - 0.67;
+  for (let i = 0; i < 8; i++) {
+    const a = ws0 + wsp * (i + 0.5);
+    k.collide(cbox(2 * wr * Math.sin(wsp / 2) + 0.03, 0.06, 0.66, wr * Math.sin(a), 0.72, zc + wr * Math.cos(a), [0, a, 0]));
+  }
+  const spa = a0 + 0.0675;
+  k.collide(cbox(0.03, 0.72, 0.62, wr * Math.sin(spa), 0.36, zc + wr * Math.cos(spa), [0, spa, 0]));
+  k.collide(cframe(cbox(0.42, 0.7, 0.58, 0, 0, -0.015), px, 0.36, pz, [0, 0.2, 0]));
+  k.collide(cframe(cbox(mon.bw, mon.bh + 0.06, mon.bd + 0.06, 0, (mon.bh + 0.06) / 2, -(mon.bd + 0.04) / 2), 0.15, 0.75, seatZ + 0.48, [0, PI - 0.25, 0]));
   k.anchors.bell = V3((R - 0.14) * Math.sin(0.18), 1.075, zc + (R - 0.14) * Math.cos(0.18));
   k.anchors.top = V3(0, 1.075, zc + R - 0.14);
   k.anchors.receptionist = V3(0, 0.47, seatZ);
@@ -388,6 +397,9 @@ export function b_photocopier(o) {
   P.cable(k, [[0.3, 0.2, -D / 2], [0.32, 0.05, -D / 2 - 0.05], [0.4, 0.008, -D / 2 - 0.3]], 0.006, { tint: 0x161616 });
   P.scuffs(k, 0, 0.3, D / 2 + 0.0004, W * 0.9, 0.4, { col: '40,34,24', alpha: 0.25 });
   k.collide(cbox(W, 0.96, D, 0, 0.48, 0));
+  k.collide(cbox(0.72, 0.035, 0.54, -0.1, 0.9705, -0.02)); // platen lid
+  k.collide(cframe(cbox(0.3, 0.045, 0.22, 0, 0.01, 0), 0.38, 0.958, D / 2 - 0.12, [-0.35, 0, 0])); // sloped control panel
+  k.collide(cframe(cbox(0.26, 0.03, 0.36, 0, 0.008, 0), -W / 2 - 0.12, 0.62, 0, [0, 0, 0.18])); // output tray
   k.parts.lid = lid;
   k.anchors.output = V3(-W / 2 - 0.12, 0.66, 0);
   k.anchors.platen = V3(-0.1, 0.953, 0.02);

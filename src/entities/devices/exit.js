@@ -1,7 +1,7 @@
 // Extraction: exit door (steel fire door glowing from behind) and the decontamination room shell.
 // Origin on the floor; the door's wall plane is z = 0 (front +Z), the room extends toward -Z.
 import * as THREE from 'three';
-import { DKit, FIN, PI, HP, TAU, V3, cbox, frameShape, rrShape, rrHole, Geo, boxGeo, latheGeo, quadGeo, lerp } from './core.js';
+import { DKit, FIN, PI, HP, TAU, V3, cbox, cframe, frameShape, rrShape, rrHole, Geo, boxGeo, latheGeo, quadGeo, lerp } from './core.js';
 import * as P from './parts.js';
 import { txt, rrect, grime, rubOff, canvasTex } from './atlas.js';
 import { emissiveMat } from './mats.js';
@@ -62,7 +62,7 @@ export function b_exit_door(o) {
     const cx = LW / 2;
     const s = rrShape(LW, LH, 0.004, cx, LH / 2);
     s.holes.push(rrHole(0.26, 0.36, 0.01, cx, 1.55));
-    k.ext('paint', s, LT, 0, 0, -LT / 2, { ...LEAF, bev: 0.003, bevSeg: 1, curveSeg: 2 });
+    k.ext('paint', s, LT, 0, 0, -LT / 2, { ...LEAF, bev: 0.003, bevSeg: 1, curveSeg: 2, tess: 0.12 });
     // pressed panels
     k.box('paint', LW - 0.12, 0.5, 0.004, cx, 0.65, LT / 2 + 0.002, { ...LEAF, r: 0.003 });
     k.ext('metal', frameShape(0.3, 0.4, 0.012, 0.26, 0.36, 0.01), 0.012, cx, 1.55, LT / 2 - 0.002, { ...STEEL, bev: 0.002, bevSeg: 1, curveSeg: 2 });
@@ -108,6 +108,8 @@ export function b_exit_door(o) {
   P.cable(k, [[OW / 2 + 0.3, 1.43, 0.0], [OW / 2 + 0.3, 1.3, 0.008], [OW / 2 + 0.32, 0.3, 0.008], [OW / 2 + 0.34, 0.01, 0.01]], 0.006, { tint: 0x161616 });
   for (const sx of [-1, 1]) k.collide(cbox(fw, OH + fw, z1 - z0, sx * (OW / 2 + fw / 2), (OH + fw) / 2, (z0 + z1) / 2));
   k.collide(cbox(OW + 2 * fw, fw, z1 - z0, 0, OH + fw / 2, (z0 + z1) / 2));
+  k.collide(cbox(0.4, 0.18, 0.08, 0, OH + 0.3, 0.04)); // EXIT sign box
+  k.collide(cbox(0.27, 0.14, 0.05, OW / 2 + 0.3, 1.5, 0.025)); // countdown display
   k.parts.door = door;
   k.parts.glow = glow;
   k.parts.glowFloor = spill;
