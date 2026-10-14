@@ -61,6 +61,27 @@ class Net {
   onHost(type, fn) { this.hostHandlers.set(type, fn); }
   onClient(type, fn) { this.clientHandlers.set(type, fn); }
 
+  // The signalling socket can drop (network blips, or the tab stalling past the server's heartbeat
+  // timeout during a long load) while the WebRTC game links stay up. Voice calls need signalling, so
+  // reconnect with backoff and tell listeners (voice re-dials) once it is back.
+  _keepSignalling(peer) {
+    let tries = 0, timer = null;
+    const retry = () => {
+      timer = null;
+      if (peer.destroyed || !peer.disconnected || this.peer !== peer) return;
+      try { peer.reconnect(); } catch (e) { /* retried below */ }
+      tries++;
+      if (tries < 40) timer = setTimeout(retry, Math.min(15000, 1000 * 2 ** Math.min(4, tries)));
+    };
+    peer.on('disconnected', () => {
+      if (peer.destroyed || this.peer !== peer || timer) return;
+      timer = setTimeout(retry, 500);
+    });
+    peer.on('open', () => {
+      if (tries > 0) { tries = 0; this.emit('signalling'); }
+    });
+  }
+
   startOffline() {
     this.shutdown();
     this.mode = 'offline';
@@ -86,7 +107,7 @@ class Net {
         this.roomCode = code;
         peer.on('connection', (conn) => this._acceptConn(conn));
         peer.on('error', (e) => console.warn('[net] peer error', e?.type || e));
-        peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) { /* ignore */ } });
+        this._keepSignalling(peer);
         peer.on('call', (call) => this.emit('call', call));
         return code;
       } catch (e) {
@@ -126,6 +147,7 @@ class Net {
       peer.once('error', rej);
     }), 12000, 'Could not reach the matchmaking server.');
     this.peer = peer;
+    this._keepSignalling(peer);
     peer.on('call', (call) => this.emit('call', call));
     const conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'binary', metadata });
     await withTimeout(new Promise((res, rej) => {

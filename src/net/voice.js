@@ -19,6 +19,8 @@ export class Voice {
     this.requesting = false;
     this.noiseT = 0;
     net.on('call', (call) => this._answer(call));
+    // signalling came back after a drop: calls that failed meanwhile get a fresh set of re-dials
+    net.on('signalling', () => { this.retries?.clear(); this.syncPeers([...this.game.roster.keys()]); });
   }
 
   setMode(m) {

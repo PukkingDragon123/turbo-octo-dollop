@@ -119,6 +119,63 @@ const scenarios = {
     console.log('after', await ev(() => ({ type: __game.world.type, depth: __game.run.depth, dead: __game.local.dead, credits: __game.run.credits })));
     await shot('next', 4000);
   },
+  // Full run through every dimension: Yellow -> Poolrooms -> Grasslands -> (hotel not ready) Yellow.
+  // Game time is driven with fixed steps (no rendering in between), so headless frame rates don't matter.
+  async chain() {
+    const sim = async (seconds, pred = null) => {
+      for (let t = 0; t < seconds; t += 1) {
+        const done = await ev((p) => {
+          for (let i = 0; i < 20; i++) __game.update(0.05);
+          return p ? !!new Function(`return (${p})`)() : false;
+        }, pred);
+        if (done) return true;
+        await page.waitForTimeout(120);
+      }
+      return false;
+    };
+    const waitLevel = async (type) => {
+      const t0 = Date.now();
+      for (let i = 0; i < 600; i++) {
+        const ok = await ev((ty) => !!(__game.world && __game.world.type === ty && !__game.loading && __game.state === 'playing'), type);
+        if (ok) return (Date.now() - t0) / 1000;
+        await page.waitForTimeout(1000);
+      }
+      return -1;
+    };
+    await page.goto(base + '?auto=solo&level=yellow');
+    for (const type of ['yellow', 'poolrooms', 'grasslands', 'yellow']) {
+      const secs = await waitLevel(type);
+      await ev(() => { __game.cutscene = null; __engine.post.params.uFade.value = 0; __engine.post.params.uGlitch.value = 0; });
+      await sim(4);
+      console.log('arrived', type, JSON.stringify(await ev(() => ({ depth: __game.run.depth, hp: __game.local.survival.hp, dead: __game.local.dead, props: __game.world.props.props.size, gens: __game.world.level.mission.generators.length }))), 'load', secs, 's');
+      await shot(`chain_${type}_${await ev(() => __game.run.depth)}`, 2500);
+      if (await ev(() => __game.run.depth) >= 4) break;
+      // generators + uplinks, then a supply crate
+      console.log('force', JSON.stringify(await ev(() => {
+        const g = __game; const m = g.world.level.mission;
+        for (const gen of m.generators) { gen.startRunning(); gen.setState({ linked: 1, link: 1 }); }
+        g.addCredits(800, 'test');
+        const r = m.radio(); g.local.teleport(r.root.position.clone().add(new r.root.position.constructor(0, 0.2, 2)), 0);
+        m.orderCrate('basic');
+        return { links: m.linksCount(), pending: m.pendingCrates?.length };
+      })));
+      await sim(20, "[...__game.world.props.props.values()].some((p) => p.type === 'supply_crate' && p.body && p.body.isSleeping())");
+      console.log('crate', JSON.stringify(await ev(() => [...__game.world.props.props.values()].filter((p) => p.type === 'supply_crate').map((p) => ({ y: +p.root.position.y.toFixed(2), floor: +(__game.world.level.floorY?.(p.root.position.x, p.root.position.z) ?? 0).toFixed(2) })))));
+      // extraction: walk into the exit room and let the door close
+      console.log('extract', JSON.stringify(await ev(() => { const m = __game.world.level.mission; m.requestExtraction(); return m.state.exit; })));
+      await sim(2);
+      await ev(() => {
+        const g = __game; const e = g.world.level.mission.state.exit;
+        const y = g.world.level.floorY?.(e.x, e.z) ?? 0;
+        g.local.teleport(new g.local.pos.constructor(e.x, y + 0.05, e.z), e.rot);
+        e.endsAt = g.day.time + 2;
+      });
+      await sim(4);
+      await shot(`chain_exit_${type}`, 500);
+      await sim(12, '__game.loading || __game.world?.type !== ' + JSON.stringify(type) + ' || __game.run.depth > ' + (await ev(() => __game.run.depth)));
+    }
+    console.log('final', JSON.stringify(await ev(() => ({ type: __game.world.type, depth: __game.run.depth, dead: __game.local.dead, credits: __game.run.credits }))));
+  },
   async ui() {
     await page.goto(base + '?auto=solo&level=yellow');
     await waitLoaded();

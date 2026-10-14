@@ -115,9 +115,13 @@ export class Mission {
     // the box crashes through the ceiling (open-sky levels drop it from the sky themselves)
     const ceil = lvl.ceilingY?.(c.x, c.z) ?? HEIGHT;
     if (ceil < 50) this.world.fxAll({ k: 'ceiling', p: [c.x, ceil - 0.1, c.z] });
-    const radio = this.world.props.spawn('radio', new THREE.Vector3(c.x + 2.6, 0.3, c.z - 0.4), _q.setFromEuler(new THREE.Euler(0, -0.6, 0)), { state: { battery: 45, links: [] } });
+    // radio and cloning pad stay inside their grid cells: walls run along cell edges, and a kit item
+    // spawned across one gets shoved out (sometimes into the next room)
+    const [rx, rz] = this._inCell(c.x + 2.6, c.z - 0.4, 0.4);
+    const radio = this.world.props.spawn('radio', new THREE.Vector3(rx, 0.3, rz), _q.setFromEuler(new THREE.Euler(0, -0.6, 0)), { state: { battery: 45, links: [] } });
     this.radioId = radio?.id ?? null;
-    this.world.props.spawn('clone_pad', new THREE.Vector3(c.x - 2.6, 0.2, c.z + 0.2), _q.setFromEuler(new THREE.Euler(0, 0.8, 0)), {});
+    const [px, pz] = this._inCell(c.x - 2.6, c.z + 0.2, 0.7);
+    this.world.props.spawn('clone_pad', new THREE.Vector3(px, 0.2, pz), _q.setFromEuler(new THREE.Euler(0, 0.8, 0)), {});
     this.state.radioId = this.radioId;
     this.pushState();
     // HQ briefing
@@ -303,6 +307,13 @@ export class Mission {
     this.pushState();
     this.world.fxAll({ k: 'snd', n: 'exit_door_appear', p: [spot.x, 1.2, spot.z], v: 1 });
     this.hq(`EXIT VECTOR MATERIALIZED. You have ${EXIT_SECONDS} seconds. Carry everything of value through the door. Anyone left behind is a write-off.`);
+  }
+
+  // clamp a footprint of radius r at (x, z) into the grid cell containing it
+  _inCell(x, z, r) {
+    const m = Math.min(CELL / 2, r + 0.08);
+    const x0 = Math.floor(x / CELL) * CELL, z0 = Math.floor(z / CELL) * CELL;
+    return [Math.min(Math.max(x, x0 + m), x0 + CELL - m), Math.min(Math.max(z, z0 + m), z0 + CELL - m)];
   }
 
   _findExitSpot(from) {
