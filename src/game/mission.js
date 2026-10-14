@@ -112,7 +112,9 @@ export class Mission {
     const items = [];
     for (let i = 0; i < Math.max(1, players.length); i++) items.push(...STARTER);
     this.world.props.spawn('starter_box', new THREE.Vector3(c.x, HEIGHT - 0.5, c.z), new THREE.Quaternion(), { state: { items, open: 0 }, vel: new THREE.Vector3(0, -3, 0) });
-    this.world.fxAll({ k: 'ceiling', p: [c.x, HEIGHT - 0.1, c.z] });
+    // the box crashes through the ceiling (open-sky levels drop it from the sky themselves)
+    const ceil = lvl.ceilingY?.(c.x, c.z) ?? HEIGHT;
+    if (ceil < 50) this.world.fxAll({ k: 'ceiling', p: [c.x, ceil - 0.1, c.z] });
     const radio = this.world.props.spawn('radio', new THREE.Vector3(c.x + 2.6, 0.3, c.z - 0.4), _q.setFromEuler(new THREE.Euler(0, -0.6, 0)), { state: { battery: 45, links: [] } });
     this.radioId = radio?.id ?? null;
     this.world.props.spawn('clone_pad', new THREE.Vector3(c.x - 2.6, 0.2, c.z + 0.2), _q.setFromEuler(new THREE.Euler(0, 0.8, 0)), {});
