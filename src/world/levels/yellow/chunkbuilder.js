@@ -141,7 +141,9 @@ function emitWallEdge(gb, base, x0, z0, axis, type, len, rec) {
 }
 
 // ---------------------------------------------------------------------------
+export const buildStats = { geo: 0, bake: 0, mat: 0, decor: 0, phys: 0, water: 0 };
 export function buildChunk(level, cx, cz) {
+  let _t = performance.now(); const _lap = (k) => { const n = performance.now(); buildStats[k] += n - _t; _t = n; };
   const seed = level.seed;
   const variantFn = level.variantFn;
   const layout = getLayout(seed, cx, cz, variantFn(cx, cz));
@@ -215,6 +217,7 @@ export function buildChunk(level, cx, cz) {
     rec.colliders.push({ min, max });
   }
 
+  _lap('geo');
   // --- materials & meshes ---
   const field = level.field;
   const lightsNear = level.lightsNear;
@@ -223,7 +226,9 @@ export function buildChunk(level, cx, cz) {
   const add = (gb, matName, grime, opts = {}) => {
     if (gb.isEmpty()) return null;
     const geo = gb.build();
+    _lap('geo');
     bakeGeometry(geo, new THREE.Matrix4(), lightsNear, occl, ao, opts.bake || {});
+    _lap('bake');
     const mat = bakedMaterial(opts.material || Mat.get(matName), field, grime, { wet: !!gb.wet, emissiveLights: opts.emissive });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
@@ -265,6 +270,7 @@ export function buildChunk(level, cx, cz) {
     group.add(mesh);
   }
 
+  _lap('mat');
   // --- water ---
   if (rec.waterCells.length) {
     const wg = new GeoBuilder();
@@ -280,6 +286,7 @@ export function buildChunk(level, cx, cz) {
     rec.waterMesh = mesh;
   }
 
+  _lap('water');
   // --- static decor (sunk / clipped furniture, pipes) ---
   for (const d of layout.decor) {
     const x = (cx * N + d.li) * CELL + CELL / 2, z = (cz * N + d.lj) * CELL + CELL / 2;
@@ -305,6 +312,7 @@ export function buildChunk(level, cx, cz) {
     }
   }
 
+  _lap('decor');
   // --- colliders ---
   const phys = level.world.physics;
   const ud = { kind: 'static', surface: 'world' };
@@ -317,6 +325,7 @@ export function buildChunk(level, cx, cz) {
   }
   rec.physicsColliders = cols;
   group.updateMatrixWorld(true);
+  _lap('phys');
   return rec;
 }
 
