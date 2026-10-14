@@ -1,4 +1,7 @@
-// Level registry. Add new dimensions here (Poolrooms, Grasslands, Endless Hotel...).
+// Level registry. Built-in levels are listed here; additional dimensions register themselves from
+// their own folder: any src/world/levels/<name>/level.js exporting
+//   export const LEVEL = { id: 'poolrooms', name: 'Level 37 — The Poolrooms', cls: PoolroomsLevel, ready: true }
+// is picked up automatically (no edits to this file needed).
 // Each level class implements: build(onProgress), spawnPoint(i, lateJoin, arrival), hostStart(desc),
 // update(dt), startAudio(), sampleLight(pos, out), surfaceAt(x,z), waterDepth(x,z),
 // sampleKindAt(hit), serialize()/applySync(), spawnBody()/removeBody(), dispose().
@@ -19,6 +22,14 @@ export const LEVELS = {
     return this[want]?.ready ? want : 'yellow';
   },
 };
+
+// self-registering level folders
+const extra = import.meta.glob('./*/level.js', { eager: true });
+for (const mod of Object.values(extra)) {
+  const L = mod.LEVEL;
+  if (!L?.id || !L.cls) continue;
+  LEVELS[L.id] = { ...(LEVELS[L.id] || {}), ...L, ready: L.ready !== false };
+}
 
 export function createLevel(type, world, desc) {
   const def = LEVELS[type];

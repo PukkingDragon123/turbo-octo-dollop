@@ -71,12 +71,12 @@ async function boot() {
   await game.loadWorld({ type: 'lobby', seed: 1234 }, false);
   ui.showMainMenu();
 
-  // test hooks: ?auto=solo|host & ?level=yellow
+  // test hooks: ?auto=solo|host & ?level=yellow|poolrooms|grasslands
   const auto = params.get('auto');
   if (auto === 'solo') {
     await game.startSolo();
     ui.hideMenus();
-    if (params.get('level') === 'yellow') game.hostDispatch([]);
+    if (params.get('level')) game.hostDispatch([], params.get('level'));
   }
 
   // ---------------- main loop ----------------

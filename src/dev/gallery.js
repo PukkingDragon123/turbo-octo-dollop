@@ -39,6 +39,26 @@ async function listModels() {
     const reg = mod.FURNITURE || mod.ITEMS || mod.DEVICES;
     return pick(Object.keys(reg)).map((k) => ({ key: k, build: () => buildModel(k, { seed: 3 }).object }));
   }
+  if (set === 'synth') {
+    // material swatches: a sphere + a rounded slab per texsynth recipe
+    const Synth = await import('../gfx/texsynth.js');
+    const { RoundedBoxGeometry } = await import('three/examples/jsm/geometries/RoundedBoxGeometry.js');
+    const opts = P.get('opts') ? JSON.parse(P.get('opts')) : {};
+    return pick(Synth.recipeNames()).map((k) => ({
+      key: k,
+      build: () => {
+        const g = new THREE.Group();
+        const m = Synth.pbrMaterial(k, { ...(opts[k] || {}), repeat: +(P.get('rep') || 1) });
+        const sph = new THREE.Mesh(new THREE.SphereGeometry(0.5, 64, 48), m);
+        sph.position.set(-0.55, 0.5, 0);
+        const box = new THREE.Mesh(new RoundedBoxGeometry(1.0, 1.0, 0.25, 6, 0.05), m);
+        box.position.set(0.6, 0.5, 0);
+        box.rotation.y = -0.5;
+        g.add(sph, box);
+        return g;
+      },
+    }));
+  }
   if (set === 'avatar') {
     const A = await import('../entities/avatar.js');
     const base = P.get('cos') ? JSON.parse(P.get('cos')) : A.DEFAULT_COSMETICS;

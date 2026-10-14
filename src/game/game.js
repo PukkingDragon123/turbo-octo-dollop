@@ -508,13 +508,14 @@ export class Game {
     this.hostLoadWorld({ type: next, seed: (Math.random() * 1e9) | 0, depth: this.run.depth, arrival: true, carry });
   }
 
-  hostDispatch(carry) {
-    // from lobby into the first dimension (fresh run)
+  hostDispatch(carry, type = 'yellow') {
+    // from lobby into the first dimension (fresh run); `type` lets test hooks start in a later dimension
     this.run = this._newRun();
-    this.run.depth = 1;
+    const depth = Math.max(1, LEVELS.order.indexOf(type) + 1);
+    this.run.depth = depth;
     for (const r of this.roster.values()) r.dead = false;
     this.unlockAll('first_day');
-    this.hostLoadWorld({ type: 'yellow', seed: (Math.random() * 1e9) | 0, depth: 1, arrival: true, carry, fresh: true });
+    this.hostLoadWorld({ type, seed: (Math.random() * 1e9) | 0, depth, arrival: true, carry, fresh: true });
   }
 
   // ------------------------------------------------------------------
