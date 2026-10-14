@@ -345,21 +345,20 @@ def('almond_water', () => {
   const R = 0.032;
   // PET shell profile (outer)
   const shell = [[0, 0.0045], [0.012, 0.0036], [0.0185, 0.0012, 0.003], [0.0285, 0.0, 0.004], [R, 0.006, 0.004], [R, 0.022], [R - 0.0016, 0.0255, 0.0012], [R, 0.029, 0.0012], [R, 0.033], [R - 0.0016, 0.0365, 0.0012], [R, 0.04, 0.0012], [R, 0.142], [R - 0.0016, 0.1455, 0.0012], [R, 0.149, 0.0012], [R, 0.152, 0.002], [0.0298, 0.166, 0.006], [0.0226, 0.181, 0.006], [0.0152, 0.1905, 0.003], [0.0138, 0.1915], [0.0138, 0.1925, 's'], [0.0178, 0.193, 0.0004], [0.0178, 0.1945, 0.0004], [0.0136, 0.195, 's'], [0.0134, 0.2045], [0.0124, 0.2055]];
-  k.lathe(shell, pet, { seg: 40, rmod: (phi, y, r) => r - (y > 0.153 && y < 0.186 ? 0.0011 * sstep(0.153, 0.162, y) * (1 - sstep(0.178, 0.186, y)) * Math.pow(0.5 + 0.5 * Math.cos(phi * 8), 2) : 0) });
+  k.lathe(shell, pet, { seg: 32, rseg: 0.0016, rmod: (phi, y, r) => r - (y > 0.153 && y < 0.186 ? 0.0011 * sstep(0.153, 0.162, y) * (1 - sstep(0.178, 0.186, y)) * Math.pow(0.5 + 0.5 * Math.cos(phi * 8), 2) : 0) });
   // liquid (fill ~86%) with meniscus
   const fy = 0.168;
-  k.lathe([[0, 0.0052], [0.0118, 0.0044], [0.018, 0.0021, 0.002], [0.0278, 0.0012, 0.003], [R - 0.0012, 0.0066, 0.003], [R - 0.0012, 0.022], [R - 0.0026, 0.0255, 0.001], [R - 0.0012, 0.029], [R - 0.0012, 0.033], [R - 0.0026, 0.0365, 0.001], [R - 0.0012, 0.04], [R - 0.0012, 0.142], [R - 0.0026, 0.1455], [R - 0.0012, 0.149], [R - 0.0012, 0.152], [0.0284, 0.1655], [0.0276, fy + 0.0012, 0.0008], [0.026, fy, 0.0015], [0, fy - 0.0004]], liquid, { seg: 32 });
+  k.lathe([[0, 0.0052], [0.0118, 0.0044], [0.018, 0.0021, 0.002], [0.0278, 0.0012, 0.003], [R - 0.0012, 0.0066, 0.003], [R - 0.0012, 0.022], [R - 0.0026, 0.0255, 0.001], [R - 0.0012, 0.029], [R - 0.0012, 0.033], [R - 0.0026, 0.0365, 0.001], [R - 0.0012, 0.04], [R - 0.0012, 0.142], [R - 0.0026, 0.1455], [R - 0.0012, 0.149], [R - 0.0012, 0.152], [0.0284, 0.1655], [0.0276, fy + 0.0012, 0.0008], [0.026, fy, 0.0015], [0, fy - 0.0004]], liquid, { seg: 24, rseg: 0.0016 });
   // printed film label in the recessed panel (with the overlap step)
   k.lathe([[R + 0.00045, 0.0412], [R + 0.00045, 0.1408]], label, { seg: 48, vFromY: [0.0412, 0.1408], uv: A.R(0, 0, 1024, 256), rmod: (phi, y, r) => r + (phi > TAU * 0.985 ? 0.00025 : 0), phi0: PI });
   // neck threads (2 turns)
-  k.add(new THREE.TubeGeometry(new (class extends THREE.Curve { getPoint(t, o = V3()) { const a = t * TAU * 2.2; return o.set(Math.cos(a) * 0.01375, 0.1965 + t * 0.0065, Math.sin(a) * 0.01375); } })(), 48, 0.00055, 5, false), pet, {});
+  k.add(new THREE.TubeGeometry(new (class extends THREE.Curve { getPoint(t, o = V3()) { const a = t * TAU * 2.2; return o.set(Math.cos(a) * 0.01375, 0.1965 + t * 0.0065, Math.sin(a) * 0.01375); } })(), 40, 0.00055, 4, false), pet, {});
   // cap: ribbed skirt, top with logo, tamper band with bridges
   k.lathe([[0.0153, 0.1952], [0.0158, 0.1958, 0.0004], [0.0158, 0.2078], [0.0151, 0.2088, 0.0008], [0.0141, 0.2092]], label, {
-    seg: 64, vFromY: [0.1952, 0.2092], uv: A.R(0, 264, 512, 70),
-    rmod: (phi, y, r) => r + (y > 0.1962 && y < 0.2074 ? 0.00042 * Math.pow(0.5 + 0.5 * Math.cos(phi * 60), 2) : 0),
+    seg: 36, vFromY: [0.1952, 0.2092], uv: A.R(0, 264, 512, 70),
   });
   k.lathe([[0.0141, 0.2092], [0.008, 0.2094], [0, 0.2095]], label, { seg: 32, planar: { rect: A.R(520, 264, 120, 120), R: 0.0142 } });
-  k.lathe([[0.0151, 0.1918], [0.0154, 0.1922, 0.0003], [0.0154, 0.1945], [0.0149, 0.1949]], label, { seg: 48, vFromY: [0.1918, 0.1949], uv: A.R(0, 336, 512, 18) });
+  k.lathe([[0.0151, 0.1918], [0.0154, 0.1922, 0.0003], [0.0154, 0.1945], [0.0149, 0.1949]], label, { seg: 32, vFromY: [0.1918, 0.1949], uv: A.R(0, 336, 512, 18) });
   k.colCyl(R, 0.1925, [0, 0.0962, 0]);
   k.colCyl(0.0158, 0.017, [0, 0.201, 0]);
   return { kit: k, meta: { mass: 0.52, material: 'plastic', hold: { grip: [0, 0.09, 0], rot: [0.1, -0.15, 0.06], off: [0, 0.035, 0] } } };
@@ -543,17 +542,22 @@ def('canned_food', () => {
   };
   const k = new Kit();
   const tinUV = A.R(110, 404, 100, 100);
-  // bottom seam + beads + wall (under the label) + top beads + top seam
-  const prof = [[0, 0.0026], [R - 0.0045, 0.0026, 0.0008], [R - 0.0034, 0.0005, 0.0005], [R - 0.0006, 0, 0.0005], [R + 0.0012, 0.0018, 0.0006], [R + 0.0012, 0.0056, 0.0006], [R, 0.0078, 0.0005]];
-  for (let i = 0; i < 3; i++) { const y = 0.009 + i * 0.0022; prof.push([R, y], [R - 0.0009, y + 0.0011, 0.0004], [R, y + 0.0022]); }
-  prof.push([R, y0 + 0.001], [R, y1 - 0.001]);
-  for (let i = 0; i < 3; i++) { const y = 0.0955 + i * 0.0022; prof.push([R, y], [R - 0.0009, y + 0.0011, 0.0004], [R, y + 0.0022]); }
-  prof.push([R, H - 0.0074], [R + 0.0012, H - 0.0054, 0.0006], [R + 0.0012, H - 0.0014, 0.0006], [R, H, 0.0006], [R - 0.0022, H - 0.0005, 's'], [R - 0.0036, H - 0.0036, 0.0006]);
-  for (let i = 0; i < 4; i++) prof.push([R - 0.009 - i * 0.0075, H - 0.0036], [R - 0.0128 - i * 0.0075, H - 0.0026, 0.0012]);
-  prof.push([0.004, H - 0.003], [0, H - 0.003]);
-  k.lathe(prof, tin, { seg: 48, uv: tinUV, capUV: { rect: A.R(0, 404, 100, 100), R: R * 0.95, t: 0.9 }, deform: dent });
-  // paper label (slightly proud of the tin), dent follows
-  k.lathe([[R + 0.0003, y0], [R + 0.0003, y1]], label, { seg: 64, phi0: PI, vFromY: [y0, y1], uv: A.R(0, 0, 1024, 400), deform: dent });
+  // bottom seam + beads, top beads + seam + lid (two lathes: the wall under the label is never seen, and leaving
+  // it out lets the label carry the dent on its own)
+  const bead = (y) => [[R, y], [R - 0.0009, y + 0.0011], [R, y + 0.0022]];
+  const lower = [[0, 0.0026], [R - 0.0045, 0.0026, 0.0008], [R - 0.0034, 0.0005, 0.0005], [R - 0.0006, 0, 0.0005], [R + 0.0012, 0.0018, 0.0006], [R + 0.0012, 0.0056, 0.0006], [R, 0.0078, 0.0005]];
+  for (let i = 0; i < 3; i++) lower.push(...bead(0.009 + i * 0.0022));
+  lower.push([R, y0 + 0.001]);
+  const upper = [[R, y1 - 0.001]];
+  for (let i = 0; i < 3; i++) upper.push(...bead(0.0955 + i * 0.0022));
+  upper.push([R, H - 0.0074], [R + 0.0012, H - 0.0054, 0.0006], [R + 0.0012, H - 0.0014, 0.0006], [R, H, 0.0006], [R - 0.0022, H - 0.0005, 's'], [R - 0.0036, H - 0.0036, 0.0006]);
+  for (let i = 0; i < 3; i++) upper.push([R - 0.009 - i * 0.0095, H - 0.0036], [R - 0.0128 - i * 0.0095, H - 0.0026, 0.0012]);
+  upper.push([0.004, H - 0.003], [0, H - 0.003]);
+  const tinO = { seg: 36, rseg: 0.0013, uv: tinUV, capUV: { rect: A.R(0, 404, 100, 100), R: R * 0.95, t: 0.9 } };
+  k.lathe(lower, tin, tinO);
+  k.lathe(upper, tin, tinO);
+  // paper label (slightly proud of the tin) with rows through the dent
+  k.lathe([y0, 0.052, 0.06, 0.068, 0.076, 0.084, y1].map((y) => [R + 0.0003, y]), label, { seg: 48, phi0: PI, vFromY: [y0, y1], uv: A.R(0, 0, 1024, 400), deform: dent });
   // peeled label corner curling away near the torn region
   const pa = PI + 0.03 * TAU;
   k.add(sheetGeo(4, 5, (u, v) => {
@@ -635,7 +639,7 @@ def('chips', () => {
   const k = new Kit();
   k.add(sheetGeo(20, 28, (u, v) => { const p = shape(u, 1 - v, 1); return p; }), film, { uv: A.R(0, 0, 512, 512, 0), dm: 0.07 });
   k.add(sheetGeo(20, 28, (u, v) => { const p = shape(1 - u, 1 - v, -1); return p; }), film, { uv: A.R(512, 0, 512, 512, 0), dm: 0.07 });
-  k.colBox([W * 0.96, 0.0405, L * 0.9], [0, 0.0049, 0]);
+  k.colBox([W * 0.96, 0.0416, L * 0.9], [0, 0.00435, 0]);
   return { kit: k, meta: { mass: 0.08, material: 'paper', hold: { grip: [0, 0.02, 0], rot: [1.22, 0, 0.1], off: [0, 0.04, 0] }, restitution: 0.05, angularDamping: 0.8 } };
 });
 

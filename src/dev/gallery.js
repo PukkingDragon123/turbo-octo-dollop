@@ -160,7 +160,10 @@ async function listModels() {
   }
   if (set === 'healthity') {
     const H = await import('../entities/healthity_model.js');
-    return (H.HEALTHITY_FACES || ['happy']).slice(0, 8).map((f) => { const m = H.buildHealthity(); m.setFace?.(f); return { key: f, build: () => m.root, update: (dt) => m.update?.(dt) }; });
+    // &faces=happy,angry &talk=1 &yaws=0.7,3.4 (pre-rolled so the face-change glitch has settled)
+    const faces = P.get('faces') ? P.get('faces').split(',') : (H.HEALTHITY_FACES || ['happy']).slice(0, 8);
+    const ys = P.get('yaws') ? P.get('yaws').split(',').map(Number) : [null];
+    return faces.flatMap((f) => ys.map((y) => { const m = H.buildHealthity(); m.setFace?.(f); m.setTalking?.(!!P.get('talk')); return { key: f + (y != null ? ' y=' + y : ''), build: () => m.root, update: (dt) => m.update?.(dt), pre: +(P.get('t') || 1.2), yaw: y ?? undefined }; }));
   }
   if (set === 'bacteria') {
     // &state=idle|wander|listen|investigate|stalk|chase|attack|smash|retreat|flee|stunned

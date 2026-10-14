@@ -25,6 +25,7 @@ import { labelTexture } from '../gfx/textures.js';
 import { RNG } from '../core/rng.js';
 import { NEW_BUILDERS } from './devices/index.js';
 import { cloneDevMat } from './devices/mats.js';
+import { bindLinks } from './devices/sync.js';
 
 const PI = Math.PI, TAU = Math.PI * 2, HP = Math.PI / 2;
 const DEG = Math.PI / 180;
@@ -4284,6 +4285,7 @@ function instantiate(tpl) {
       o.material = mats.get(m);
     }
   });
+  bindLinks(tpl.object, map);
   const f = remapper(map);
   const out = {};
   for (const k in tpl) out[k] = k === 'object' ? obj : k === 'colliders' ? JSON.parse(JSON.stringify(tpl.colliders)) : f(tpl[k]);

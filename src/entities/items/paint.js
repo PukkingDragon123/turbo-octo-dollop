@@ -607,11 +607,27 @@ export function inkStamp(c, s, x, y, o = {}) {
 // ---------------------------------------------------------------------------
 const atlasCache = new Map();
 
-// atlas(key, W, H, draw(ctx, W, H), {clear, plain: '#f4f4f4'}) -> { key, tex, W, H, R(x, y, w, h, rot, inset), plain }
+// Print resolution per atlas, as a fraction of the authored W x H. Layouts are authored in logical pixels and the
+// canvas is rendered scaled, so this table is the single texture-memory knob. Tuned from measured texel density
+// (area-weighted median px/mm on the model): hand-held prints land at ~2.5-4 px/mm, roughly screen-native when an
+// item is held 30-40 cm from the camera at 1080p.
+const ATLAS_SCALE = {
+  soda_can: 0.75, energy_drink: 0.75, almond_milk: 0.75, almond_water: 0.75, canned_food: 0.75,
+  protein_bar: 0.75, candy_bar: 0.75, camera_disposable: 0.75, painkillers: 0.75, photo: 0.75, keycard: 0.75,
+  flare: 0.75, gear: 0.75, lighter: 0.75, fuse: 0.75, antibiotics: 0.5, multitool: 0.5, dart: 0.5,
+};
+let atlasMs = 0;
+
+// atlas(key, W, H, draw(ctx, W, H), {clear, plain: '#f4f4f4', scale}) -> { key, tex, W, H, R(x, y, w, h, rot, inset), plain }
 export function atlas(key, W, H, draw, opt = {}) {
   if (atlasCache.has(key)) return atlasCache.get(key);
-  const R = (x, y, w, h, rot = 0, inset = 0.75) => [(x + inset) / W, 1 - (y + h - inset) / H, (x + w - inset) / W, 1 - (y + inset) / H, rot];
-  const tex = labelTexture(W, H, (c) => {
+  const t0 = performance.now();
+  const s = opt.scale ?? ATLAS_SCALE[key] ?? ATLAS_SCALE[key.replace(/_[^_]*$/, '')] ?? 1;
+  const PW = Math.max(8, Math.round(W * s)), PH = Math.max(8, Math.round(H * s));
+  const ins = 0.75 * W / PW; // keep a ~0.75 texel inset at the real resolution
+  const R = (x, y, w, h, rot = 0, inset = ins) => [(x + inset) / W, 1 - (y + h - inset) / H, (x + w - inset) / W, 1 - (y + inset) / H, rot];
+  const tex = labelTexture(PW, PH, (c) => {
+    if (PW !== W || PH !== H) c.scale(PW / W, PH / H);
     if (opt.clear) { draw(c, W, H); return; }
     rect(c, 0, 0, W, H, opt.bg || '#ffffff');
     draw(c, W, H);
@@ -624,12 +640,17 @@ export function atlas(key, W, H, draw, opt = {}) {
   tex.generateMipmaps = true;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.anisotropy = 8;
-  const a = { key, tex, W, H, R, plain: R(W - 56, H - 56, 48, 48) };
+  tex.userData.key = key;
+  const a = { key, tex, W, H, PW, PH, R, plain: R(W - 56, H - 56, 48, 48) };
   atlasCache.set(key, a);
+  atlasMs += performance.now() - t0;
   return a;
+}
+export function atlasList() {
+  return [...atlasCache.values()].map((a) => ({ key: a.key, w: a.PW, h: a.PH, mb: (a.PW * a.PH * 4 * 1.333) / 1048576 }));
 }
 export function atlasStats() {
   let bytes = 0;
-  for (const a of atlasCache.values()) bytes += a.W * a.H * 4 * 1.333;
-  return { count: atlasCache.size, mb: bytes / 1048576 };
+  for (const a of atlasCache.values()) bytes += a.PW * a.PH * 4 * 1.333;
+  return { count: atlasCache.size, mb: bytes / 1048576, ms: atlasMs };
 }

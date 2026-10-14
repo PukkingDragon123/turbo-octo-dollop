@@ -69,7 +69,8 @@ export function fillet(pts, o = {}) {
     let da = a2 - a1;
     while (da > PI) da -= TAU;
     while (da < -PI) da += TAU;
-    const segs = Math.max(2, Math.ceil(Math.abs(da) / step));
+    // tessellate by angle, capped by the radius (sub-millimetre fillets only need a chamfer or two)
+    const segs = Math.max(1, Math.min(Math.ceil(Math.abs(da) / step), 1 + Math.floor(r / (o.rseg ?? 0.0009))));
     for (let k = 0; k <= segs; k++) { const a = a1 + (da * k) / segs; out.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r, false]); }
   }
   return out;
@@ -186,7 +187,8 @@ export function latheGeo(prof, o = {}) {
       const a = j + i * n, b = a + n, c = b + 1, d = a + 1;
       if (P[j][0] < 1e-7 && P[j + 1][0] < 1e-7) continue;
       if (Math.abs(P[j][0] - P[j + 1][0]) < 1e-9 && Math.abs(P[j][1] - P[j + 1][1]) < 1e-9) continue; // hard-edge seam
-      idx.push(a, b, d, c, d, b);
+      if (P[j][0] >= 1e-7 || o.rmod) idx.push(a, b, d); // (a, b) collapse on the axis: that triangle is degenerate
+      if (P[j + 1][0] >= 1e-7 || o.rmod) idx.push(c, d, b);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -589,7 +591,7 @@ export class Kit {
   }
 
   box(w, h, d, mat, o = {}) { return this.add(new THREE.BoxGeometry(w, h, d, o.sx || 1, o.sy || 1, o.sz || 1), mat, o); }
-  rbox(w, h, d, r, mat, o = {}) { return this.add(new RoundedBoxGeometry(w, h, d, o.rs ?? 3, Math.min(r, w / 2 - 1e-5, h / 2 - 1e-5, d / 2 - 1e-5)), mat, o); }
+  rbox(w, h, d, r, mat, o = {}) { return this.add(new RoundedBoxGeometry(w, h, d, Math.min(o.rs ?? 2, 2), Math.min(r, w / 2 - 1e-5, h / 2 - 1e-5, d / 2 - 1e-5)), mat, o); }
   // lathe from a fillet() profile or raw [[r, y, hard]] points
   lathe(pts, mat, o = {}) {
     const prof = o.raw ? pts : fillet(pts, o);

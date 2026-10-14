@@ -259,10 +259,10 @@ const STATES = {
   listen: { quad: 0, crouch: 0.15, hunch: 1.0, lean: 0.12, armFwd: 0.1, headFwd: 0.6, listen: 1, und: 0.25, jaw: 0.14, breath: 0.35 },
   stalk: { quad: 0, crouch: 0.4, hunch: 1.55, lean: 0.45, armFwd: 0.55, headFwd: 1.0, listen: 0.25, und: 1.0, stalk: 1, jaw: 0.12, breath: 0.5 },
   chase: { quad: 1, crouch: 0.12, hunch: 0.35, lean: 0.3, armFwd: 0.0, headFwd: 0.7, und: 0.5, jaw: 0.45, breath: 1.6 },
-  attack: { quad: 0, crouch: 0.18, hunch: 0.9, lean: 0.3, armFwd: 0.2, headFwd: 0.8, und: 0.2, attack: 1, jaw: 0.2, breath: 1.4 },
+  attack: { quad: 0, crouch: 0.18, hunch: 0.62, lean: 0.25, armFwd: 0.2, headFwd: 0.8, und: 0.2, attack: 1, jaw: 0.2, breath: 1.4 },
   retreat: { quad: 0.55, crouch: 0.3, hunch: 1.25, lean: 0.25, armFwd: 0.2, headFwd: 0.7, und: 0.7, scan: 0.5, jaw: 0.25, breath: 1.2 },
   flee: { quad: 1, crouch: 0.25, hunch: 0.6, lean: 0.4, armFwd: 0.0, headFwd: 0.5, und: 0.8, scan: 0.8, jaw: 0.6, breath: 1.8, stun: 0.15 },
-  smash: { quad: 0, crouch: 0.22, hunch: 0.85, lean: 0.35, armFwd: 0.3, headFwd: 0.85, und: 0.3, attack: 1, jaw: 0.3, breath: 1.5 },
+  smash: { quad: 0, crouch: 0.22, hunch: 0.62, lean: 0.3, armFwd: 0.3, headFwd: 0.85, und: 0.3, attack: 1, jaw: 0.3, breath: 1.5 },
   stunned: { quad: 0, crouch: 0.55, hunch: 1.5, lean: 0.35, armFwd: 0, headFwd: 0.2, und: 0.3, stun: 1, jaw: 0.5, breath: 1.2 },
   hurt: { quad: -1, crouch: 0.3, hunch: 1.3, lean: 0.25, armFwd: 0.1, headFwd: 0.4, und: 0.3, jaw: 0.7, breath: 1.2 },
   despawn: { quad: 0, crouch: 0.6, hunch: 1.6, lean: 0.4, armFwd: 0, headFwd: 0.2, und: 0.1, despawn: 1, jaw: 0.6, breath: 0.2 },
@@ -1080,7 +1080,7 @@ export class BacteriaBody {
     const back = lerp(0.03, 0.4, quad) - aw * A.strike * 0.55 + aw * A.wind * 0.16 - p.lean * 0.05;
     const pelvisPos = this._pelvisPos.copy(BP).addScaledVector(R, sway).addScaledVector(F, -back);
     pelvisPos.y = BP.y + hipH - D.hipY;
-    const pitch = lerp(0.1 + (p.lean + V.lean) * 0.55, 1.36, quad) + gal * 0.14 * Math.sin(ph) + aw * (-0.38 * A.wind + 0.55 * A.strike)
+    const pitch = lerp(0.1 + (p.lean + V.lean) * 0.55, 1.36, quad) + gal * 0.14 * Math.sin(ph) + aw * (-0.38 * A.wind + 0.32 * A.strike)
       + p.stun * 0.25 + p.despawn * 0.7 + tw.pelvis.x;
     const roll = walk * 0.06 * Math.sin(ph) + p.stun * 0.14 * noise1(t * 0.5 + 9) + tw.pelvis.z;
     const twist = walk * 0.13 * Math.sin(ph) + gal * 0.08 * Math.sin(ph);
@@ -1091,7 +1091,7 @@ export class BacteriaBody {
     // ---------------- spine
     const W5 = [0.06, 0.12, 0.2, 0.28, 0.34];
     let bendTot = lerp(p.hunch + V.hunch, -0.32, quad) + this.hunchExtra * (1 - 0.5 * quad)
-      + aw * (-0.65 * A.wind + 0.85 * A.strike) + p.stun * 0.3 + p.despawn * 0.6;
+      + aw * (-0.6 * A.wind + 0.38 * A.strike) + p.stun * 0.3 + p.despawn * 0.6;
     if (C.type === 2) bendTot = lerp(bendTot, -1.55 * C.a, ca); // back-bend
     const contTwist = C.type === 1 ? C.side * C.a * 1.7 * ca : 0; // torso wrench
     const pos = _a.copy(pelvisPos).addScaledVector(_b.set(0, D.pelvis, 0).applyQuaternion(qP), 1);

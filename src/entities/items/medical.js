@@ -146,40 +146,40 @@ def('medkit', () => {
     const u = p.x / W + 0.5, v = clamp((p.y - 0.004) / 0.05, 0, 1); return [strip[0] + u * (strip[2] - strip[0]), strip[1] + v * (strip[3] - strip[1])];
   };
   // base
-  k.add(extrudeGeo(plan, Hb - 0.012, 0.006, { bevelSegments: 3, curveSegments: 10 }), shell, { r: [PI / 2, 0, 0], p: [0, Hb / 2, 0], uvFn: (p, n) => sideUV(V3(p.x, -p.z + Hb / 2, p.y), V3(n.x, -n.z, n.y)) });
+  k.add(extrudeGeo(plan, Hb - 0.012, 0.006, { bevelSegments: 2, curveSegments: 7 }), shell, { r: [PI / 2, 0, 0], p: [0, Hb / 2, 0], uvFn: (p, n) => sideUV(V3(p.x, -p.z + Hb / 2, p.y), V3(n.x, -n.z, n.y)) });
   // parting lip (darker groove band)
   k.rbox(W - 0.006, 0.0045, D - 0.006, 0.0022, shell, { p: [0, Hb, 0], rs: 2, col: 0x8a8678 });
   // lid with a raised rim
-  k.add(extrudeGeo(plan, Hl - 0.012, 0.006, { bevelSegments: 3, curveSegments: 10 }), shell, { r: [PI / 2, 0, 0], p: [0, Hb + 0.0022 + Hl / 2, 0], uvFn: (p, n) => sideUV(V3(p.x, -p.z + Hb + Hl / 2, p.y), V3(n.x, -n.z, n.y), Math.abs(n.z) < 0.7) });
+  k.add(extrudeGeo(plan, Hl - 0.012, 0.006, { bevelSegments: 2, curveSegments: 7 }), shell, { r: [PI / 2, 0, 0], p: [0, Hb + 0.0022 + Hl / 2, 0], uvFn: (p, n) => sideUV(V3(p.x, -p.z + Hb + Hl / 2, p.y), V3(n.x, -n.z, n.y), Math.abs(n.z) < 0.7) });
   const yTop = Hb + 0.0022 + Hl;
   // raised moulded cross (red) on the lid
   const cs = new THREE.Shape();
   const a = 0.0205, b = 0.06;
   cs.moveTo(-a, -b); cs.lineTo(a, -b); cs.lineTo(a, -a); cs.lineTo(b, -a); cs.lineTo(b, a); cs.lineTo(a, a); cs.lineTo(a, b); cs.lineTo(-a, b); cs.lineTo(-a, a); cs.lineTo(-b, a); cs.lineTo(-b, -a); cs.lineTo(-a, -a); cs.closePath();
   const redC = [(redUV[0] + redUV[2]) / 2, (redUV[1] + redUV[3]) / 2];
-  k.add(extrudeGeo(cs, 0.0018, 0.0009, { bevelSegments: 2 }), shell, { r: [-PI / 2, 0, 0], p: [0.0629, yTop + 0.0004, 0], uvFn: () => redC, col: 0xffffff });
+  k.add(extrudeGeo(cs, 0.0018, 0.0009, { bevelSegments: 1 }), shell, { r: [-PI / 2, 0, 0], p: [0.0629, yTop + 0.0004, 0], uvFn: () => redC, col: 0xffffff });
   // hinge knuckles on the back + steel pin
   for (let i = 0; i < 5; i++) {
     const x = -0.09 + i * 0.045;
-    k.cyl(0.0058, 0.026, shell, { p: [x, Hb + 0.0015, -D / 2 + 0.0016], r: [0, 0, PI / 2], seg: 14, col: i % 2 ? 0xd8d3c6 : 0xcac5b8, bevel: 0.0012 });
+    k.cyl(0.0058, 0.026, shell, { p: [x, Hb + 0.0015, -D / 2 + 0.0016], r: [0, 0, PI / 2], seg: 12, col: i % 2 ? 0xd8d3c6 : 0xcac5b8, bevel: 0.0012 });
   }
   k.cyl(0.0016, 0.21, steel, { p: [0, Hb + 0.0015, -D / 2 + 0.0016], r: [0, 0, PI / 2], seg: 8, bevel: 0.0004 });
   // latches (red) with a hooked lip
   for (const sx of [-1, 1]) {
     k.push({ p: [sx * 0.092, Hb + 0.002, D / 2 + 0.0015] });
-    k.rbox(0.028, 0.036, 0.0075, 0.003, shell, { rs: 2, uv: redUV, col: 0xffffff });
-    k.rbox(0.022, 0.006, 0.006, 0.002, shell, { p: [0, 0.019, -0.002], rs: 2, uv: redUV, col: 0xe8e8e8 });
+    k.rbox(0.028, 0.036, 0.0075, 0.003, shell, { rs: 1, uv: redUV, col: 0xffffff });
+    k.rbox(0.022, 0.006, 0.006, 0.002, shell, { p: [0, 0.019, -0.002], rs: 1, uv: redUV, col: 0xe8e8e8 });
     k.cyl(0.0022, 0.03, steel, { p: [0, -0.012, -0.002], r: [0, 0, PI / 2], seg: 8, bevel: 0.0004 });
     k.pop();
   }
   // folding carry handle (folded flat against the front of the base)
-  for (const sx of [-1, 1]) k.rbox(0.016, 0.022, 0.012, 0.004, shell, { p: [sx * 0.05, Hb - 0.008, D / 2 + 0.001], rs: 2, col: 0x6a6a6c, uv: rubUV });
-  k.tube([[-0.05, Hb - 0.006, D / 2 + 0.006], [-0.046, Hb - 0.022, D / 2 + 0.012], [-0.025, Hb - 0.03, D / 2 + 0.014], [0.025, Hb - 0.03, D / 2 + 0.014], [0.046, Hb - 0.022, D / 2 + 0.012], [0.05, Hb - 0.006, D / 2 + 0.006]], (t) => [0.0062, 0.0048], shell, { tseg: 30, rseg: 10, uv: rubUV, col: 0x8a8a8c, up: [0, 0, 1] });
+  for (const sx of [-1, 1]) k.rbox(0.016, 0.022, 0.012, 0.004, shell, { p: [sx * 0.05, Hb - 0.008, D / 2 + 0.001], rs: 1, col: 0x6a6a6c, uv: rubUV });
+  k.tube([[-0.05, Hb - 0.006, D / 2 + 0.006], [-0.046, Hb - 0.022, D / 2 + 0.012], [-0.025, Hb - 0.03, D / 2 + 0.014], [0.025, Hb - 0.03, D / 2 + 0.014], [0.046, Hb - 0.022, D / 2 + 0.012], [0.05, Hb - 0.006, D / 2 + 0.006]], (t) => [0.0062, 0.0048], shell, { tseg: 24, rseg: 8, uv: rubUV, col: 0x8a8a8c, up: [0, 0, 1] });
   // grip ribs on both ends
-  for (const sx of [-1, 1]) for (let i = 0; i < 5; i++) k.rbox(0.003, 0.03, 0.006, 0.0012, shell, { p: [sx * (W / 2 - 0.0008), Hb * 0.55, -0.03 + i * 0.015], rs: 1, col: 0xcfcabc });
+  for (const sx of [-1, 1]) for (let i = 0; i < 5; i++) k.box(0.003, 0.03, 0.006, shell, { p: [sx * (W / 2 - 0.0008), Hb * 0.55, -0.03 + i * 0.015], col: 0xcfcabc });
   // rubber feet
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.cyl(0.0085, 0.003, shell, { p: [sx * 0.105, 0.0005, sz * 0.065], seg: 14, uv: rubUV, bevel: 0.001 });
-  k.colBox([W, yTop + 0.002, D], [0, (yTop + 0.002) / 2, 0]);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.cyl(0.0085, 0.003, shell, { p: [sx * 0.105, 0.0005, sz * 0.065], seg: 10, uv: rubUV, bevel: 0.001 });
+  k.colBox([W, yTop + 0.003, D], [0, (yTop + 0.002) / 2 - 0.0005, 0]); // feet stand 1 mm proud
   return { kit: k, meta: { mass: 1.2, material: 'plastic', hold: { grip: [0, Hb - 0.025, D / 2 + 0.014], rot: [1.2, 0, 0.0], off: [-0.03, -0.02, 0.02] } } };
 });
 
@@ -231,19 +231,19 @@ def('antibiotics', () => {
   const k = new Kit();
   const R = 0.0178;
   // vial: inner and outer walls (amber), thick rounded base, lip
-  k.lathe([[0, 0.0012], [0.012, 0.001, 0.003], [R, 0.0055, 0.004], [R, 0.0565], [R - 0.0004, 0.0575, 0.0006], [0.0168, 0.0585, 's'], [0.0168, 0.0645, 0.0005], [0.0158, 0.0648, 0.0004], [0.0158, 0.003], [0, 0.0028]], amber, { seg: 40 });
+  k.lathe([[0, 0.0003], [0.012, 0, 0.003], [R, 0.0048, 0.004], [R, 0.0565], [R - 0.0004, 0.0575, 0.0006], [0.0168, 0.0585, 's'], [0.0168, 0.0645, 0.0005], [0.0158, 0.0648, 0.0004], [0.0158, 0.003], [0, 0.0028]], amber, { seg: 32, rseg: 0.0014 });
   // capsules piled inside
   const r = new RNG(7);
   const capG = (len, rad) => {
     const pts = [];
-    for (let i = 0; i <= 6; i++) { const a = -PI / 2 + (i / 6) * (PI / 2); pts.push([Math.cos(a) * rad + 1e-5, Math.sin(a) * rad - len / 2]); }
-    for (let i = 0; i <= 6; i++) { const a = (i / 6) * (PI / 2); pts.push([Math.cos(a) * rad + 1e-5, Math.sin(a) * rad + len / 2]); }
-    return latheGeo(pts.map(([x, y]) => [x, y, false]), { seg: 10 });
+    for (let i = 0; i <= 3; i++) { const a = -PI / 2 + (i / 3) * (PI / 2); pts.push([i ? Math.cos(a) * rad : 0, Math.sin(a) * rad - len / 2]); }
+    for (let i = 0; i <= 3; i++) { const a = (i / 3) * (PI / 2); pts.push([i < 3 ? Math.cos(a) * rad : 0, Math.sin(a) * rad + len / 2]); }
+    return latheGeo(pts.map(([x, y]) => [x, y, false]), { seg: 9 });
   };
   const capPos = [];
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 13; i++) {
     const layer = Math.floor(i / 6), ang = (i % 6) / 6 * TAU + layer * 0.5 + r.range(-0.2, 0.2);
-    const rr = layer === 2 ? 0.004 : 0.0095;
+    const rr = layer === 2 ? 0.002 : 0.0095;
     capPos.push([Math.cos(ang) * rr, 0.0062 + layer * 0.0062 + r.range(0, 0.0012), Math.sin(ang) * rr, r.range(0, PI), r.range(-0.5, 0.5)]);
   }
   for (const [x, y, z, ry, rz] of capPos) {
@@ -254,10 +254,9 @@ def('antibiotics', () => {
   k.lathe([[R + 0.0004, 0.012], [R + 0.0004, 0.05]], p, { seg: 36, phi0: PI + 0.52, phiLen: TAU - 1.04, vFromY: [0.012, 0.05], uv: A.R(0, 0, 512, 180) });
   // child-resistant cap: outer ribbed skirt, rolled top edge, top disc
   k.lathe([[0.0186, 0.0578], [0.0196, 0.0582, 0.0005], [0.0196, 0.0738, 0.001], [0.0186, 0.0752, 0.0012], [0.0174, 0.0754]], p, {
-    seg: 56, vFromY: [0.0578, 0.0754], uv: A.R(0, 190, 512, 60),
-    rmod: (phi, y, r2) => r2 + (y > 0.059 && y < 0.0725 ? 0.00045 * Math.pow(0.5 + 0.5 * Math.cos(phi * 48), 2) : 0),
+    seg: 40, vFromY: [0.0578, 0.0754], uv: A.R(0, 190, 512, 60),
   });
-  k.lathe([[0.0174, 0.0754], [0.008, 0.0758], [0, 0.0759]], p, { seg: 40, planar: { rect: A.R(0, 256, 140, 140), R: 0.0176 } });
+  k.lathe([[0.0174, 0.0754], [0.008, 0.0758], [0, 0.0759]], p, { seg: 32, planar: { rect: A.R(0, 256, 140, 140), R: 0.0176 } });
   k.colCyl(0.0196, 0.0759, [0, 0.03795, 0]);
   return { kit: k, meta: { mass: 0.06, material: 'plastic', hold: { grip: [0, 0.035, 0], rot: [0.12, -0.2, 0.05], off: [0, 0.02, 0] } } };
 });
@@ -326,14 +325,14 @@ def('painkillers', () => {
     const [x, z] = cell(i, j);
     const pop = popped(i, j);
     // thermoformed dome with a flat flange
-    k.lathe([[0.0082, 0], [0.0074, 0.0003, 0.0006], [0.0068, 0.0028, 0.0018], [0.0042, 0.0046, 0.002], [0, 0.0049]], pvc, { seg: 20, p: [x, t / 2 + 0.0002, z], s: [1, pop ? 0.22 : 1, 1], ymod: pop ? (phi, y) => y * (1 + 0.6 * Math.sin(phi * 3)) : undefined });
-    if (!pop) k.lathe([[0.0047, -0.0014], [0.0049, -0.0004, 0.0002], [0.0049, 0.0004, 0.0002], [0.0042, 0.0013, 0.001], [0, 0.0018]], card, { seg: 16, p: [x, t / 2 + 0.0021, z], planar: { rect: A.R(0, 446, 60, 60), R: 0.005 }, col: 0xffffff });
+    k.lathe([[0.0082, 0], [0.0074, 0.0003, 0.0006], [0.0068, 0.0028, 0.0018], [0.0042, 0.0046, 0.002], [0, 0.0049]], pvc, { seg: 16, rseg: 0.0012, p: [x, t / 2 + 0.0002, z], s: [1, pop ? 0.22 : 1, 1], ymod: pop ? (phi, y) => y * (1 + 0.6 * Math.sin(phi * 3)) : undefined });
+    if (!pop) k.lathe([[0.0047, -0.0014], [0.0049, -0.0004, 0.0002], [0.0049, 0.0004, 0.0002], [0.0042, 0.0013, 0.001], [0, 0.0018]], card, { seg: 12, p: [x, t / 2 + 0.0021, z], planar: { rect: A.R(0, 446, 60, 60), R: 0.005 }, col: 0xffffff });
     else {
       // torn foil flap hanging under the card
-      k.add(sheetGeo(3, 3, (u, v) => [x - 0.004 + u * 0.008, -t / 2 - 0.0004 - v * 0.0025, z + 0.003 + v * 0.002 - u * 0.001]), card, { uv: A.R(64, 446, 60, 60), col: 0xdcdcdc });
+      k.add(sheetGeo(3, 3, (u, v) => [x - 0.004 + u * 0.008, -t / 2 - 0.00015 - v * v * 0.0006 - u * (1 - u) * 0.0004, z + 0.003 + v * 0.0042 - u * 0.001]), card, { uv: A.R(64, 446, 60, 60), col: 0xdcdcdc });
     }
   }
-  k.colBox([W, 0.0062, D], [0, 0.0019, 0]);
+  k.colBox([W, 0.0064, D], [0, 0.0019, 0]);
   return { kit: k, meta: { mass: 0.02, material: 'plastic', hold: { grip: [0, 0, 0], rot: [1.25, 0.1, 0.12], off: [0, 0.035, 0] } } };
 });
 
@@ -360,7 +359,7 @@ def('splint', () => {
     rect(c, 260, 260, 252, 60, 'rgba(0,0,0,0)');
   }, { plain: '#f2eee4' });
   const cloth = mat({ name: 'splint_cloth', map: A, rough: 0.95, det: 'twill', ns: 1.0, sheen: 0.5, sheenColor: 0xffd8c8, sheenRough: 0.6 });
-  const wood = mat({ name: 'splint_wood', rough: 0.8, det: 'wood', detAlbedo: true, ns: 0.8, color: 0xf0dcc0 });
+  const wood = mat({ name: 'splint_wood', rough: 0.74, det: 'roughwood', detAlbedo: true, ns: 0.55, color: 0xffffff });
   const k = new Kit();
   const L = 0.32, Wb = 0.072, Tb = 0.0085;
   k.rbox(L, Tb, Wb, 0.0028, wood, { p: [0, Tb / 2, 0], rs: 2 });
@@ -379,6 +378,11 @@ def('splint', () => {
     const corners = [[hw - rr, y1 - rr, 0], [-hw + rr, y1 - rr, PI / 2], [-hw + rr, y0 + rr, PI], [hw - rr, y0 + rr, PI * 1.5]];
     for (const [cz, cy, a0] of corners) for (let i = 0; i <= 5; i++) { const a = a0 + (i / 5) * (PI / 2); loop.push(V3(xb + Math.sin(i * 1.3) * 0.0006, cy + Math.sin(a) * rr, cz + Math.cos(a) * rr)); }
     loop.push(loop[0].clone());
+    for (let i = loop.length - 1; i > 0; i--) { // densify the straight runs so the spline cannot bulge below the board
+      const a = loop[i - 1], b = loop[i];
+      const d = a.distanceTo(b);
+      if (d > 0.008) { const n = Math.ceil(d / 0.006); for (let j = n - 1; j >= 1; j--) loop.splice(i, 0, a.clone().lerp(b, j / n)); }
+    }
     const path = new THREE.CatmullRomCurve3(loop, false, 'centripetal');
     k.add(sweepFlat(path, 0.0115, 0.0007), cloth, { uv: A.R(0, 260, 256, 64, 1) });
     // knot + two tails on top

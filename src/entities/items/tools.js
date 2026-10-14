@@ -75,55 +75,52 @@ def('flashlight', () => {
   const k = new Kit();
   k.push({ r: [-PI / 2, 0, 0] }); // build along +Y, tail at y = 0 -> beam toward -Z
   // ---- tail cap (rubberised) with lanyard lug
-  k.lathe([[0, -0.0032], [0.008, -0.003], [0.0172, -0.0016, 0.0025], [0.0206, 0.003, 0.002], [0.0208, 0.009, 0.0004], [0.0201, 0.0098, 0.0003], [0.0201, 0.0106, 0.0003], [0.0208, 0.0114, 0.0004], [0.0208, 0.0172, 0.0004], [0.0201, 0.018, 0.0003], [0.0201, 0.0188, 0.0003], [0.0208, 0.0196, 0.0004], [0.0208, 0.0235], [0.0203, 0.0262, 0.0008], [0.0189, 0.0268]], rubber, { seg: 36 });
-  k.torus(0.0052, 0.0019, rubber, { arc: PI, r: [0, 0, PI], p: [0, -0.0026, 0], rseg: 8, tseg: 12 });
-  k.torus(0.0068, 0.00075, steel, { r: [0, PI / 2, 0], p: [0, -0.0112, 0], rseg: 6, tseg: 24 });
+  k.lathe([[0, -0.0032], [0.008, -0.003], [0.0172, -0.0016, 0.0025], [0.0206, 0.003, 0.002], [0.0208, 0.009], [0.0201, 0.0098], [0.0201, 0.0106], [0.0208, 0.0114], [0.0208, 0.0172], [0.0201, 0.018], [0.0201, 0.0188], [0.0208, 0.0196], [0.0208, 0.0235], [0.0203, 0.0262, 0.0008], [0.0189, 0.0268]], rubber, { seg: 30 });
+  k.torus(0.0052, 0.0019, rubber, { arc: PI, r: [0, 0, PI], p: [0, -0.0026, 0], rseg: 6, tseg: 10 });
+  k.torus(0.0068, 0.00075, steel, { r: [0, PI / 2, 0], p: [0, -0.0112, 0], rseg: 5, tseg: 20 });
   // ---- body + neck (print), parting step
   const flare = [];
-  for (let i = 1; i <= 9; i++) { const t = i / 9; flare.push([0.0195 + (0.0338 - 0.0195) * (1 - Math.cos(PI * t)) / 2, 0.158 + t * 0.04]); }
-  k.lathe([[0.0189, 0.0262], [0.0195, 0.0285, 0.001], [0.0195, 0.158], ...flare, [0.0338, 0.1995, 0.0005], [0.0331, 0.2006, 's'], [0.0322, 0.2006]], yellow, { seg: 40, phi0: PI, vFromY: [Y0, Y1], uv: A.R(0, 0, 512, 448), raw: false });
+  for (let i = 1; i <= 6; i++) { const t = i / 6; flare.push([0.0195 + (0.0338 - 0.0195) * (1 - Math.cos(PI * t)) / 2, 0.158 + t * 0.04]); }
+  k.lathe([[0.0189, 0.0262], [0.0195, 0.0285, 0.001], [0.0195, 0.158], ...flare, [0.0338, 0.1995, 0.0005], [0.0331, 0.2006, 's'], [0.0322, 0.2006]], yellow, { seg: 32, phi0: PI, vFromY: [Y0, Y1], uv: A.R(0, 0, 512, 448), raw: false });
   // ---- ribbed screw-on head
   const head = [[0.0322, 0.2006], [0.0331, 0.2006, 's'], [0.0345, 0.2016, 0.0006]];
   for (let y = 0.2045; y < 0.2295; y += 0.0035) head.push([0.0346, y]);
   head.push([0.0346, 0.2305], [0.0342, 0.2322]);
   k.lathe(head, yellow, {
-    seg: 60, phi0: PI, vFromY: [Y0, Y1], uv: A.R(0, 0, 512, 448),
+    seg: 40, phi0: PI, vFromY: [Y0, Y1], uv: A.R(0, 0, 512, 448),
     rmod: (phi, y, r) => {
       const e = sstep(0.2032, 0.2072, y) * (1 - sstep(0.2262, 0.2302, y));
       return r + 0.00115 * e * Math.pow(0.5 + 0.5 * Math.cos(phi * 10), 3);
     },
   });
-  // ---- rubber overmould grip: twelve flutes + ring grooves
-  const grip = [[0.0191, 0.0405], [0.0207, 0.0416, 0.0006]];
-  for (let i = 0; i < 6; i++) {
-    const y = 0.0442 + i * 0.0094;
-    grip.push([0.0211, y], [0.0211, y + 0.0068, 0.0007], [0.0205, y + 0.0078, 0.0003], [0.0205, y + 0.0085, 0.0003], [0.0211, y + 0.0094]);
-  }
-  grip.push([0.0211, 0.0985], [0.0207, 0.0995, 0.0006], [0.0191, 0.1005]);
+  // ---- rubber overmould grip: ten flutes + three ring grooves
+  const grip = [[0.0191, 0.0405], [0.0207, 0.0416, 0.0006], [0.0211, 0.0432], [0.0211, 0.0458]];
+  for (const y of [0.054, 0.0705, 0.087]) grip.push([0.0211, y - 0.0012], [0.0204, y - 0.0005], [0.0204, y + 0.0005], [0.0211, y + 0.0012]);
+  grip.push([0.0211, 0.0952], [0.0211, 0.0978], [0.0207, 0.0995, 0.0006], [0.0191, 0.1005]);
   k.lathe(grip, rubber, {
-    seg: 48,
+    seg: 40,
     rmod: (phi, y, r) => {
-      const e = sstep(0.0435, 0.0475, y) * (1 - sstep(0.094, 0.098, y));
-      return r - 0.00055 * e * Math.pow(0.5 + 0.5 * Math.cos(phi * 12), 2);
+      const e = sstep(0.0432, 0.0458, y) * (1 - sstep(0.0952, 0.0978, y));
+      return r - 0.0006 * e * Math.pow(0.5 + 0.5 * Math.cos(phi * 10), 2);
     },
   });
   // ---- switch boss on top (+Z) with rubber boot
   k.rbox(0.021, 0.032, 0.013, 0.0042, yellow, { p: [0, 0.128, 0.0158], rs: 3 });
   k.push({ p: [0, 0.128, 0.0222], r: [PI / 2, 0, 0] });
-  k.lathe([[0.0082, -0.0016], [0.0082, 0.0004, 0.0012], [0.0066, 0.0026, 0.002], [0.0032, 0.0042, 0.003], [0, 0.0046]], rubber, { seg: 28 });
+  k.lathe([[0.0082, -0.0016], [0.0082, 0.0004, 0.0012], [0.0066, 0.0026, 0.002], [0.0032, 0.0042, 0.003], [0, 0.0046]], rubber, { seg: 24 });
   k.pop();
   // ---- rubber impact bezel
-  k.lathe([[0.0338, 0.2302], [0.0362, 0.2316, 0.001], [0.0369, 0.2462, 0.0026], [0.0356, 0.2489, 0.0014], [0.0303, 0.2489, 0.0009], [0.0298, 0.2446]], rubber, { seg: 48 });
+  k.lathe([[0.0338, 0.2302], [0.0362, 0.2316, 0.001], [0.0369, 0.2462, 0.0026], [0.0356, 0.2489, 0.0014], [0.0303, 0.2489, 0.0009], [0.0298, 0.2446]], rubber, { seg: 36 });
   // ---- orange-peel parabolic reflector (inner surface) + bulb socket
   const refl = [];
   const fL = 0.0071, yv = 0.2135;
-  for (let i = 0; i <= 10; i++) { const r = 0.0296 - (0.0296 - 0.0046) * (i / 10); refl.push([r, yv + (r * r) / (4 * fL)]); }
+  for (let i = 0; i <= 6; i++) { const r = 0.0296 - (0.0296 - 0.0046) * Math.pow(i / 6, 0.8); refl.push([r, yv + (r * r) / (4 * fL)]); }
   refl.push([0.0046, yv + 0.0005], [0.0034, yv + 0.0005, 's'], [0.0034, yv - 0.002]);
-  k.lathe(refl, chrome, { seg: 40, raw: true });
+  k.lathe(refl, chrome, { seg: 32, raw: true });
   // ---- lens (glass) + bulb (glass envelope) + filament: part 'lens' (glows when on)
-  k.lathe([[0.0297, 0.2438], [0.0297, 0.2444, 's'], [0.0284, 0.2449], [0, 0.2449]], lensMat, { seg: 40, part: 'lens', raw: true });
-  k.lathe([[0.0022, 0.214], [0.0021, 0.2148, 0.001], [0.003, 0.2175, 0.0015], [0.0029, 0.2205, 0.0012], [0.0016, 0.2226], [0, 0.2228]], lensMat, { seg: 16, part: 'lens' });
-  k.add(new THREE.TubeGeometry(new HelixCurve(0.0007, 0.0034, 5), 30, 0.00018, 4, false), steel, { p: [0.0017, 0.2172, 0], r: [0, 0, PI / 2], col: 0x6a6a6a });
+  k.lathe([[0.0297, 0.2438], [0.0297, 0.2444, 's'], [0.0284, 0.2449], [0, 0.2449]], lensMat, { seg: 36, part: 'lens', raw: true });
+  k.lathe([[0.0022, 0.214], [0.0021, 0.2148, 0.001], [0.003, 0.2175, 0.0015], [0.0029, 0.2205, 0.0012], [0.0016, 0.2226], [0, 0.2228]], lensMat, { seg: 12, part: 'lens' });
+  k.add(new THREE.TubeGeometry(new HelixCurve(0.0007, 0.0034, 5), 24, 0.00018, 3, false), steel, { p: [0.0017, 0.2172, 0], r: [0, 0, PI / 2], col: 0x6a6a6a });
   k.pivot('lens', [0, 0.2449, 0]);
   // ---- colliders, anchors
   k.colCyl(0.0208, 0.2005, [0, 0.0968, 0]);
@@ -300,7 +297,7 @@ def('welder', () => {
   const k = new Kit();
   // ---- housing (loft along Z: nose at -Z)
   const Z0 = -0.082, Z1 = 0.092;
-  k.add(loftGeo(40, 30, (v) => {
+  k.add(loftGeo(32, 24, (v) => {
     const z = lerp(Z0, Z1, v);
     const f = capRound(v, 0.14) * capRound(1 - v, 0.07);
     const nose = 0.52 + 0.48 * sstep(0.0, 0.42, v);
@@ -309,17 +306,17 @@ def('welder', () => {
   // vent louvres: raised bars between the printed slots on both sides
   for (const sx of [-1, 1]) for (let i = 0; i < 7; i++) {
     const z = Z1 - ((19 + i * 13) / 256) * (Z1 - Z0);
-    k.rbox(0.0022, 0.026, 0.0026, 0.0008, body, { p: [sx * 0.0311, 0.0535, z], rs: 1, col: 0xa82218 });
+    k.box(0.0022, 0.026, 0.0026, body, { p: [sx * 0.0311, 0.0535, z], col: 0xa82218 });
   }
   // ---- grip (rubber overmould), tilted back
   k.push({ p: [0, 0.03, 0.05], r: [PI / 2 - 0.24, 0, 0] });
-  k.add(loftGeo(28, 18, (v) => {
+  k.add(loftGeo(24, 14, (v) => {
     const t = v;
     const swell = 1 + 0.08 * Math.sin(t * PI);
     return { x: 0, y: 0.002 * Math.sin(t * PI), z: lerp(-0.01, 0.105, t), w: 0.0168 * swell, h: 0.0215 * swell, n: 2.6 };
   }), rubber, {});
   // finger ridges on the front of the grip
-  for (let i = 0; i < 3; i++) k.rbox(0.028, 0.006, 0.0065, 0.0025, rubber, { p: [0, -0.0225, 0.04 + i * 0.017], rs: 2 });
+  for (let i = 0; i < 3; i++) k.rbox(0.028, 0.006, 0.0065, 0.0025, rubber, { p: [0, -0.0225, 0.04 + i * 0.017], rs: 1 });
   k.pop();
   // trigger
   k.push({ p: [0, 0.012, 0.0285], r: [-0.24, 0, 0] });
@@ -334,7 +331,7 @@ def('welder', () => {
   // ---- dial + LCD on top
   k.push({ p: [0, 0.087, 0.05] });
   k.lathe([[0.0118, -0.004], [0.0118, 0.006, 0.0015], [0.0102, 0.0095, 0.002], [0, 0.0098]], rubber, {
-    seg: 36, rmod: (phi, y, r) => r + (y > -0.002 && y < 0.007 ? 0.0006 * Math.pow(0.5 + 0.5 * Math.cos(phi * 16), 2) : 0),
+    seg: 32, rmod: (phi, y, r) => r + (y > -0.002 && y < 0.007 ? 0.0006 * Math.pow(0.5 + 0.5 * Math.cos(phi * 16), 2) : 0),
   });
   k.add(new THREE.CircleGeometry(0.0085, 24), body, { p: [0, 0.0101, 0], r: [-PI / 2, 0, 0], uv: A.R(132, 388, 60, 60) });
   k.pop();
@@ -343,10 +340,10 @@ def('welder', () => {
   k.pop();
   // ---- nose: rubber collar + copper electrode holder + flux-coated rod
   k.push({ p: [0, 0.046, Z0 + 0.006], r: [-PI / 2, 0, 0] }); // local +Y -> -Z
-  k.lathe([[0.0165, -0.006], [0.0168, 0.004, 0.002], [0.0142, 0.012, 0.003], [0.0105, 0.016, 0.002], [0.0098, 0.022]], rubber, { seg: 32 });
+  k.lathe([[0.0165, -0.006], [0.0168, 0.004, 0.002], [0.0142, 0.012, 0.003], [0.0105, 0.016, 0.002], [0.0098, 0.022]], rubber, { seg: 28 });
   k.lathe([[0.0098, 0.02], [0.0102, 0.022, 0.001], [0.0088, 0.03, 0.002], [0.0058, 0.036, 0.0015], [0.0044, 0.038]], copper, { seg: 24 });
   // clamp jaws + spring lever
-  for (const sx of [-1, 1]) k.rbox(0.0042, 0.016, 0.0055, 0.0012, copper, { p: [sx * 0.0024, 0.044, 0], rs: 2, col: 0xd8a080 });
+  for (const sx of [-1, 1]) k.rbox(0.0042, 0.016, 0.0055, 0.0012, copper, { p: [sx * 0.0024, 0.044, 0], rs: 1, col: 0xd8a080 });
   k.tube([[0.004, 0.026, 0.009], [0.006, 0.034, 0.014], [0.003, 0.042, 0.011]], 0.0011, copper, { tseg: 10, rseg: 6, col: 0xb0b4b8 });
   // rod: bare end in the clamp, flux coating, struck tip
   k.cyl(0.00125, 0.03, copper, { p: [0, 0.046, 0], seg: 8, col: 0x9a9ea2, bevel: 0.0003 });
@@ -355,10 +352,10 @@ def('welder', () => {
   k.anchor('tip', [0, 0.1508, 0]);
   k.pop();
   // ---- ground lead: from the rear of the housing, a loose loop down to a spring clamp clipped on the battery
-  k.tube([[0, 0.032, 0.095], [0.006, 0.012, 0.112], [0.03, -0.012, 0.118], [0.048, -0.04, 0.1], [0.046, -0.058, 0.082], [0.0405, -0.066, 0.07]], 0.0034, rubber, { tseg: 36, rseg: 8, col: 0x3a3a3c });
+  k.tube([[0, 0.032, 0.095], [0.006, 0.012, 0.112], [0.03, -0.012, 0.118], [0.048, -0.04, 0.1], [0.046, -0.058, 0.082], [0.0405, -0.066, 0.07]], 0.0034, rubber, { tseg: 28, rseg: 6, col: 0x3a3a3c });
   k.push({ p: [0.0418, -0.072, 0.06], r: [0, 0, 0.12] });
-  k.rbox(0.006, 0.03, 0.016, 0.002, copper, { p: [0.002, 0.0, 0], rs: 2, col: 0xc8ccd0 });
-  k.rbox(0.0045, 0.026, 0.013, 0.0018, copper, { p: [-0.0025, -0.002, 0], rs: 2, col: 0xd09070 });
+  k.rbox(0.006, 0.03, 0.016, 0.002, copper, { p: [0.002, 0.0, 0], rs: 1, col: 0xc8ccd0 });
+  k.rbox(0.0045, 0.026, 0.013, 0.0018, copper, { p: [-0.0025, -0.002, 0], rs: 1, col: 0xd09070 });
   k.torus(0.004, 0.001, copper, { p: [0.003, 0.012, 0], r: [0, PI / 2, 0], rseg: 6, tseg: 14, col: 0xb0b4b8 });
   k.pop();
   // ---- colliders
@@ -474,8 +471,8 @@ def('crowbar', () => {
     }), steel, { col: 0xc4c8cc });
   }
   // colliders
-  k.colBox([0.022, 0.022, 0.5], [0.002, 0, 0.06]);
-  k.colBox([0.118, 0.028, 0.07], [0.048, 0, -0.205]);
+  k.colBox([0.022, 0.0216, 0.5], [0.002, -0.0013, 0.06]); // rests on the chisel tip and the claw
+  k.colBox([0.118, 0.0236, 0.07], [0.048, -0.0003, -0.205]);
   return { kit: k, meta: { mass: 1.8, material: 'metal', hold: { grip: [0, 0, 0.2], rot: [0.42, 0.25, -1.2], off: [0, -0.02, 0] } } };
 });
 
@@ -790,11 +787,11 @@ def('tape_roll', () => {
     const tx = Math.cos(a), tz = -Math.sin(a), d = s - 0.01;
     const curl = d * d * 10;
     const torn = v > 0.97 ? (Math.sin(u * 47) * 0.5 + 0.5) * 0.0018 : 0;
-    return [Math.sin(a) * R0 + tx * (d - torn) + Math.sin(a) * curl, y - d * 0.15, Math.cos(a) * R0 + tz * (d - torn) + Math.cos(a) * curl];
+    return [Math.sin(a) * R0 + tx * (d - torn) + Math.sin(a) * curl, y - d * 0.05, Math.cos(a) * R0 + tz * (d - torn) + Math.cos(a) * curl];
   };
   k.add(sheetGeo(4, 12, (u, v) => tail(1 - u, v, 0.0005)), tape, { uv: A.R(0, 0, 512, 160, 1) });
   k.add(sheetGeo(4, 12, (u, v) => tail(u, v, 0.0002)), tape, { uv: A.R(260, 290, 252, 60, 1), col: 0xd8d8d0 });
-  k.colCyl(ro, H, [0, H / 2, 0]);
+  k.colCyl(ro, H + 0.0012, [0, H / 2, 0]); // + the telescoped layer bands
   return { kit: k, meta: { mass: 0.3, material: 'soft', hold: { grip: [0.035, H / 2, 0], rot: [1.3, 0.25, 0.1], off: [0, 0.02, 0] } } };
 });
 

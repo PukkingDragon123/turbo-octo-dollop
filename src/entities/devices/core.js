@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { RNG, hashString } from '../../core/rng.js';
 import { classMat, atlasMats, atlasGlowMat, CLEAR, hasClass } from './mats.js';
 import { Atlas, placeholderTex, PRINTED, SCREEN_GLOW } from './atlas.js';
+import { linkInstanced, linkMasked } from './sync.js';
 
 export const PI = Math.PI, TAU = PI * 2, HP = PI / 2, DEG = PI / 180;
 export const NO = Object.freeze({});
@@ -856,6 +857,7 @@ export class DKit {
     this.stack = [];
     this.buckets = new Map();
     this.singles = [];
+    this._masked = [];
     this.parts = {}; this.anchors = {}; this.screens = {}; this.colliders = []; this.params = {};
     this.wear = { chip: 0.12, rust: 0, grime: 0.45, dust: 0.3, edge: 1, ...(o.wear || {}) };
     this.ground = o.ground ?? 'floor';
@@ -990,6 +992,54 @@ export class DKit {
     if (tr || o.shadow === false) mesh.userData.noShadow = true;
     return mesh;
   }
+  // N individually animated copies of one geometry drawn as ONE InstancedMesh. places: [[x,y,z,rot?]].
+  // Returns the proxies (empty Object3Ds at each pivot) that stand in for the parts; sync.js mirrors
+  // their rotation/visibility into the instance matrices every frame.
+  instanced(name, mat, geo, places, o = NO) {
+    const im = new THREE.InstancedMesh(new THREE.BufferGeometry(), mat, places.length);
+    this._place(im, 0, 0, 0, { to: o.to });
+    im.name = name;
+    im.updateMatrix();
+    const inv = im.matrix.clone().invert();
+    const proxies = places.map((pl, i) => {
+      const p = this._place(new THREE.Object3D(), pl[0], pl[1], pl[2], { rot: pl[3], name: `${name}_${i}`, to: o.to });
+      p.updateMatrix();
+      im.setMatrixAt(i, _m.copy(inv).multiply(p.matrix));
+      return p;
+    });
+    const cls = mat.userData?.dvMode || 'mat';
+    const G = new Geo();
+    const uvOff = hasClass(cls) && o.uvOff !== false ? [this.rng.next() * 3.7, this.rng.next() * 3.7] : null;
+    G.append(geo, null, uvOff, (o.edge ?? 1) * this.wear.edge, this._attrs(cls, o));
+    const xf = new THREE.Matrix4().copy(inv).multiply(proxies[0].matrix);
+    this.singles.push({ mesh: im, geo: G, cls, ao: o.ao ?? false, occ: false, atlasUV: !!o.atlasUV, xf });
+    im.castShadow = o.shadow === true;
+    im.receiveShadow = true;
+    if (!im.castShadow) im.userData.noShadow = true;
+    linkInstanced(im, proxies);
+    return proxies;
+  }
+  // N toggleable groups merged into one mesh per material: fn(i, proxy) builds slot i in the proxy's
+  // local frame. Hiding proxies[i] drops that slot's triangles from the merged index (sync.js).
+  masked(name, places, fn) {
+    const holder = this.grp(0, 0, 0, { name: name + '_merged' });
+    holder.updateMatrix();
+    const inv = holder.matrix.clone().invert();
+    const lens = () => { const tb = this.buckets.get(holder); return new Map(tb ? [...tb].map(([key, b]) => [key, b.geo.idx.length]) : []); };
+    const proxies = [], marks = [];
+    places.forEach((pl, i) => {
+      const p = this.grp(pl[0], pl[1], pl[2], { name: `${name}_${i}`, rot: pl[3] });
+      p.updateMatrix();
+      const before = lens();
+      const save = [this.tgt, this.cur, this.stack];
+      this.tgt = holder; this.cur = inv.clone().multiply(p.matrix); this.stack = [new THREE.Matrix4()];
+      try { fn(i, p); } finally { [this.tgt, this.cur, this.stack] = save; }
+      marks.push([before, lens()]);
+      proxies.push(p);
+    });
+    this._masked.push({ holder, proxies, marks });
+    return proxies;
+  }
   // CRT / LCD / paper screen surface (CanvasTexture placeholder the game replaces); faces +Z, UVs 0..1
   screen(name, w, h, x, y, z, o = NO) {
     const style = o.style || 'crt';
@@ -1039,9 +1089,12 @@ export class DKit {
     this.root.updateMatrixWorld(true);
     const bb = new THREE.Box3();
     const nm = new THREE.Matrix3();
+    const Mx = new THREE.Matrix4();
     for (const it of all) {
-      const M = it.target.matrixWorld.elements;
-      nm.getNormalMatrix(it.target.matrixWorld);
+      Mx.copy(it.target.matrixWorld);
+      if (it.single?.xf) Mx.multiply(it.single.xf);
+      const M = Mx.elements;
+      nm.getNormalMatrix(Mx);
       const N3 = nm.elements;
       const g = it.geo, n = g.count;
       const P = new Float32Array(n * 3), Nn = new Float32Array(n * 3);
@@ -1081,7 +1134,13 @@ export class DKit {
       const bg = toBuffer(g, it.ao, grime, up);
       tris += g.idx.length / 3; verts += n;
       (this._dbg = this._dbg || []).push(`${it.single ? 'S:' + (it.single.mesh.name || '?') : (it.target === this.root ? 'root' : it.target.name)}/${it.cls}:${g.idx.length / 3}`);
-      if (it.single) { it.single.mesh.geometry = bg; draws++; continue; }
+      if (it.single) {
+        const sm = it.single.mesh;
+        sm.geometry = bg;
+        if (sm.isInstancedMesh) { sm.computeBoundingBox(); sm.computeBoundingSphere(); }
+        draws++;
+        continue;
+      }
       const mat = this._matFor(it);
       const mesh = new THREE.Mesh(bg, mat);
       mesh.name = `${it.target === this.root ? this.name : it.target.name || 'part'}:${mat.name || it.cls}`;
@@ -1091,6 +1150,8 @@ export class DKit {
       if (!mesh.castShadow) mesh.userData.noShadow = true;
       if (it.cls === 'glass') mesh.renderOrder = 3;
       it.target.add(mesh);
+      const mk = this._masked.find((x) => x.holder === it.target);
+      if (mk) linkMasked(mesh, mk.proxies, mk.marks.map(([a, b]) => [a.get(it.key) ?? 0, b.get(it.key) ?? 0]));
       draws++;
     }
     draws += Object.keys(this.screens).length;

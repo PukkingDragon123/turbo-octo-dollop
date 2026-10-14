@@ -205,7 +205,7 @@ def('metal_scrap', () => {
     const v = V3(-0.095, -zr, T / 2); bend(v);
     k.lathe([[0.0048, 0], [0.0046, 0.0012, 0.0008], [0, 0.0022]], p, { seg: 12, p: [v.x, v.z, -v.y], uv: edge, col: 0x9a9c9e });
   }
-  k.colBox([W - (W / 2 - xb) + 0.01, 0.012, Dz], [-(W / 2 - xb) / 2 + 0.005 - 0.01, 0, 0]);
+  k.colBox([W - (W / 2 - xb) + 0.01, 0.0074, Dz], [-(W / 2 - xb) / 2 + 0.005 - 0.01, 0, 0]); // waves + dent span ~7 mm
   const fl = W / 2 - xb;
   k.colBox([fl, 0.006, Dz], [xb + Math.cos(ang) * fl / 2, Math.sin(ang) * fl / 2, 0], [0, 0, ang]);
   return { kit: k, meta: { mass: 0.5, material: 'metal', hold: { grip: [-0.08, 0, 0.02], rot: [1.0, 0.35, 0.25], off: [0.04, -0.06, -0.03] } } };
@@ -272,7 +272,7 @@ def('screws', () => {
   const r = new RNG(21);
   const pile = [];
   for (let i = 0; i < 16; i++) pile.push([r.range(-0.036, 0.036), 0.004 + r.range(0, 0.012) * (1 - Math.abs(r.next() - 0.5)), r.range(-0.022, 0.022), r.next() * TAU, r.range(0.9, 1.6), r.next() < 0.5]);
-  pile.push([0.062, 0.002, 0.018, 0.4, PI / 2, true], [0.07, 0.002, -0.01, 2.2, PI / 2, false]);
+  pile.push([0.062, 0.0039, 0.018, 0.4, PI / 2, true], [0.07, 0.0039, -0.01, 2.2, PI / 2, false]);
   for (const [x, y, z, ry, rx, flat] of pile) k.add(screwGeo(0.031, 0.0039, flat), zinc, { p: [x, y, z], r: [rx, ry, 0], col: r.next() < 0.2 ? 0xc8b890 : 0xffffff });
   k.colBox([W, H, D], [0, H / 2, 0]);
   return { kit: k, meta: { mass: 0.35, material: 'cardboard', hold: { grip: [0, 0.01, 0.02], rot: [0.75, -0.15, 0.06], off: [0, 0.02, 0] } } };
@@ -471,7 +471,7 @@ def('gear', () => {
   k.pop();
   // socket set screw in the hub (radial, opposite the keyway)
   k.cyl(0.0032, 0.004, S.blackOxide(), { p: [-0.0198, Th / 2 + 0.0018, 0], r: [0, 0, PI / 2], seg: 10, bevel: 0.0004 });
-  k.colCyl(Ra, Th + 0.002, [0, 0, 0]);
-  k.colCyl(0.021, Th + 0.012, [0, 0, 0]);
+  k.colCyl(Ra, Th, [0, 0, 0]);
+  k.colCyl(0.021, Th + 0.0086, [0, 0, 0]); // hubs stand 4.3 mm proud of each face
   return { kit: k, meta: { mass: 0.7, material: 'metal', hold: { grip: [0.045, 0, 0.0], rot: [1.3, 0.1, 0.15], off: [0, 0.03, 0] } } };
 });

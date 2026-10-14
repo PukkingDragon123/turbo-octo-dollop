@@ -39,7 +39,7 @@ def('glowstick', (opts) => {
   k.torus(0.0042, 0.0012, cap, { p: [0, L / 2 + 0.0148, 0], r: [0, PI / 2, 0], rseg: 6, tseg: 16, col: capCol.getHex() });
   k.pop();
   // lanyard cord loop through the hook
-  k.add(new THREE.TubeGeometry(curve([[0, 0, L / 2 + 0.0145], [0, -0.004, L / 2 + 0.03], [0.006, -0.0075, L / 2 + 0.045], [0.014, -0.0075, L / 2 + 0.04], [0.012, -0.004, L / 2 + 0.024], [0.002, 0.001, L / 2 + 0.015]], 0.5, false), 40, 0.0011, 6, false), cap, { uv: A.R(0, 64, 128, 64), col: 0x303030 });
+  k.add(new THREE.TubeGeometry(curve([[0, 0, L / 2 + 0.0145], [0.001, -0.0035, L / 2 + 0.03], [0.006, -0.0058, L / 2 + 0.045], [0.014, -0.0058, L / 2 + 0.04], [0.012, -0.0035, L / 2 + 0.024], [0.002, 0.001, L / 2 + 0.015]], 0.5, false), 40, 0.0011, 6, false), cap, { uv: A.R(0, 64, 128, 64), col: 0x303030 });
   k.colCyl(0.0078, L + 0.014, [0, 0, 0.002], [PI / 2, 0, 0]);
   return {
     kit: k,
@@ -148,20 +148,19 @@ def('sample_jar', () => {
   const k = new Kit();
   const R = 0.037, Hc = 0.08, y0 = 0.0062;
   // glass: outer wall, rim, inner wall, thick base
-  k.lathe([[0, 0.0015], [0.028, 0.0004, 0.003], [0.0345, 0.0028, 0.003], [R, 0.011, 0.003], [R, 0.083], [0.035, 0.0905, 0.004], [0.0322, 0.093, 0.002], [0.0322, 0.1005, 0.0005], [0.0298, 0.101, 0.0005], [0.0298, 0.093], [0.0335, 0.0882, 0.003], [R - 0.0024, 0.082], [R - 0.0024, 0.011, 0.003], [0.026, 0.0062, 0.003], [0, 0.0058]], glass, { seg: 40 });
+  k.lathe([[0, 0.0015], [0.028, 0.0004, 0.003], [0.0345, 0.0028, 0.003], [R, 0.011, 0.003], [R, 0.083], [0.035, 0.0905, 0.004], [0.0322, 0.093, 0.002], [0.0322, 0.1005, 0.0005], [0.0298, 0.101, 0.0005], [0.0298, 0.093], [0.0335, 0.0882, 0.003], [R - 0.0024, 0.082], [R - 0.0024, 0.011, 0.003], [0.026, 0.0062, 0.003], [0, 0.0058]], glass, { seg: 32, rseg: 0.0016 });
   // threads on the neck
-  k.add(new THREE.TubeGeometry(new (class extends THREE.Curve { getPoint(t, o = V3()) { const a = t * TAU * 1.6; return o.set(Math.cos(a) * 0.0324, 0.0945 + t * 0.0045, Math.sin(a) * 0.0324); } })(), 40, 0.0006, 5, false), glass, {});
+  k.add(new THREE.TubeGeometry(new (class extends THREE.Curve { getPoint(t, o = V3()) { const a = t * TAU * 1.6; return o.set(Math.cos(a) * 0.0324, 0.0945 + t * 0.0045, Math.sin(a) * 0.0324); } })(), 32, 0.0006, 4, false), glass, {});
   // contents (part, pivot at the jar floor): volume with a meniscus top
-  k.lathe([[0, 0], [0.0255, 0, 0.002], [0.0343, 0.0045, 0.003], [0.0344, Hc - 0.0012], [0.0336, Hc, 0.0008], [0.03, Hc - 0.0006, 0.002], [0, Hc - 0.0012]], contents, { seg: 32, p: [0, y0, 0], part: 'contents' });
+  k.lathe([[0, 0], [0.0255, 0, 0.002], [0.0343, 0.0045, 0.003], [0.0344, Hc - 0.0012], [0.0336, Hc, 0.0008], [0.03, Hc - 0.0006, 0.002], [0, Hc - 0.0012]], contents, { seg: 24, rseg: 0.0016, p: [0, y0, 0], part: 'contents' });
   k.pivot('contents', [0, y0, 0]);
   // label (partial wrap toward +Z)
   k.lathe([[R + 0.0005, 0.026], [R + 0.0005, 0.07]], p, { seg: 20, phi0: -0.95, phiLen: 1.9, vFromY: [0.026, 0.07], uv: A.R(0, 0, 512, 200) });
   // screw cap: knurled skirt + top with printed biohazard + liner edge
   k.lathe([[0.0336, 0.0915], [0.0349, 0.092, 0.0006], [0.0349, 0.107, 0.001], [0.0338, 0.1088, 0.0015], [0.0322, 0.109]], met, {
-    seg: 64, vFromY: [0.0915, 0.109], uv: A.R(0, 210, 512, 50),
-    rmod: (phi, y, r) => r + (y > 0.0928 && y < 0.1058 ? 0.00045 * Math.pow(0.5 + 0.5 * Math.cos(phi * 56), 2) : 0),
+    seg: 40, rseg: 0.0012, vFromY: [0.0915, 0.109], uv: A.R(0, 210, 512, 50),
   });
-  k.lathe([[0.0322, 0.109], [0.02, 0.1094], [0, 0.1095]], met, { seg: 40, planar: { rect: A.R(0, 270, 160, 160), R: 0.0338 } });
+  k.lathe([[0.0322, 0.109], [0.02, 0.1094], [0, 0.1095]], met, { seg: 32, planar: { rect: A.R(0, 270, 160, 160), R: 0.0338 } });
   // tamper tape over the lid, tucked down both sides
   k.add(sheetGeo(1, 12, (u, v) => {
     const t = v * 2 - 1, w = (u - 0.5) * 0.015;
@@ -225,29 +224,29 @@ def('sample_kit', () => {
   // base: rounded box with draft-ish bevel
   k.rbox(W, Hb, D, 0.007, p, { p: [0, Hb / 2, 0], rs: 3, uvFn: caseUV(true) });
   // vertical ribs on the base front/back corners
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.rbox(0.006, Hb - 0.006, 0.004, 0.0015, p, { p: [sx * (W / 2 - 0.016), Hb / 2, sz * (D / 2 + 0.0008)], rs: 1, uv: plain });
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.box(0.006, Hb - 0.006, 0.004, p, { p: [sx * (W / 2 - 0.016), Hb / 2, sz * (D / 2 + 0.0008)], uv: plain });
   // foam insert with three cut-outs + tubes
   k.box(W - 0.014, 0.002, D - 0.014, p, { p: [0, Hb - 0.0004, 0], uv: A.R(260, 124, 240, 120) });
   const caps = [0xc0302a, 0x2f5d9e, 0x3f8a4a], fills = [0x8a1a3a, 0x6f9a34, 0xd8c040];
   caps.forEach((cc, i) => {
     const z = -0.028 + i * 0.028, y = Hb + 0.0055;
     k.push({ p: [-0.004, y, z], r: [0, 0, -PI / 2] }); // tube along +X
-    k.lathe([[0, -0.042], [0.0052, -0.0405, 0.003], [0.0062, -0.034, 0.002], [0.0062, 0.03], [0.0058, 0.031]], clr, { seg: 16 });
-    k.lathe([[0, -0.04], [0.004, -0.039, 0.002], [0.0052, -0.034, 0.001], [0.0052, 0.004], [0, 0.0045]], p, { seg: 14, col: fills[i], uv: A.R(0, 124, 256, 80) });
-    k.lathe([[0.0064, 0.029], [0.0068, 0.0295, 0.0004], [0.0068, 0.043, 0.001], [0.004, 0.0445, 0.0015], [0, 0.0447]], p, { seg: 20, col: cc, rmod: (phi, yy, r) => r + (yy > 0.031 && yy < 0.041 ? 0.0003 * Math.pow(0.5 + 0.5 * Math.cos(phi * 20), 2) : 0) });
+    k.lathe([[0, -0.042], [0.0052, -0.0405, 0.003], [0.0062, -0.034, 0.002], [0.0062, 0.03], [0.0058, 0.031]], clr, { seg: 16, rseg: 0.0014 });
+    k.lathe([[0, -0.04], [0.004, -0.039, 0.002], [0.0052, -0.034, 0.001], [0.0052, 0.004], [0, 0.0045]], p, { seg: 12, rseg: 0.0014, col: fills[i], uv: A.R(0, 124, 256, 80) });
+    k.lathe([[0.0064, 0.029], [0.0068, 0.0295, 0.0004], [0.0068, 0.043, 0.001], [0.004, 0.0445, 0.0015], [0, 0.0447]], p, { seg: 18, col: cc, rmod: (phi, yy, r) => r + (yy > 0.031 && yy < 0.041 ? 0.00035 * Math.pow(0.5 + 0.5 * Math.cos(phi * 6), 2) : 0) });
     k.lathe([[0.0063, -0.022], [0.0063, 0.012]], p, { seg: 16, phi0: PI * 0.6, phiLen: PI * 0.9, vFromY: [-0.022, 0.012], uv: A.R(0, 210, 256, 60, 1) });
     k.pop();
   });
   // lid frame (orange) with a clear window, raised on its hinge side
   const ly = Hb + 0.002 + Hl / 2;
   k.rbox(W - 0.004, 0.0025, D - 0.004, 0.003, clr, { p: [0, Hb + 0.002 + Hl - 0.00125, 0], rs: 1 });
-  for (const sz of [-1, 1]) k.rbox(W + 0.001, Hl, 0.011, 0.003, p, { p: [0, ly, sz * (D / 2 - 0.0045)], rs: 2, uv: plain });
-  for (const sx of [-1, 1]) k.rbox(0.011, Hl, D + 0.001, 0.003, p, { p: [sx * (W / 2 - 0.0045), ly, 0], rs: 2, uv: plain });
+  for (const sz of [-1, 1]) k.rbox(W + 0.001, Hl, 0.011, 0.003, p, { p: [0, ly, sz * (D / 2 - 0.0045)], rs: 1, uv: plain });
+  for (const sx of [-1, 1]) k.rbox(0.011, Hl, D + 0.001, 0.003, p, { p: [sx * (W / 2 - 0.0045), ly, 0], rs: 1, uv: plain });
   k.box(0.058, 0.0006, 0.026, p, { p: [0.042, Hb + 0.002 + Hl + 0.0003, -0.025], uv: A.R(0, 280, 300, 120) });
   // front latch + hinge barrels
-  k.rbox(0.03, 0.026, 0.007, 0.0025, p, { p: [0, Hb + 0.002, D / 2 + 0.003], rs: 2, uv: A.R(310, 280, 60, 60) });
+  k.rbox(0.03, 0.026, 0.007, 0.0025, p, { p: [0, Hb + 0.002, D / 2 + 0.003], rs: 1, uv: A.R(310, 280, 60, 60) });
   k.rbox(0.022, 0.005, 0.004, 0.0015, p, { p: [0, Hb + 0.012, D / 2 + 0.0055], rs: 1, uv: A.R(310, 280, 60, 60) });
-  for (const sx of [-1, 0, 1]) k.cyl(0.0042, 0.03, p, { p: [sx * 0.05, Hb + 0.002, -D / 2 - 0.0022], r: [0, 0, PI / 2], seg: 12, uv: plain, bevel: 0.001 });
+  for (const sx of [-1, 0, 1]) k.cyl(0.0042, 0.03, p, { p: [sx * 0.05, Hb + 0.002, -D / 2 - 0.0022], r: [0, 0, PI / 2], seg: 10, uv: plain, bevel: 0.001 });
   k.cyl(0.0012, 0.14, S.steel(), { p: [0, Hb + 0.002, -D / 2 - 0.0022], r: [0, 0, PI / 2], seg: 8, bevel: 0.0003 });
   k.colBox([W, Hb + Hl + 0.004, D], [0, (Hb + Hl + 0.004) / 2, 0]);
   return { kit: k, meta: { mass: 0.5, material: 'plastic', hold: { grip: [0, 0.01, D / 2], rot: [1.05, 0, 0.04], off: [-0.02, 0.0, 0.02] } } };
@@ -479,6 +478,8 @@ def('photo', (opts) => {
   });
   // glossy image window (slightly recessed)
   k.add(sheetGeo(8, 8, (u, v) => { const x = (u - 0.5) * iw, z = zc + (0.5 - v) * iw; return [x, curl(x, z) + T * 0.35, z]; }), gloss, { uvFn: uvF(front) });
+  const bk = A.R(404, 0, 108, 132);
+  k.add(sheetGeo(4, 4, (u, v) => { const x = (u - 0.5) * (iw + 0.001), z = zc + (0.5 - v) * (iw + 0.001); return [x, curl(x, z) - T * 0.5, z]; }, { flip: true }), frame, { uvFn: (q) => { const u = q.x / W + 0.5, v = 0.5 - q.z / H; return [bk[0] + (1 - u) * (bk[2] - bk[0]), bk[1] + v * (bk[3] - bk[1])]; } });
   k.colBox([W, 0.0024, H], [0, 0.0006, 0]);
   return { kit: k, meta: { mass: 0.005, material: 'paper', hold: { grip: [0.032, 0, 0.035], rot: [1.3, 0, 0.06], off: [0, 0.05, 0] }, restitution: 0.02, angularDamping: 0.95, linearDamping: 0.6 } };
 }, (o) => `${(((o.variant ?? 0) % 4) + 4) % 4}`);
@@ -611,9 +612,9 @@ def('noise_maker', () => {
   const R = 0.05, red = A.R(310, 200, 200, 100);
   k.push({ r: [PI / 2, 0, 0] }); // lathe +Y -> +Z (face toward +Z)
   // enamelled case (back dome -> drum)
-  k.lathe([[0, -0.024], [0.03, -0.0235, 0.004], [0.044, -0.021, 0.004], [0.049, -0.016, 0.003], [R, -0.01, 0.002], [R, 0.009]], p, { seg: 40, uv: red });
+  k.lathe([[0, -0.024], [0.03, -0.0235, 0.004], [0.044, -0.021, 0.004], [0.049, -0.016, 0.003], [R, -0.01, 0.002], [R, 0.009]], p, { seg: 36, rseg: 0.0014, uv: red });
   // chrome bezel ring
-  k.lathe([[R, 0.009], [R + 0.0015, 0.0105, 0.0008], [R + 0.0015, 0.0155, 0.0012], [R - 0.0012, 0.0172, 0.0008], [0.0465, 0.0162]], chrome, { seg: 48 });
+  k.lathe([[R, 0.009], [R + 0.0015, 0.0105, 0.0008], [R + 0.0015, 0.0155, 0.0012], [R - 0.0012, 0.0172, 0.0008], [0.0465, 0.0162]], chrome, { seg: 40 });
   // dial
   k.lathe([[0.0466, 0.0115], [0, 0.0115]], p, { seg: 40, planar: { rect: A.R(0, 0, 300, 300), R: 0.0466 } });
   // hands + centre cap (+ red alarm hand)
@@ -626,18 +627,18 @@ def('noise_maker', () => {
   // winding keys & alarm set knob on the back
   for (const sx of [-1, 1]) {
     k.cyl(0.0022, 0.008, chrome, { p: [sx * 0.016, -0.0275, 0], seg: 8 });
-    k.rbox(0.017, 0.0024, 0.011, 0.002, chrome, { p: [sx * 0.016, -0.0325, 0], rs: 2, col: 0xd8b878 });
+    k.rbox(0.017, 0.0024, 0.011, 0.002, chrome, { p: [sx * 0.016, -0.0325, 0], rs: 1, col: 0xd8b878 });
   }
   k.pop();
   // bells, hammer, frame, legs
   for (const sx of [-1, 1]) {
     k.push({ p: [sx * 0.033, 0.056, -0.004], r: [0, 0, -sx * 0.62] });
-    k.lathe([[0, 0.0015], [0.0215, 0.0015, 0.001], [0.0248, 0.0, 0.0008], [0.0248, 0.004, 0.003], [0.0215, 0.0145, 0.006], [0.012, 0.0212, 0.004], [0, 0.0228]], chrome, { seg: 32 });
+    k.lathe([[0, 0.0015], [0.0215, 0.0015, 0.001], [0.0248, 0.0, 0.0008], [0.0248, 0.004, 0.003], [0.0215, 0.0145, 0.006], [0.012, 0.0212, 0.004], [0, 0.0228]], chrome, { seg: 24, rseg: 0.0014 });
     k.cyl(0.0021, 0.012, chrome, { p: [0, -0.005, 0], seg: 8 });
     k.pop();
     k.push({ p: [sx * 0.03, -0.047, -0.004], r: [0, 0, sx * 0.55] });
     k.cyl(0.0023, 0.018, chrome, { p: [0, -0.008, 0], seg: 8 });
-    k.sphere(0.0056, chrome, { p: [0, -0.0182, 0], ws: 12, hs: 8 });
+    k.sphere(0.0056, chrome, { p: [0, -0.0182, 0], ws: 10, hs: 7 });
     k.pop();
   }
   k.tube([[-0.034, 0.05, -0.004], [0, 0.063, -0.004], [0.034, 0.05, -0.004]], 0.0021, chrome, { tseg: 16, rseg: 6 });
@@ -698,21 +699,75 @@ def('fuel_can', () => {
   const pr = A.R(0, 424, 512, 80), steelUV = A.R(610, 424, 80, 80);
   // core body (rounded box), broad faces replaced by embossed sheets
   k.rbox(W - 0.008, H, L, 0.022, red, { p: [0, H / 2, 0], rs: 3, faces: { px: pr, nx: pr, py: pr, ny: pr, pz: pr, nz: pr } });
-  const emb = (z, y) => {
-    // raised border + X (smooth ridges), in metres of relief
-    const zz = z / (L / 2 - 0.035), yy = (y - H / 2) / (H / 2 - 0.035);
-    const border = Math.max(Math.exp(-Math.pow((Math.abs(zz) - 1) / 0.06, 2)) * (Math.abs(yy) < 1.06 ? 1 : 0), Math.exp(-Math.pow((Math.abs(yy) - 1) / 0.06, 2)) * (Math.abs(zz) < 1.06 ? 1 : 0));
-    const d1 = Math.abs(zz * (H - 0.07) - yy * (L - 0.07)) / Math.hypot(H - 0.07, L - 0.07), d2 = Math.abs(zz * (H - 0.07) + yy * (L - 0.07)) / Math.hypot(H - 0.07, L - 0.07);
-    const inside = Math.abs(zz) < 1 && Math.abs(yy) < 1 ? 1 : 0;
-    const x = Math.max(Math.exp(-Math.pow(d1 / 0.05, 2)), Math.exp(-Math.pow(d2 / 0.05, 2))) * inside;
-    return 0.0045 * Math.max(border, x * 0.9);
+  // Broad faces: a pillowed panel (rolled edge, flat plateau) plus pressed ridges built as real strips - a
+  // raised border and the X - following the panel surface. Far fewer triangles than a displaced grid and the
+  // relief stays crisp. Panel coordinates: z across, y up; uv from position so the print stays undistorted.
+  const zA = L / 2 - 0.015, yA = 0.015, yB = H - 0.015;
+  const roll = (z, y) => {
+    const u = 0.5 + z / (2 * zA), v = (y - yA) / (yB - yA);
+    const e = clamp(Math.min(u, 1 - u, v, 1 - v) / 0.045, 0, 1);
+    return W / 2 - 0.004 + 0.0034 * Math.sin(e * PI / 2);
   };
+  const gu = [0, 0.015, 0.03, 0.045, 0.06, 0.5, 0.94, 0.955, 0.97, 0.985, 1];
+  const SEC = [-1, -0.62, -0.28, 0, 0.28, 0.62, 1];
+  const ridge = (sx, P, hw, h, taper) => {
+    // P: [[z, y], ...] path on the panel; cross-section bump (raised cosine), feet sunk 0.4 mm into the panel
+    const pos = [], idx = [];
+    const n = P.length;
+    for (let i = 0; i < n; i++) {
+      const a0 = P[Math.max(0, i - 1)], a1 = P[Math.min(n - 1, i + 1)];
+      let tz = a1[0] - a0[0], ty = a1[1] - a0[1];
+      const l = Math.hypot(tz, ty) || 1; tz /= l; ty /= l;
+      const k = taper ? taper(i / (n - 1)) : 1;
+      for (const sv of SEC) {
+        const z = P[i][0] - ty * sv * hw * (0.5 + 0.5 * k), y = P[i][1] + tz * sv * hw * (0.5 + 0.5 * k);
+        const hh = (h * k + 0.0004) * (0.5 + 0.5 * Math.cos(PI * sv)) - 0.0004;
+        pos.push(sx * (roll(z, y) + hh), y, z * (sx > 0 ? -1 : 1));
+      }
+    }
+    const m = SEC.length;
+    for (let i = 0; i < n - 1; i++) for (let j = 0; j < m - 1; j++) {
+      const q = i * m + j;
+      idx.push(q, q + m, q + 1, q + 1, q + m, q + m + 1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    // wind outward (+x on the +X face)
+    let nx = 0; const na = g.attributes.normal;
+    for (let i = 0; i < na.count; i++) nx += na.getX(i);
+    if (Math.sign(nx) !== sx) { for (let i = 0; i < idx.length; i += 3) { const t2 = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t2; } g.setIndex(idx); g.computeVertexNormals(); }
+    return g;
+  };
+  const bz = L / 2 - 0.041, by0 = 0.045, by1 = H - 0.045, rc = 0.03;
+  const border = [];
+  for (const [cz, cy, a0] of [[bz - rc, by1 - rc, 0], [-bz + rc, by1 - rc, PI / 2], [-bz + rc, by0 + rc, PI], [bz - rc, by0 + rc, PI * 1.5]]) {
+    for (let i = 0; i <= 4; i++) { const a = a0 + (i / 4) * (PI / 2); border.push([cz + Math.cos(a) * rc, cy + Math.sin(a) * rc]); }
+  }
+  border.push(border[0]);
+  const diag = (z0, y0, z1, y1) => {
+    const out = [];
+    const d = rc * 0.45;
+    const l = Math.hypot(z1 - z0, y1 - y0), dz = (z1 - z0) / l, dy = (y1 - y0) / l;
+    for (const t of [0, 0.07, 0.14, 0.5, 0.86, 0.93, 1]) out.push([z0 + dz * d + (z1 - z0 - 2 * dz * d) * t, y0 + dy * d + (y1 - y0 - 2 * dy * d) * t]);
+    return out;
+  };
+  const taper = (t) => sstep(0, 0.16, t) * sstep(0, 0.16, 1 - t);
   for (const sx of [-1, 1]) {
-    k.add(sheetGeo(34, 40, (u, v) => {
-      const z = (u - 0.5) * (L - 0.03) * (sx > 0 ? -1 : 1), y = 0.015 + v * (H - 0.03);
-      const edge = Math.min(1, Math.min(u, 1 - u, v, 1 - v) / 0.04);
-      return [sx * (W / 2 - 0.004 + 0.0034 * Math.sin(edge * PI / 2) + emb(z, y)), y, z];
-    }), red, { uv: sx > 0 ? A.R(0, 0, 512, 420) : A.R(512, 0, 512, 420), dm: 0.03 });
+    const rect = sx > 0 ? A.R(0, 0, 512, 420) : A.R(512, 0, 512, 420);
+    const uvFn = (q) => {
+      const z = q.z * (sx > 0 ? -1 : 1);
+      const u = 0.5 + z / (2 * zA), v = (q.y - yA) / (yB - yA);
+      return [rect[0] + u * (rect[2] - rect[0]), rect[1] + v * (rect[3] - rect[1])];
+    };
+    k.add(sheetGeo(gu.length - 1, gu.length - 1, (u, v) => {
+      const z = (gu[Math.round(u * (gu.length - 1))] - 0.5) * 2 * zA, y = yA + gu[Math.round(v * (gu.length - 1))] * (yB - yA);
+      return [sx * roll(z, y), y, z * (sx > 0 ? -1 : 1)];
+    }), red, { uvFn, dm: 0.03 });
+    k.add(ridge(sx, border, 0.011, 0.0045), red, { uvFn, dm: 0.03 });
+    k.add(ridge(sx, diag(-bz, by0, bz, by1), 0.013, 0.004, taper), red, { uvFn, dm: 0.03 });
+    k.add(ridge(sx, diag(-bz, by1, bz, by0), 0.013, 0.004, taper), red, { uvFn, dm: 0.03 });
   }
   // perimeter weld bead in the centre plane (around top, front, bottom, back)
   const bead = [];
@@ -720,11 +775,11 @@ def('fuel_can', () => {
   const cs = [[hz - rr, H - rr, 0], [-hz + rr, H - rr, PI / 2], [-hz + rr, rr, PI], [hz - rr, rr, PI * 1.5]];
   for (const [cz, cy, a0] of cs) for (let i = 0; i <= 4; i++) { const a = a0 + (i / 4) * (PI / 2); bead.push(V3(0, cy + Math.sin(a) * rr, cz + Math.cos(a) * rr)); }
   bead.push(bead[0].clone());
-  k.tube(new THREE.CatmullRomCurve3(bead, false, 'centripetal'), 0.0042, red, { tseg: 60, rseg: 8, uv: pr, col: 0xd8d0c8 });
+  k.tube(new THREE.CatmullRomCurve3(bead, false, 'centripetal'), 0.0042, red, { tseg: 48, rseg: 6, uv: pr, col: 0xd8d0c8 });
   // triple handle: bar + three posts
   const hy = H + 0.042;
   k.cyl(0.0115, 0.27, red, { p: [0, hy, 0.012], r: [PI / 2, 0, 0], seg: 16, uv: pr, bevel: 0.004 });
-  for (const z of [-0.118, -0.034, 0.056, 0.142]) k.rbox(0.022, 0.05, 0.015, 0.005, red, { p: [0, H + 0.02, z], rs: 2, uv: pr });
+  for (const z of [-0.118, -0.034, 0.056, 0.142]) k.rbox(0.022, 0.05, 0.015, 0.005, red, { p: [0, H + 0.02, z], rs: 1, uv: pr });
   // spout: neck, cam-lever cap, locking pin chain
   k.push({ p: [0, H - 0.006, -L / 2 + 0.046], r: [-0.55, 0, 0] });
   k.lathe([[0.027, -0.01], [0.027, 0.03, 0.003], [0.025, 0.04]], red, { seg: 24, uv: pr });
@@ -732,7 +787,7 @@ def('fuel_can', () => {
   k.tube([[0.031, 0.05, 0.0], [0.034, 0.066, 0.016], [0.02, 0.06, 0.048], [0.004, 0.032, 0.062]], (t) => [0.004, 0.0028], red, { tseg: 16, rseg: 8, uv: steelUV, col: 0xc8ccd0 });
   k.cyl(0.0025, 0.03, red, { p: [0.031, 0.045, 0.004], r: [PI / 2, 0, 0], seg: 8, uv: steelUV, bevel: 0.0006 });
   k.pop();
-  k.colBox([W, H + 0.008, L], [0, H / 2, 0]);
+  k.colBox([W, H + 0.0127, L], [0, H / 2, 0]); // weld bead stands 6 mm proud top and bottom
   k.colBox([0.03, 0.06, 0.29], [0, H + 0.03, 0.012]);
   k.colBox([0.06, 0.06, 0.06], [0, H + 0.02, -L / 2 + 0.035]);
   return { kit: k, meta: { mass: 15, material: 'metal', hold: { grip: [0, hy, 0.012], rot: [0, 0, 0.06], off: [0.05, -0.03, 0.05] } } };

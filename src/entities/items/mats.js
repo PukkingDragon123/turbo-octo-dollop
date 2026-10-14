@@ -43,34 +43,6 @@ Synth.registerRecipe('item_brushed', {
     s.ao = 1.0 - pit * 0.35; s.metal = 1.0; return s; }`,
 });
 
-Synth.registerRecipe('item_knurl', {
-  // diamond knurl. p0: x pitches per tile (int), y flat-top amount, z top wear
-  defaults: { p0: [8, 0.22, 0.6, 0], bump: 2.0, size: 256 },
-  glsl: `S surface(vec2 uv){
-    float N = floor(uP0.x + 0.5);
-    float a = fract((uv.x + uv.y) * N), b = fract((uv.x - uv.y) * N);
-    float h = min(1.0 - abs(a * 2.0 - 1.0), 1.0 - abs(b * 2.0 - 1.0));
-    float top = smoothstep(1.0 - uP0.y - 0.06, 1.0 - uP0.y, h);
-    h = min(h, 1.0 - uP0.y);
-    float wn = fbm(uv + 1.7, vec2(3.0), 4);
-    float worn = top * smoothstep(0.35, 0.75, wn) * uP0.z;
-    S s; s.albedo = vec3(0.5); s.height = h + gn(uv * 96.0, vec2(96.0)) * 0.03;
-    s.rough = 0.56 - worn * 0.22 + (1.0 - h) * 0.12;
-    s.ao = 0.55 + h * 0.45; s.metal = 1.0; return s; }`,
-});
-
-Synth.registerRecipe('item_ribs', {
-  // parallel ribs: ridges run along V. p0: x ribs per tile (int), y profile sharpness, z groove darkening
-  defaults: { p0: [16, 0.7, 0.4, 0], bump: 1.4, size: 128 },
-  glsl: `S surface(vec2 uv){
-    float N = floor(uP0.x + 0.5);
-    float a = fract(uv.x * N);
-    float h = pow(max(0.0, sin(a * PI)), uP0.y);
-    float fine = gn(uv * 48.0, vec2(48.0));
-    S s; s.albedo = vec3(0.5); s.height = h + fine * 0.03;
-    s.rough = 0.5 + (1.0 - h) * 0.12 + (fine - 0.5) * 0.06; s.ao = 1.0 - (1.0 - h) * uP0.z; s.metal = 0.0; return s; }`,
-});
-
 Synth.registerRecipe('item_paper', {
   // paper / paperboard / label stock. p0: x fibre scale (int), y cockle, z roughness variation
   defaults: { p0: [48, 0.3, 0.2, 0], wear: 0.3, bump: 0.8, size: 256 },
@@ -132,25 +104,24 @@ Synth.registerRecipe('item_turned', {
 // Detail sets: recipe + options, dm = meters per tile, gm = mean roughness in the ORM G channel
 // ---------------------------------------------------------------------------
 const DET = {
-  stipple: { r: 'item_stipple', o: { p0: [64, 0.5, 0.3, 0.5], wear: 0.4 }, dm: 0.02, gm: 0.5 },
-  gloss: { r: 'item_stipple', o: { p0: [96, 0.7, 0.16, 0.35], wear: 0.25, bump: 0.6 }, dm: 0.04, gm: 0.5 },
-  rubber: { r: 'item_stipple', o: { p0: [40, 0.3, 0.35, 0.8], wear: 0.3, bump: 1.4 }, dm: 0.012, gm: 0.5 },
+  // Resolution is chosen per set from its tile size: 128 px already gives 2-10 px/mm for the small tiles below, well
+  // past screen density at hand-held range; only the grainy metals / crinkled films / twill keep 256 and the
+  // lumber set (0.6 m tiles, colour) keeps 512.
+  stipple: { r: 'item_stipple', o: { p0: [48, 0.5, 0.3, 0.5], wear: 0.4, size: 128 }, dm: 0.02, gm: 0.5 },
+  gloss: { r: 'item_stipple', o: { p0: [64, 0.7, 0.16, 0.35], wear: 0.25, bump: 0.6, size: 128 }, dm: 0.04, gm: 0.5 },
+  rubber: { r: 'item_stipple', o: { p0: [40, 0.3, 0.35, 0.8], wear: 0.3, bump: 1.4, size: 128 }, dm: 0.012, gm: 0.5 },
   brushed: { r: 'item_brushed', o: {}, dm: 0.04, gm: 0.5 },
-  polished: { r: 'item_brushed', o: { p0: [192, 0.35, 0.35, 0.08], wear: 0.25, bump: 0.4 }, dm: 0.05, gm: 0.5 },
-  cast: { r: 'item_cast', o: {}, dm: 0.04, gm: 0.5 },
-  powder: { r: 'item_cast', o: { p0: [5, 0.3, 0.25, 1.0], wear: 0.3, bump: 1.0 }, dm: 0.03, gm: 0.5 },
-  knurl: { r: 'item_knurl', o: {}, dm: 0.008, gm: 0.5 },
-  ribs: { r: 'item_ribs', o: {}, dm: 0.012, gm: 0.5 },
+  polished: { r: 'item_brushed', o: { p0: [96, 0.35, 0.35, 0.08], wear: 0.25, bump: 0.4, size: 128 }, dm: 0.05, gm: 0.5 },
+  cast: { r: 'item_cast', o: { size: 128 }, dm: 0.04, gm: 0.5 },
+  powder: { r: 'item_cast', o: { p0: [5, 0.3, 0.25, 1.0], wear: 0.3, bump: 1.0, size: 128 }, dm: 0.03, gm: 0.5 },
   turned: { r: 'item_turned', o: {}, dm: 0.02, gm: 0.5 },
-  paper: { r: 'item_paper', o: {}, dm: 0.05, gm: 0.5 },
-  card: { r: 'item_paper', o: { p0: [32, 0.6, 0.25, 0], wear: 0.5, bump: 1.0 }, dm: 0.06, gm: 0.5 },
+  paper: { r: 'item_paper', o: { p0: [32, 0.3, 0.2, 0], size: 128 }, dm: 0.05, gm: 0.5 },
+  card: { r: 'item_paper', o: { p0: [24, 0.6, 0.25, 0], wear: 0.5, bump: 1.0, size: 128 }, dm: 0.06, gm: 0.5 },
   foil: { r: 'item_foil', o: {}, dm: 0.07, gm: 0.5 },
-  film: { r: 'item_foil', o: { p0: [3, 0.6, 0.15, 0], bump: 1.6 }, dm: 0.09, gm: 0.5 },
-  weave: { r: 'fabric', o: { p0: [32, 32, 0, 0.6], p1: [0.2, 0, 0, 0], wear: 0.2, size: 256, bump: 2.5 }, dm: 0.012, gm: 0.86 },
+  film: { r: 'item_foil', o: { p0: [3, 0.6, 0.15, 0], bump: 1.6, size: 128 }, dm: 0.09, gm: 0.5 },
+  weave: { r: 'fabric', o: { p0: [32, 32, 0, 0.6], p1: [0.2, 0, 0, 0], wear: 0.2, size: 128, bump: 2.5 }, dm: 0.012, gm: 0.86 },
   twill: { r: 'fabric', o: { p0: [48, 48, 1, 0.9], p1: [0.6, 0, 0, 0], wear: 0.3, size: 256, bump: 2.0 }, dm: 0.012, gm: 0.86 },
-  gauze: { r: 'fabric', o: { p0: [20, 20, 0, 0.4], p1: [0.0, 0, 0, 0], wear: 0.1, size: 256, bump: 3.5 }, dm: 0.014, gm: 0.86 },
-  wood: { r: 'wood', o: { c0: 0xa8784a, c1: 0xd9b07a, c2: 0x5a3a1e, p0: [14, 1.2, 0.8, 0.78], wear: 0.3, size: 512, bump: 2.4 }, dm: 0.5, gm: 0.75, albedo: true },
-  rust: { r: 'rust', o: { wear: 0.6, size: 256 }, dm: 0.12, gm: 0.8, albedo: true },
+  gauze: { r: 'fabric', o: { p0: [20, 20, 0, 0.4], p1: [0.0, 0, 0, 0], wear: 0.1, size: 128, bump: 3.5 }, dm: 0.014, gm: 0.86 },
   thread: { r: 'item_turned', o: { p0: [15, 1.8, 0, 0], wear: 0.3, bump: 3.0 }, dm: 0.02, gm: 0.5 },
   coil: { r: 'item_turned', o: { p0: [12, 1.6, 0, 0], wear: 0.2, bump: 3.0 }, dm: 0.019, gm: 0.5 },
   roughwood: { r: 'wood', o: { c0: 0x8a5a30, c1: 0xd2a26a, c2: 0x4a2c14, p0: [56, 1.3, 1.0, 0.86], wear: 0.5, size: 512, bump: 3.2, seed: 7 }, dm: 0.6, gm: 0.86, albedo: true },

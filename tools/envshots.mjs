@@ -54,7 +54,8 @@ const stats = async (label) => {
         if (o.parent === rec.group) { envDraws++; envTris += n * inst; envMats.add(o.material); }
       });
     }
-    if (lv.shell) lv.shell.traverse?.((o) => { if (o.isMesh) envMats.add(o.material); });
+    // every baked environment material in the scene (Level 0 chunks, lobby shell, special rooms)
+    __engine.scene.traverse((o) => { if (o.isMesh && o.material?.userData?.baked) envMats.add(o.material); });
     const texOf = (mats) => {
       const seen = new Set(); let t = 0;
       for (const m of mats) for (const k of ['map', 'normalMap', 'roughnessMap', 'aoMap', 'metalnessMap', 'emissiveMap', 'alphaMap']) {
