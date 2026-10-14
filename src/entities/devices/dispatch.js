@@ -350,10 +350,36 @@ export function b_starter_box(o) {
     c.fillStyle = 'rgba(80,50,20,0.06)'; for (let x = 0; x < w; x += 6) c.fillRect(x, 0, 2, h);
   }, 'r');
   const kr = kraft('sb_kraft', '#cfb48a'), kin = kraft('sb_kraft_in', '#a88e68');
+  // cut edges show the corrugated flutes
+  const flute = k.reg('sb_flute', 128, 16, (c, w, h) => {
+    c.fillStyle = '#d8c09a'; c.fillRect(0, 0, w, h);
+    c.strokeStyle = '#8a6e48'; c.lineWidth = 1.4; c.beginPath();
+    for (let x = 0; x <= w; x++) c.lineTo(x, h / 2 + Math.sin(x * 0.9) * h * 0.32);
+    c.stroke(); c.fillStyle = '#b89a70'; c.fillRect(0, 0, w, 2); c.fillRect(0, h - 2, w, 2);
+  }, 'r');
   const box = (w, h, d, x, y, z) => k.labelBox({ pz: kr, nz: kin, px: kr, nx: kin, py: kr, ny: kin }, w, h, d, x, y, z);
   box(W, t, D, 0, -hh + t / 2, 0);
-  for (const sx of [-1, 1]) k.labelBox({ all: sx > 0 ? kr : kr, nx: sx > 0 ? kin : kr, px: sx > 0 ? kr : kin }, t, H, D, sx * (W / 2 - t / 2), 0, 0);
-  for (const sz of [-1, 1]) k.labelBox({ all: kr, nz: sz > 0 ? kin : kr, pz: sz > 0 ? kr : kin }, W, H, t, 0, 0, sz * (D / 2 - t / 2));
+  for (const sx of [-1, 1]) k.labelBox({ all: flute, nx: sx > 0 ? kin : kr, px: sx > 0 ? kr : kin }, t, H, D, sx * (W / 2 - t / 2), 0, 0);
+  for (const sz of [-1, 1]) k.labelBox({ all: flute, nz: sz > 0 ? kin : kr, pz: sz > 0 ? kr : kin }, W, H, t, 0, 0, sz * (D / 2 - t / 2));
+  // hand-hold cut-outs on the short sides (dark slot with a crushed rim, both faces)
+  const hold = k.reg('sb_hold', 96, 40, (c, w, h) => {
+    c.clearRect(0, 0, w, h);
+    c.fillStyle = 'rgba(70,50,30,0.55)'; rrect(c, 2, 2, w - 4, h - 4, h / 2 - 2); c.fill();
+    c.fillStyle = '#0c0a08'; rrect(c, 7, 7, w - 14, h - 14, h / 2 - 7); c.fill();
+  });
+  for (const sx of [-1, 1]) for (const io of [1, -1]) k.decal(hold, 0.11, 0.035, sx * (W / 2 - t / 2 + io * (t / 2 + 0.0006)), hh - 0.07, 0, { rot: [0, sx * io * HP, 0] });
+  // shipping label with a barcode
+  const ship = k.reg('sb_ship', 200, 130, (c, w, h, rng) => {
+    c.fillStyle = '#f2efe6'; c.fillRect(0, 0, w, h);
+    txt(c, 'SHIP TO:', 10, 14, 11, { col: '#222', f: 'mono', al: 'left' });
+    txt(c, 'EMPLOYEE #0042', 10, 32, 15, { col: '#111', f: 'bold', al: 'left' });
+    txt(c, 'SUBLEVEL 3, DESK 9', 10, 50, 11, { col: '#333', f: 'mono', al: 'left' });
+    c.fillStyle = '#111'; let x = 12;
+    while (x < w - 12) { const bw = 1 + ((rng.next() * 3) | 0); c.fillRect(x, 64, bw, 42); x += bw + 1 + ((rng.next() * 2) | 0); }
+    txt(c, '0042 7731 9907', w / 2, 118, 10, { col: '#111', f: 'mono' });
+    grime(c, w, h, 0.4, 6, { corner: 0.12 });
+  });
+  k.label(ship, 0.12, 0.078, W / 2 + 0.0007, -0.06, D / 2 - 0.09, { rot: [0, HP, 0.03] });
   const front = k.reg('sb_front', 600, 340, (c, w, h) => {
     c.clearRect(0, 0, w, h);
     c.strokeStyle = 'rgba(30,40,90,0.9)'; c.lineWidth = 5; c.strokeRect(14, 14, w - 28, h - 28);

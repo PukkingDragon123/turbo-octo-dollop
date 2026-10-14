@@ -2,7 +2,7 @@
 // Floor devices: origin on the floor under the centre, front faces +Z. Every contract part / anchor
 // (see src/game/generators.js) keeps its original position, pivot and meaning.
 import * as THREE from 'three';
-import { DKit, FIN, PI, HP, TAU, V3, cbox, ccyl, frameShape, rrShape, rrHole, circleShape, polyShape, curvePts, latheGeo, axisGeo, cylGeo, extrudeGeo } from './core.js';
+import { DKit, FIN, PI, HP, TAU, V3, cbox, ccyl, frameShape, rrShape, rrHole, circleShape, polyShape, curvePts, latheGeo, axisGeo, cylGeo, extrudeGeo, mat4 } from './core.js';
 import * as P from './parts.js';
 import { txt, rrect, grime, rubOff, hazardTri, drawLogo, drawPerforation } from './atlas.js';
 
@@ -108,13 +108,12 @@ export function b_generator_diesel(o) {
   k.cyl('metal', 0.03, 0.006, rs[0], rs[1], rs[2] + 0.083, { ...FIN.zinc, axis: 'z', seg: 14, bev: 0.002 });
   const exit = [rs[0] + 0.08, rs[1] + 0.07, rs[2] + 0.07];
   k.tor('metal', 0.008, 0.0035, exit[0], exit[1], exit[2], { ...FIN.chrome, ts: 14, rs: 6 });
-  const cord = k.grp(exit[0], exit[1], exit[2] + 0.03, { name: 'cordHandle' });
-  cord.userData.z0 = cord.position.z;
-  k.inside(cord, () => {
+  // (cord handle: built below as a bone of the shared skinned mesh)
+  const cordBuild = () => {
     k.cyl('#141414:r', 0.016, 0.11, 0, 0, 0, { axis: 'x', seg: 10, bev: 0.006, bevSeg: 2 });
     for (let i = -2; i <= 2; i++) k.cyl('#101010:r', 0.0168, 0.004, i * 0.017, 0, 0, { axis: 'x', seg: 10 });
     k.cyl('#a8231a:s', 0.0035, 0.032, 0, 0, -0.016, { axis: 'z', seg: 6 });
-  });
+  };
   // coupling housing to the alternator
   k.lathe('paint', [[0.15, 0], [0.16, 0.02, 2], [0.19, 0.14], [0.2, 0.15, 2], [0.2, 0.16]], ex + 0.235, 0.36, 0, { ...ENG, axis: 'x', seg: 28 });
 
@@ -208,10 +207,10 @@ export function b_generator_diesel(o) {
   k.box('paint', 0.42, 0.25, 0.004, 0, 0, 0.0015, { ...panelBase, r: 0.006 });
   P.cornerScrews(k, 0.42, 0.25, 0, 0, 0.0035, 0.012, { r: 0.003 });
   const pz = 0.0035;
-  k.parts.needles = [
-    P.gauge(k, -0.14, 0.05, pz, 0.042, { label: 'OIL', max: 80, red: 0.85, value: 0.1, name: 'needle_oil', key: 'oil' }),
-    P.gauge(k, -0.03, 0.05, pz, 0.042, { label: 'TEMP', labels: ['C', '', '', '', '', 'H'], red: 0.8, value: 0.05, name: 'needle_temp', key: 'temp' }),
-    P.gauge(k, 0.08, 0.05, pz, 0.042, { label: 'VOLTS', max: 300, green: [0.6, 0.85], value: 0.0, name: 'needle_volts', key: 'volts' }),
+  const needlePl = [
+    P.gauge(k, -0.14, 0.05, pz, 0.042, { label: 'OIL', max: 80, red: 0.85, value: 0.1, name: 'needle_oil', key: 'oil', noNeedle: true }),
+    P.gauge(k, -0.03, 0.05, pz, 0.042, { label: 'TEMP', labels: ['C', '', '', '', '', 'H'], red: 0.8, value: 0.05, name: 'needle_temp', key: 'temp', noNeedle: true }),
+    P.gauge(k, 0.08, 0.05, pz, 0.042, { label: 'VOLTS', max: 300, green: [0.6, 0.85], value: 0.0, name: 'needle_volts', key: 'volts', noNeedle: true }),
   ];
   k.parts.lamp = P.pilotLamp(k, 0.17, 0.07, pz, 0.013, 'red', { name: 'lamp', bezel: 'chrome' });
   k.box('#0e0f10:g', 0.152, 0.054, 0.008, -0.06, -0.06, pz + 0.004, { r: 0.004 });
@@ -246,6 +245,15 @@ export function b_generator_diesel(o) {
   P.stain(k, 0, 0, 0, 0.5, 0.4, { col: '14,12,8', alpha: 0.65, ring: true });
   k.pop();
 
+  // animated parts (3 gauge needles + recoil cord handle) as bones of one skinned mesh
+  const PM = mat4(0.33, 0.6, 0.27, [-0.25, 0, 0]);
+  const rig = k.bones('rig', [
+    ...needlePl.map(([x, y, z, rot, name]) => { const v = V3(x, y, z).applyMatrix4(PM); return [v.x, v.y, v.z, [-0.25, 0, rot[2]], name]; }),
+    [exit[0], exit[1], exit[2] + 0.03, null, 'cordHandle'],
+  ], (i) => (i < 3 ? P.needle(k, 0.042) : cordBuild()));
+  k.parts.needles = rig.slice(0, 3);
+  const cord = rig[3];
+  cord.userData.z0 = cord.position.z;
   k.collide(cbox(W, ch + 0.04, D, 0, (ch + 0.04) / 2, 0));
   k.anchors.fuelCap = V3(0.22, 1.0, 0.08);
   k.anchors.cordRest = cord.position.clone();
@@ -401,19 +409,16 @@ export function b_generator_electric(o) {
   const bx = 0.3, by = 0.4;
   k.box('paint', 0.15, 0.25, 0.1, bx, by, tz + 0.05, { ...DARK, r: 0.01 });
   for (const sx of [-1, 1]) k.box('metal', 0.012, 0.11, 0.04, bx + sx * 0.042, by, tz + 0.115, { ...FIN.steel, r: 0.002 });
-  const breaker = k.grp(bx, by, tz + 0.12, { name: 'breaker' });
-  breaker.rotation.x = 0.7;
-  k.inside(breaker, () => {
+  const breakerBuild = () => {
     k.cyl('#9a9ea2:m', 0.016, 0.084, 0, 0, 0, { axis: 'x', seg: 12 });
     k.box('#9a9ea2:m', 0.03, 0.026, 0.15, 0, 0, 0.075, { r: 0.006 });
     k.put('#b3221a:s', axisGeo(cylGeo(0.022, 0.1, { seg: 14, bev: 0.006, bevSeg: 2 }), 'z'), 0, 0, 0.19);
-  });
+  };
   const onoff = k.reg('onoff', 120, 60, (c, w, h) => { c.fillStyle = '#16181b'; c.fillRect(0, 0, w, h); txt(c, 'ON ▲', w / 2, h * 0.3, h * 0.28, { col: '#8f8', f: 'mono' }); txt(c, 'OFF ▼', w / 2, h * 0.72, h * 0.28, { col: '#f88', f: 'mono' }); });
   k.label(onoff, 0.12, 0.06, bx - 0.13, by, tz + 0.0015);
   // ---- door (pivot on the left edge; negative rotation.y opens) ----
   const DW = W - 0.02, DH = 1.3, dy0 = 0.1;
-  const door = k.grp(-W / 2 + 0.01, 0, D / 2, { name: 'door' });
-  k.inside(door, () => {
+  const doorBuild = () => {
     const cx = DW / 2;
     k.box('paint', DW, DH, 0.004, cx, dy0 + DH / 2, 0.023, { ...BODY, r: 0.0018, div: 0.2, dent: 0.0012 });
     for (const sx of [-1, 1]) k.box('paint', 0.004, DH - 0.006, 0.022, cx + sx * (DW / 2 - 0.002), dy0 + DH / 2, 0.011, { ...BODY, r: 0.0015 });
@@ -441,7 +446,9 @@ export function b_generator_electric(o) {
     const diag = k.reg('wiring_diag', 240, 300, (c, w, h) => { c.fillStyle = '#e8e2cc'; c.fillRect(0, 0, w, h); txt(c, 'WIRING DIAGRAM', w / 2, 14, 12, { col: '#111' }); c.strokeStyle = '#333'; c.lineWidth = 1.5; for (let i = 0; i < 9; i++) { c.beginPath(); c.moveTo(20, 40 + i * 22); c.lineTo(w - 20, 40 + i * 22 + (i % 3) * 8); c.stroke(); c.strokeRect(10, 34 + i * 22, 12, 12); } grime(c, w, h, 0.7, 6); });
     k.label(diag, 0.24, 0.3, cx, 0.8, 0.0205, { rot: [0, PI, 0] });
     for (const y of [0.3, 0.75, 1.2]) P.hingeHalf(k, 0, y, 0.012, 0.08, { part: 1, leaf: 1, leafZ: 0.013, slot: '#8d9195:m', r: 0.007 });
-  });
+  };
+  // door + breaker lever: bones of one skinned mesh per material
+  const [breaker, door] = k.bones('rig', [[bx, by, tz + 0.12, [0.7, 0, 0], 'breaker'], [-W / 2 + 0.01, 0, D / 2, null, 'door']], (i) => (i ? doorBuild() : breakerBuild()));
   for (const y of [0.3, 0.75, 1.2]) P.hingeHalf(k, -W / 2 + 0.01, y, D / 2 + 0.012, 0.08, { part: 0, r: 0.007 });
   // conduits out of the top
   for (const x of [-0.3, -0.15]) {
@@ -525,8 +532,7 @@ export function b_generator_mech(o) {
   // oil cup on the bearing
   k.cyl('metal', 0.006, 0.03, fx + 0.12, fy + 0.07, 0, { ...BRASS, seg: 8 });
   k.lathe('metal', [[0.004, 0], [0.018, 0.01], [0.02, 0.03], [0.012, 0.042], [0, 0.044]], fx + 0.12, fy + 0.085, 0, { ...BRASS, seg: 12 });
-  const fly = k.grp(fx, fy, 0, { name: 'flywheel' });
-  k.inside(fly, () => {
+  const flyBuild = () => {
     k.lathe('paint', [[FR - 0.065, -0.045], [FR - 0.005, -0.05, 2], [FR + 0.006, -0.02], [FR + 0.008, 0.02], [FR - 0.005, 0.05, 2], [FR - 0.065, 0.045], [FR - 0.07, 0], [FR - 0.065, -0.045]], 0, 0, 0, { ...IRON, axis: 'x', seg: 40, rings: false, chip: 0.3 });
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * TAU;
@@ -538,7 +544,7 @@ export function b_generator_mech(o) {
     k.cyl('#c8a254:m', 0.05, 0.13, 0, 0, 0, { axis: 'x', seg: 14 });
     P.screw(k, 0, 0.09, 0, { kind: 'hex', r: 0.008, dir: 'y', slot: '#7a7d80:m' });
     k.box('paint', 0.012, 0.07, 0.035, -0.045, FR - 0.03, 0, { tint: 0xb3221a, r: 0.003, chip: 0.4 });
-  });
+  };
   // flat leather belt to the dynamo pulley
   const py = 1.22, pr = 0.07, bxp = fx - 0.04;
   const belt = [];
@@ -574,7 +580,7 @@ export function b_generator_mech(o) {
   k.tube('metal', coil, 0.006, { ...BRASS, radial: 6, caps: false });
   P.rod(k, 'metal', [gx, 1.07, 0.136], [gx, 1.13, 0.14], 0.008, BRASS);
   k.box('metal', 0.04, 0.04, 0.05, gx, 1.2, 0.13, { ...BRASS, r: 0.006 });
-  k.parts.needle = P.gauge(k, gx, 1.2, 0.16, 0.07, { label: 'PSI', max: 200, red: 0.8, value: 0.15, bezel: BRASS, cup: BRASS, name: 'needle', key: 'psi', screws: true });
+  const needlePl = P.gauge(k, gx, 1.2, 0.16, 0.07, { label: 'PSI', max: 200, red: 0.8, value: 0.15, bezel: BRASS, cup: BRASS, name: 'needle', key: 'psi', screws: true, noNeedle: true });
   // ---- cracked pressure pipe along X at the front (anchors.cracks) ----
   const cy = 1.04, cz = 0.24, cpr = 0.05;
   k.tube('metal', [[-0.62, dy + dr - 0.02, 0.1], [-0.62, cy, 0.1], [-0.62, cy, cz]], cpr, { ...COPPER, round: 0.07, rseg: 6, radial: 14, caps: false });
@@ -612,29 +618,26 @@ export function b_generator_mech(o) {
   k.cyl('metal', 0.12, 0.025, bx0, by0, 0.42, { ...STEEL, axis: 'z', seg: 20, bev: 0.004, bevSeg: 1 });
   k.cyl('metal', 0.12, 0.022, bx0, by0, 0.4455, { ...STEEL, axis: 'z', seg: 20, bev: 0.004, bevSeg: 1 });
   k.tor('#111112:r', 0.105, 0.0025, bx0, by0, 0.4335, { ts: 24, rs: 4 });
-  k.parts.bolts = [];
-  for (let i = 0; i < 4; i++) {
-    const a = PI / 4 + (i * PI) / 2, x = bx0 + Math.cos(a) * 0.088, y = by0 + Math.sin(a) * 0.088;
-    const b = k.grp(x, y, 0.4565, { name: 'bolt_' + i });
-    b.userData.z0 = b.position.z;
-    k.inside(b, () => {
-      k.cyl('#9a9da0:m', 0.017, 0.004, 0, 0, 0.002, { axis: 'z', seg: 12 });
-      k.cyl('#8a8d90:m', 0.014, 0.012, 0, 0, 0.01, { axis: 'z', seg: 6, bev: 0.0015, bevSeg: 1 });
-      k.cyl('#6a6c6e:m', 0.0075, 0.07, 0, 0, -0.035, { axis: 'z', seg: 8 });
-    });
-    b.position.z += [0.0, 0.012, 0.004, 0.02][i];
-    b.rotation.z = i * 0.4;
-    k.parts.bolts.push(b);
-  }
+  const boltPl = [0, 1, 2, 3].map((i) => { const a = PI / 4 + (i * PI) / 2; return [bx0 + Math.cos(a) * 0.088, by0 + Math.sin(a) * 0.088, 0.4565 + [0.0, 0.012, 0.004, 0.02][i], [0, 0, i * 0.4], 'bolt_' + i]; });
+  const boltBuild = () => {
+    k.cyl('#9a9da0:m', 0.017, 0.004, 0, 0, 0.002, { axis: 'z', seg: 12 });
+    k.cyl('#8a8d90:m', 0.014, 0.012, 0, 0, 0.01, { axis: 'z', seg: 6, bev: 0.0015, bevSeg: 1 });
+    k.cyl('#6a6c6e:m', 0.0075, 0.07, 0, 0, -0.035, { axis: 'z', seg: 8 });
+  };
   k.anchors.boltFlange = V3(bx0, by0, 0.457);
   // hand crank on the flywheel axle end (rotates around X)
-  const crank = k.grp(fx + 0.27, fy, 0, { name: 'crank' });
-  k.inside(crank, () => {
+  const crankBuild = () => {
     k.cyl('#2c302f:p', 0.04, 0.05, 0, 0, 0, { axis: 'x', seg: 14, bev: 0.006 });
     k.box('#2c302f:p', 0.03, 0.26, 0.05, 0.02, 0.12, 0, { r: 0.012 });
     k.cyl('#9a9da0:m', 0.012, 0.08, 0.06, 0.24, 0, { axis: 'x', seg: 8 });
     k.put('#6a4528:p', axisGeo(latheGeo([[0, -0.06], [0.018, -0.058], [0.024, -0.03], [0.022, 0.03], [0.018, 0.058], [0, 0.06]], 12), 'x'), 0.13, 0.24, 0);
-  });
+  };
+  // every animated part (flywheel, crank, gauge needle, 4 loose bolts) is a bone of one skinned mesh per material
+  const rig = k.bones('rig', [[fx, fy, 0, null, 'flywheel'], [fx + 0.27, fy, 0, null, 'crank'], needlePl, ...boltPl], (i) => (i === 0 ? flyBuild() : i === 1 ? crankBuild() : i === 2 ? P.needle(k, 0.07) : boltBuild()));
+  const [fly, crank] = rig;
+  k.parts.needle = rig[2];
+  k.parts.bolts = rig.slice(3);
+  for (const b of k.parts.bolts) b.userData.z0 = 0.4565;
   // junction box + status lamp (parts.lamp)
   k.box('paint', 0.14, 0.14, 0.1, 0.4, 0.3, 0.36, { ...IRON, r: 0.012 });
   P.cornerScrews(k, 0.14, 0.14, 0.4, 0.3, 0.41, 0.014, { r: 0.004 });

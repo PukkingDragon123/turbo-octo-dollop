@@ -30,6 +30,7 @@ export function hazeMaterial(field) {
       #include <fog_pars_vertex>
       attribute vec2 aCell;
       attribute vec2 aQ;           // x: -1 / 1 across the card, y: 0 at the fixture .. 1 at the bottom
+      // vQ: x lateral offset in metres, y as aQ.y
       uniform sampler2D uLightTex;
       varying vec3 vCol;
       varying vec2 vQ;
@@ -37,13 +38,15 @@ export function hazeMaterial(field) {
       void main(){
         vec2 uv = (mod(aCell, ${FIELD_SIZE.toFixed(1)}) + 0.5) / ${FIELD_SIZE.toFixed(1)};
         vCol = texture2D(uLightTex, uv).rgb * 2.0;
-        vQ = aQ;
+        // the card is a trapezoid: interpolate the lateral offset in metres (affine over the card) and
+        // normalise per fragment; a per-corner -1..1 attribute would crease along the triangle diagonal
+        float hw = mix(${HW_TOP.toFixed(2)}, ${HW_BOT.toFixed(2)}, aQ.y);
+        vQ = vec2(aQ.x * hw, aQ.y);
         // position holds the card's axis point at this vertex's height; turn the card towards the camera
         vec3 c = (modelMatrix * vec4(position, 1.0)).xyz;
         vec2 toCam = cameraPosition.xz - c.xz;
         float l = length(toCam);
         vec2 side = l > 1e-4 ? vec2(toCam.y, -toCam.x) / l : vec2(1.0, 0.0);
-        float hw = mix(${HW_TOP.toFixed(2)}, ${HW_BOT.toFixed(2)}, aQ.y);
         vec3 wp = c + vec3(side.x, 0.0, side.y) * (aQ.x * hw);
         vWP = wp;
         vec4 mvPosition = viewMatrix * vec4(wp, 1.0);
@@ -58,8 +61,8 @@ export function hazeMaterial(field) {
       varying vec2 vQ;
       varying vec3 vWP;
       void main(){
-        float x = clamp(abs(vQ.x), 0.0, 1.0);
         float y = clamp(vQ.y, 0.0, 1.0);
+        float x = clamp(abs(vQ.x) / mix(${HW_TOP.toFixed(2)}, ${HW_BOT.toFixed(2)}, y), 0.0, 1.0);
         float across = pow2(1.0 - x * x);
         float fall = pow(1.0 - y, 2.4) * smoothstep(0.0, 0.07, y);
         float nearFade = smoothstep(0.6, 2.2, length(cameraPosition - vWP));
