@@ -164,6 +164,10 @@ export class LightField {
 
 // outer-ring weights are stored as Uint16 normalized values of w / OUT_SCALE
 export const OUT_SCALE = 2.0;
+// light transmission per Level 0 wall type (W.NONE, FULL, DOOR, ARCH, HALF_A, HALF_B, LOW, WINDOW); must match
+// wallTransmission() in levels/yellow/layout.js (gridbake.js checks it). Used for the per-pixel inner ring.
+export const WALL_T = [1, 0, 0.42, 0.7, 0.55, 0.55, 0.85, 0.6];
+const WALL_T_GLSL = `const float BK_WT[8] = float[8](${WALL_T.map((v) => v.toFixed(3)).join(', ')});`;
 
 // One light field shared by every world (materials compiled against its uniforms stay valid)
 let _shared = null;
@@ -589,8 +593,10 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
       attribute vec2 aCell;
       attribute vec4 aTa; attribute vec4 aTb;
       attribute vec4 aOa; attribute vec4 aOb; attribute vec4 aOc;
-      flat varying vec2 vCell;
+      attribute vec2 aEdgeT;
+      flat varying vec2 vCell; flat varying vec2 vEdgeT;
       varying vec4 vTa; varying vec4 vTb;
+      varying vec3 vWNrm;
       uniform float uOutScale;` : `
       attribute float aRoom;
       attribute vec4 aLightCells; attribute vec4 aLightW;
@@ -606,7 +612,8 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
       varying vec3 vWPos;
       ${FETCH}`;
   const vsMain = grid === 1 ? `
-      vCell = aCell; vTa = aTa; vTb = aTb;
+      vCell = aCell; vTa = aTa; vTb = aTb; vEdgeT = aEdgeT;
+      vWNrm = mat3(modelMatrix) * objectNormal;
       vec3 bko = bkLight(aCell + vec2(-2.0, -1.0)) * aOa.x + bkLight(aCell + vec2(-2.0, 0.0)) * aOa.y + bkLight(aCell + vec2(-2.0, 1.0)) * aOa.z
                + bkLight(aCell + vec2(2.0, -1.0)) * aOa.w + bkLight(aCell + vec2(2.0, 0.0)) * aOb.x + bkLight(aCell + vec2(2.0, 1.0)) * aOb.y
                + bkLight(aCell + vec2(-1.0, -2.0)) * aOb.z + bkLight(aCell + vec2(0.0, -2.0)) * aOb.w + bkLight(aCell + vec2(1.0, -2.0)) * aOc.x
@@ -626,7 +633,8 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
     .replace('#include <fog_vertex>', `vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <fog_vertex>`);
 
   const fsPars = `
-      ${grid === 1 ? 'flat varying vec2 vCell; varying vec4 vTa; varying vec4 vTb;' : `
+      ${grid === 1 ? `flat varying vec2 vCell; flat varying vec2 vEdgeT; varying vec4 vTa; varying vec4 vTb; varying vec3 vWNrm;
+      ${WALL_T_GLSL}` : `
       flat varying float vRoom;
       uniform vec4 uRoomA[8]; uniform vec4 uRoomB[8]; uniform vec2 uRoomKey;`}
       varying vec4 vOutAO;
@@ -677,6 +685,30 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
       {
         float tr[9];
         tr[0] = vTa.x; tr[1] = vTa.y; tr[2] = vTa.z; tr[3] = vTa.w; tr[4] = 1.0; tr[5] = vTb.x; tr[6] = vTb.y; tr[7] = vTb.z; tr[8] = vTb.w;
+        {
+          // exact wall visibility of the 8 neighbour fixtures for points inside the origin cell: the rays cross
+          // the cell's own edges (axis neighbours) or two edges in the order the baker's DDA visits them
+          // (diagonals), so shadow lines from wall ends and door jambs stay sharp instead of being
+          // interpolated across large wall triangles
+          float C = uGrid.x;
+          vec2 f = vWPos.xz + normalize(vWNrm).xz * 0.05 - vCell * C;
+          if (f.x >= 0.0 && f.y >= 0.0 && f.x < C && f.y < C) {
+            float ed[12];
+            float pa = vEdgeT.x, pb = vEdgeT.y;
+            for (int q = 0; q < 6; q++) { ed[q] = BK_WT[int(mod(pa, 8.0) + 0.5)]; pa = floor(pa / 8.0); }
+            for (int q = 6; q < 12; q++) { ed[q] = BK_WT[int(mod(pb, 8.0) + 0.5)]; pb = floor(pb / 8.0); }
+            tr[1] = ed[0]; tr[7] = ed[1]; tr[3] = ed[2]; tr[5] = ed[3];
+            float txN = f.x / (f.x + 0.5 * C), txP = (C - f.x) / (1.5 * C - f.x);
+            float tzN = f.y / (f.y + 0.5 * C), tzP = (C - f.y) / (1.5 * C - f.y);
+            tr[0] = txN < tzN ? ed[2] * ed[4] : ed[0] * ed[5];
+            tr[2] = txP < tzN ? ed[3] * ed[6] : ed[0] * ed[7];
+            tr[6] = txN < tzP ? ed[2] * ed[8] : ed[1] * ed[9];
+            tr[8] = txP < tzP ? ed[3] * ed[10] : ed[1] * ed[11];
+            // neighbours without a fixture in the layout (bits 18..21) stay dark, as in the baked values
+            tr[0] *= mod(pa, 2.0); tr[1] *= mod(floor(pa / 2.0), 2.0); tr[2] *= mod(floor(pa / 4.0), 2.0); tr[3] *= floor(pa / 8.0);
+            tr[5] *= mod(pb, 2.0); tr[6] *= mod(floor(pb / 2.0), 2.0); tr[7] *= mod(floor(pb / 4.0), 2.0); tr[8] *= floor(pb / 8.0);
+          }
+        }
         for (int k = 0; k < 9; k++) {
           vec2 ij = vCell + vec2(float(k - (k / 3) * 3) - 1.0, float(k / 3) - 1.0);
           vec3 c = bkLight(ij);

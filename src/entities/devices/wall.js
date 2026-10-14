@@ -158,7 +158,7 @@ function brassGrad(c, w, h) {
 export function b_employee_of_month(o) {
   void o;
   const k = new DKit('employee_of_month', { ground: 'wall', wear: { chip: 0.08, rust: 0.05, grime: 0.35, dust: 0.5 } });
-  k.atlas(512, 256);
+  k.atlas(512, 512);
   const W = 0.42, H = 0.58, T = 0.028;
   const WAL = { tint: 0x5c3421, rough: 0.8 };
   k.box('wood', W - 0.012, H - 0.012, 0.004, 0, 0, 0.002, { ...WAL, r: 0.001 });
@@ -178,7 +178,7 @@ export function b_employee_of_month(o) {
     brassGrad(c, w, h);
     c.strokeStyle = 'rgba(60,40,8,0.75)'; c.lineWidth = 3; c.strokeRect(5, 5, w - 10, h - 10);
     drawLogo(c, 30, h / 2, h * 0.3, '#3a2606');
-    txt(c, 'EMPLOYEE OF THE MONTH', w / 2 + 12, h / 2 + 1, h * 0.4, { col: '#2e1e04', f: 'serif', maxW: w * 0.8 });
+    txt(c, 'EMPLOYEE OF THE MONTH', w / 2 + 18, h / 2 + 1, h * 0.4, { col: '#2e1e04', f: 'serif', maxW: w * 0.76 });
     rubOff(c, w, h, 0.3, 5);
   }, 'm');
   const hy = H / 2 - 0.085;
@@ -210,10 +210,10 @@ export function b_employee_of_month(o) {
 export function b_wall_clock(o) {
   void o;
   const k = new DKit('wall_clock', { ground: 'wall', wear: { chip: 0.04, rust: 0, grime: 0.3, dust: 0.55 } });
-  k.atlas(512, 512);
+  k.atlas(512, 1024);
   const R = 0.16, D = 0.045;
   const RIM = { tint: 0x1b1b1c, rough: 0.85 };
-  k.lathe('plastic', [[R - 0.004, 0], [R + 0.004, 0, 1], [R + 0.012, 0.007, 2], [R + 0.014, D - 0.014], [R + 0.011, D - 0.004, 2], [R + 0.003, D, 2], [R - 0.007, D - 0.001, 2], [R - 0.011, D - 0.006], [R - 0.012, D - 0.016], [R - 0.014, 0.011, 1], [R - 0.06, 0.009]], 0, 0, 0, { ...RIM, axis: 'z', seg: 56 });
+  k.lathe('plastic', [[R - 0.004, 0], [R + 0.004, 0, 1], [R + 0.012, 0.007, 2], [R + 0.014, D - 0.014], [R + 0.011, D - 0.004, 2], [R + 0.003, D, 2], [R - 0.007, D - 0.001, 2], [R - 0.011, D - 0.006], [R - 0.012, D - 0.016], [R - 0.014, 0.011, 1], [R - 0.06, 0.009]], 0, 0, 0, { ...RIM, axis: 'z', seg: 56, edge: 0.3 });
   const face = k.reg('clock_face', 500, 500, (c, w, h, rng) => {
     const cx = w / 2, cy = h / 2, r = w / 2;
     c.fillStyle = '#e6dfcb'; c.fillRect(0, 0, w, h);
@@ -277,7 +277,7 @@ function sphereGeoCap(r, h) {
 // ---------------------------------------------------------------------------
 export function b_poster(o) {
   const k = new DKit('poster', { ground: 'wall', wear: { chip: 0.1, rust: 0.02, grime: 0.3, dust: 0.45 } });
-  k.atlas(256, 128);
+  k.atlas(256, 512);
   const asp = o.aspect ?? 0.7;
   const W = o.width ?? 0.6, H = W / asp, T = 0.02, f = 0.022;
   const wood = o.frame === 'wood';
@@ -303,7 +303,7 @@ export function b_poster(o) {
 // ---------------------------------------------------------------------------
 export function b_mirror(o) {
   const k = new DKit('mirror', { ground: 'wall', wear: { chip: 0.06, rust: 0.12, grime: 0.35, dust: 0.4 } });
-  k.atlas(256, 128);
+  k.atlas(256, 512);
   const W = o.width ?? 0.6, H = o.height ?? 0.9, f = o.border ?? 0.035, T = 0.03;
   const wood = o.frame === 'wood';
   const slot = wood ? 'wood' : 'metal', fo = wood ? { tint: 0x5a3a22, rough: 0.85 } : { ...FIN.chrome, rough: 0.35 };
@@ -340,7 +340,7 @@ export function b_mirror(o) {
 // ---------------------------------------------------------------------------
 export function b_ceiling_vent(o) {
   const k = new DKit('ceiling_vent', { ground: 'ceiling', wear: { chip: 0.08, rust: 0.1, grime: 0.5, dust: 0.1 } });
-  k.atlas(256, 256);
+  k.atlas(256, 512);
   const S = o.size ?? 0.6;
   const m = { tint: 0xc9c6bc };
   k.box('#0b0b0c:p', S - 0.06, 0.12, S - 0.06, 0, 0.06, 0, { r: 0 });
@@ -384,7 +384,7 @@ export function b_ceiling_vent(o) {
 // ---------------------------------------------------------------------------
 export function b_wall_vent(o) {
   const k = new DKit('wall_vent', { ground: 'wall', wear: { chip: 0.3, rust: 0.35, grime: 0.6, dust: 0.5 } });
-  k.atlas(256, 256);
+  k.atlas(256, 512);
   const W = o.width ?? 0.5, H = o.height ?? 0.3, Dp = 0.05;
   const m = { tint: 0xa8a49a };
   k.box('#050505', W - 0.02, H - 0.02, 0.004, 0, 0, 0.004, { r: 0 });
@@ -422,7 +422,7 @@ export function b_wall_vent(o) {
 export function b_fire_alarm(o) {
   void o;
   const k = new DKit('fire_alarm', { ground: 'wall', wear: { chip: 0.22, rust: 0.08, grime: 0.45, dust: 0.5 } });
-  k.atlas(256, 256);
+  k.atlas(256, 512);
   const red = { tint: 0xb3221a };
   // pull station (origin = its back centre): back box + chamfered cover
   k.box('paint', 0.1, 0.135, 0.02, 0, 0, 0.01, { ...red, r: 0.006 });
@@ -472,7 +472,7 @@ export function b_fire_alarm(o) {
 // ---------------------------------------------------------------------------
 export function b_exit_sign(o) {
   const k = new DKit('exit_sign', { ground: 'wall', wear: { chip: 0.05, rust: 0, grime: 0.35, dust: 0.6 } });
-  const A = k.atlas(512, 256);
+  const A = k.atlas(512, 512);
   const W = 0.36, H = 0.2, D = 0.06;
   const col = o.color === 'green' ? ['#1aff6a', '#03200c'] : ['#ff2a1a', '#200402'];
   const hous = { tint: 0xdcd6c6, rough: 0.9 };
@@ -517,7 +517,7 @@ const HAZARDS = {
 };
 export function b_hazard_sign(o) {
   const k = new DKit('hazard_sign', { ground: 'wall', wear: { chip: 0.25, rust: 0.4, grime: 0.5, dust: 0.4 } });
-  const A = k.atlas(512, 512);
+  const A = k.atlas(512, 1024);
   const [head, hc, sym, lines] = HAZARDS[o.kind || 'dimensional'] || HAZARDS.dimensional;
   const text = o.text ? String(o.text).split('\n') : lines;
   const W = o.width ?? 0.4, H = W * 0.75;
@@ -533,7 +533,7 @@ export function b_hazard_sign(o) {
   });
   k.box('metal', W, H, 0.0022, 0, 0, 0.0011, { ...FIN.alu, r: 0.0009, div: 0.06, dent: 0.0007 });
   k.tube('metal', [[-W / 2, -H / 2, 0.0011], [W / 2, -H / 2, 0.0011], [W / 2, H / 2, 0.0011], [-W / 2, H / 2, 0.0011]], 0.0016, { ...FIN.alu, round: 0.004, closed: true, radial: 5 });
-  k.label(art, W - 0.006, H - 0.006, 0, 0, 0.0023);
+  k.label(art, W - 0.006, H - 0.006, 0, 0, 0.0028);
   for (const [sx, sy] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) P.screw(k, sx * (W / 2 - 0.015), sy * (H / 2 - 0.015), 0.0023, { r: 0.0045, kind: 'hex', rust: 0.9, streak: sy < 0 ? 0.05 : 0.035, streakCol: '110,48,16', streakA: 0.45 });
   k.collide(cbox(W, H, 0.006, 0, 0, 0.003));
   return k.done({ mass: 1, material: 'metal' });

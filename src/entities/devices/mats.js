@@ -293,7 +293,8 @@ export function classMat(cls) {
 
 // per-device atlas materials: opaque labels / swatches (alpha-tested) and alpha-blended decals
 export function atlasMats(tex, stex, name) {
-  const P = { name: name + '_atlas', map: tex, roughnessMap: stex, metalnessMap: stex, roughness: 1, metalness: 1, alphaTest: 0.4 };
+  // slight polygon offset: printed labels sit 0.1-0.5 mm over other surfaces and must win the depth test far away
+  const P = { name: name + '_atlas', map: tex, roughnessMap: stex, metalnessMap: stex, roughness: 1, metalness: 1, alphaTest: 0.4, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 };
   const atlas = applyDevFx(new THREE.MeshStandardMaterial(P), 'atlas', { emit: 1.6 });
   const decal = new THREE.MeshStandardMaterial({
     name: name + '_decal', map: tex, roughnessMap: stex, metalnessMap: stex, roughness: 1, metalness: 1,

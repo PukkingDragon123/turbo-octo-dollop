@@ -6,7 +6,7 @@
 // for wall faces.
 import * as THREE from 'three';
 import { CELL, CHUNK, HEIGHT, W, wallN, wallW, wallTransmission, cellInfo, getLayout, floorDiv } from '../levels/yellow/layout.js';
-import { OUT_SCALE } from '../../gfx/bakedlight.js';
+import { OUT_SCALE, WALL_T } from '../../gfx/bakedlight.js';
 
 const LY = HEIGHT - 0.04;   // fixture height
 const RADIUS = 9;
@@ -14,6 +14,8 @@ export const IN_OFF = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0,
 export const OUT_OFF = [[-2, -1], [-2, 0], [-2, 1], [2, -1], [2, 0], [2, 1], [-1, -2], [0, -2], [1, -2], [-1, 2], [0, 2], [1, 2]];
 const MARGIN = 4;
 const DIAG = [0, 2, 5, 7];
+// the shader's per-pixel inner ring decodes wall types with WALL_T: keep it in sync with the layout
+for (let t = 0; t < 8; t++) if (Math.abs(wallTransmission(t) - WALL_T[t]) > 1e-6) console.warn('[gridbake] WALL_T out of sync with wallTransmission for type', t);
 
 // solid at the start (u = 0) / end (u = CELL) of an edge, for floors (f) and ceilings (c)
 const SOLID_START_F = [0, 1, 1, 1, 1, 0, 1, 1];
@@ -165,6 +167,8 @@ export class GridBaker {
     const bx = this.I0 * CELL, bz = this.J0 * CELL;
     // per origin-cell cache: which of the 20 surrounding cells have a fixture
     const litIn = new Uint8Array(8), litOut = new Uint8Array(12), outX = new Float64Array(12), outZ = new Float64Array(12);
+    const ET = new Float32Array(n * 2);
+    let et0 = 0, et1 = 0;
     let lci = NaN, lcj = NaN;
     // direct-mapped cache of sample points (wall columns, coincident vertices share one DDA pass)
     const RC = 512;
@@ -181,7 +185,9 @@ export class GridBaker {
           litOut[k] = this.isLit(ci + OUT_OFF[k][0], cj + OUT_OFF[k][1]) ? 1 : 0;
           outX[k] = (ci + OUT_OFF[k][0] + 0.5) * CELL; outZ[k] = (cj + OUT_OFF[k][1] + 0.5) * CELL;
         }
+        [et0, et1] = this.edgeCodes(ci, cj);
       }
+      ET[v * 2] = et0; ET[v * 2 + 1] = et1;
       if (coarse) {
         const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
         const nk = ay >= ax && ay >= az ? (ny > 0 ? 0 : 1) : ax >= az ? (nx > 0 ? 2 : 3) : (nz > 0 ? 4 : 5);
@@ -239,8 +245,26 @@ export class GridBaker {
     geo.setAttribute('aOa', new THREE.BufferAttribute(Oa, 4, true));
     geo.setAttribute('aOb', new THREE.BufferAttribute(Ob, 4, true));
     geo.setAttribute('aOc', new THREE.BufferAttribute(Oc, 4, true));
+    geo.setAttribute('aEdgeT', new THREE.BufferAttribute(ET, 2));
     geo.attributes.aAO.needsUpdate = true;
     return geo;
+  }
+
+  // wall types of the 12 edges the 8 inner-ring rays of cell (ci, cj) can cross, packed 3 bits each into two
+  // floats for the shader: N, S, W, E edges of the cell, then the second edge of each diagonal path
+  // (x-first / z-first per diagonal (-1,-1), (1,-1), (-1,1), (1,1))
+  edgeCodes(ci, cj) {
+    const N = (i, j) => this.edgeN(i, j), Wt = (i, j) => this.edgeW(i, j);
+    const a = [N(ci, cj), N(ci, cj + 1), Wt(ci, cj), Wt(ci + 1, cj), N(ci - 1, cj), Wt(ci, cj - 1)];
+    const b = [N(ci + 1, cj), Wt(ci + 1, cj - 1), N(ci - 1, cj + 1), Wt(ci, cj + 1), N(ci + 1, cj + 1), Wt(ci + 1, cj + 1)];
+    // bits 18..21: which inner-ring neighbours have a fixture (IN_OFF order), like the baked transmissions
+    let x = 0, y = 0;
+    for (let q = 3; q >= 0; q--) {
+      x = x * 2 + (this.isLit(ci + IN_OFF[q][0], cj + IN_OFF[q][1]) ? 1 : 0);
+      y = y * 2 + (this.isLit(ci + IN_OFF[q + 4][0], cj + IN_OFF[q + 4][1]) ? 1 : 0);
+    }
+    for (let q = 5; q >= 0; q--) { x = x * 8 + (a[q] & 7); y = y * 8 + (b[q] & 7); }
+    return [x, y];
   }
 
   // inside-corner occlusion on a vertical face: perpendicular walls meeting this face within the origin cell

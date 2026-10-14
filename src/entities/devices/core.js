@@ -569,12 +569,30 @@ export function creaseNormals(g, angle = 0.7) {
 }
 // Extrusion of a THREE.Shape along +Z from z = 0 to z = depth (bevel stays inside the outline).
 // o: { bev, bevSeg, curveSeg, crease, center }
+// cap triangulation sanity check: a bevel that collapses a rounded corner (bevel >= corner radius) can make
+// earcut bridge across holes; the front+back caps then cover more than the shape's own area
+function capBroken(bg, shape, curveSeg) {
+  const gr = bg.groups[0];
+  if (!gr) return false;
+  const p = bg.attributes.position.array;
+  let a = 0;
+  for (let i = gr.start; i < gr.start + gr.count; i += 3) {
+    const ax = p[i * 3], ay = p[i * 3 + 1], bx = p[i * 3 + 3], by = p[i * 3 + 4], cx = p[i * 3 + 6], cy = p[i * 3 + 7];
+    a += Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2;
+  }
+  const ex = shape.extractPoints(curveSeg);
+  let want = Math.abs(THREE.ShapeUtils.area(ex.shape));
+  for (const h of ex.holes) want -= Math.abs(THREE.ShapeUtils.area(h));
+  return a / 2 > want * 1.002 + 1e-7;
+}
 export function extrudeGeo(shape, depth, o = NO) {
-  const bv = Math.min(o.bev ?? 0, depth * 0.45);
-  const bg = new THREE.ExtrudeGeometry(shape, {
+  let bv = Math.min(o.bev ?? 0, depth * 0.45);
+  const mk = () => new THREE.ExtrudeGeometry(shape, {
     depth: Math.max(1e-5, depth - bv * 2), bevelEnabled: bv > 0, bevelThickness: bv, bevelSize: bv, bevelOffset: -bv,
     bevelSegments: o.bevSeg ?? 2, curveSegments: o.curveSeg ?? 8, steps: 1,
   });
+  let bg = mk();
+  for (let t = 0; t < 3 && bv > 0 && capBroken(bg, shape, o.curveSeg ?? 8); t++) { bg.dispose(); bv = t < 2 ? bv * 0.6 : 0; bg = mk(); }
   bg.translate(0, 0, bv - (o.center ? depth / 2 : 0));
   const g = fromBuffer(bg, 1);
   bg.dispose();
@@ -999,6 +1017,7 @@ export class DKit {
     const im = new THREE.InstancedMesh(new THREE.BufferGeometry(), mat, places.length);
     this._place(im, 0, 0, 0, { to: o.to });
     im.name = name;
+    if (o.colors) places.forEach((_, i) => im.setColorAt(i, new THREE.Color(o.colors[i % o.colors.length])));
     im.updateMatrix();
     const inv = im.matrix.clone().invert();
     const proxies = places.map((pl, i) => {

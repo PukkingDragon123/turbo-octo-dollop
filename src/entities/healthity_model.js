@@ -107,7 +107,7 @@ function decalCanvas(w, h, draw) {
 }
 function shellMaps() {
   return cached('hl_shellMaps', () => {
-    const W = 1024, H = 512;
+    const W = 768, H = 384;
     const alb = new Uint8Array(W * H * 4), rgh = new Uint8Array(W * H * 4), nrm = new Uint8Array(W * H * 4);
     const hgt = new Float32Array(W * H);
     const text = decalCanvas(512, 128, (ctx, w, h) => {

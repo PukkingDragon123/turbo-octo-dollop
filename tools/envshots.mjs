@@ -273,6 +273,23 @@ const scenarios = {
     await ev(() => { __engine.scene.traverse((o) => { if (o.isMesh && o.material?.uniforms?.uHaze) o.visible = true; if (o.isMesh && o.material?.userData?.baked && /wallpaper/.test(o.material.name)) { const u = o.material.userData.bkUniforms?.uSpecMul; if (u) u.value = 0; } }); });
     await shot('ab_nospec', 2500);
   },
+  // A/B for per-vertex lighting terms: base, outer ring zeroed (env VIEW="x,z,yaw,pitch", NaN yaw = auto)
+  async ab2() {
+    await loadYellow();
+    const v = (process.env.VIEW || '12,12,NaN,0').split(',').map(Number);
+    await tp([v[0], 0, v[1]], 0, 0);
+    await page.waitForTimeout(5000);
+    if (Number.isNaN(v[2])) v[2] = await bestYaw([v[0], v[1]]);
+    await tp([v[0], 0, v[1]], v[2], v[3]);
+    await shot('ab2_base', 4000);
+    await ev(() => {
+      for (const rec of __game.world.level.chunks.values()) rec.group.traverse((o) => {
+        const g = o.geometry; if (!o.isMesh || !g?.attributes?.aOa) return;
+        for (const k of ['aOa', 'aOb', 'aOc']) { g.attributes[k].array.fill(0); g.attributes[k].needsUpdate = true; }
+      });
+    });
+    await shot('ab2_noouter', 3000);
+  },
   async one() {
     await loadYellow();
     const v = (process.env.VIEW || '12,12,0,0').split(',').map(Number);

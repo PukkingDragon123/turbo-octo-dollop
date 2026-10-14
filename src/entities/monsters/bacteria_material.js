@@ -161,7 +161,7 @@ const FRAG_COLOR = /* glsl */`
   bWetFlow = bN( vBP * vec3( 7.0, 1.6, 7.0 ) + vec3( 0.0, uTime * 0.22, 0.0 ) ) * 0.7 + bN( vBP * 31.0 + vec3( 0.0, uTime * 0.5, 0.0 ) ) * 0.3;
 `;
 const FRAG_ROUGH = /* glsl */`
-  roughnessFactor = bOrmG * ( 0.85 + 0.3 * bN( vBP * 9.0 ) );
+  roughnessFactor = bOrmG * ( 0.62 + 0.26 * bN( vBP * 9.0 ) );
   roughnessFactor = mix( roughnessFactor, 0.2, bHard * 0.8 );
   roughnessFactor = mix( roughnessFactor, 0.28, bInner );
   roughnessFactor -= smoothstep( 0.55, 0.85, bWetFlow ) * 0.12 * uWet;
@@ -230,14 +230,16 @@ export function makeBodyMaterial(U) {
     color: 0xffffff,
     roughness: 1,
     metalness: 0,
-    ior: 1.42,
+    ior: 1.6,
     specularIntensity: 1,
     clearcoat: 1,
     clearcoatRoughness: 0.05,
     iridescence: 0.42,
     iridescenceIOR: 1.33,
     iridescenceThicknessRange: [240, 720],
-    envMapIntensity: 1.25,
+    // the levels' reflection environments are deliberately dim; a wet black hide lives on its
+    // reflections, so it takes a stronger share of them than ordinary props
+    envMapIntensity: 3.2,
   });
   m.name = 'bacteria_tissue';
   m.onBeforeCompile = (sh) => {

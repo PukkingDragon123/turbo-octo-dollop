@@ -18,6 +18,8 @@ const _z = new THREE.Vector3(0, 0, 0);
 export function linkInstanced(im, proxies) { LINKS.set(im, { kind: 'inst', proxies }); }
 export function linkMasked(mesh, proxies, ranges) { LINKS.set(mesh, { kind: 'mask', proxies, ranges }); }
 export function linkFlash(mesh, rest) { LINKS.set(mesh, { kind: 'flash', rest }); }
+// run fn every frame for this object (e.g. advance a shader clock)
+export function linkTick(obj, fn) { LINKS.set(obj, { kind: 'fn', fn }); }
 
 function hook(obj, fn) {
   const base = Object.getPrototypeOf(obj).updateMatrixWorld;
@@ -87,6 +89,7 @@ export function bindLinks(tplRoot, map = null) {
     if (l.kind === 'inst') bindInst(c, P);
     else if (l.kind === 'mask') bindMasked(c, P, l.ranges);
     else if (l.kind === 'flash') bindFlash(c, l.rest);
+    else if (l.kind === 'fn') hook(c, l.fn);
   });
 }
 export const hasLinks = (o) => LINKS.has(o);
