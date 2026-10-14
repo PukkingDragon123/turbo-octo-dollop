@@ -29,7 +29,7 @@ GridBaker.prototype.bake = function (geo, o) {
     tr[0] *= pa % 2; tr[1] *= Math.floor(pa / 2) % 2; tr[2] *= Math.floor(pa / 4) % 2; tr[3] *= Math.floor(pa / 8);
     tr[5] *= pb % 2; tr[6] *= Math.floor(pb / 2) % 2; tr[7] *= Math.floor(pb / 4) % 2; tr[8] *= Math.floor(pb / 8);
     const baked = [Ta[v * 4], Ta[v * 4 + 1], Ta[v * 4 + 2], Ta[v * 4 + 3], null, Tb[v * 4], Tb[v * 4 + 1], Tb[v * 4 + 2], Tb[v * 4 + 3]];
-    for (const k of [0, 1, 2, 3, 5, 6, 7, 8]) {
+    for (const k of [1, 3, 5, 7]) { // axis neighbours (diagonals are penumbra-blended in the shader)
       if (Math.abs(baked[k] / 255 - tr[k]) > 0.6 / 255) { if (bad++ < 6) console.log('mismatch v', v, 'k', k, baked[k] / 255, tr[k], fx, fz); }
     }
   }

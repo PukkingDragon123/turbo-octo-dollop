@@ -641,7 +641,18 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
 
   const fsPars = `
       ${grid === 1 ? `flat varying vec2 vCell; flat varying vec2 vEdgeT; varying vec4 vTa; varying vec4 vTb; varying vec3 vWNrm;
-      ${WALL_T_GLSL}` : `
+      ${WALL_T_GLSL}
+      // transmission towards the diagonal neighbour (dx, dz) from f (position in the origin cell): the ray passes
+      // the shared cell corner on the 'x boundary first' (tx) or 'z boundary first' (tz) side; blend the two over
+      // the troffer's penumbra (light ~0.9 m across) instead of switching on a hard line
+      float bkDiag(vec2 f, float C, float dx, float dz, float tx, float tz){
+        vec2 r = vec2((dx + 0.5) * C, (dz + 0.5) * C) - f;
+        vec2 k = vec2(dx > 0.0 ? C : 0.0, dz > 0.0 ? C : 0.0) - f;
+        float b = max(length(r), 1e-3);
+        float d = (r.x * k.y - r.y * k.x) / b * dx * dz;
+        float w = 0.45 * length(k) / b + 0.02;
+        return mix(tz, tx, smoothstep(-w, w, d));
+      }` : `
       flat varying float vRoom;
       uniform vec4 uRoomA[8]; uniform vec4 uRoomB[8]; uniform vec2 uRoomKey;`}
       varying vec4 vOutAO;
@@ -694,10 +705,9 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
         float tr[9];
         tr[0] = vTa.x; tr[1] = vTa.y; tr[2] = vTa.z; tr[3] = vTa.w; tr[4] = 1.0; tr[5] = vTb.x; tr[6] = vTb.y; tr[7] = vTb.z; tr[8] = vTb.w;
         {
-          // exact wall visibility of the 8 neighbour fixtures for points inside the origin cell: the rays cross
-          // the cell's own edges (axis neighbours) or two edges in the order the baker's DDA visits them
-          // (diagonals), so shadow lines from wall ends and door jambs stay sharp instead of being
-          // interpolated across large wall triangles
+          // per-pixel wall visibility of the 8 neighbour fixtures for points inside the origin cell: the rays
+          // cross the cell's own edges (axis neighbours) or two edges in either order around the shared corner
+          // (diagonals, penumbra-blended), instead of transmissions interpolated across large triangles
           float C = uGrid.x;
           vec2 f = vWPos.xz + normalize(vWNrm).xz * 0.05 - vCell * C;
           if (f.x >= 0.0 && f.y >= 0.0 && f.x < C && f.y < C) {
@@ -706,12 +716,10 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
             for (int q = 0; q < 6; q++) { ed[q] = BK_WT[int(mod(pa, 8.0) + 0.5)]; pa = floor(pa / 8.0); }
             for (int q = 6; q < 12; q++) { ed[q] = BK_WT[int(mod(pb, 8.0) + 0.5)]; pb = floor(pb / 8.0); }
             tr[1] = ed[0]; tr[7] = ed[1]; tr[3] = ed[2]; tr[5] = ed[3];
-            float txN = f.x / (f.x + 0.5 * C), txP = (C - f.x) / (1.5 * C - f.x);
-            float tzN = f.y / (f.y + 0.5 * C), tzP = (C - f.y) / (1.5 * C - f.y);
-            tr[0] = txN < tzN ? ed[2] * ed[4] : ed[0] * ed[5];
-            tr[2] = txP < tzN ? ed[3] * ed[6] : ed[0] * ed[7];
-            tr[6] = txN < tzP ? ed[2] * ed[8] : ed[1] * ed[9];
-            tr[8] = txP < tzP ? ed[3] * ed[10] : ed[1] * ed[11];
+            tr[0] = bkDiag(f, C, -1.0, -1.0, ed[2] * ed[4], ed[0] * ed[5]);
+            tr[2] = bkDiag(f, C, 1.0, -1.0, ed[3] * ed[6], ed[0] * ed[7]);
+            tr[6] = bkDiag(f, C, -1.0, 1.0, ed[2] * ed[8], ed[1] * ed[9]);
+            tr[8] = bkDiag(f, C, 1.0, 1.0, ed[3] * ed[10], ed[1] * ed[11]);
             // neighbours without a fixture in the layout (bits 18..21) stay dark, as in the baked values
             tr[0] *= mod(pa, 2.0); tr[1] *= mod(floor(pa / 2.0), 2.0); tr[2] *= mod(floor(pa / 4.0), 2.0); tr[3] *= floor(pa / 8.0);
             tr[5] *= mod(pb, 2.0); tr[6] *= mod(floor(pb / 2.0), 2.0); tr[7] *= mod(floor(pb / 4.0), 2.0); tr[8] *= floor(pb / 8.0);

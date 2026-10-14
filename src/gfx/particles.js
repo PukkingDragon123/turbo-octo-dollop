@@ -132,19 +132,54 @@ class PointPool {
   }
 }
 
-// Instanced debris chunks (tile shards, splinters, glass) with simple floor bounce
+// Irregular faceted chunk (unit-ish size): a jittered dodecahedron so shards read as broken
+// material rather than little cubes. Shared corners move together (jitter keyed on position).
+function shardGeometry() {
+  const g = new THREE.DodecahedronGeometry(0.62, 0);
+  const pos = g.attributes.position;
+  const key = (x, y, z) => `${x.toFixed(3)},${y.toFixed(3)},${z.toFixed(3)}`;
+  const jit = new Map();
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < pos.count; i++) {
+    const k = key(pos.getX(i), pos.getY(i), pos.getZ(i));
+    if (!jit.has(k)) jit.set(k, [0.72 + rnd() * 0.5, 0.72 + rnd() * 0.5, 0.72 + rnd() * 0.5]);
+    const j = jit.get(k);
+    pos.setXYZ(i, pos.getX(i) * j[0], pos.getY(i) * j[1] * 0.8, pos.getZ(i) * j[2]);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+// Instanced debris chunks (tile shards, splinters, glass) with simple floor bounce.
+// Lighting: most levels light statics with baked vertex light and dynamics with probes, so the chunks
+// carry a per-instance irradiance (sampled from the level's light field) instead of going black.
 class DebrisPool {
   constructor(max) {
     this.max = max;
-    const geo = new THREE.BoxGeometry(1, 1, 1);
-    this.mat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0 });
+    const geo = shardGeometry();
+    this.lightAttr = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3);
+    this.lightAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aLight', this.lightAttr);
+    this.mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0 });
+    this.mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec3 aLight;\nvarying vec3 vDebrisLight;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDebrisLight = aLight;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vDebrisLight;')
+        .replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\nirradiance += vDebrisLight * PI;');
+    };
+    this.mat.customProgramCacheKey = () => 'debris_probe';
     this.mesh = new THREE.InstancedMesh(geo, this.mat, max);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = true;
     this.mesh.frustumCulled = false;
+    this.mesh.userData.noProbe = true;
     this.mesh.count = 0;
     this.items = [];
+    this.lightSampler = null; // (pos, outColor) => void, set by the world
     this._m = new THREE.Matrix4();
     this._q = new THREE.Quaternion();
     this._e = new THREE.Euler();
@@ -152,14 +187,19 @@ class DebrisPool {
     this.colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3);
     this.mesh.instanceColor = this.colorAttr;
   }
+  _sample(it) {
+    if (this.lightSampler) this.lightSampler(it.p, it.l);
+    else it.l.setRGB(0.3, 0.28, 0.25);
+  }
   add(p, v, size, color, life = 6, floorY = 0) {
     if (this.items.length >= this.max) this.items.shift();
     this.items.push({
       p: p.clone(), v: v.clone(), s: size.clone ? size.clone() : new THREE.Vector3(size, size * 0.3, size),
       r: new THREE.Vector3(Math.random() * 6, Math.random() * 6, Math.random() * 6),
       w: new THREE.Vector3((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14),
-      c: new THREE.Color(color), life, max: life, floorY, rest: false,
+      c: new THREE.Color(color), l: new THREE.Color(), life, max: life, floorY, rest: false,
     });
+    this._sample(this.items[this.items.length - 1]);
   }
   update(dt) {
     const items = this.items;
@@ -179,6 +219,7 @@ class DebrisPool {
           it.w.multiplyScalar(0.5);
           if (Math.abs(it.v.y) < 0.4) {
             it.rest = true;
+            this._sample(it);
             it.r.x = Math.round(it.r.x / Math.PI) * Math.PI;
             it.r.z = Math.round(it.r.z / Math.PI) * Math.PI;
           }
@@ -194,9 +235,11 @@ class DebrisPool {
       this._m.compose(it.p, this._q, this._s);
       this.mesh.setMatrixAt(i, this._m);
       this.colorAttr.setXYZ(i, it.c.r, it.c.g, it.c.b);
+      this.lightAttr.setXYZ(i, it.l.r, it.l.g, it.l.b);
     }
     this.mesh.instanceMatrix.needsUpdate = true;
     this.colorAttr.needsUpdate = true;
+    this.lightAttr.needsUpdate = true;
   }
 }
 

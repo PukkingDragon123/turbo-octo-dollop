@@ -28,6 +28,13 @@ export class World {
     this.devices = new Map();
     this.fx = new FX(engine.scene);
     this.fx.setPixelScale(window.innerHeight);
+    // debris chunks are lit like probe objects (sampled from the level's light field)
+    this.fx.debris.lightSampler = (pos, out) => {
+      if (this.level?.sampleLight) {
+        this.level.sampleLight(pos, out);
+        out.multiplyScalar(this.field?.uniforms.uLightScale.value ?? 1);
+      } else out.setRGB(0.3, 0.28, 0.25);
+    };
     this.noise = new NoiseSystem();
     this.field = sharedField();
     this.field.clear();
