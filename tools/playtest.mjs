@@ -142,8 +142,11 @@ const scenarios = {
       }
       return -1;
     };
-    await page.goto(base + '?auto=solo&level=yellow');
-    for (const type of ['yellow', 'poolrooms', 'grasslands', 'yellow']) {
+    // CHAIN_START=poolrooms|grasslands starts the run in a later dimension
+    const order = ['yellow', 'poolrooms', 'grasslands', 'yellow'];
+    const start = process.env.CHAIN_START || 'yellow';
+    await page.goto(base + '?auto=solo&level=' + start);
+    for (const type of order.slice(order.indexOf(start))) {
       const secs = await waitLevel(type);
       await ev(() => { __game.cutscene = null; __engine.post.params.uFade.value = 0; __engine.post.params.uGlitch.value = 0; });
       await sim(4);
