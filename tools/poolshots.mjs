@@ -21,6 +21,8 @@ page.on('console', (m) => {
   if (['error', 'warning'].includes(m.type()) && !/favicon|404|atlas overflow|parallel_shader|GPU stall|ReadPixels/.test(t)) logs.push(`[${m.type()}] ${t}`);
 });
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}\n${(e.stack || '').split('\n').slice(0, 6).join('\n')}`));
+page.on('response', (r) => { if (r.status() >= 400 && !/favicon/.test(r.url())) logs.push(`[http ${r.status()}] ${r.url()}`); });
+page.on('crash', () => console.log('[page crash]'));
 const ev = async (fn, arg) => { try { return await page.evaluate(fn, arg); } catch (e) { logs.push('[eval] ' + e.message.split('\n')[0]); return null; } };
 fs.mkdirSync('tools/shots', { recursive: true });
 const shot = async (name, wait = 2500) => {

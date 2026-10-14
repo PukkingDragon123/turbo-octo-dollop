@@ -113,6 +113,10 @@ export class GridBaker {
           : tN[k0 + kn] * tW[k0 + dj * Wd + kw];           // z first: N edge of (ci, cj|cj+1), then W edge in row cj+dj
         out[o + k] = tr < 0.01 ? 0 : tr;
       }
+      if (li >= 2 && lj >= 2 && li < Wd - 2 && lj < Wd - 2) {
+        for (let k = 0; k < 12; k++) out[o + 8 + k] = litOut[k] ? this._transLocal(sx, sz, ci, cj, OUT_OFF[k][0], OUT_OFF[k][1], k0) : 0;
+        return;
+      }
     } else {
       for (let k = 0; k < 8; k++) {
         out[o + k] = litIn[k] ? this.trans(sx, sz, (ci + IN_OFF[k][0] + 0.5) * CELL, (cj + IN_OFF[k][1] + 0.5) * CELL) : 0;
@@ -121,6 +125,26 @@ export class GridBaker {
     for (let k = 0; k < 12; k++) {
       out[o + 8 + k] = litOut[k] ? this.trans(sx, sz, (ci + OUT_OFF[k][0] + 0.5) * CELL, (cj + OUT_OFF[k][1] + 0.5) * CELL) : 0;
     }
+  }
+
+  // trans() for a sample inside its origin cell (ci, cj) towards the centre of (ci + di, cj + dj), every
+  // crossed edge inside the local arrays (k0 = local index of the origin cell): the same DDA arithmetic
+  // without the floors and per-step bounds checks
+  _transLocal(sx, sz, ci, cj, di, dj, k0) {
+    const dx = (ci + di + 0.5) * CELL - sx, dz = (cj + dj + 0.5) * CELL - sz;
+    const adx = Math.abs(dx), adz = Math.abs(dz);
+    const tDx = adx > 1e-9 ? CELL / adx : 1e9, tDz = adz > 1e-9 ? CELL / adz : 1e9;
+    let tMx = adx > 1e-9 ? (dx > 0 ? (ci + 1) * CELL - sx : sx - ci * CELL) / adx : 1e9;
+    let tMz = adz > 1e-9 ? (dz > 0 ? (cj + 1) * CELL - sz : sz - cj * CELL) / adz : 1e9;
+    const Wd = this.Wd, tN = this.tN, tW = this.tW;
+    const sI = dx > 0 ? 1 : -1, sJ = dz > 0 ? 1 : -1;
+    let tr = 1, i = 0, j = 0, k = k0;
+    for (let n = 0; n < 10 && (i !== di || j !== dj); n++) {
+      if (tMx < tMz) { tr *= tW[sI > 0 ? k + 1 : k]; i += sI; k += sI; tMx += tDx; }
+      else { tr *= tN[sJ > 0 ? k + Wd : k]; j += sJ; k += sJ * Wd; tMz += tDz; }
+      if (tr < 0.01) return 0;
+    }
+    return tr;
   }
 
   // Bake a geometry built by EnvGeo (needs position, normal, aCell, aAO).

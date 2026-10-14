@@ -318,7 +318,7 @@ def('keycard', (opts) => {
       return [(pl[0] + pl[2]) / 2, (pl[1] + pl[3]) / 2];
     },
   });
-  k.colBox([W, 0.0024, H]);
+  k.colBox([W, 0.0024, H], [0, 0.0008, 0]); // thick enough not to tunnel; bottom flush with the card
   return { kit: k, meta: { mass: 0.006, material: 'plastic', hold: { grip: [0.03, 0, 0.015], rot: [1.3, -0.1, 0.06], off: [0, 0.045, 0] }, restitution: 0.05, angularDamping: 0.9 } };
 }, (o) => `${Math.min(5, Math.max(1, o.level ?? 2))}`);
 

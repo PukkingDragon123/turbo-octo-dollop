@@ -261,7 +261,7 @@ def('screws', () => {
   for (const sx of [-1, 1]) k.box(t, H, D - 2 * t, card, { p: [sx * (W / 2 - t / 2), H / 2, 0], faces: { px: sx > 0 ? endR : inside, nx: sx > 0 ? inside : endR, py: inside, ny: inside, pz: inside, nz: inside } });
   // lid hinged at the back edge, flipped open ~115 degrees, with its tuck flap
   k.push({ p: [0, H, -D / 2], r: [-2.0, 0, 0] });
-  k.box(W, t, D, card, { p: [0, t / 2, D / 2], faces: { py: inside, ny: A.R(0, 0, 512, 330, 5), px: inside, nx: inside, pz: inside, nz: inside } });
+  k.box(W, t, D, card, { p: [0, t / 2, D / 2], faces: { py: inside, ny: A.R(0, 0, 512, 330, 0), px: inside, nx: inside, pz: inside, nz: inside } });
   k.push({ p: [0, 0, D], r: [-1.2, 0, 0] });
   k.box(W - 0.004, t, 0.016, card, { p: [0, 0, 0.008], uv: inside });
   k.pop();
@@ -419,20 +419,20 @@ def('pipe_short', () => {
 // socket set screw, five lightening holes, faced surfaces with turning marks, stamped markings, oily grime.
 def('gear', () => {
   const A = atlas('gear', 512, 512, (c) => {
-    rect(c, 0, 0, 400, 400, '#9a9ea2');
+    rect(c, 0, 0, 400, 400, '#c2c6ca'); // machined 4140: metallic albedo = F0 (~0.55 linear)
     for (let rr = 4; rr < 200; rr += 2.2) { c.strokeStyle = `rgba(${rr % 4.4 < 2.2 ? '255,255,255' : '40,42,44'},${0.07 + (rr % 7) * 0.012})`; c.lineWidth = 1.3; c.beginPath(); c.arc(200, 200, rr, 0, TAU); c.stroke(); }
     noise(c, 0, 0, 400, 400, 12, 4);
     c.save(); c.translate(200, 200);
     const s = 'R.O.O.M. • 16T M7 • 4140 • ';
     for (let i = 0; i < s.length; i++) { c.save(); c.rotate((i / s.length) * TAU); txt(c, s[i], 0, -150, { size: 15, color: 'rgba(30,30,32,0.75)', fam: MONO, weight: '900' }); c.restore(); }
     c.restore();
-    const g = rgrad(c, 200, 200, 60, 200, [[0, 'rgba(60,40,20,0)'], [1, 'rgba(60,40,20,0.4)']]);
+    const g = rgrad(c, 200, 200, 60, 200, [[0, 'rgba(60,40,20,0)'], [1, 'rgba(60,40,20,0.3)']]);
     c.fillStyle = g; c.fillRect(0, 0, 400, 400);
     // flank / bore steel (0,404,400,90)
-    rect(c, 0, 404, 400, 90, '#7c8084');
+    rect(c, 0, 404, 400, 90, '#a8acb0');
     for (let x = 0; x < 400; x += 3) rect(c, x, 404, 1, 90, 'rgba(255,255,255,0.08)');
     noise(c, 0, 404, 400, 90, 14, 6);
-  }, { plain: '#7c8084' });
+  }, { plain: '#a8acb0' });
   const p = mat({ name: 'gear_steel', map: A, rough: 0.34, metal: 0.92, det: 'turned', ns: 0.35 });
   const k = new Kit();
   const N = 16, Rp = 0.0515, Ra = 0.0565, Rf = 0.0455, Th = 0.012;

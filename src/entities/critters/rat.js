@@ -95,11 +95,11 @@ function ratGeometry() {
     // ---- ears (cupped, thin, pink inside)
     for (const s of [-1, 1]) {
       const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.3, s * 0.55, s * 0.3));
-      const ear = ellipsoidGeo(new V3(0, 0, 0), 0.0122, 0.0128, 0.0026, 8, 6, q);
-      ear.translate(s * 0.0165, 0.0655, -0.0705);
+      const ear = ellipsoidGeo(new V3(0, 0, 0), 0.0138, 0.0145, 0.0026, 8, 6, q);
+      ear.translate(s * 0.0172, 0.0672, -0.0705);
       G.add(ear, 0, (p, n) => {
         const inner = n.z < -0.1 ? 1 : 0;
-        const rim = sstep(0.009, 0.0125, Math.hypot(p.x - s * 0.0165, p.y - 0.0655));
+        const rim = sstep(0.0105, 0.014, Math.hypot(p.x - s * 0.0172, p.y - 0.0672));
         const c = inner ? PINK : PINK_D;
         return [c[0] * (1 - rim * 0.25), c[1] * (1 - rim * 0.3), c[2] * (1 - rim * 0.3), 1];
       }, bi(s < 0 ? 'earL' : 'earR'), SURF.skin);

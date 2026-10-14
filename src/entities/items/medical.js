@@ -325,8 +325,8 @@ def('painkillers', () => {
     const [x, z] = cell(i, j);
     const pop = popped(i, j);
     // thermoformed dome with a flat flange
-    k.lathe([[0.0082, 0], [0.0074, 0.0003, 0.0006], [0.0068, 0.0028, 0.0018], [0.0042, 0.0046, 0.002], [0, 0.0049]], pvc, { seg: 16, rseg: 0.0012, p: [x, t / 2 + 0.0002, z], s: [1, pop ? 0.22 : 1, 1], ymod: pop ? (phi, y) => y * (1 + 0.6 * Math.sin(phi * 3)) : undefined });
-    if (!pop) k.lathe([[0.0047, -0.0014], [0.0049, -0.0004, 0.0002], [0.0049, 0.0004, 0.0002], [0.0042, 0.0013, 0.001], [0, 0.0018]], card, { seg: 12, p: [x, t / 2 + 0.0021, z], planar: { rect: A.R(0, 446, 60, 60), R: 0.005 }, col: 0xffffff });
+    k.lathe([[0.0082, 0], [0.0074, 0.0003, 0.0006], [0.0068, 0.0028, 0.0018], [0.0042, 0.0046, 0.002], [0, 0.0049]], pvc, { seg: 14, rseg: 0.0012, p: [x, t / 2 + 0.0002, z], s: [1, pop ? 0.22 : 1, 1], ymod: pop ? (phi, y) => y * (1 + 0.6 * Math.sin(phi * 3)) : undefined });
+    if (!pop) k.lathe([[0.0047, -0.0014], [0.0049, -0.0004, 0.0002], [0.0049, 0.0004, 0.0002], [0.0042, 0.0013, 0.001], [0, 0.0018]], card, { seg: 10, p: [x, t / 2 + 0.0021, z], planar: { rect: A.R(0, 446, 60, 60), R: 0.005 }, col: 0xffffff });
     else {
       // torn foil flap hanging under the card
       k.add(sheetGeo(3, 3, (u, v) => [x - 0.004 + u * 0.008, -t / 2 - 0.00015 - v * v * 0.0006 - u * (1 - u) * 0.0004, z + 0.003 + v * 0.0042 - u * 0.001]), card, { uv: A.R(64, 446, 60, 60), col: 0xdcdcdc });
@@ -376,7 +376,7 @@ def('splint', () => {
     const hw = Wb / 2 + 0.0014, y0 = -0.0012, y1 = Tb + 0.0125, rr = 0.005;
     const loop = [];
     const corners = [[hw - rr, y1 - rr, 0], [-hw + rr, y1 - rr, PI / 2], [-hw + rr, y0 + rr, PI], [hw - rr, y0 + rr, PI * 1.5]];
-    for (const [cz, cy, a0] of corners) for (let i = 0; i <= 5; i++) { const a = a0 + (i / 5) * (PI / 2); loop.push(V3(xb + Math.sin(i * 1.3) * 0.0006, cy + Math.sin(a) * rr, cz + Math.cos(a) * rr)); }
+    for (const [cz, cy, a0] of corners) for (let i = 0; i <= 5; i++) { const a = a0 + (i / 5) * (PI / 2); loop.push(V3(xb + Math.sin(a * 1.5 + xb * 40) * 0.0005, cy + Math.sin(a) * rr, cz + Math.cos(a) * rr)); }
     loop.push(loop[0].clone());
     for (let i = loop.length - 1; i > 0; i--) { // densify the straight runs so the spline cannot bulge below the board
       const a = loop[i - 1], b = loop[i];
@@ -389,7 +389,7 @@ def('splint', () => {
     k.lathe([[0.0001, -0.003], [0.0045, -0.0018, 0.002], [0.0042, 0.0016, 0.002], [0, 0.0034]], cloth, { p: [xb, y1 + 0.0022, 0.004], s: [1.2, 0.8, 0.9], seg: 12, uv: A.R(0, 260, 256, 64), rmod: (phi, y, r) => r * (1 + 0.15 * Math.sin(phi * 3 + y * 900)) });
     for (const s2 of [-1, 1]) k.add(sheetGeo(2, 6, (u, v) => [xb + s2 * v * 0.03 + (u - 0.5) * 0.009, y1 + 0.003 - v * v * 0.009 + Math.sin(v * 5) * 0.001, 0.006 + s2 * v * 0.008 + (u - 0.5) * 0.002]), cloth, { uv: A.R(0, 260, 256, 64, 1) });
   }
-  k.colBox([L, Tb + 0.012, Wb + 0.003], [0, (Tb + 0.012) / 2, 0]);
+  k.colBox([L, Tb + 0.0139, Wb + 0.003], [0, (Tb + 0.012) / 2 - 0.00095, 0]); // rests on the two ties (1.9 mm under the board)
   return { kit: k, meta: { mass: 0.3, material: 'wood', hold: { grip: [-0.09, 0, 0], rot: [0.45, 1.35, 0.0], off: [0, 0.01, 0] } } };
 });
 // flat strip swept along a closed path (normal = outward from the path centroid)
@@ -402,8 +402,10 @@ function sweepFlat(path, width, thick) {
   for (let i = 0; i <= N; i++) {
     const t = i / N;
     path.getPointAt(t, P); path.getTangentAt(Math.min(0.999, t), T);
-    out.subVectors(P, c); out.addScaledVector(T, -out.dot(T)).normalize();
-    side.crossVectors(T, out).normalize();
+    // strip width stays along the board axis (X): the tie wraps in the YZ plane and never twists
+    side.set(1, 0, 0).addScaledVector(T, -T.x).normalize();
+    out.crossVectors(side, T).normalize();
+    if (out.dot(c.clone().sub(P).negate()) < 0) { out.negate(); side.negate(); }
     for (const [sw, so] of [[-1, 1], [1, 1], [1, -1], [-1, -1], [-1, 1]]) {
       pos.push(P.x + side.x * sw * width / 2 + out.x * so * thick, P.y + side.y * sw * width / 2 + out.y * so * thick, P.z + side.z * sw * width / 2 + out.z * so * thick);
       uv.push(t * 4, sw > 0 ? 1 : 0);
