@@ -13,7 +13,7 @@ import { SACK, FACE } from './sack.js';
 
 export const DIM = {
   pelvisY: 0.35, hipX: 0.108, thigh: 0.125, shin: 0.125, ankleH: 0.1,
-  chestY: 0.385, headY: 0.095, shX: 0.205, upper: 0.13, fore: 0.115, hand: 0.088,
+  chestY: 0.385, headY: 0.095, shX: 0.205, upper: 0.14, fore: 0.125, hand: 0.098,
 };
 // world (rig root) heights at rest
 export const Y = {
@@ -40,8 +40,8 @@ const BONE_DEFS = [
     ['sh' + s, 'chest', [S(s) * DIM.shX, 0, 0], 'ZXY'],
     ['el' + s, 'sh' + s, [0, -DIM.upper, 0], 'XYZ'],
     ['wr' + s, 'el' + s, [0, -DIM.fore, 0], 'XYZ'],
-    ['fi' + s, 'wr' + s, [0, -0.046, 0], 'XYZ'],
-    ['th' + s, 'wr' + s, [-S(s) * 0.012, -0.026, -0.024], 'XYZ'],
+    ['fi' + s, 'wr' + s, [0, -0.05, 0], 'XYZ'],
+    ['th' + s, 'wr' + s, [-S(s) * 0.013, -0.03, -0.028], 'XYZ'],
     ['hip' + s, 'pelvis', [S(s) * DIM.hipX, 0, 0], 'ZXY'],
     ['kn' + s, 'hip' + s, [0, -DIM.thigh, 0], 'XYZ'],
     ['an' + s, 'kn' + s, [0, -DIM.shin, 0], 'ZXY'],

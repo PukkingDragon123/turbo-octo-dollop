@@ -1,26 +1,17 @@
-// Shared material library. Materials are PBR (MeshStandard/Physical) built on the
-// procedural textures in textures.js. Use Mat.get(name) for shared instances (cheap,
-// batched by three.js) and Mat.make(name, overrides) when an object needs its own copy.
+// Shared material library. Materials are PBR (MeshStandard/Physical).
+//  - World surfaces (wallpaper, carpet, ceiling, concrete, office_carpet, linoleum, paint*, panel, tile*,
+//    lightpanel and the environment set: trim, enamel, cmu, slab, pipes, insulation...) are built on GPU-
+//    synthesized texture sets (src/gfx/texsynth.js + src/world/env/recipes.js): albedo + normal + ORM.
+//    UVs are in meters: repeat = 1 / meters of the texture tile.
+//  - Object materials (wood, metal, fabric, plastic...) still use the canvas textures in textures.js.
+// Use Mat.get(name) for shared instances (cheap, batched by three.js) and Mat.make(name, overrides) when an
+// object needs its own copy.
 import * as THREE from 'three';
 import * as Tex from './textures.js';
+import * as Synth from './texsynth.js';
+import '../world/env/recipes.js';
 
 const defs = {
-  // --- World surfaces (UVs in meters; repeat applied from texture size) ---
-  wallpaper: { tex: 'wallpaper', world: true, color: 0xffffff, roughness: 1, normalScale: 0.7 },
-  carpet: { tex: 'carpet', world: true, color: 0xffffff, roughness: 1, normalScale: 1.0 },
-  ceiling: { tex: 'ceiling', world: true, color: 0xffffff, roughness: 1, normalScale: 0.8 },
-  concrete: { tex: 'concrete', world: true, color: 0xb8b4ac, roughness: 1, normalScale: 1.0 },
-  concrete_dark: { tex: 'concrete', world: true, color: 0x6c6a66, roughness: 1, normalScale: 1.0 },
-  office_carpet: { tex: 'officeCarpet', world: true, color: 0xffffff, roughness: 1 },
-  linoleum: { tex: 'linoleum', world: true, color: 0xffffff, roughness: 1, envMapIntensity: 0.9 },
-  paint: { tex: 'paint', world: true, color: 0xd8cdb4, roughness: 1, normalScale: 0.5 },
-  paint_green: { tex: 'paint', world: true, color: 0x8fa58c, roughness: 1, normalScale: 0.5 },
-  paint_blue: { tex: 'paint', world: true, color: 0x8b9db0, roughness: 1, normalScale: 0.5 },
-  paint_white: { tex: 'paint', world: true, color: 0xe8e6e0, roughness: 1, normalScale: 0.5 },
-  panel: { tex: 'panel', world: true, color: 0xffffff, roughness: 1 },
-  tile: { tex: 'tile', world: true, color: 0xffffff, roughness: 1, envMapIntensity: 1.0 },
-  tile_green: { tex: 'tile', world: true, color: 0x9fc2a8, roughness: 1, envMapIntensity: 1.0 },
-
   // --- Object materials (UVs 0..1 per face; textures tile once unless overridden) ---
   wood: { tex: 'wood', color: 0xffffff, roughness: 1 },
   wood_light: { tex: 'wood', color: 0xe8c9a0, roughness: 1 },
@@ -65,12 +56,102 @@ const defs = {
   emissive_green: { color: 0x003300, emissive: 0x30ff60, emissiveIntensity: 2.5 },
   emissive_amber: { color: 0x332200, emissive: 0xffa020, emissiveIntensity: 2.5 },
   emissive_white: { color: 0xffffff, emissive: 0xfff4dc, emissiveIntensity: 2.5 },
-  lightpanel: { tex: 'lightpanel', color: 0xffffff, emissiveFromMap: true, emissive: 0xfff2d6, emissiveIntensity: 2.6, roughness: 0.4 },
+};
+
+// --- World surfaces: GPU-synthesized PBR sets (recipe r with overrides o). UVs in meters unless world:false.
+// ns = normal scale, rough = roughness multiplier, metal = metalness (uses the ORM blue channel when the
+// recipe carries metal), aniso = anisotropic filtering (floors get the maximum).
+const synth = {
+  wallpaper: { r: 'env_wallpaper', o: {}, ns: 1.0 },
+  wallpaper_manila: { r: 'env_wallpaper', o: { c0: 0xb48c58, c1: 0x94703f, c2: 0x553a1c, c3: 0xc6a06a, p0: [3, 6, 18, 0.95], p1: [1, 0.7, 1, 1], size: 512 }, ns: 1.0 },
+  carpet: { r: 'env_carpet', o: {}, ns: 1.0, aniso: 16 },
+  ceiling: { r: 'env_acoustic', o: {}, ns: 1.0 },
+  concrete: { r: 'concrete', o: { c0: 0xa8a49a, c1: 0x86827a, c2: 0x4e4a44, c3: 0xbdb7aa, p0: [70, 0.35, 0.6, 0.45], wear: 0.35, meters: 2, size: 1024 }, ns: 1.0 },
+  concrete_dark: { r: 'env_slab', o: {}, color: 0x9a968e, ns: 1.0, aniso: 16 },
+  slab: { r: 'env_slab', o: {}, ns: 1.0, aniso: 16 },
+  cmu: { r: 'env_cmu', o: {}, ns: 1.0 },
+  office_carpet: { r: 'env_carpet_tile', o: {}, ns: 1.0, aniso: 16 },
+  linoleum: { r: 'env_vct', o: {}, ns: 0.8, aniso: 16, envMapIntensity: 1.0 },
+  paint: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a }, color: 0xddd2b9, ns: 0.8 },
+  paint_green: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a }, color: 0x93a890, ns: 0.8 },
+  paint_blue: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a }, color: 0x8fa0b3, ns: 0.8 },
+  paint_white: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a }, color: 0xeae7e0, ns: 0.8 },
+  panel: { r: 'env_panel', o: {}, ns: 1.0 },
+  tile: { r: 'env_ceramic', o: {}, ns: 1.0, envMapIntensity: 1.0 },
+  tile_green: { r: 'env_ceramic', o: { c0: 0xa9c9b2, c3: 0xa2c4ac, c1: 0xa8aca2 }, ns: 1.0, envMapIntensity: 1.0 },
+  tile_pool: { r: 'env_ceramic', o: { c0: 0xe4f2f2, c3: 0xd8eeee, c1: 0x9fb2b2, p0: [4, 4, 0.045, 0.05], p1: [0.04, 0.15, 0.14, 0.4] }, ns: 1.0, envMapIntensity: 1.2 },
+  lightpanel: { r: 'env_prism', o: {}, world: false, texRepeat: 4, emissive: 0xfff1d8, emissiveIntensity: 2.6, emissiveFromMap: true, rough: 1, ns: 0.6 },
+  // environment detail set
+  trim: { r: 'wood', o: { c0: 0x4e3d2a, c1: 0x6f5a3e, c2: 0x2a2014, p0: [20, 1, 0.8, 0.5], wear: 0.4, meters: 1, size: 512 }, ns: 0.8 },
+  trim_paint: { r: 'env_enamel', o: { p0: [0.42, 0.6, 0, 0], wear: 0.35 }, color: 0xcbbf9e, ns: 0.6 },
+  enamel: { r: 'env_enamel', o: {}, color: 0xf2efe6, ns: 0.5 },
+  fixture: { r: 'env_enamel', o: {}, color: 0xffffff, ns: 0.4, vertexColors: true },
+  rubber_base: { r: 'vinyl', o: { c0: 0x2a2826, c1: 0x34312e, p0: [140, 0.55, 0, 0], wear: 0.3, meters: 0.3, size: 512 }, ns: 0.6 },
+  pipe_paint: { r: 'paint_metal', o: { c0: 0x5e6a58, wear: 0.45, meters: 0.6, size: 512 }, ns: 1.0, metal: 1 },
+  pipe_rust: { r: 'rust', o: { wear: 0.6, meters: 0.6, size: 512 }, ns: 1.0, metal: 1 },
+  galvanized: { r: 'metal', o: { c0: 0xb4b8b8, c1: 0x868a8a, c2: 0x5a5448, p0: [0.4, 0.42, 0.25, 0], wear: 0.5, meters: 0.5, size: 512 }, ns: 0.8, metal: 1 },
+  insulation: { r: 'env_insulation', o: {}, ns: 1.0, metal: 1 },
+  plenum: { r: 'concrete', o: { c0: 0x4a4740, c1: 0x34322c, c2: 0x1e1c18, c3: 0x5a564c, p0: [40, 0.2, 0.5, 0.6], wear: 0.6, meters: 2, size: 512 }, ns: 0.8 },
 };
 
 const shared = new Map();
+const repeatSets = new Map();
+
+// cloned texture views with their own repeat (the GPU upload is shared through texture.source)
+function repeatSet(r, o, rep, aniso) {
+  const key = `${r}|${JSON.stringify(o)}|${rep.toFixed(5)}|${aniso || 0}`;
+  let s = repeatSets.get(key);
+  if (!s) {
+    const t = Synth.pbr(r, o);
+    const cl = (tex) => {
+      const c = tex.clone();
+      c.repeat.set(rep, rep);
+      if (aniso) c.anisotropy = aniso;
+      c.needsUpdate = true;
+      return c;
+    };
+    s = { map: cl(t.map), normalMap: cl(t.normalMap), orm: cl(t.orm), meters: t.meters, metal: t.metal };
+    repeatSets.set(key, s);
+  }
+  return s;
+}
+
+function buildSynth(name, d, ov) {
+  const o = d.o || {};
+  const t0 = Synth.pbr(d.r, o);
+  const rep = d.world === false ? (ov.texRepeat ?? d.texRepeat ?? 1) : (1 / t0.meters) * (ov.texScale ?? 1);
+  const t = repeatSet(d.r, o, rep, d.aniso);
+  const P = {
+    map: t.map,
+    normalMap: t.normalMap,
+    roughnessMap: t.orm,
+    aoMap: t.orm,
+    aoMapIntensity: d.aoIntensity ?? 1,
+    color: ov.color ?? d.color ?? 0xffffff,
+    roughness: ov.roughness ?? d.rough ?? 1,
+    metalness: ov.metalness ?? d.metal ?? 0,
+  };
+  if (d.metal && t.metal) P.metalnessMap = t.orm;
+  const ns = ov.normalScale ?? d.ns ?? 1;
+  P.normalScale = new THREE.Vector2(ns, ns);
+  if ((ov.envMapIntensity ?? d.envMapIntensity) !== undefined) P.envMapIntensity = ov.envMapIntensity ?? d.envMapIntensity;
+  const em = ov.emissive ?? d.emissive;
+  if (em !== undefined) {
+    P.emissive = em;
+    P.emissiveIntensity = ov.emissiveIntensity ?? d.emissiveIntensity ?? 1;
+    if (d.emissiveFromMap) P.emissiveMap = t.map;
+  }
+  if (d.vertexColors || ov.vertexColors) P.vertexColors = true;
+  if (ov.transparent) { P.transparent = true; P.opacity = ov.opacity ?? 1; }
+  const m = new THREE.MeshStandardMaterial(P);
+  m.name = name;
+  m.userData.synth = { recipe: d.r, meters: t0.meters, repeat: rep };
+  if (ov.side ?? d.side) m.side = ov.side ?? d.side;
+  return m;
+}
 
 function build(name, overrides = {}) {
+  if (synth[name]) return buildSynth(name, synth[name], overrides);
   const d = { ...defs[name], ...overrides };
   if (!defs[name] && !overrides.color) throw new Error(`Unknown material '${name}'`);
   const params = {
@@ -121,11 +202,33 @@ export function make(name, overrides = {}) {
 }
 
 export function has(name) {
-  return !!defs[name];
+  return !!defs[name] || !!synth[name];
 }
 
 export function list() {
-  return Object.keys(defs);
+  return [...Object.keys(defs), ...Object.keys(synth)];
+}
+
+export function isWorld(name) {
+  return !!synth[name];
+}
+
+// Synthesize every world texture set up front (loading screen); yields between sets.
+export async function warmWorld(onProgress) {
+  const seen = new Set();
+  const jobs = [];
+  for (const [name, d] of Object.entries(synth)) {
+    const k = d.r + JSON.stringify(d.o || {});
+    if (seen.has(k)) continue;
+    seen.add(k);
+    jobs.push([name, d]);
+  }
+  for (let i = 0; i < jobs.length; i++) {
+    const [name, d] = jobs[i];
+    try { Synth.pbr(d.r, d.o || {}); } catch (e) { console.warn('[materials] synth failed', name, e); }
+    onProgress?.((i + 1) / jobs.length, name);
+    await new Promise((r) => setTimeout(r, 0));
+  }
 }
 
 // Plain color helper (rarely needed)

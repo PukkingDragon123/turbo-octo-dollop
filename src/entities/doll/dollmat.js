@@ -37,7 +37,7 @@ function sheenTint(m, k = 1.0) {
   m.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader.replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>
       #ifdef USE_SHEEN
-        material.sheenColor *= clamp(diffuseColor.rgb * ${k.toFixed(2)} + 0.06, 0.0, 1.0);
+        material.sheenColor *= clamp(diffuseColor.rgb * ${k.toFixed(2)} + 0.015, 0.0, 1.0);
       #endif`);
   };
   m.customProgramCacheKey = () => 'doll_sheen_' + k.toFixed(2);
@@ -53,10 +53,10 @@ export const DM = {
       const m = new THREE.MeshPhysicalMaterial({
         name: 'doll_suit_' + id, color: st.color, vertexColors: true,
         map: st.print ? synth(st.print).map : pvc.map,
-        normalMap: nrm.normalMap, normalScale: new THREE.Vector2(0.85, 0.85),
+        normalMap: nrm.normalMap, normalScale: new THREE.Vector2(1.45, 1.45),
         roughnessMap: pvc.orm, roughness: (st.rough ?? 1.0),
         metalness: st.metal ?? 0, metalnessMap: null,
-        clearcoat: st.cc ?? 0.32, clearcoatRoughness: 0.3,
+        clearcoat: st.cc ?? 0.22, clearcoatRoughness: 0.32,
         sheen: st.tyvek || st.fleeceRim ? 0.6 : 0.0, sheenRoughness: 0.7, sheenColor: new THREE.Color(0xffffff).multiplyScalar(0.35),
         envMapIntensity: 1.0,
       });
@@ -76,7 +76,7 @@ export const DM = {
   felt: () => cached('dm_felt', () => {
     const t = synth('doll_felt');
     return sheenTint(new THREE.MeshPhysicalMaterial({
-      name: 'doll_felt', color: 0xffffff, vertexColors: true, map: t.map, normalMap: t.normalMap, normalScale: new THREE.Vector2(1, 1),
+      name: 'doll_felt', color: 0xffffff, vertexColors: true, map: t.map, normalMap: t.normalMap, normalScale: new THREE.Vector2(2.2, 2.2),
       roughness: 1, sheen: 1, sheenRoughness: 0.42, sheenColor: new THREE.Color(1, 1, 1),
     }), 1.4);
   }),
@@ -95,8 +95,15 @@ export const DM = {
     const t = synth('doll_tape');
     return new THREE.MeshPhysicalMaterial({
       name: 'doll_tape', color: 0xffffff, vertexColors: true, map: t.map, normalMap: t.normalMap, normalScale: new THREE.Vector2(0.9, 0.9),
-      roughnessMap: t.orm, roughness: 1.05, sheen: 0.25, sheenRoughness: 0.6, sheenColor: new THREE.Color(0xffffff).multiplyScalar(0.4),
+      roughnessMap: t.orm, roughness: 1.0, metalness: 0.15, sheen: 0.25, sheenRoughness: 0.6, sheenColor: new THREE.Color(0xffffff).multiplyScalar(0.4),
     });
+  }),
+  canvas: () => cached('dm_canvas', () => {
+    const t = synth('doll_tape', {}, 1 / 0.035);
+    return sheenTint(new THREE.MeshPhysicalMaterial({
+      name: 'doll_canvas', color: 0xffffff, vertexColors: true, map: t.map, normalMap: t.normalMap, normalScale: new THREE.Vector2(1.3, 1.3),
+      roughness: 0.9, sheen: 0.6, sheenRoughness: 0.55, sheenColor: new THREE.Color(1, 1, 1),
+    }), 1.1);
   }),
   plastic: () => cached('dm_plastic', () => {
     const t = synth('doll_rubber');

@@ -21,7 +21,7 @@ export const HEAD_CHIN = SACK.cy - SACK.bb;     // 0.033
 // --- face layout (head-bone space), proportions measured from the PEAK reference
 export const FACE = {
   eyeX: 0.121, eyeY: 0.221, eyeR: 0.0205,
-  browX: 0.118, browY: 0.288, browW: 0.05,
+  browX: 0.114, browY: 0.281, browW: 0.054,
   noseY: 0.186, noseR: 0.056,
   mouthY: 0.093, mouthW: 0.052,
   blushX: 0.142, blushY: 0.152,
@@ -38,7 +38,7 @@ export function headF3(X, Y, Z, S = SACK) {
 // distance from the centre to the surface along a unit direction (bisection; F is monotonic)
 export function headRay(dx, dy, dz, S = SACK) {
   let lo = 0, hi = 0.42;
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 20; i++) {
     const m = (lo + hi) * 0.5;
     if (headF3(dx * m, dy * m, dz * m, S) < 1) lo = m; else hi = m;
   }

@@ -254,6 +254,42 @@ const scenarios = {
     await ev(() => { __game.local.flashOn = true; const i = __game.local.inv; });
     await shot('bac_chase2', 2500);
   },
+  async stilllife() {
+    // Still Lifes in real level lighting: each variant spawned in a row in front of the player.
+    // env SL=watcher,tall (subset)  SLD=3 (distance)  FLASH=1 (flashlight on)
+    await page.goto(base + '?auto=solo&level=yellow');
+    await waitLoaded();
+    await page.waitForTimeout(3000);
+    await ev(() => { __game.cutscene = null; __engine.post.params.uFade.value = 0; __engine.post.params.uGlitch.value = 0; });
+    const vars = (process.env.SL || 'watcher,crawler,twin,mass,tall').split(',');
+    const info = await ev(([vars, dist, flash]) => {
+      const g = __game, l = g.local, ph = g.world.physics;
+      let best = 0, by = 0;
+      for (let k = 0; k < 16; k++) {
+        const yaw = k * Math.PI / 8;
+        const d = new l.pos.constructor(-Math.sin(yaw), 0, -Math.cos(yaw));
+        const hit = ph.raycast(l.pos.clone().setY(1.2), d, 40, undefined, null, (c) => c !== l.collider);
+        const dist2 = hit ? hit.dist : 40;
+        if (dist2 > best) { best = dist2; by = yaw; }
+      }
+      l.yaw = by; l.pitch = -0.08;
+      const mm = g.world.monsters;
+      const fwd = new l.pos.constructor(-Math.sin(by), 0, -Math.cos(by));
+      const side = new l.pos.constructor(Math.cos(by), 0, -Math.sin(by));
+      const out = [];
+      vars.forEach((v, i) => {
+        const p = l.pos.clone().addScaledVector(fwd, Math.min(best - 1.2, dist + (v === 'tall' ? 1 : 0))).addScaledVector(side, (i - (vars.length - 1) / 2) * 1.25);
+        const a = mm.debugSpawn('still', p, v);
+        a.update = function (dt) { this.look = l.pos.clone().setY(1.0); this.yaw = Math.atan2(-(l.pos.x - this.pos.x), -(l.pos.z - this.pos.z)); this.frozen = false; this.integrate(dt); };
+        out.push(a.id);
+      });
+      if (flash) { l.flashOn = true; }
+      return { best, yaw: by, ids: out };
+    }, [vars, +(process.env.SLD || 3), !!process.env.FLASH]);
+    console.log('view', JSON.stringify(info));
+    await shot('sl_' + (process.env.SLN || 'row'), 7000);
+    console.log('stats', await ev(() => JSON.stringify(window.__slStats || null)));
+  },
   async days() {
     await page.goto(base + '?auto=solo&level=yellow&daylen=60');
     await waitLoaded();

@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { RNG, hashString } from '../../core/rng.js';
 import { matFor, matsReady, cloneMat } from './mats.js';
-import { palUV, rUV, atlasReady } from './atlas.js';
+import { palUV, rUV, atlasReady, regionKind } from './atlas.js';
 
 export const PI = Math.PI, TAU = PI * 2, HP = PI / 2;
 export const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -17,6 +17,12 @@ export const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); r
 export const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 export const toV = (p) => (p.isVector3 ? p.clone() : new THREE.Vector3(p[0], p[1], p[2]));
 const UP = new THREE.Vector3(0, 1, 0);
+// quaternion rotating +Y onto direction d (optionally rolled about d)
+export function qUp(d, roll = 0) {
+  const q = new THREE.Quaternion().setFromUnitVectors(UP, toV(d).normalize());
+  if (roll) q.multiply(new THREE.Quaternion().setFromAxisAngle(UP, roll));
+  return q;
+}
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
 
 // ---------------------------------------------------------------------------
@@ -40,6 +46,9 @@ export function fbm3(x, y, z, s = 0, oct = 3) {
   for (let i = 0; i < oct; i++) { t += a * noise3(x * f, y * f, z * f, s + i * 17); n += a; a *= 0.5; f *= 2.03; }
   return t / n;
 }
+
+// numeric spatial key (0.25 mm grid), exact in a double for |coords| < 16 m
+export const posKey = (x, y, z) => ((Math.round(x * 4000) + 65536) * 131072 + (Math.round(y * 4000) + 65536)) * 131072 + (Math.round(z * 4000) + 65536);
 
 // ---------------------------------------------------------------------------
 // Geo: growable indexed mesh data (position, normal, uv in meters, edge factor)
@@ -89,6 +98,21 @@ export class Geo {
     return this;
   }
   setEdge(v) { for (let i = 0; i < this.e.length; i++) this.e[i] = v; return this; }
+  // scale the two axes orthogonal to `axis` by lerp(s0, s1, t), t along axis from a0 to a1
+  taper(axis, a0, a1, s0, s1) {
+    const o1 = (axis + 1) % 3, o2 = (axis + 2) % 3;
+    for (let i = 0; i < this.count; i++) {
+      const t = clamp((this.p[i * 3 + axis] - a0) / (a1 - a0), 0, 1), k = lerp(s0, s1, t);
+      this.p[i * 3 + o1] *= k; this.p[i * 3 + o2] *= k;
+    }
+    return this;
+  }
+  // bend: offset coordinate `axis` by k * (coordinate along `along`)^2
+  bend(axis, along, k) {
+    for (let i = 0; i < this.count; i++) { const a = this.p[i * 3 + along]; this.p[i * 3 + axis] += k * a * a; }
+    return this.computeNormals(false);
+  }
+  translate(x, y, z) { for (let i = 0; i < this.p.length; i += 3) { this.p[i] += x; this.p[i + 1] += y; this.p[i + 2] += z; } return this; }
   // per-vertex position deform fn(p:Vector3, n:Vector3, i) -> mutates p
   deform(fn, renormal = true) {
     const p = V(), n = V();
@@ -112,18 +136,18 @@ export class Geo {
       for (const k of [a, b, c]) { acc[k] += nx; acc[k + 1] += ny; acc[k + 2] += nz; }
     }
     if (weld) {
-      const map = new Map();
+      const first = new Map(), next = new Int32Array(n).fill(-1);
       for (let i = 0; i < n; i++) {
-        const k = `${Math.round(P[i * 3] * 4000)},${Math.round(P[i * 3 + 1] * 4000)},${Math.round(P[i * 3 + 2] * 4000)}`;
-        let l = map.get(k);
-        if (!l) map.set(k, (l = []));
-        l.push(i);
+        const k = posKey(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]);
+        const f = first.get(k);
+        if (f === undefined) first.set(k, i);
+        else { next[i] = next[f]; next[f] = i; }
       }
-      for (const l of map.values()) {
-        if (l.length < 2) continue;
+      for (const f of first.values()) {
+        if (next[f] < 0) continue;
         let x = 0, y = 0, z = 0;
-        for (const i of l) { x += acc[i * 3]; y += acc[i * 3 + 1]; z += acc[i * 3 + 2]; }
-        for (const i of l) { acc[i * 3] = x; acc[i * 3 + 1] = y; acc[i * 3 + 2] = z; }
+        for (let i = f; i >= 0; i = next[i]) { x += acc[i * 3]; y += acc[i * 3 + 1]; z += acc[i * 3 + 2]; }
+        for (let i = f; i >= 0; i = next[i]) { acc[i * 3] = x; acc[i * 3 + 1] = y; acc[i * 3 + 2] = z; }
       }
     }
     for (let i = 0; i < n; i++) {
@@ -170,7 +194,8 @@ function axisEntries(H, r, s, wear) {
   const out = [];
   const inner = Math.max(0, H - r);
   if (r > 1e-5) for (let k = s; k >= 1; k--) out.push({ c: -inner, t: -Math.tan((PI / 4) * (k / s)), e: k / s });
-  const ws = wear > 0 && inner - wear > inner * 0.25 ? wear : 0;
+  // wear-falloff ring only on faces long enough for it to read (keeps tiny parts light)
+  const ws = wear > 0 && H > 0.025 && inner - wear > inner * 0.25 ? wear : 0;
   out.push({ c: -inner, t: 0, e: r > 1e-5 ? (ws ? 0.42 : 0) : (ws ? 0.75 : 0) });
   if (ws) { out.push({ c: -inner + ws, t: 0, e: 0 }); out.push({ c: inner - ws, t: 0, e: 0 }); }
   out.push({ c: inner, t: 0, e: r > 1e-5 ? (ws ? 0.42 : 0) : (ws ? 0.75 : 0) });
@@ -183,7 +208,7 @@ function axisEntries(H, r, s, wear) {
 export function boxGeo(w, h, d, o = {}) {
   const half = [w / 2, h / 2, d / 2];
   const r = Math.min(o.r ?? 0.002, half[0] - 1e-4, half[1] - 1e-4, half[2] - 1e-4);
-  const s = o.seg ?? (r > 0.006 ? 2 : 1);
+  const s = r < 0.005 ? 1 : (o.seg ?? (r > 0.006 ? 2 : 1)); // a 1-step smooth-shaded bevel suffices below 5 mm
   const wear = o.wear ?? Math.min(0.012, Math.min(w, h, d) * 0.3);
   const grain = o.grain !== undefined ? AX.indexOf(o.grain) : -1;
   const skip = o.skip || null;
@@ -218,62 +243,58 @@ export function boxGeo(w, h, d, o = {}) {
   return g;
 }
 
-// Lathe around Y. pts: [[r, y, flags?], ...] bottom -> top for an outward-facing surface.
-// flags: 1 = hard crease, 2 = edge (wear), 4 = planar UVs for this ring (caps)
+// Lathe around Y. pts: [[r, y, flags?, edge?], ...] bottom -> top for an outward-facing surface.
+// flags: 1 = hard crease, 2 = edge (wear). UVs: near-horizontal profile segments (discs, caps) get
+// planar (x,z) UVs, the rest cylindrical (arc * local radius, profile length); o.uv = 'cyl' forces
+// cylindrical everywhere. o.swap swaps U/V (wood grain along the profile).
 export function latheGeo(pts, segs = 24, o = {}) {
   const phi0 = o.phi0 ?? 0, phiLen = o.phiLen ?? TAU;
+  const n = pts.length;
+  const segMode = [];
+  for (let j = 0; j < n - 1; j++) {
+    const dr = pts[j + 1][0] - pts[j][0], dy = pts[j + 1][1] - pts[j][1];
+    segMode.push(o.uv === 'cyl' ? false : Math.abs(dy) < Math.abs(dr) * 0.35);
+  }
   const prof = [];
   let s = 0;
   const segN = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [dy / l, -dx / l, l]; };
-  for (let j = 0; j < pts.length; j++) {
+  const rmax = Math.max(...pts.map((p) => p[0]), 1e-4);
+  for (let j = 0; j < n; j++) {
     const p = pts[j], f = p[2] || 0;
-    const nin = j > 0 ? segN(pts[j - 1], p) : null, nout = j < pts.length - 1 ? segN(p, pts[j + 1]) : null;
+    const nin = j > 0 ? segN(pts[j - 1], p) : null, nout = j < n - 1 ? segN(p, pts[j + 1]) : null;
     if (nin) s += nin[2];
     const e = f & 2 ? 1 : (p[3] ?? 0);
+    const mIn = j > 0 ? segMode[j - 1] : segMode[0], mOut = j < n - 1 ? segMode[j] : segMode[n - 2];
+    const rl = Math.max(p[0], rmax * 0.25);
     if (f & 1 && nin && nout) {
-      prof.push({ r: p[0], y: p[1], nr: nin[0], ny: nin[1], s, dup: false, e, pl: !!(f & 4) });
-      prof.push({ r: p[0], y: p[1], nr: nout[0], ny: nout[1], s, dup: true, e, pl: !!(f & 4) });
+      prof.push({ r: p[0], y: p[1], nr: nin[0], ny: nin[1], s, dup: false, e, pl: mIn, rl });
+      prof.push({ r: p[0], y: p[1], nr: nout[0], ny: nout[1], s, dup: true, e, pl: mOut, rl });
     } else {
       const a = nin || nout, b = nout || nin;
       const nr = a[0] + b[0], ny = a[1] + b[1], l = Math.hypot(nr, ny) || 1;
-      prof.push({ r: p[0], y: p[1], nr: nr / l, ny: ny / l, s, dup: false, e, pl: !!(f & 4) });
+      prof.push({ r: p[0], y: p[1], nr: nr / l, ny: ny / l, s, dup: false, e, pl: mIn, rl });
+      if (mIn !== mOut) prof.push({ r: p[0], y: p[1], nr: nr / l, ny: ny / l, s, dup: true, e, pl: mOut, rl });
     }
   }
-  const rmax = Math.max(...pts.map((p) => p[0]), 1e-4);
   const g = new Geo();
-  const cols = prof.length, ring = segs + 1;
+  const cols = prof.length;
   for (let i = 0; i <= segs; i++) {
     const phi = phi0 + (i / segs) * phiLen, sn = Math.sin(phi), cs = Math.cos(phi);
     for (const q of prof) {
       const x = q.r * sn, z = q.r * cs;
       if (q.pl) g.v(x, q.y, z, q.nr * sn, q.ny, q.nr * cs, x, z, q.e);
-      else g.v(x, q.y, z, q.nr * sn, q.ny, q.nr * cs, phi * rmax, q.s, q.e);
+      else g.v(x, q.y, z, q.nr * sn, q.ny, q.nr * cs, phi * q.rl, q.s, q.e);
     }
   }
   for (let i = 0; i < segs; i++) {
     for (let j = 0; j < cols - 1; j++) {
       if (prof[j + 1].dup) continue;
-      if (prof[j].pl !== prof[j + 1].pl) continue; // uv-mode switch: handled by a seam copy below
+      if (prof[j].r < 1e-6 && prof[j + 1].r < 1e-6) continue;
       const a = i * cols + j, b = (i + 1) * cols + j;
       g.quad(a, b, b + 1, a + 1);
     }
   }
-  // seam rows where uv mode switches: duplicate the boundary ring with the neighbour's uv mode
-  for (let j = 0; j < cols - 1; j++) {
-    if (prof[j + 1].dup || prof[j].pl === prof[j + 1].pl) continue;
-    const q = prof[j], pl = prof[j + 1].pl;
-    const start = g.count;
-    for (let i = 0; i <= segs; i++) {
-      const phi = phi0 + (i / segs) * phiLen, sn = Math.sin(phi), cs = Math.cos(phi);
-      const x = q.r * sn, z = q.r * cs;
-      if (pl) g.v(x, q.y, z, q.nr * sn, q.ny, q.nr * cs, x, z, q.e);
-      else g.v(x, q.y, z, q.nr * sn, q.ny, q.nr * cs, phi * rmax, q.s, q.e);
-    }
-    for (let i = 0; i < segs; i++) {
-      const a = start + i, b = start + i + 1, c = (i + 1) * cols + j + 1, d = i * cols + j + 1;
-      g.quad(a, b, c, d);
-    }
-  }
+  if (o.swap) g.uvMap(1, 1, true);
   g.len = s;
   return g;
 }
@@ -283,21 +304,20 @@ export function cylGeo(r, h, o = {}) {
   const rt = o.rt ?? r, rb = o.rb ?? r, bv = Math.min(o.bevel ?? 0, rt * 0.45, rb * 0.45, h * 0.45);
   const y0 = -h / 2, y1 = h / 2;
   const pts = [];
-  const caps = o.caps ?? true;
-  if (caps && !o.open) pts.push([0, y0, 4]);
+  const caps = (o.caps ?? true) && !o.open;
+  if (caps) pts.push([0, y0, 0]);
   if (bv > 0) {
-    if (caps && !o.open) pts.push([rb - bv, y0, 4 | 2]);
+    if (caps) pts.push([rb - bv, y0, 2]);
     for (let k = 1; k < 3; k++) { const a = (k / 3) * HP; pts.push([rb - bv + Math.sin(a) * bv, y0 + bv - Math.cos(a) * bv, 2]); }
     pts.push([rb, y0 + bv, 0, 0.5]);
     pts.push([rt, y1 - bv, 0, 0.5]);
     for (let k = 1; k < 3; k++) { const a = (k / 3) * HP; pts.push([rt - bv + Math.cos(a) * bv, y1 - bv + Math.sin(a) * bv, 2]); }
-    if (caps && !o.open) pts.push([rt - bv, y1, 4 | 2]);
+    if (caps) pts.push([rt - bv, y1, 2]);
   } else {
-    pts.push([rb, y0, caps && !o.open ? 1 | 2 : 2]);
-    pts.push([rt, y1, caps && !o.open ? 1 | 2 : 2]);
+    pts.push([rb, y0, caps ? 1 | 2 : 2]);
+    pts.push([rt, y1, caps ? 1 | 2 : 2]);
   }
-  if (caps && !o.open) pts.push([0, y1, 4]);
-  // planar rings must be marked on both sides of the cap
+  if (caps) pts.push([0, y1, 0]);
   return latheGeo(pts, o.seg ?? 16, o);
 }
 
@@ -393,12 +413,14 @@ export function tubeGeo(pts, radius, o = {}) {
     const i2 = (i + 1) % n;
     for (let j = 0; j < radial; j++) {
       const a = i * ring + j, b = i2 * ring + j;
-      g.quad(a, b, b + 1, a + 1);
+      g.quad(a, a + 1, b + 1, b);
     }
   }
-  const caps = o.caps ?? true;
-  if (!closed && caps) {
+  const capsO = o.caps ?? true;
+  if (!closed && capsO) {
     for (const [i, sgn] of [[0, -1], [n - 1, 1]]) {
+      const caps = Array.isArray(capsO) ? capsO[sgn < 0 ? 0 : 1] : capsO;
+      if (!caps) continue;
       const r = rf(i / Math.max(1, n - 1), i);
       const rn = Array.isArray(r) ? r[0] : r, rb = Array.isArray(r) ? r[1] : r;
       if (caps === 'round') {
@@ -416,8 +438,8 @@ export function tubeGeo(pts, radius, o = {}) {
         for (let k = 0; k < rows; k++) {
           const r0 = prevRow(k), r1 = start + k * ring;
           for (let j = 0; j < radial; j++) {
-            if (sgn > 0) g.quad(r0 + j, r1 + j, r1 + j + 1, r0 + j + 1);
-            else g.quad(r0 + j, r0 + j + 1, r1 + j + 1, r1 + j);
+            if (sgn > 0) g.quad(r0 + j, r0 + j + 1, r1 + j + 1, r1 + j);
+            else g.quad(r0 + j, r1 + j, r1 + j + 1, r0 + j + 1);
           }
         }
       } else {
@@ -468,7 +490,7 @@ export function creaseNormals(g, angle = 0.7) {
   for (let i = 0; i < n; i++) { const l = Math.hypot(fn[i * 3], fn[i * 3 + 1], fn[i * 3 + 2]) || 1; fn[i * 3] /= l; fn[i * 3 + 1] /= l; fn[i * 3 + 2] /= l; }
   const map = new Map();
   for (let i = 0; i < n; i++) {
-    const k = `${Math.round(P[i * 3] * 4000)},${Math.round(P[i * 3 + 1] * 4000)},${Math.round(P[i * 3 + 2] * 4000)}`;
+    const k = posKey(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]);
     let l = map.get(k);
     if (!l) map.set(k, (l = []));
     l.push(i);
@@ -606,12 +628,13 @@ export function cushionGeo(w, h, d, o = {}) {
       const disp = amt * (f1 * 1.2 + f2 * 0.5 + (o.sideWrinkle ? fold * side * 0.8 : 0));
       p.addScaledVector(n, disp);
     }
+    if (o.flatBottom && p.y < -hy) p.y = -hy;
     g.p[i * 3] = p.x; g.p[i * 3 + 1] = p.y; g.p[i * 3 + 2] = p.z;
   }
   g.computeNormals(true);
   // edge factor along seams (piping wears first)
-  for (const id of topIds) g.e[id] = 0.8;
-  for (const id of botIds) g.e[id] = 0.8;
+  for (const id of topIds) g.e[id] = o.seamEdge ?? 0.5;
+  for (const id of botIds) g.e[id] = o.seamEdge ?? 0.5;
   const pt = (id) => V(g.p[id * 3], g.p[id * 3 + 1], g.p[id * 3 + 2]);
   const nr = (id) => V(g.n[id * 3], g.n[id * 3 + 1], g.n[id * 3 + 2]);
   for (const id of topIds) seamTop.push({ p: pt(id), n: nr(id) });
@@ -623,10 +646,19 @@ export function cushionGeo(w, h, d, o = {}) {
 // Builder: collects transformed primitives per material slot
 // ---------------------------------------------------------------------------
 const isAtlasSlot = (slot) => slot[0] === '#' || slot === 'atlas' || slot === 'decal' || slot === 'glow' || slot === 'atlas_gloss' || slot === 'atlas_metal';
+// legacy atlas slots -> surface kinds of the single 'atlas' material
+const KIND_SLOT = { atlas_gloss: 'g', atlas_metal: 'm', glow: 'e' };
+// label region drawn through slot: gloss / metal / glow regions are marked in the surface map
+function labelSlot(name, slot) {
+  const k = KIND_SLOT[slot];
+  if (k === undefined) return slot;
+  regionKind(name, k);
+  return 'atlas';
+}
 
-function matrixOf(x = 0, y = 0, z = 0, rot = null, scale = null) {
-  if (rot) _e.set(rot[0] || 0, rot[1] || 0, rot[2] || 0, rot[3] || 'XYZ'); else _e.set(0, 0, 0);
-  _q.setFromEuler(_e);
+function matrixOf(x = 0, y = 0, z = 0, rot = null, scale = null, quat = null) {
+  if (quat) _q.copy(quat);
+  else { if (rot) _e.set(rot[0] || 0, rot[1] || 0, rot[2] || 0, rot[3] || 'XYZ'); else _e.set(0, 0, 0); _q.setFromEuler(_e); }
   _s.set(1, 1, 1);
   if (scale) { if (typeof scale === 'number') _s.setScalar(scale); else _s.set(scale[0], scale[1], scale[2]); }
   return new THREE.Matrix4().compose(_p.set(x, y, z), _q, _s);
@@ -636,7 +668,7 @@ export class Builder {
   constructor(rng, pivot = null) {
     this.rng = rng;
     this.slots = new Map(); // slot -> Geo
-    this.named = [];
+    this.namedList = [];
     this.parts = [];
     this.pivot = pivot;
     this.noAO = new Set();
@@ -651,15 +683,16 @@ export class Builder {
     let target = slot;
     let uvOff = null;
     if (slot[0] === '#') {
-      // palette colour: collapse UVs to one texel of the atlas (shares the atlas draw call)
-      const [hex, kind] = slot.split(':');
-      const c = palUV(hex);
-      for (let i = 0; i < geo.uv.length; i += 2) { geo.uv[i] = c[0]; geo.uv[i + 1] = c[1]; }
-      target = kind === 'g' ? 'atlas_gloss' : kind === 'm' ? 'atlas_metal' : 'atlas';
+      // palette colour: collapse UVs to one texel of the atlas (shares the atlas draw call; the
+      // gloss / metal / glow kinds live in the atlas surface map, so they share it too)
+      palCollapse(geo, slot);
+      target = 'atlas';
+    } else if (KIND_SLOT[slot] !== undefined) {
+      throw new Error(`[furniture] slot ${slot}: use a '#hex:${KIND_SLOT[slot]}' palette colour or a decal with that slot`);
     } else if (!isAtlasSlot(slot) && o.uvOff !== false) {
       uvOff = [this.rng.next() * 3.7, this.rng.next() * 3.7];
     }
-    const m = (x || y || z || o.rot || o.scale) ? matrixOf(x, y, z, o.rot, o.scale) : null;
+    const m = (x || y || z || o.rot || o.scale || o.quat) ? matrixOf(x, y, z, o.rot, o.scale, o.quat) : null;
     this._slot(target).append(geo, m, uvOff, o.edge ?? 1);
     return this;
   }
@@ -703,7 +736,7 @@ export class Builder {
     const g = quadGeo(w, h, o.cell !== undefined ? rUV(name, o.cell, o.cols, o.rows) : rUV(name));
     g.setEdge(0);
     const m = matrixOf(x, y, z, o.rot);
-    this._slot(o.slot || 'decal').append(g, m);
+    this._slot(labelSlot(name, o.slot || 'decal')).append(g, m);
     return this;
   }
   // decal wrapped around a cylinder (axis Y) centred at angle theta (0 = +Z)
@@ -717,7 +750,7 @@ export class Builder {
       g.v(Math.sin(a) * rr, (j - 0.5) * h, Math.cos(a) * rr, Math.sin(a), 0, Math.cos(a), lerp(R.u0, R.u1, i / seg), lerp(R.v0, R.v1, j), 0);
     }
     for (let i = 0; i < seg; i++) g.quad(i, i + 1, i + seg + 2, i + seg + 1);
-    this._slot(o.slot || 'decal').append(g, matrixOf(x, y, z, o.rot));
+    this._slot(labelSlot(name, o.slot || 'decal')).append(g, matrixOf(x, y, z, o.rot));
     return this;
   }
   // ribbon of atlas quads along a path (stitching, tape, piping prints). pts: [{p, n}] or Vector3[] + normal fn
@@ -765,14 +798,14 @@ export class Builder {
       }
     }
     if (o.flip) out.flip();
-    this._slot(o.slot || 'decal').append(out);
+    this._slot(labelSlot(name, o.slot || 'decal')).append(out);
     return this;
   }
   // separate (unmerged) named mesh, e.g. 'screen', 'bulb'; own => per-instance material copy
   named(name, slot, g, x, y, z, o = {}) {
-    const m = (x || y || z || o.rot) ? matrixOf(x, y, z, o.rot, o.scale) : null;
+    const m = (x || y || z || o.rot || o.quat) ? matrixOf(x, y, z, o.rot, o.scale, o.quat) : null;
     const geo = new Geo().append(g, m);
-    this.named.push({ name, slot, geo, own: o.own ?? true });
+    this.namedList.push({ name, slot, geo, own: o.own ?? true });
     return geo;
   }
   // animated sub-part: geometry is authored in model coords, pivot is the part origin
@@ -785,10 +818,11 @@ export class Builder {
   skipAO(slot) { this.noAO.add(slot); return this; }
 }
 function palCollapse(g, slot) {
-  const c = palUV(slot.split(':')[0]);
+  const [hex, kind = ''] = slot.split(':');
+  const c = palUV(hex, kind);
   for (let i = 0; i < g.uv.length; i += 2) { g.uv[i] = c[0]; g.uv[i + 1] = c[1]; }
 }
-function atlasTarget(slot) { const k = slot.split(':')[1]; return k === 'g' ? 'atlas_gloss' : k === 'm' ? 'atlas_metal' : 'atlas'; }
+function atlasTarget() { return 'atlas'; }
 
 // ---------------------------------------------------------------------------
 // Collider helpers (authoring coords)
@@ -846,49 +880,77 @@ export function colliderMinY(cols) {
 // ---------------------------------------------------------------------------
 // Voxel ambient occlusion + grime bake (per template, at rest pose)
 // ---------------------------------------------------------------------------
-const AO_DIRS = (() => {
-  const out = [], n = 10, ga = PI * (3 - Math.sqrt(5));
-  for (let i = 0; i < n; i++) {
-    const z = Math.sqrt(1 - (i + 0.5) / n); // cosine-weighted
-    const rr = Math.sqrt(1 - z * z), a = i * ga;
-    out.push([Math.cos(a) * rr, Math.sin(a) * rr, z]);
-  }
+// Voxelise every triangle into an occupancy grid (plus the floor plane as solid), build a mip
+// pyramid of occupancy, then cone-trace a few wide cones per vertex through the pyramid.
+const AO_CONES = (() => {
+  // normal cone + 3 cones tilted 55 degrees (cosine weighted)
+  const out = [[0, 0, 1, 1.0]];
+  const t = 0.96;
+  for (let i = 0; i < 3; i++) { const a = (i / 3) * TAU + 0.4; out.push([Math.cos(a) * Math.sin(t), Math.sin(a) * Math.sin(t), Math.cos(t), 0.6]); }
   return out;
 })();
 
 function bakeAO(geos, bb, opts = {}) {
+  const t00 = performance.now();
   const size = bb.getSize(_s);
   const L = Math.max(size.x, size.y, size.z);
-  const cell = Math.max(L / (opts.res ?? 44), 0.006);
-  const pad = 2;
+  const cell = Math.max(L / (opts.res ?? 30), 0.008);
+  const pad = 3;
   const ox = bb.min.x - pad * cell, oy = bb.min.y - pad * cell, oz = bb.min.z - pad * cell;
+  // power-of-two friendly dims
   const nx = Math.ceil(size.x / cell) + pad * 2 + 1, ny = Math.ceil(size.y / cell) + pad * 2 + 1, nz = Math.ceil(size.z / cell) + pad * 2 + 1;
-  const grid = new Uint8Array(nx * ny * nz);
-  const mark = (x, y, z) => {
-    const i = ((x - ox) / cell) | 0, j = ((y - oy) / cell) | 0, k = ((z - oz) / cell) | 0;
-    if (i >= 0 && j >= 0 && k >= 0 && i < nx && j < ny && k < nz) grid[(k * ny + j) * nx + i] = 1;
-  };
+  const g0 = new Float32Array(nx * ny * nz);
+  const inv = 1 / cell, NXY = nx * ny;
   for (const { g } of geos) {
     const P = g.p, I = g.idx;
     for (let t = 0; t < I.length; t += 3) {
       const a = I[t] * 3, b = I[t + 1] * 3, c = I[t + 2] * 3;
-      const ax = P[a], ay = P[a + 1], az = P[a + 2], bx = P[b], by = P[b + 1], bz = P[b + 2], cx = P[c], cy = P[c + 1], cz = P[c + 2];
-      const l = Math.max(Math.hypot(bx - ax, by - ay, bz - az), Math.hypot(cx - ax, cy - ay, cz - az), Math.hypot(cx - bx, cy - by, cz - bz));
-      const n = Math.min(160, Math.ceil(l / (cell * 0.6)));
-      if (n <= 1) { mark(ax, ay, az); mark(bx, by, bz); mark(cx, cy, cz); mark((ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3); continue; }
-      for (let i = 0; i <= n; i++) for (let j = 0; j <= n - i; j++) {
-        const u = i / n, v = j / n, w = 1 - u - v;
-        mark(ax * w + bx * u + cx * v, ay * w + by * u + cy * v, az * w + bz * u + cz * v);
+      // triangle in voxel units
+      const ax = (P[a] - ox) * inv, ay = (P[a + 1] - oy) * inv, az = (P[a + 2] - oz) * inv;
+      const bx = (P[b] - ox) * inv, by = (P[b + 1] - oy) * inv, bz = (P[b + 2] - oz) * inv;
+      const cx = (P[c] - ox) * inv, cy = (P[c + 1] - oy) * inv, cz = (P[c + 2] - oz) * inv;
+      const l2 = Math.max((bx - ax) ** 2 + (by - ay) ** 2 + (bz - az) ** 2, (cx - ax) ** 2 + (cy - ay) ** 2 + (cz - az) ** 2, (cx - bx) ** 2 + (cy - by) ** 2 + (cz - bz) ** 2);
+      const n = l2 < 1 ? 1 : Math.min(160, Math.ceil(Math.sqrt(l2) * 1.05));
+      const dn = 1 / n;
+      for (let i = 0; i <= n; i++) {
+        const u = i * dn;
+        for (let j = 0; j <= n - i; j++) {
+          const v = j * dn, w = 1 - u - v;
+          const x = (ax * w + bx * u + cx * v) | 0, y = (ay * w + by * u + cy * v) | 0, z = (az * w + bz * u + cz * v) | 0;
+          if (x >= 0 && y >= 0 && z >= 0 && x < nx && y < ny && z < nz) g0[z * NXY + y * nx + x] = 1;
+        }
       }
     }
   }
-  const floorY = bb.min.y + (opts.floorOffset ?? 0);
-  const useFloor = opts.floor !== false;
-  const maxD = Math.min(opts.maxDist ?? 0.32, Math.max(0.06, L * 0.45));
-  const step = cell * 0.75;
-  const steps = Math.min(18, Math.ceil(maxD / step));
+  const tv = performance.now();
+  // floor: everything below the model's lowest point is solid
+  if (opts.floor !== false) {
+    const jf = Math.floor((bb.min.y + (opts.floorOffset ?? 0) - oy) / cell);
+    for (let k = 0; k < nz; k++) for (let j = 0; j < Math.min(ny, jf); j++) for (let i = 0; i < nx; i++) g0[(k * ny + j) * nx + i] = 1;
+  }
+  // mip pyramid (average of 2x2x2)
+  const levels = [{ d: g0, nx, ny, nz, cs: cell }];
+  for (let l = 1; l < 5; l++) {
+    const p = levels[l - 1];
+    const mx = Math.max(1, Math.ceil(p.nx / 2)), my = Math.max(1, Math.ceil(p.ny / 2)), mz = Math.max(1, Math.ceil(p.nz / 2));
+    const d = new Float32Array(mx * my * mz);
+    for (let k = 0; k < mz; k++) for (let j = 0; j < my; j++) for (let i = 0; i < mx; i++) {
+      let sum = 0;
+      for (let dk = 0; dk < 2; dk++) for (let dj = 0; dj < 2; dj++) for (let di = 0; di < 2; di++) {
+        const x = Math.min(p.nx - 1, i * 2 + di), y = Math.min(p.ny - 1, j * 2 + dj), z = Math.min(p.nz - 1, k * 2 + dk);
+        sum += p.d[(z * p.ny + y) * p.nx + x];
+      }
+      d[(k * my + j) * mx + i] = sum * 0.125;
+    }
+    levels.push({ d, nx: mx, ny: my, nz: mz, cs: p.cs * 2 });
+  }
+  const tm = performance.now();
+  const maxLv = Math.min(3, Math.max(2, Math.round(Math.log2((opts.maxDist ?? 0.3) / cell))));
   const strength = opts.strength ?? 1;
   const t1 = V(), t2 = V(), nn = V();
+  // per-cone sample offsets (in units of cell) and weights
+  const LV = [];
+  for (let lv = 0; lv <= maxLv; lv++) LV.push({ L: levels[lv], dist: cell * (lv === 0 ? 1.1 : 1.6 * 2 ** lv), gain: lv === 0 ? 0.9 : 1.3, fall: 1 - lv / (maxLv + 2.5) });
   for (const { g, ao } of geos) {
     const P = g.p, N = g.n, cnt = g.count;
     for (let v = 0; v < cnt; v++) {
@@ -897,22 +959,33 @@ function bakeAO(geos, bb, opts = {}) {
       if (Math.abs(nn.y) < 0.9) t1.set(0, 1, 0); else t1.set(1, 0, 0);
       t2.crossVectors(nn, t1).normalize();
       t1.crossVectors(t2, nn);
-      let occ = 0;
-      const sx = px + nn.x * cell * 1.05, sy = py + nn.y * cell * 1.05, sz = pz + nn.z * cell * 1.05;
-      for (const d of AO_DIRS) {
-        const dx = t1.x * d[0] + t2.x * d[1] + nn.x * d[2], dy = t1.y * d[0] + t2.y * d[1] + nn.y * d[2], dz = t1.z * d[0] + t2.z * d[1] + nn.z * d[2];
-        for (let s = 1; s <= steps; s++) {
-          const tt = s * step;
-          const x = sx + dx * tt, y = sy + dy * tt, z = sz + dz * tt;
-          if (useFloor && y < floorY) { occ += 1 - (tt / maxD) * 0.6; break; }
-          const i = ((x - ox) / cell) | 0, j = ((y - oy) / cell) | 0, k = ((z - oz) / cell) | 0;
-          if (i < 0 || j < 0 || k < 0 || i >= nx || j >= ny || k >= nz) break;
-          if (grid[(k * ny + j) * nx + i]) { occ += 1 - (tt / maxD) * 0.6; break; }
+      let occT = 0, wT = 0;
+      const bx = px + nn.x * cell * 0.6, by = py + nn.y * cell * 0.6, bz = pz + nn.z * cell * 0.6;
+      for (let ci = 0; ci < AO_CONES.length; ci++) {
+        const c = AO_CONES[ci];
+        const dx = t1.x * c[0] + t2.x * c[1] + nn.x * c[2], dy = t1.y * c[0] + t2.y * c[1] + nn.y * c[2], dz = t1.z * c[0] + t2.z * c[1] + nn.z * c[2];
+        let occ = 0;
+        for (let lv = 0; lv < LV.length; lv++) {
+          const S = LV[lv], L2 = S.L, cs = L2.cs;
+          const fx = (bx + dx * S.dist - ox) / cs - 0.5, fy = (by + dy * S.dist - oy) / cs - 0.5, fz = (bz + dz * S.dist - oz) / cs - 0.5;
+          const i0 = Math.floor(fx), j0 = Math.floor(fy), k0 = Math.floor(fz);
+          const X = L2.nx, Y = L2.ny, Z = L2.nz, D = L2.d;
+          let a = 0;
+          if (i0 >= 0 && j0 >= 0 && k0 >= 0 && i0 + 1 < X && j0 + 1 < Y && k0 + 1 < Z) {
+            const tx = fx - i0, ty = fy - j0, tz = fz - k0;
+            const b0 = (k0 * Y + j0) * X + i0, b1 = b0 + X * Y;
+            a = ((D[b0] * (1 - tx) + D[b0 + 1] * tx) * (1 - ty) + (D[b0 + X] * (1 - tx) + D[b0 + X + 1] * tx) * ty) * (1 - tz)
+              + ((D[b1] * (1 - tx) + D[b1 + 1] * tx) * (1 - ty) + (D[b1 + X] * (1 - tx) + D[b1 + X + 1] * tx) * ty) * tz;
+          } else if (fy < 0 && opts.floor !== false) a = 1;
+          occ += (1 - occ) * Math.min(1, a * S.gain) * S.fall;
         }
+        occT += occ * c[3]; wT += c[3];
       }
-      ao[v] = clamp(1 - (occ / AO_DIRS.length) * 1.25 * strength, 0.12, 1);
+      const val = clamp(1 - (occT / wT) * 1.15 * strength, 0.1, 1);
+      ao[v] = val;
     }
   }
+  if (globalThis.__aoProf) globalThis.__aoProf.push({ vox: tv - t00, mip: tm - tv, cones: performance.now() - tm, cells: nx * ny * nz });
 }
 
 // ---------------------------------------------------------------------------
@@ -921,6 +994,7 @@ function bakeAO(geos, bb, opts = {}) {
 export const FURNITURE = {};
 export const DEFS = {};
 const TPL = new Map();
+export const _clearTemplates = () => TPL.clear(); // dev/bench only
 const INFO = new Map();
 
 export function def(name, spec) {
@@ -938,7 +1012,7 @@ function pickVariant(name, o) {
 // geometry key for a variant (specs may share geometry between material-only variants)
 function geoKey(name, v) {
   const spec = DEFS[name];
-  const gv = spec.geoVariant ? spec.geoVariant(v) : v;
+  const gv = spec.geoVariant ? spec.geoVariant(v) : 0; // default: variants differ only in materials
   return { key: `${name}|${gv}`, gv };
 }
 
@@ -977,11 +1051,12 @@ export function getTemplate(name, v) {
   const rng = new RNG((hashString(name) ^ Math.imul(gv + 1, 0x9e3779b1)) >>> 0);
   const b = new Builder(rng);
   const meta = spec.build(b, gv, rng) || {};
+  const t1 = performance.now();
   // all geometry lists (main, named, parts) in model coordinates
   const all = [];
   const visit = (bl) => {
     for (const [slot, g] of bl.slots) all.push({ g, slot, bl, noAO: bl.noAO.has(slot) || slot === 'decal' || slot === 'glow' });
-    for (const nm of bl.named) all.push({ g: nm.geo, slot: nm.slot, bl, named: nm, noAO: bl.noAO.has(nm.slot) });
+    for (const nm of bl.namedList) all.push({ g: nm.geo, slot: nm.slot, bl, named: nm, noAO: bl.noAO.has(nm.slot) });
     for (const p of bl.parts) visit(p.b);
   };
   visit(b);
@@ -994,9 +1069,10 @@ export function getTemplate(name, v) {
   for (const it of all) {
     it.ao = new Float32Array(it.g.count).fill(1);
     it.grime = new Float32Array(it.g.count);
-    if (!it.noAO && meta.ao !== false) aoList.push(it);
+    if (!it.noAO && meta.ao !== false && spec.ao !== false) aoList.push(it);
   }
   if (aoList.length) bakeAO(aoList, bb, meta.aoOpts || {});
+  const t2 = performance.now();
   const floorY = bb.min.y;
   for (const it of all) {
     const g = it.g;
@@ -1044,6 +1120,7 @@ export function getTemplate(name, v) {
     renderOrder: meta.renderOrder || null,
     friction: meta.friction, restitution: meta.restitution, linearDamping: meta.linearDamping, angularDamping: meta.angularDamping,
     buildMs: performance.now() - t0,
+    prof: { build: t1 - t0, ao: t2 - t1, pack: performance.now() - t2 },
   };
   TPL.set(key, t);
   return t;
@@ -1054,6 +1131,7 @@ function makeMeshes(parent, pk, ov, order, partsOut) {
     const mesh = new THREE.Mesh(m.geo, matFor(m.slot, ov));
     mesh.name = m.slot;
     mesh.castShadow = m.cast;
+    mesh.userData.noShadow = !m.cast; // catalog.buildModel keeps this off (decals, tiny parts)
     mesh.receiveShadow = true;
     if (order && order[m.slot] !== undefined) mesh.renderOrder = order[m.slot];
     parent.add(mesh);
@@ -1064,6 +1142,7 @@ function makeMeshes(parent, pk, ov, order, partsOut) {
     const mesh = new THREE.Mesh(n.geo, mat);
     mesh.name = n.name;
     mesh.castShadow = n.cast;
+    mesh.userData.noShadow = !n.cast;
     mesh.receiveShadow = true;
     if (order && order[n.slot] !== undefined) mesh.renderOrder = order[n.slot];
     parent.add(mesh);

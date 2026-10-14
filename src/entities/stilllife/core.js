@@ -90,8 +90,8 @@ export const mix3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1])
 
 // Palette (sRGB hex), consistent with the player dolls but filthier
 export const PAL = {
-  burlap: 0xb4976a, burlapDark: 0x8a7150, burlapPale: 0xc6ad80, burlapRot: 0x6f5a3c,
-  suit: 0xe0b41c, suitFaded: 0xcdb466, suitDirty: 0x8f7a2c, suitStain: 0x6a4a1c,
+  burlap: 0x977a52, burlapDark: 0x6e573c, burlapPale: 0xaa8f64, burlapRot: 0x55432c,
+  suit: 0xcf9f14, suitFaded: 0xbda55c, suitDirty: 0x8f7a2c, suitStain: 0x6a4a1c,
   rubber: 0x1b1a19, rubberWorn: 0x3a3733,
   tape: 0x8d8d88, tapeDirty: 0x6c6a62,
   nose: 0xd2302b, noseDirty: 0xa3271f,

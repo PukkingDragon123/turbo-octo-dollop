@@ -102,7 +102,7 @@ const bestYaw = (p) => ev((p) => {
   const g = __game, ph = g.world.physics; let best = 0, by = 0;
   for (let k = 0; k < 16; k++) {
     const yaw = k * Math.PI / 8; const d = new g.local.pos.constructor(-Math.sin(yaw), 0, -Math.cos(yaw));
-    const hit = ph.raycast(new g.local.pos.constructor(p[0], 1.5, p[1]), d, 40, undefined, null, (c) => c !== g.local.collider);
+    const hit = ph.raycast(new g.local.pos.constructor(p[0], 0.6, p[1]), d, 40, undefined, null, (c) => c !== g.local.collider);
     const dist = hit ? hit.dist : 40; if (dist > best) { best = dist; by = yaw; }
   }
   return by;
@@ -119,6 +119,46 @@ const scenarios = {
     }
     await stats('spawn');
     await scenarios.zones(true);
+  },
+  // fast iteration: a few fixed views (env VIEWS="x,z,yaw,pitch;..." overrides)
+  async quick() {
+    await loadYellow();
+    const sp = await ev(() => __game.local.pos.toArray());
+    const views = process.env.VIEWS ? process.env.VIEWS.split(';').map((v) => v.split(',').map(Number)) : [[sp[0], sp[2], 0.4, 0.0], [sp[0], sp[2], 1.2, 0.55], [sp[0], sp[2], 2.2, 0.08]];
+    for (let k = 0; k < views.length; k++) {
+      const v = views[k];
+      if (Number.isNaN(v[2])) {
+        // auto yaw: teleport, let chunks stream in, then face the longest open direction
+        await tp([v[0], 0, v[1]], 0, 0);
+        await page.waitForTimeout(4000);
+        v[2] = await bestYaw([v[0], v[1]]);
+      }
+      await tp([v[0], 0, v[1]], v[2], v[3]);
+      await shot('q' + k, k === 0 ? 3000 : 3500);
+    }
+    await stats('quick');
+  },
+  // close-ups: walk up to walls / doorways / a troffer near spawn
+  async close() {
+    await loadYellow();
+    const sp = await ev(() => __game.local.pos.toArray());
+    const found = await ev((sp) => {
+      const g = __game, ph = g.world.physics, V = g.local.pos.constructor; const out = [];
+      for (let k = 0; k < 8; k++) {
+        const yaw = k * Math.PI / 4; const d = new V(-Math.sin(yaw), 0, -Math.cos(yaw));
+        const hit = ph.raycast(new V(sp[0], 1.0, sp[2]), d, 12, undefined, null, (c) => c !== g.local.collider);
+        if (hit && hit.dist > 1.6) out.push({ yaw, dist: hit.dist, p: [sp[0] + d.x * (hit.dist - 1.3), sp[2] + d.z * (hit.dist - 1.3)] });
+      }
+      return out;
+    }, sp);
+    let k = 0;
+    for (const f of (found || []).slice(0, +(process.env.N || 3))) {
+      await tp([f.p[0], 0, f.p[1]], f.yaw, -0.28);
+      await shot('c' + (k++), 3000);
+    }
+    // look straight up at the nearest fixture
+    const L = await ev(() => { const lv = __game.world.level, p = __game.local.pos; const l = lv._nearestLight(p); return l ? [l.x, l.z] : null; });
+    if (L) { await tp([L[0] + 0.9, 0, L[1] + 0.9], 0.8, 1.0); await shot('c_up', 3000); }
   },
   async zones(loaded) {
     if (!loaded) await loadYellow();
@@ -165,6 +205,13 @@ const scenarios = {
         lv._buildChunk(cx, cz);
         times.push(+(performance.now() - t0).toFixed(1));
       }
+      const per = {};
+      for (const rec of lv.chunks.values()) {
+        if (rec.cx < 30) continue;
+        rec.group.traverse((o) => { if (!o.isMesh || !o.geometry) return; const k = (o.material.name || '?').replace('_baked', ''); per[k] = (per[k] || 0) + o.geometry.attributes.position.count / 16; });
+      }
+      for (const k in per) per[k] = Math.round(per[k]);
+      console.log('[env] per-material verts/chunk ' + JSON.stringify(per));
       let tris = 0, draws = 0, verts = 0, n = 0;
       for (const rec of lv.chunks.values()) {
         if (rec.cx < 30) continue; n++;
@@ -174,6 +221,26 @@ const scenarios = {
       return { times, avg: +(times.reduce((a, b) => a + b, 0) / times.length).toFixed(1), perChunk: { draws: +(draws / n).toFixed(1), tris: Math.round(tris / n), verts: Math.round(verts / n) }, phases: st };
     });
     console.log('[perf]', JSON.stringify(r));
+  },
+  // CPU profile of chunk building (CDP), top self-time functions
+  async prof() {
+    await loadYellow();
+    await page.waitForTimeout(2000);
+    await ev(() => { __engine.render = () => {}; });
+    await page.waitForTimeout(500);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Profiler.enable');
+    await cdp.send('Profiler.setSamplingInterval', { interval: 100 });
+    await cdp.send('Profiler.start');
+    await ev(() => { const lv = __game.world.level; for (let k = 0; k < 16; k++) lv._buildChunk(40 + (k % 4), 40 + Math.floor(k / 4)); });
+    const { profile: p } = await cdp.send('Profiler.stop');
+    const byId = {}; for (const n of p.nodes) byId[n.id] = n;
+    const cnt = {}; for (let i = 0; i < p.samples.length; i++) cnt[p.samples[i]] = (cnt[p.samples[i]] || 0) + (p.timeDeltas[i] || 0);
+    const self = {};
+    for (const id in cnt) { const n = byId[id]; const k = `${n.callFrame.functionName || '(anon)'} ${(n.callFrame.url || '').split('/').pop().split('?')[0]}:${n.callFrame.lineNumber + 1}`; self[k] = (self[k] || 0) + cnt[id]; }
+    const tot = Object.values(self).reduce((a, b) => a + b, 0);
+    console.log('[prof] total ms', (tot / 1000).toFixed(0));
+    for (const [k, v] of Object.entries(self).sort((a, b) => b[1] - a[1]).slice(0, +(process.env.TOP || 30))) console.log(`${(v / tot * 100).toFixed(1).padStart(5)}%  ${(v / 1000).toFixed(1).padStart(7)}ms  ${k}`);
   },
   async one() {
     await loadYellow();

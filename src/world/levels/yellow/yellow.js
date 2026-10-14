@@ -23,6 +23,9 @@ const UNLOAD_R = 3;   // beyond this they're dropped
 const LIGHT_R = 3;    // light registration radius (chunks)
 
 const DEAD_FRAC = [0, 0, 0.0, 0.03, 0.06, 0.11, 0.17, 0.26];
+const FOG_DENSITY = 0.034;
+const FOG_LIT = new THREE.Color(0x6a6040);   // haze colour in well-lit halls
+const FOG_DARK = new THREE.Color(0x0e0c07);  // in dead / dark sectors
 const FLICK_FRAC = [0, 0.0, 0.02, 0.05, 0.09, 0.14, 0.2, 0.3];
 
 const _v = new THREE.Vector3();
@@ -63,14 +66,27 @@ export class YellowLevel {
   async build(onProgress) {
     const scene = engine.scene;
     scene.background = new THREE.Color(0x0b0904);
-    scene.fog = new THREE.FogExp2(0x1d1a0c, 0.042);
-    engine.scene.environmentIntensity = 0.12;
+    // humid haze: the fog colour follows the local light level (see update), density rises with instability
+    scene.fog = new THREE.FogExp2(0x3a3424, FOG_DENSITY);
+    engine.scene.environmentIntensity = 0.14;
     this.field.uniforms.uAmbient.value.setRGB(0.012, 0.011, 0.007);
-    this.field.uniforms.uLightScale.value = 0.58;
-    engine.post.params.uTint.value.setRGB(1.02, 1.0, 0.92);
-    engine.post.params.uSat.value = 0.92;
-    engine.post.params.uGrain.value = 0.07;
-    engine.post.params.uVignette.value = 0.5;
+    this.field.uniforms.uLightScale.value = 0.56;
+    this.field.uniforms.uGrid.value.set(CELL, HEIGHT - 0.04, 9, HEIGHT);
+    this.hazeOn = engine.qualityName !== 'low';
+    const pp = engine.post.params;
+    pp.uTint.value.setRGB(1.02, 1.0, 0.9);
+    pp.uSat.value = 0.9;
+    pp.uGrain.value = 0.045;
+    pp.uVignette.value = 0.46;
+    // film grade: warm lifted blacks, slightly green-yellow mids, tamed highlights
+    pp.uExposure.value = 0.97;
+    pp.uLift.value.set(0.022, 0.02, 0.008);
+    pp.uGamma.value.set(1.0, 1.01, 0.97);
+    pp.uGain.value.set(1.0, 0.985, 0.93);
+    pp.uRolloff.value = 0.25;
+    pp.uContrast.value = 1.06;
+    engine.renderer.toneMappingExposure = 0.95;
+    this._fogCol = new THREE.Color();
     this.world.monsters = this.monsters = new MonsterManager(this);
     this.mission = new Mission(this);
     this.anomalies = new Anomalies(this);
@@ -323,7 +339,15 @@ export class YellowLevel {
     this.field.uniforms.uCollapse.value = col * 0.8;
     this.field.tint.setRGB(1, 1 - col * 0.55, 1 - col * 0.7);
     if (col > 0) this.field.dirty = true;
-    engine.scene.fog.density = 0.042 + this.game.day.instability() * 0.02 + col * 0.03;
+    engine.scene.fog.density = FOG_DENSITY + this.game.day.instability() * 0.016 + col * 0.03;
+    {
+      // haze picks up the local light: bright warm murk in lit halls, near black in dead sectors
+      const ll = Math.min(1, Math.max(0, (this.game.local.lightLevel ?? 0.6) * 0.95));
+      this._fogCol.copy(FOG_DARK).lerp(FOG_LIT, ll);
+      engine.scene.fog.color.lerp(this._fogCol, Math.min(1, dt * 1.5));
+    }
+    // floating dust in the light
+    if (this.hazeOn) this.world.fx.ambient(dt, engine.camera.position, 1, this.game.local.lightColor);
     // water reflections when any water is near
     this.reflection.needed = false;
     for (const rec of this.chunks.values()) {
@@ -548,6 +572,10 @@ export class YellowLevel {
     for (const k of [...this.chunks.keys()]) this._unloadChunk(k);
     this.reflection.dispose();
     engine.scene.fog = null;
+    // reset the grade this level applied (other dimensions set their own)
+    const pp = engine.post.params;
+    pp.uExposure.value = 1; pp.uLift.value.set(0, 0, 0); pp.uGamma.value.set(1, 1, 1); pp.uGain.value.set(1, 1, 1); pp.uRolloff.value = 0; pp.uContrast.value = 1.04;
+    engine.renderer.toneMappingExposure = 1;
   }
 }
 

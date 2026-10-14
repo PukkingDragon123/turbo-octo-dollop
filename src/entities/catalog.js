@@ -50,7 +50,8 @@ export function buildModel(key, opts = {}) {
       res.kind = r.kind;
       res.object.traverse((o) => {
         if (o.isMesh) {
-          if (o.castShadow === undefined || o.castShadow === false) o.castShadow = true;
+          // shadows on by default; a model can opt a mesh out (decals, tiny parts) with userData.noShadow
+          o.castShadow = !o.userData.noShadow;
           o.receiveShadow = true;
         }
       });

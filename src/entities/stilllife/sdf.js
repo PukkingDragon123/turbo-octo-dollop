@@ -117,7 +117,9 @@ export class Sculpt {
     c = V(c); axis = V(axis);
     const l = Math.hypot(axis[0], axis[1], axis[2]) || 1;
     const p = this._prim(T_FOLD, OP_DETAIL, { ...o, noW: true }, [c[0], c[1], c[2], R]);
-    p.g.set([c[0], c[1], c[2], R, axis[0] / l, axis[1] / l, axis[2] / l, freq, amp, o.phase ?? 0, o.warp ?? 0.8, o.sharp ?? 1, o.warpFreq ?? 9, o.bias ?? 0], 20);
+    // wrinkles finer than the mesh can carry would facet: clamp to the piece's limit
+    const f2 = this.maxFoldFreq ? Math.min(freq, this.maxFoldFreq) : freq;
+    p.g.set([c[0], c[1], c[2], R, axis[0] / l, axis[1] / l, axis[2] / l, f2, amp * (f2 < freq ? 1.15 : 1), o.phase ?? 0, o.warp ?? 0.8, o.sharp ?? 1, o.warpFreq ?? 9, o.bias ?? 0], 20);
     return p;
   }
   // radial gathers: `count` wrinkles around axis n through c, between radii r0..r1, within +-depth along n
@@ -156,11 +158,11 @@ export class Sculpt {
   // paint attributes inside a shape: {mat, col, dirt, thin, wet, w (strength), soft}
   paint(shape, o = {}) {
     const g = this._shapeG(shape);
-    this.paints.push({ g, bs: g.bs, mat: o.mat ?? -1, col: colOf(o.col), dirt: o.dirt, thin: o.thin, wet: o.wet, w: o.w ?? 1, soft: o.soft ?? 0.02, mul: o.mul ? colOf(o.mul) : null });
+    this.paints.push({ G: g.G, bs: g.bs, mat: o.mat ?? -1, col: colOf(o.col), dirt: o.dirt, thin: o.thin, wet: o.wet, w: o.w ?? 1, soft: o.soft ?? 0.02, mul: o.mul ? colOf(o.mul) : null });
   }
   bonePaint(shape, bone, o = {}) {
     const g = this._shapeG(shape);
-    this.bonePaints.push({ g, bs: g.bs, bone: this.bi(bone), w: o.w ?? 1, soft: o.soft ?? 0.02 });
+    this.bonePaints.push({ G: g.G, bs: g.bs, bone: this.bi(bone), w: o.w ?? 1, soft: o.soft ?? 0.02 });
   }
   _shapeG(s) {
     // shape spec: {sphere:[c,r]} | {ell:[c,radii,rot]} | {cone:[a,b,ra,rb]} | {box:[c,half,rot,round]}
@@ -182,6 +184,7 @@ export class Sculpt {
     const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
     this.prims.forEach((p, i) => {
       this.P.set(p.g, i * STRIDE);
+      this.P[i * STRIDE + 44] = p.bs[0]; this.P[i * STRIDE + 45] = p.bs[1]; this.P[i * STRIDE + 46] = p.bs[2]; this.P[i * STRIDE + 47] = p.bs[3];
       this.BS.set(p.bs, i * 4);
       if (p.op === OP_UNION) for (let a = 0; a < 3; a++) { mn[a] = Math.min(mn[a], p.bs[a] - p.bs[3]); mx[a] = Math.max(mx[a], p.bs[a] + p.bs[3]); }
     });
@@ -347,9 +350,13 @@ export function evalD(P, list, s, e, x, y, z) {
   for (let li = s; li < e; li++) {
     const o = list[li];
     const op = P[o + 1];
-    if (op === OP_DETAIL) { if (d < 0.25) d += detailD(P, o, x, y, z); continue; }
-    const di = primD(P, o, x, y, z);
+    const bx = x - P[o + 44], by = y - P[o + 45], bz = z - P[o + 46], br = P[o + 47];
+    const d2 = bx * bx + by * by + bz * bz;
+    if (op === OP_DETAIL) { if (d < 0.25 && d2 < br * br) d += detailD(P, o, x, y, z); continue; }
     const k = P[o + 2];
+    if (op === OP_UNION) { const lim = d + k + br; if (lim <= 0 || d2 > lim * lim) continue; }
+    else { const lim = k - d + br; if (lim <= 0 || d2 > lim * lim) continue; }
+    const di = primD(P, o, x, y, z);
     if (op === OP_UNION) {
       if (k > 0) { const h = k - Math.abs(d - di); d = (d < di ? d : di) - (h > 0 ? (h * h * 0.25) / k : 0); }
       else if (di < d) d = di;
@@ -389,8 +396,14 @@ export function evalAttr(S, x, y, z, out) {
       }
       continue;
     }
-    const di = primD(P, o, x, y, z);
     const k = P[o + 2];
+    if (op === OP_UNION) {
+      // early out: too far to change the field or to earn skin weight
+      const bx = x - P[o + 44], by = y - P[o + 45], bz = z - P[o + 46], br = P[o + 47];
+      const lim = (d > 0 ? d : 0) + k + br + 7 * Math.max(0.3 * k, 0.007) * P[o + 18];
+      if (bx * bx + by * by + bz * bz > lim * lim) continue;
+    }
+    const di = primD(P, o, x, y, z);
     let sw; // weight of the new primitive's attributes
     if (op === OP_UNION) {
       if (k > 0) { const h = k - Math.abs(d - di); sw = clamp(0.5 + (0.5 * (d - di)) / k, 0, 1); d = (d < di ? d : di) - (h > 0 ? (h * h * 0.25) / k : 0); }

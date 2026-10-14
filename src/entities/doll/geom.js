@@ -197,7 +197,7 @@ export function ribbonOn(points, normals, width, thick, { bevel = 0.35 } = {}) {
   }
   for (let i = 0; i < n - 1; i++) for (let c = 0; c < m - 1; c++) {
     const a = i * m + c, b = a + 1, d = a + m, e = b + m;
-    idx.push(a, d, b, b, d, e);
+    idx.push(a, b, d, b, e, d);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -214,15 +214,15 @@ export function sePt(a, e, out) {
 }
 
 // rounded "pillow" box (smooth rounded rectangle slab): w x h x d with corner radius r
-export function pillow(w, h, d, r = 0.01, segs = 6) {
-  const g = new THREE.SphereGeometry(1, 28, 18);
+export function pillow(w, h, d, r = 0.01, segs = 5) {
+  const g = new THREE.SphereGeometry(1, segs * 3, Math.max(8, segs * 2));
   const P = g.attributes.position;
   for (let i = 0; i < P.count; i++) {
     _a.fromBufferAttribute(P, i);
     const sx = Math.sign(_a.x) * Math.pow(Math.abs(_a.x), 0.28), sy = Math.sign(_a.y) * Math.pow(Math.abs(_a.y), 0.28), sz = Math.sign(_a.z) * Math.pow(Math.abs(_a.z), 0.45);
     P.setXYZ(i, sx * w / 2, sy * h / 2, sz * d / 2);
   }
-  void r; void segs;
+  void r;
   g.computeVertexNormals();
   return g;
 }

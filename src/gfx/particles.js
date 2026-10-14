@@ -307,15 +307,22 @@ export class FX {
     }
   }
 
-  // ambient floating dust motes around a point (camera)
-  ambient(dt, center, density = 1) {
+  // ambient floating dust motes around a point (camera). light: optional THREE.Color of the local light
+  // (motes are only visible where light catches them); they drift on slow air currents.
+  ambient(dt, center, density = 1, light = null) {
     if (!this.ambientDust || density <= 0) return;
-    this.dustTimer += dt * 40 * density;
+    this.dustTimer += dt * 34 * density;
+    const lr = light ? Math.min(1.6, light.r) : 1, lg = light ? Math.min(1.6, light.g) : 0.95, lb = light ? Math.min(1.6, light.b) : 0.8;
+    const lum = (lr * 0.3 + lg * 0.59 + lb * 0.11);
+    const vis = Math.min(1, Math.max(0.12, lum * 0.9));
     while (this.dustTimer > 1) {
       this.dustTimer -= 1;
-      _p.set(center.x + (Math.random() - 0.5) * 10, center.y + (Math.random() - 0.4) * 3, center.z + (Math.random() - 0.5) * 10);
-      _v.set((Math.random() - 0.5) * 0.05, (Math.random() - 0.5) * 0.03, (Math.random() - 0.5) * 0.05);
-      this.alpha.add(_p, _v, 5 + Math.random() * 4, 0.012, 0.012, 1.0, 0.95, 0.8, 0.35, 0, 0);
+      _p.set(center.x + (Math.random() - 0.5) * 7, center.y + (Math.random() - 0.35) * 2.6, center.z + (Math.random() - 0.5) * 7);
+      _v.set((Math.random() - 0.5) * 0.06, (Math.random() - 0.45) * 0.025, (Math.random() - 0.5) * 0.06);
+      const big = Math.random() < 0.08;
+      const s = big ? 0.02 + Math.random() * 0.012 : 0.006 + Math.random() * 0.007;
+      const a = (big ? 0.18 : 0.42) * vis;
+      this.alpha.add(_p, _v, 6 + Math.random() * 6, s, s * (0.8 + Math.random() * 0.4), 0.95 * lr, 0.9 * lg, 0.78 * lb, a, -0.0015, 0.02);
     }
   }
 

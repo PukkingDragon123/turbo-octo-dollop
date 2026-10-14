@@ -34,7 +34,7 @@ export function atlasTextures() {
   }
   const mk = () => { const c = document.createElement('canvas'); c.width = ATLAS_W; c.height = ATLAS_H; return c; };
   const cc = mk(), hc = mk();
-  const C = cc.getContext('2d'), Hh = hc.getContext('2d');
+  const C = cc.getContext('2d'), Hh = hc.getContext('2d', { willReadFrequently: true });
   C.fillStyle = '#ffffff'; C.fillRect(0, 0, ATLAS_W, ATLAS_H);
   Hh.fillStyle = '#808080'; Hh.fillRect(0, 0, ATLAS_W, ATLAS_H);
   const r = new RNG(911);

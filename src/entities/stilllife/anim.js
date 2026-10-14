@@ -181,3 +181,6 @@ export class Planter {
 export { _v1 as tmpV };
 export const lerpAngle = (a, b, t) => a + wrapAngle(b - a) * t;
 export { clamp, lerp };
+// rotate a bone (identity rest) about an axis given in its parent space
+const _ax = new THREE.Vector3();
+export function rotAxis(bone, axis, angle) { bone.quaternion.setFromAxisAngle(_ax.set(axis[0], axis[1], axis[2]).normalize(), angle); return bone; }

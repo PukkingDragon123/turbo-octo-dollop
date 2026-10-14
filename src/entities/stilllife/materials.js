@@ -50,9 +50,10 @@ varying vec3 vAZ;
 float slRough;
 float slCoat;
 float slSheen;
+float slSheenTint;
 `;
 // scales: tiles per metre
-const SC = { B: 1 / 0.09, H: 1 / 0.34, F: 1 / 0.07, G: 1 / 0.9, R: 1 / 0.6 };
+const SC = { B: 1 / 0.1, H: 1 / 0.34, F: 1 / 0.07, G: 1 / 0.9, R: 1 / 0.6 };
 const BODY_FRAG_MAP = /* glsl */`
   vec3 slN0 = normalize( vTN );
   vec3 slW = pow( abs( slN0 ), vec3( 4.0 ) ); slW /= ( slW.x + slW.y + slW.z );
@@ -73,28 +74,29 @@ const BODY_FRAG_MAP = /* glsl */`
   float slThin = vMisc.y, slWet = vMisc.z, slDirt = vMisc.w;
   vec3 slBase = vColor.rgb;
   // burlap: threads + gaps that open up where the sack is stretched thin
-  float slGap = 1.0 - smoothstep( 0.04 + slThin * 0.5, 0.2 + slThin * 0.55, sB.g );
-  vec3 cSk = slBase * ( 0.5 + sB.r * 0.72 );
-  vec3 slGapC = mix( vec3( 0.025, 0.018, 0.012 ), vec3( 0.32, 0.27, 0.2 ), slThin );
-  cSk = mix( cSk, slGapC, slGap * ( 0.7 + 0.3 * slThin ) );
+  float slGap = 1.0 - smoothstep( 0.03 + slThin * 0.45, 0.16 + slThin * 0.5, sB.g );
+  vec3 cSk = slBase * ( 0.32 + sB.r * 0.72 );
+  vec3 slGapC = mix( slBase * 0.35, vec3( 0.02, 0.014, 0.01 ), slThin );
+  cSk = mix( cSk, slGapC, slGap * ( 0.3 + 0.65 * slThin ) );
   // hazmat: mottled coating, grime packed into creases
-  vec3 cSu = slBase * ( 0.9 + ( sH.r - 0.9 ) * 1.4 ) * ( 1.0 - sH.g * ( 0.25 + slDirt * 0.45 ) );
+  vec3 cSu = slBase * ( 0.92 + ( sH.r - 0.92 ) * 1.2 ) * ( 1.0 - sH.g * ( 0.06 + slDirt * 0.18 ) );
   vec3 cRu = slBase * ( 0.85 + ( sR.r - 0.9 ) * 0.8 + sG.b * 0.25 );
   vec3 cFl = slBase * ( 0.55 + sF.r * 0.55 );
-  vec3 cIn = slBase * ( 0.8 + sG.b * 0.4 );
+  vec3 cIn = slBase * ( 0.6 + sG.b * 0.3 );
   vec3 slC = cSk * wSk + cSu * wSuit + cRu * wRub + cFl * wFl + cIn * wIn;
   // texture-scale grime blotches on top of the baked stains
   float slGm = smoothstep( 0.45, 0.85, sG.a * 0.7 + sG.r * 0.55 - 0.1 + slDirt * 0.35 ) * ( 0.25 + slDirt * 0.55 ) * ( 1.0 - wIn );
   slC *= mix( vec3( 1.0 ), vec3( 0.5, 0.41, 0.3 ), slGm );
   diffuseColor.rgb *= slC;
-  slRough = ( 0.93 - sB.g * 0.08 ) * wSk + ( 0.46 + sH.g * 0.3 + slGm * 0.25 ) * wSuit + ( 0.36 + sG.b * 0.3 ) * wRub + 1.0 * wFl + 0.3 * wIn;
+  slRough = ( 0.93 - sB.g * 0.08 ) * wSk + ( 0.66 + sH.g * 0.15 + slGm * 0.2 + ( sG.r - 0.5 ) * 0.2 ) * wSuit + ( 0.42 + sG.b * 0.3 ) * wRub + 1.0 * wFl + 0.5 * wIn;
   slRough = mix( slRough, 0.14, clamp( slWet, 0.0, 1.0 ) );
-  slCoat = clamp( slWet * 0.95 + wRub * 0.25 + wIn * 0.7, 0.0, 1.0 );
-  slSheen = ( wSk * 0.6 + wFl * 1.0 + wSuit * 0.05 ) * ( 1.0 - slWet );
+  slCoat = clamp( slWet * 0.95 * ( 1.0 - wIn * 0.75 ) + wRub * 0.18 + wIn * 0.12, 0.0, 1.0 );
+  slSheen = ( wSk * 0.3 + wFl * 0.45 + wSuit * 0.1 ) * ( 1.0 - slWet );
+  slSheenTint = clamp( 0.55 + wFl * 0.4, 0.0, 1.0 );
 `;
 const BODY_FRAG_NORMAL = /* glsl */`
   {
-    float nB = 0.95 * wSk * ( 1.0 - slWet * 0.5 ), nH = 0.55 * wSuit, nR = 0.18 * wRub, nF = 0.8 * wFl;
+    float nB = 0.9 * wSk * ( 1.0 - slWet * 0.5 ), nH = 0.32 * wSuit, nR = 0.15 * wRub, nF = 1.1 * wFl;
     vec2 tX = ( bX.ba * 2.0 - 1.0 ) * nB + ( hX.ba * 2.0 - 1.0 ) * nH + ( rX.ba * 2.0 - 1.0 ) * nR + ( fX.ba * 2.0 - 1.0 ) * nF;
     vec2 tY = ( bY.ba * 2.0 - 1.0 ) * nB + ( hY.ba * 2.0 - 1.0 ) * nH + ( rY.ba * 2.0 - 1.0 ) * nR + ( fY.ba * 2.0 - 1.0 ) * nF;
     vec2 tZ = ( bZ.ba * 2.0 - 1.0 ) * nB + ( hZ.ba * 2.0 - 1.0 ) * nH + ( rZ.ba * 2.0 - 1.0 ) * nR + ( fZ.ba * 2.0 - 1.0 ) * nF;
@@ -158,8 +160,15 @@ function makeBody(doubleSided) {
           material.clearcoat = slCoat;
         #endif
         #ifdef USE_SHEEN
-          material.sheenColor = sheenColor * slSheen * mix( vec3( 1.0 ), clamp( diffuseColor.rgb * 2.2, 0.0, 1.0 ), 0.6 );
-        #endif`)
+          material.sheenColor = sheenColor * slSheen * mix( vec3( 1.0 ), clamp( diffuseColor.rgb * 2.5, 0.0, 1.0 ), slSheenTint );
+        #endif
+        {
+          // fibrous burlap / felt / stuffing scatter instead of reflecting: kill most specular
+          float slSpec = mix( 1.0, 0.18, clamp( wSk + wFl, 0.0, 1.0 ) * ( 1.0 - slWet ) ) * mix( 1.0, 0.7, wSuit ) * mix( 1.0, 0.25, wIn );
+          material.specularColor *= slSpec;
+          material.specularColorBlended *= slSpec;
+          material.specularF90 *= slSpec;
+        }`)
       .replace('#include <aomap_fragment>', '#include <aomap_fragment>\n' + BODY_FRAG_AO);
   };
   mat.customProgramCacheKey = () => 'stilllife_body_v1' + (doubleSided ? '_ds' : '');
@@ -191,7 +200,13 @@ export const partsMaterial = () => once('parts', () => {
         #endif
         #ifdef USE_SHEEN
           material.sheenColor = sheenColor * vPBR.w;
-        #endif`);
+        #endif
+        {
+          float pSpec = 1.0 - smoothstep( 0.7, 1.0, vPBR.x ) * 0.85;
+          material.specularColor *= pSpec;
+          material.specularColorBlended *= pSpec;
+          material.specularF90 *= pSpec;
+        }`);
   };
   mat.customProgramCacheKey = () => 'stilllife_parts_v1';
   return mat;

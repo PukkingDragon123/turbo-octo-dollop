@@ -655,13 +655,25 @@ export function names() {
   return Object.keys(gens);
 }
 
+// World surfaces now come from GPU-synthesized sets (materials.js + src/world/env/recipes.js); their old canvas
+// generators stay available for anyone still calling Tex.get() on them but are no longer generated at boot.
+const SYNTHESIZED = new Set(['wallpaper', 'carpet', 'ceiling', 'concrete', 'officeCarpet', 'linoleum', 'paint', 'panel', 'tile', 'lightpanel']);
+
 // Generate everything up front (call during loading screen); yields between textures.
 export async function preload(onProgress) {
-  const list = names();
+  const list = names().filter((n) => !SYNTHESIZED.has(n));
+  const total = list.length + 1;
   for (let i = 0; i < list.length; i++) {
     get(list[i]);
-    onProgress?.((i + 1) / list.length, list[i]);
+    onProgress?.((i + 1) / total, list[i]);
     await new Promise((r) => setTimeout(r, 0));
+  }
+  // synthesize the world material sets (dynamic import: materials.js imports this module)
+  try {
+    const M = await import('./materials.js');
+    await M.warmWorld?.((p, n) => onProgress?.((list.length + p) / total, n));
+  } catch (e) {
+    console.warn('[textures] world material warm-up failed', e);
   }
 }
 

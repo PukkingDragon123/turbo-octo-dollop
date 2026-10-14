@@ -84,6 +84,9 @@ export class PlanarReflection {
   dispose() { this.rt.dispose(); }
 }
 
+// Stagnant, murky flood water: planar reflection distorted by slow ripples, Schlick fresnel (the floor
+// shows through when looking down, a mirror at grazing angles), a turbid brown-green body lit by the
+// baked light field, drifting scum and a soft shoreline darkening where the water meets walls.
 export function makeWaterMaterial(reflection, field, opts = {}) {
   const noise = Tex.get('noise').map;
   const mat = new THREE.ShaderMaterial({
@@ -95,10 +98,10 @@ export function makeWaterMaterial(reflection, field, opts = {}) {
       uTexMat: { value: reflection.textureMatrix },
       uNoise: { value: noise },
       uTime: { value: 0 },
-      uColor: { value: new THREE.Color(opts.color ?? 0x2a2a12) },
-      uDeep: { value: new THREE.Color(opts.deep ?? 0x14140a) },
-      uOpacity: { value: opts.opacity ?? 0.82 },
-      uReflectStrength: { value: opts.reflect ?? 0.85 },
+      uColor: { value: new THREE.Color(opts.color ?? 0x4a4630) },
+      uDeep: { value: new THREE.Color(opts.deep ?? 0x1e1f14) },
+      uOpacity: { value: opts.opacity ?? 0.62 },
+      uReflectStrength: { value: opts.reflect ?? 0.95 },
       uLightTex: field.uniforms.uLightTex,
       uLightScale: field.uniforms.uLightScale,
     }),
@@ -138,21 +141,35 @@ export function makeWaterMaterial(reflection, field, opts = {}) {
       varying vec4 vRefl;
       varying vec3 vWPos;
       varying vec3 vBaked;
+      float hgt(vec2 p, float t){
+        return texture2D(uNoise, p * 0.31 + vec2(t * 0.011, t * 0.007)).g
+             + texture2D(uNoise, p * 0.83 + vec2(-t * 0.009, t * 0.013)).g * 0.45
+             + texture2D(uNoise, p * 2.3 + vec2(t * 0.021, -t * 0.017)).b * 0.06;
+      }
       void main(){
         vec2 p = vWPos.xz;
-        float n1 = texture2D(uNoise, p * 0.35 + vec2(uTime * 0.02, uTime * 0.013)).g;
-        float n2 = texture2D(uNoise, p * 0.6 - vec2(uTime * 0.017, -uTime * 0.021)).g;
-        vec2 ripple = vec2(n1 - 0.5, n2 - 0.5) * 0.06;
-        vec4 rc = vRefl;
-        rc.xy += ripple * rc.w;
-        vec3 refl = texture2DProj(tReflect, rc).rgb;
+        float t = uTime;
+        float e = 0.02;
+        float h0 = hgt(p, t), hx = hgt(p + vec2(e, 0.0), t), hz = hgt(p + vec2(0.0, e), t);
+        vec3 N = normalize(vec3((h0 - hx) / e * 0.022, 1.0, (h0 - hz) / e * 0.022));
         vec3 V = normalize(cameraPosition - vWPos);
-        float fres = 0.25 + 0.75 * pow(1.0 - clamp(V.y, 0.0, 1.0), 3.0);
-        vec3 base = mix(uDeep, uColor, 0.5 + (n1 - 0.5)) * (vBaked + 0.05);
-        vec3 col = mix(base, refl, fres * uReflectStrength);
-        // specular glints of the fluorescent tubes
-        col += vBaked * pow(max(0.0, n1 * n2 * 2.2 - 0.9), 3.0) * 0.6;
-        gl_FragColor = vec4(col, mix(uOpacity, 1.0, fres * 0.5));
+        float cosT = clamp(dot(N, V), 0.0, 1.0);
+        float F = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
+        vec4 rc = vRefl;
+        rc.xy += N.xz * 0.9 * rc.w * 0.05;
+        vec3 refl = texture2DProj(tReflect, rc).rgb;
+        // turbid body + drifting scum / dust film
+        float scum = smoothstep(0.58, 0.8, texture2D(uNoise, p * 0.07 + vec2(t * 0.0015, -t * 0.001)).r);
+        float film = texture2D(uNoise, p * 0.5 + 3.1).g;
+        vec3 body = mix(uDeep, uColor, 0.45 + film * 0.3);
+        body = mix(body, vec3(0.32, 0.3, 0.22), scum * 0.35);
+        body *= vBaked * 0.9 + 0.03;
+        float refK = clamp(F * 1.6 + 0.06, 0.0, 1.0) * uReflectStrength * (1.0 - scum * 0.5);
+        vec3 col = mix(body, refl, refK);
+        // a little sparkle where ripples catch the fixtures
+        col += vBaked * pow(max(0.0, N.y < 0.999 ? (1.0 - N.y) * 60.0 : 0.0), 2.0) * 0.02;
+        float alpha = clamp(mix(uOpacity, 1.0, refK) + scum * 0.25, 0.0, 1.0);
+        gl_FragColor = vec4(col, alpha);
         #include <fog_fragment>
       }
     `,

@@ -32,11 +32,12 @@ function register() {
   registered = true;
   // crinkled PVC-coated hazmat fabric (albedo ~neutral: the suit colour comes from the material)
   Synth.registerRecipe('doll_pvc', {
-    defaults: { c0: 0xffffff, c2: 0x6a5a3a, p0: [0.36, 1, 0, 0], wear: 0.35, meters: 0.42, bump: 2.6, size: 512 },
+    defaults: { c0: 0xffffff, c2: 0x6a5a3a, p0: [0.5, 1, 0, 0], wear: 0.35, meters: 0.36, bump: 3.2, size: 512 },
     glsl: `S surface(vec2 uv){
       float big = ridged(uv, vec2(3.0, 2.0), 4);
       float mid = ridged(uv + vec2(0.37, 0.71), vec2(7.0, 5.0), 4);
       float crk = ridged(uv + vec2(0.13, 0.29), vec2(17.0, 13.0), 3);
+      float lines = pow(ridged(uv + vec2(0.61, 0.17), vec2(9.0, 6.0), 2), 3.0);
       float m = fbm(uv, vec2(4.0), 5);
       float scrim = (0.5 + 0.5 * sin(uv.x * PI * 2.0 * 150.0)) * (0.5 + 0.5 * sin(uv.y * PI * 2.0 * 150.0));
       float dirt = smoothstep(0.6, 0.92, fbm(uv + 6.0, vec2(3.0), 6)) * uWear;
@@ -44,15 +45,15 @@ function register() {
       vec3 col = vec3(0.9) * (0.975 + (m - 0.5) * 0.07) * (0.965 + big * 0.035);
       col = mix(col, uC2, dirt * 0.3); col = mix(col, col * 1.08, scuff * 0.5);
       S s; s.albedo = col;
-      s.height = big * 0.5 + mid * 0.3 + crk * 0.14 + scrim * 0.012;
+      s.height = big * 0.5 + mid * 0.3 + crk * 0.14 + lines * 0.22 + scrim * 0.012;
       s.rough = uP0.x + (1.0 - crk) * 0.07 - big * 0.07 + dirt * 0.28 + scuff * 0.1;
       s.ao = 0.8 + big * 0.2; s.metal = 0.0; return s; }`,
   });
   // dense canvas-like burlap (PEAK heads are a fine hessian: weave visible up close, mottled further away)
   Synth.registerRecipe('doll_burlap', {
-    defaults: { c0: 0xf2e2c2, c1: 0xd8c098, c2: 0x5a4028, p0: [22, 22, 0.55, 0.9], wear: 0.25, meters: 0.085, bump: 3.2, size: 512 },
+    defaults: { c0: 0xfff8ec, c1: 0xeddcbe, c2: 0x6a5034, p0: [26, 26, 0.28, 1.0], wear: 0.3, meters: 0.085, bump: 2.4, size: 512 },
     glsl: `S surface(vec2 uv){
-      vec2 wob = vec2(fbm(uv, vec2(4.0), 3) - 0.5, fbm(uv + 7.1, vec2(4.0), 3) - 0.5) * 0.3 / uP0.xy;
+      vec2 wob = vec2(fbm(uv, vec2(4.0), 3) - 0.5, fbm(uv + 7.1, vec2(4.0), 3) - 0.5) * 0.55 / uP0.xy;
       vec2 t = (uv + wob) * uP0.xy; vec2 c = floor(t), f = fract(t);
       float thW = 0.4 + 0.12 * h12(vec2(mod(c.x, uP0.x), 2.0)) + 0.1 * (vn(vec2(c.x, uv.y * 10.0), vec2(uP0.x, 10.0)) - 0.5);
       float thF = 0.4 + 0.12 * h12(vec2(5.0, mod(c.y, uP0.y))) + 0.1 * (vn(vec2(uv.x * 10.0, c.y), vec2(10.0, uP0.y)) - 0.5);
@@ -127,28 +128,31 @@ function register() {
   });
   // Hawaiian print: white plumerias with red star centres + green monstera-ish leaves on pink
   Synth.registerRecipe('doll_hawaii', {
-    defaults: { c0: 0xec6fa6, c1: 0xfbf6ee, c2: 0x2f9a52, c3: 0xd8283a, p0: [0, 0, 0, 0], meters: 0.4, bump: 0.2, size: 512 },
+    defaults: { c0: 0xe0518f, c1: 0xfbf6ee, c2: 0x2f9a52, c3: 0xd8283a, p0: [0, 0, 0, 0], meters: 0.5, bump: 0.2, size: 512 },
     glsl: CELL + `S surface(vec2 uv){
-      vec3 col = uC0 * (0.96 + fbm(uv, vec2(8.0), 3) * 0.08);
-      // leaves
+      vec3 col = uC0 * (0.95 + fbm(uv, vec2(8.0), 3) * 0.1);
+      // leaves (sparse)
       for (int k = 0; k < 2; k++) {
-        vec4 L = cellNear(uv + float(k) * 0.37, 5.0 + float(k) * 2.0, 0.8, 11.0 + float(k) * 5.0);
-        vec2 q = rot2(L.z * 6.283) * (-L.xy); float s = 0.42 + L.w * 0.12;
-        for (int j = 0; j < 2; j++) { vec2 qq = rot2(float(j) * 2.4 + 0.5) * q; qq.x -= s * 0.95;
-          float e = length(qq / vec2(s * 0.95, s * 0.36));
-          if (e < 1.0) { float vein = smoothstep(0.03, 0.0, abs(qq.y)) * step(-s * 0.85, qq.x); col = mix(uC2 * (0.82 + 0.25 * (1.0 - e)), uC2 * 0.55, vein * 0.6); } }
+        vec4 L = cellNear(uv + float(k) * 0.37, 3.0 + float(k), 0.8, 11.0 + float(k) * 5.0);
+        if (L.w > 0.7) continue;
+        vec2 q = rot2(L.z * 6.283) * (-L.xy); float s = 0.36 + L.w * 0.1;
+        for (int j = 0; j < 2; j++) { vec2 qq = rot2(float(j) * 2.6 + 0.4) * q; qq.x -= s * 0.95;
+          float e = length(qq / vec2(s * 0.95, s * 0.34));
+          if (e < 1.0) { float vein = smoothstep(0.025, 0.0, abs(qq.y)) * step(-s * 0.85, qq.x); col = mix(uC2 * (0.8 + 0.25 * (1.0 - e)), uC2 * 0.55, vein * 0.6); } }
       }
-      // flowers (two sizes)
+      // plumerias: big + medium, with gaps
       for (int k = 0; k < 2; k++) {
-        vec4 F = cellNear(uv + 0.11 + float(k) * 0.53, k == 0 ? 4.0 : 7.0, 0.7, 31.0 + float(k) * 7.0);
-        vec2 q = rot2(F.z * 6.283) * (-F.xy); float R = (k == 0 ? 0.36 : 0.3) * (0.85 + F.w * 0.3);
+        vec4 F = cellNear(uv + 0.11 + float(k) * 0.53, k == 0 ? 3.0 : 5.0, 0.75, 31.0 + float(k) * 7.0);
+        if (F.w > (k == 0 ? 0.85 : 0.55)) continue;
+        vec2 q = rot2(F.z * 6.283) * (-F.xy); float R = (k == 0 ? 0.34 : 0.28) * (0.85 + F.w * 0.25);
         float r = length(q), a = atan(q.y, q.x);
-        float petal = R * (0.55 + 0.45 * pow(abs(cos(2.5 * a)), 0.7));
+        float petal = R * (0.52 + 0.48 * pow(abs(cos(2.5 * a)), 0.65));
         if (r < petal) {
-          float sh = smoothstep(petal, petal * 0.4, r);
-          col = mix(uC1 * 0.86, uC1, sh);
-          if (r < R * 0.26) { col = mix(uC3, vec3(0.98, 0.82, 0.25), smoothstep(R * 0.14, 0.0, r) * 0.7); }
-          else if (r < R * 0.4) { float star = step(0.6, abs(cos(2.5 * a))); col = mix(col, uC3, star * smoothstep(R * 0.4, R * 0.26, r)); }
+          float sh = smoothstep(petal, petal * 0.35, r);
+          col = mix(uC1 * 0.84, uC1, sh);
+          col = mix(col, vec3(0.98, 0.86, 0.45), smoothstep(R * 0.45, R * 0.12, r) * 0.6);
+          if (r < R * 0.2) col = mix(uC3, uC3 * 0.7, r / (R * 0.2));
+          else if (r < R * 0.42) { float star = step(0.62, abs(cos(2.5 * a))); col = mix(col, uC3, star * smoothstep(R * 0.42, R * 0.22, r)); }
         }
       }
       S s; s.albedo = col; s.height = 0.5; s.rough = 0.5; s.ao = 1.0; s.metal = 0.0; return s; }`,
@@ -237,7 +241,7 @@ function dollPortrait(ctx, cx, cy, s) {
 
 function drawAtlas(ctx, emissive = false) {
   const A = ATLAS;
-  ctx.fillStyle = emissive ? '#000' : '#808080'; ctx.fillRect(0, 0, A.W, A.H);
+  if (emissive) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, A.W, A.H); } else ctx.clearRect(0, 0, A.W, A.H);
   const R = (k) => A[k];
   if (emissive) {
     // LCD glow
@@ -320,7 +324,7 @@ function drawAtlas(ctx, emissive = false) {
   // --- respirator filter label
   { const [x, y, w, h] = R('filter'); ctx.fillStyle = '#e8d24a'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#9a2a8a'; ctx.fillRect(x, y + h * 0.62, w, h * 0.38); ctx.fillStyle = '#151515'; ctx.font = `bold 34px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ABEK-P3', x + w / 2, y + h * 0.32); ctx.fillStyle = '#fff'; ctx.font = `bold 20px ${MONO}`; ctx.fillText('R.O.O.M. FILTER', x + w / 2, y + h * 0.81); }
   // --- hood back stencil
-  { const [x, y, w, h] = R('hoodtxt'); ctx.fillStyle = '#808080'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#17171a'; ctx.font = `bold 52px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('R.O.O.M.', x + w / 2, y + h / 2 + 2); }
+  { const [x, y, w, h] = R('hoodtxt'); ctx.fillStyle = '#17171a'; ctx.font = `bold 52px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('R.O.O.M.', x + w / 2, y + h / 2 + 2); }
   // --- hazard stripes strip
   { const [x, y, w, h] = R('stripes'); hazard(ctx, x, y, w, h, 24); }
   { const [x, y, w, h] = R('white'); ctx.fillStyle = '#f4f2ec'; ctx.fillRect(x, y, w, h); }
@@ -347,8 +351,14 @@ export function atlasTextures() {
       drawAtlas(ctx, emissive);
       const t = new THREE.CanvasTexture(c);
       t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.needsUpdate = true;
+      t.userData.redraw = () => { ctx.clearRect(0, 0, ATLAS.W, ATLAS.H); drawAtlas(ctx, emissive); t.needsUpdate = true; };
       return t;
     };
-    return { map: mk(false), emissiveMap: mk(true) };
+    const res = { map: mk(false), emissiveMap: mk(true) };
+    // labels use web fonts: redraw once they have loaded
+    if (typeof document !== 'undefined' && document.fonts && document.fonts.status !== 'loaded') {
+      document.fonts.ready.then(() => { res.map.userData.redraw(); res.emissiveMap.userData.redraw(); });
+    }
+    return res;
   });
 }

@@ -11,7 +11,7 @@ import { buildModel } from '../entities/catalog.js';
 const P = new URLSearchParams(location.search);
 const set = P.get('set') || 'furniture';
 const cols = +(P.get('cols') || 4);
-const yaw = +(P.get('yaw') ?? (set === 'avatar' || set === 'stilllife' || set === 'clones' ? Math.PI + 0.5 : 0.7)), pitch = +(P.get('pitch') ?? 0.32), zoom = +(P.get('zoom') || 1);
+const yaw0 = +(P.get('yaw') ?? (set === 'avatar' || set === 'stilllife' || set === 'clones' ? Math.PI + 0.5 : 0.7)), pitch = +(P.get('pitch') ?? 0.32), zoom = +(P.get('zoom') || 1);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
@@ -59,27 +59,91 @@ async function listModels() {
       },
     }));
   }
-  if (set === 'avatar') {
+  if (set === 'fparms' || set === 'ragdoll') {
+    // first-person viewmodel arms (camera at the origin looking -Z: use &yaw=0&pitch=0&focus=0,-0.2,-0.4&fr=0.35)
+    // or ragdoll parts laid out in their spawn pose
     const A = await import('../entities/avatar.js');
-    const base = P.get('cos') ? JSON.parse(P.get('cos')) : A.DEFAULT_COSMETICS;
     const variants = keysParam ? keysParam.split(',') : ['default'];
-    return variants.map((v) => ({
-      key: v,
-      build: () => {
-        let cos = { ...base };
-        if (v.includes('=')) for (const kv of v.split(/[;| ]/)) { const [a, b] = kv.split('='); if (b) cos[a] = b; }
-        const av = new A.Avatar(cos);
-        av.update?.(0.016, { speed: 0, grounded: true, expression: 'neutral' });
-        return av.root;
-      },
-      update: null,
-    }));
+    return variants.map((v) => {
+      const cos = {};
+      let fst = { watchRaised: 0, holdingItem: false };
+      if (v.includes('=')) for (const kv of v.split(/[;| ]/)) { const [a, b] = kv.split('='); if (b == null) continue; if (a.startsWith('state.')) fst[a.slice(6)] = isNaN(+b) ? b === 'true' : +b; else cos[a] = b; }
+      let arms = null;
+      return {
+        key: v,
+        build: () => {
+          if (set === 'fparms') { arms = A.buildFirstPersonArms(cos); for (let k = 0; k < 90; k++) arms.update(1 / 60, fst); return arms.root; }
+          const rd = A.buildRagdoll(cos), g = new THREE.Group();
+          for (const [k, part] of Object.entries(rd.parts)) { part.mesh.position.fromArray(rd.pose[k]); g.add(part.mesh); }
+          return g;
+        },
+        update: P.get('anim') && set === 'fparms' ? (dt) => arms?.update(dt, fst) : null,
+      };
+    });
+  }
+  if (set === 'avatar' || set === 'doll') {
+    // variants: "slot=id;slot=id;state.speed=1.5;state.expression=happy;t=0.8"
+    const A = set === 'doll' ? await import('../entities/doll/doll_avatar.js') : await import('../entities/avatar.js');
+    const base = P.get('cos') ? JSON.parse(P.get('cos')) : { suit: 'yellow', skin: 'tan', hat: 'none', visor: 'none', face: 'dots', backpack: 'tank', accessory: 'none' };
+    const gstate = P.get('state') ? JSON.parse(P.get('state')) : {};
+    const variants = keysParam ? keysParam.split(',') : ['default'];
+    return variants.map((v) => {
+      let av = null, st = { speed: 0, grounded: true, expression: 'neutral', ...gstate }, simT = +(P.get('t') || 0);
+      return {
+        key: v,
+        build: () => {
+          const cos = { ...base };
+          if (v.includes('=')) for (const kv of v.split(/[;| ]/)) {
+            const [a, b] = kv.split('='); if (b == null) continue;
+            if (a.startsWith('state.')) st[a.slice(6)] = isNaN(+b) ? (b === 'true' ? true : b === 'false' ? false : b) : +b;
+            else if (a === 't') simT = +b; else cos[a] = b;
+          }
+          if (st.moveX != null || st.moveY != null) st.moveDir = new THREE.Vector2(st.moveX || 0, st.moveY ?? 1);
+          const t0 = performance.now();
+          av = new A.Avatar(cos);
+          window.__buildMs = (window.__buildMs || []).concat(performance.now() - t0);
+          av.update?.(0.016, st);
+          for (let k = 0; k < Math.round(simT / 0.016); k++) av.update?.(0.016, st);
+          if (cos.item) {
+            const m = buildModel(cos.item, { seed: 1 });
+            if (m.hold) { m.object.position.fromArray(m.hold.pos); m.object.rotation.set(...m.hold.rot); }
+            av.getHandAnchor('right').add(m.object);
+          }
+          if (v.includes('deadclone')) { const g = new THREE.Group(); av.root.position.set(0, 0.12, 0); av.root.rotation.set(-Math.PI / 2 + 0.15, 0.7, 0.2); g.add(av.root); return g; }
+          window.__avatars = (window.__avatars || []).concat(av);
+          return av.root;
+        },
+        update: P.get('anim') ? (dt) => av?.update?.(dt, st) : null,
+      };
+    });
   }
   if (set === 'stilllife') {
-    const S = await import('../entities/stilllife_model.js');
-    return pick(S.STILL_LIFE_VARIANTS).map((v) => {
-      const m = S.buildStillLife(v, 3);
-      return { key: v, build: () => m.root, update: (dt, t) => m.update?.(dt, { t, state: P.get('state') || 'idle', speed: +(P.get('speed') || 0) }) };
+    // &impl=new -> src/entities/stilllife/index.js; &state=attack|chase|frozen; &speed=1.5&walk=1 (root moves);
+    // &frames=N&fdt=0.25 -> N cells of the first key at successive times; &t=secs pre-roll
+    const S = P.get('impl') === 'new' ? await import('../entities/stilllife/index.js') : await import('../entities/stilllife_model.js');
+    let keys = pick(S.STILL_LIFE_VARIANTS);
+    const frames = +(P.get('frames') || 0), fdt = +(P.get('fdt') || 0.2);
+    let cells = frames ? Array.from({ length: frames }, (_, i) => ({ v: keys[0], off: i * fdt })) : keys.map((v) => ({ v, off: 0 }));
+    if (P.get('yaws')) { const ys = P.get('yaws').split(',').map(Number); cells = cells.flatMap((c) => ys.map((y) => ({ ...c, yaw: y }))); }
+    const st = P.get('state') || 'idle', speed = +(P.get('speed') || 0), walk = !!P.get('walk');
+    const seed = +(P.get('seed') || 3);
+    return cells.map(({ v, off, yaw: cyaw }, ci) => {
+      const t0 = performance.now();
+      const m = S.buildStillLife(v, seed);
+      const ms = performance.now() - t0;
+      console.log('stilllife build', v, ms.toFixed(1) + 'ms', JSON.stringify(S.buildStats?.[v] || {}));
+      let tt = 0, atkT = 9;
+      const look = new THREE.Vector3();
+      const upd = (dt, cam) => {
+        tt += dt;
+        if (walk && speed > 0) m.root.position.z -= speed * dt;
+        atkT += dt;
+        if (st === 'attack' && atkT > 2.2) atkT = 0;
+        if (cam) look.copy(cam.position); else look.set(0, 1.2, -3);
+        m.update(dt, { speed: walk ? speed : 0, moving: walk && speed > 0, attacking: st === 'attack' ? Math.max(0, 1 - atkT * 1.5) : 0, alert: st === 'chase' || st === 'attack' ? 1 : 0.3, lookTarget: look, frozen: st === 'frozen' });
+      };
+      const pre = +(P.get('t') || 0) + off;
+      return { key: (frames ? `${v} t=${(pre).toFixed(2)}` : v) + (cyaw != null ? ` y=${cyaw}` : ''), build: () => m.root, update: (dt, t, cam) => upd(dt, cam), pre, follow: walk, yaw: cyaw };
     });
   }
   if (set === 'critters') {
@@ -107,11 +171,14 @@ async function listModels() {
   return [];
 }
 
-function frame(obj, cam, aspect) {
+function frame(obj, cam, aspect, yawOverride = null) {
+  const yaw = yawOverride ?? yaw0;
   const box = new THREE.Box3().setFromObject(obj);
   const c = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
-  const r = Math.max(0.05, size.length() / 2);
+  let r = Math.max(0.05, size.length() / 2);
+  // &focus=x,y,z (object-local) &fr=radius : close-ups
+  if (P.get('focus')) { const f = P.get('focus').split(',').map(Number); c.set(f[0], f[1], f[2]).applyMatrix4(obj.matrixWorld); r = +(P.get('fr') || 0.4); }
   const dist = (r / Math.sin(THREE.MathUtils.degToRad(cam.fov / 2))) * (P.get('close') ? 0.82 : 1.0) / zoom / Math.min(1, aspect);
   cam.position.set(c.x + Math.sin(yaw) * Math.cos(pitch) * dist, c.y + Math.sin(pitch) * dist, c.z + Math.cos(yaw) * Math.cos(pitch) * dist);
   cam.near = dist / 50; cam.far = dist * 20;
@@ -142,7 +209,14 @@ async function main() {
     scene.add(obj);
     obj.updateMatrixWorld(true);
     const cam = new THREE.PerspectiveCamera(32, cw / ch, 0.01, 100);
-    const f = frame(obj, cam, cw / ch);
+    if (it.pre) {
+      // pre-roll the animation (camera placed first so lookTarget is meaningful)
+      frame(obj, cam, cw / ch, it.yaw);
+      for (let k = 0, n = Math.round(it.pre * 30); k < n; k++) { it.update(1 / 30, 0, cam); obj.updateMatrixWorld(true); }
+    } else if (it.update) { frame(obj, cam, cw / ch, it.yaw); it.update(1 / 30, 0, cam); }
+    obj.updateMatrixWorld(true);
+    const f = frame(obj, cam, cw / ch, it.yaw);
+    it.camOff = cam.position.clone().sub(obj.position);
     // floor + shadows
     const floor = new THREE.Mesh(new THREE.CircleGeometry(f.r * 4, 48), new THREE.MeshStandardMaterial({ color: 0x55565c, roughness: 0.9 }));
     floor.rotation.x = -Math.PI / 2;
@@ -170,7 +244,8 @@ async function main() {
     const dt = 1 / 30;
     t += dt;
     for (const c of cells) {
-      c.it.update?.(dt, t);
+      c.it.update?.(dt, t, c.cam);
+      if (c.it.follow) { c.cam.position.copy(c.obj.position).add(c.it.camOff); }
       renderer.setViewport(c.x, c.y, c.w, c.h);
       renderer.setScissor(c.x, c.y, c.w, c.h);
       renderer.render(c.scene, c.cam);

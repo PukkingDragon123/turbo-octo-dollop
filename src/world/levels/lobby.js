@@ -8,8 +8,9 @@ import { net } from '../../net/net.js';
 import { input } from '../../core/input.js';
 import { audio } from '../../audio/audio.js';
 import * as Mat from '../../gfx/materials.js';
-import { GeoBuilder } from '../geom.js';
-import { bakeGeometry, bakedMaterial, LightField } from '../../gfx/bakedlight.js';
+import { bakedMaterial, bakeGeometry, LightField } from '../../gfx/bakedlight.js';
+import { buildLobbyShell, bakeLobbyShell } from '../env/lobbyshell.js';
+import { EnvGeo, fr } from '../env/builder.js';
 import { Q } from '../../physics/physics.js';
 import { buildModel, modelHalfHeight } from '../../entities/catalog.js';
 import { makeDevice, ModelDevice } from '../../game/devicekinds.js';
@@ -56,14 +57,24 @@ export class LobbyLevel {
   async build(onProgress) {
     const scene = engine.scene;
     scene.background = new THREE.Color(0x050505);
-    scene.fog = new THREE.FogExp2(0x0a0a0a, 0.012);
-    engine.scene.environmentIntensity = 0.3;
-    this.field.uniforms.uAmbient.value.setRGB(0.03, 0.03, 0.028);
-    this.field.uniforms.uLightScale.value = 0.62;
-    engine.post.params.uTint.value.setRGB(1.0, 0.99, 0.96);
-    engine.post.params.uSat.value = 1.0;
-    engine.post.params.uGrain.value = 0.05;
-    engine.post.params.uVignette.value = 0.42;
+    scene.fog = new THREE.FogExp2(0x2a2a26, 0.014);
+    engine.scene.environmentIntensity = 0.26;
+    this.field.uniforms.uAmbient.value.setRGB(0.02, 0.02, 0.019);
+    this.field.uniforms.uLightScale.value = 0.5;
+    this.field.uniforms.uGrid.value.set(3, H - 0.04, 10, H);
+    const pp = engine.post.params;
+    pp.uTint.value.setRGB(1.0, 0.99, 0.97);
+    pp.uSat.value = 0.95;
+    pp.uGrain.value = 0.04;
+    pp.uVignette.value = 0.42;
+    // corporate fluorescent grade: neutral-cool, soft toe, gentle highlight roll-off
+    pp.uExposure.value = 0.98;
+    pp.uLift.value.set(0.012, 0.014, 0.016);
+    pp.uGamma.value.set(1.0, 1.0, 1.01);
+    pp.uGain.value.set(0.99, 1.0, 1.0);
+    pp.uRolloff.value = 0.3;
+    pp.uContrast.value = 1.07;
+    engine.renderer.toneMappingExposure = 0.92;
     engine.post.params.uGlitch.value = 0;
     engine.post.params.uFade.value = 0;
     this.world.customModel = (type, state) => this._customModel(type, state);
@@ -93,24 +104,12 @@ export class LobbyLevel {
 
   // ---------------------------------------------------------------
   _buildShell() {
-    const g = this.world.group;
     const phys = this.world.physics;
-    this.gb = {};
-    const gbFor = (mat) => (this.gb[mat] = this.gb[mat] || new GeoBuilder());
-    // floors & ceilings
+    // floors & ceilings colliders per room
     for (const r of ROOMS) {
       const w = r.x1 - r.x0, d = r.z1 - r.z0;
-      gbFor(r.floor).grid(new THREE.Vector3(r.x0, 0, r.z1), new THREE.Vector3(w, 0, 0), new THREE.Vector3(0, 0, -d), new THREE.Vector3(0, 1, 0), Math.ceil(w / 1.5), Math.ceil(d / 1.5), (p) => [p.x, p.z]);
-      const ceilMat = r.id === 'dispatch' ? 'concrete' : 'ceiling';
-      gbFor(ceilMat).grid(new THREE.Vector3(r.x0, H, r.z0), new THREE.Vector3(w, 0, 0), new THREE.Vector3(0, 0, d), new THREE.Vector3(0, -1, 0), Math.ceil(w / 1.5), Math.ceil(d / 1.5), (p) => [p.x, p.z]);
       phys.addStaticBox((r.x0 + r.x1) / 2, -0.25, (r.z0 + r.z1) / 2, w / 2 + 0.2, 0.25, d / 2 + 0.2, { kind: 'static', surface: r.floor === 'office_carpet' ? 'carpet' : r.floor === 'concrete_dark' ? 'concrete' : 'hard' });
       phys.addStaticBox((r.x0 + r.x1) / 2, H + 0.25, (r.z0 + r.z1) / 2, w / 2 + 0.2, 0.25, d / 2 + 0.2, { kind: 'static' });
-      // ceiling light grid
-      const nx = Math.max(1, Math.round(w / 3.2)), nz = Math.max(1, Math.round(d / 3.2));
-      for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
-        const x = r.x0 + (i + 0.5) * (w / nx), z = r.z0 + (j + 0.5) * (d / nz);
-        this._addLight(x, z, r.tone, r.id === 'dispatch' ? 0.9 : 1.05, r.id);
-      }
     }
     // walls: [x0,z0,x1,z1, matA (left/-normal side), matB, openings[{a,b,top}]]
     const P = { panel: { lower: 'panel', upper: 'paint', split: 1.0 }, tile: { lower: 'tile', upper: 'paint_white', split: 1.3 }, labt: { lower: 'tile_green', upper: 'paint_white', split: 1.3 } };
@@ -146,7 +145,7 @@ export class LobbyLevel {
       [4, -18, 4, -6, null, 'concrete'],
       [22, -18, 22, -6, 'concrete', null],
     ];
-    for (const w of W) this._wall(...w);
+    this.shell = buildLobbyShell(this, ROOMS, W, H, T);
   }
 
   _addLight(x, z, tone, intensity, room) {
@@ -155,65 +154,8 @@ export class LobbyLevel {
     const l = this.field.add(key, x, H - 0.04, z, tone, intensity, { mode: 'on', radius: 10 });
     l.room = room;
     this.lights.push(l);
-    // panel mesh (emissive, follows the light value)
-    const gb = (this.gb.__panels = this.gb.__panels || new GeoBuilder());
-    gb.box(new THREE.Vector3(x - 0.6, H - 0.03, z - 0.3), new THREE.Vector3(x + 0.6, H + 0.01, z + 0.3), 2, { top: true }, 'flat');
     (this.panelKeys = this.panelKeys || []).push({ key, x, z });
     return l;
-  }
-
-  _wall(x0, z0, x1, z1, matA, matB, openings = []) {
-    const phys = this.world.physics;
-    const len = Math.hypot(x1 - x0, z1 - z0);
-    const axis = Math.abs(x1 - x0) > Math.abs(z1 - z0) ? 'x' : 'z';
-    const s0 = axis === 'x' ? Math.min(x0, x1) : Math.min(z0, z1);
-    const fixed = axis === 'x' ? z0 : x0;
-    const pieces = []; // [a, b, y0, y1]
-    let cur = 0;
-    const ops = openings.slice().sort((a, b) => a.a - b.a);
-    for (const o of ops) {
-      if (o.a > cur) pieces.push([cur, o.a, 0, H]);
-      pieces.push([o.a, o.b, o.top, H]);
-      cur = o.b;
-    }
-    if (cur < len) pieces.push([cur, len, 0, H]);
-    for (const [a, b, y0, y1] of pieces) {
-      if (b - a < 0.01 || y1 - y0 < 0.01) continue;
-      const e0 = a === 0 ? -T / 2 : a, e1 = b === len ? len + T / 2 : b;
-      for (const side of [-1, 1]) {
-        const mat = side < 0 ? matA : matB;
-        if (!mat) continue;
-        const spec = typeof mat === 'string' ? { lower: mat, upper: mat, split: 0 } : mat;
-        const bands = spec.split > y0 && spec.split < y1 ? [[y0, spec.split, spec.lower], [spec.split, y1, spec.upper]] : [[y0, y1, spec.split >= y1 ? spec.lower : spec.upper]];
-        for (const [b0, b1, m] of bands) {
-          const gb = (this.gb[m] = this.gb[m] || new GeoBuilder());
-          let min, max;
-          if (axis === 'x') {
-            min = new THREE.Vector3(s0 + e0, b0, side < 0 ? fixed - T / 2 : fixed);
-            max = new THREE.Vector3(s0 + e1, b1, side < 0 ? fixed : fixed + T / 2);
-          } else {
-            min = new THREE.Vector3(side < 0 ? fixed - T / 2 : fixed, b0, s0 + e0);
-            max = new THREE.Vector3(side < 0 ? fixed : fixed + T / 2, b1, s0 + e1);
-          }
-          const skip = { bottom: true, top: b1 >= H - 0.001 };
-          if (axis === 'x') { skip[side < 0 ? 'pz' : 'nz'] = true; } else { skip[side < 0 ? 'px' : 'nx'] = true; }
-          gb.box(min, max, 1.0, skip);
-          if (y0 === 0 && b0 === 0) {
-            // baseboard
-            const bb = (this.gb.__base = this.gb.__base || new GeoBuilder());
-            const bt = 0.015;
-            if (axis === 'x') {
-              if (side < 0) bb.box(new THREE.Vector3(min.x, 0, min.z - bt), new THREE.Vector3(max.x, 0.1, min.z), 2, { bottom: true });
-              else bb.box(new THREE.Vector3(min.x, 0, max.z), new THREE.Vector3(max.x, 0.1, max.z + bt), 2, { bottom: true });
-            } else if (side < 0) bb.box(new THREE.Vector3(min.x - bt, 0, min.z), new THREE.Vector3(min.x, 0.1, max.z), 2, { bottom: true });
-            else bb.box(new THREE.Vector3(max.x, 0, min.z), new THREE.Vector3(max.x + bt, 0.1, max.z), 2, { bottom: true });
-          }
-        }
-      }
-      // collider for the full thickness
-      if (axis === 'x') phys.addStaticBox(s0 + (e0 + e1) / 2, (y0 + y1) / 2, fixed, (e1 - e0) / 2, (y1 - y0) / 2, T / 2, { kind: 'static' });
-      else phys.addStaticBox(fixed, (y0 + y1) / 2, s0 + (e0 + e1) / 2, T / 2, (y1 - y0) / 2, (e1 - e0) / 2, { kind: 'static' });
-    }
   }
 
   // ---------------------------------------------------------------
@@ -327,12 +269,6 @@ export class LobbyLevel {
     this._static('hazard_sign', 9.5, 1.4, -17.88, 0, false);
     this._static('fuse_box', 21.88, 1.3, -10, -Math.PI / 2, false);
     this._static('fire_alarm', 4.12, 1.5, -12, Math.PI / 2, false);
-    // dispatch floor zone (hazard stripes)
-    const zone = new THREE.Mesh(new THREE.PlaneGeometry(6, 5), new THREE.MeshStandardMaterial({ map: hazardTexture(), roughness: 0.7 }));
-    zone.rotation.x = -Math.PI / 2;
-    zone.position.set(13, 0.006, -14.6);
-    zone.receiveShadow = true;
-    this.world.group.add(zone);
     this.dispatchZone = new THREE.Box3(new THREE.Vector3(10, -0.5, -17.2), new THREE.Vector3(16, 3, -12.1));
     // collision for dispatch door halves (closed)
     this.doorCols = [
@@ -412,9 +348,10 @@ export class LobbyLevel {
     const lights = this.lights;
     const lightsNear = (x, z) => lights.filter((l) => Math.abs(l.x - x) < 10 && Math.abs(l.z - z) < 10);
     const ray = new THREE.Vector3();
+    const from = new THREE.Vector3(), to = new THREE.Vector3();
     const occl = (x0, z0, x1, z1, y0) => {
-      const from = new THREE.Vector3(x0, Math.min(y0 ?? 1.2, H - 0.12), z0);
-      const to = new THREE.Vector3(x1, H - 0.12, z1);
+      from.set(x0, Math.min(y0 ?? 1.2, H - 0.12), z0);
+      to.set(x1, H - 0.12, z1);
       ray.subVectors(to, from);
       const d = ray.length();
       if (d < 0.05) return 1;
@@ -422,43 +359,19 @@ export class LobbyLevel {
       const hit = phys.raycast(from, ray, d - 0.05, Q.world);
       return hit ? 0.08 : 1;
     };
-    const ao = (x, y, z, nx, ny) => {
-      if (ny > 0.5) return 0.8;
-      if (ny < -0.5) return 0.9;
-      return Math.min(1, 0.75 + y * 0.4) * Math.min(1, 0.85 + (H - y) * 0.4);
-    };
-    const field = this.field;
-    const grime = { office_carpet: 0, linoleum: 0, concrete_dark: 4, concrete: 4, ceiling: 3, paint: 0, panel: 0, tile: 0 };
-    for (const [name, gb] of Object.entries(this.gb)) {
-      if (gb.isEmpty()) continue;
-      const geo = gb.build();
-      if (name === '__panels') {
-        const n = geo.attributes.position.count;
-        const cells = new Float32Array(n * 4), wts = new Float32Array(n * 4), a = new Float32Array(n).fill(1);
-        const pos = geo.attributes.position;
-        for (let v = 0; v < n; v++) {
-          let best = null, bd = 1e9;
-          for (const pk of this.panelKeys) {
-            const d = (pk.x - pos.getX(v)) ** 2 + (pk.z - pos.getZ(v)) ** 2;
-            if (d < bd) { bd = d; best = pk; }
-          }
-          cells[v * 4] = best.key;
-          wts[v * 4] = 1;
-        }
-        geo.setAttribute('aLightCells', new THREE.BufferAttribute(cells, 4));
-        geo.setAttribute('aLightW', new THREE.BufferAttribute(wts, 4));
-        geo.setAttribute('aAO', new THREE.BufferAttribute(a, 1));
-        const mesh = new THREE.Mesh(geo, bakedMaterial(Mat.get('lightpanel'), field, 0, { emissiveLights: true }));
-        this.world.group.add(mesh);
-        continue;
-      }
-      bakeGeometry(geo, new THREE.Matrix4(), lightsNear, occl, ao, name === 'ceiling' ? { direct: 0.3, bounce: 0.9 } : {});
-      const base = name === '__base' ? Mat.make('paint', { color: 0x5a4632, roughness: 0.6 }) : Mat.get(name);
-      const mesh = new THREE.Mesh(geo, bakedMaterial(base, field, grime[name] ?? 0));
-      mesh.receiveShadow = true;
-      mesh.castShadow = name !== 'ceiling';
-      this.world.group.add(mesh);
-    }
+    bakeLobbyShell(this, this.shell, ROOMS, lightsNear, occl, H);
+    // dispatch floor zone (hazard stripes), lit like the floor around it
+    const zg = new EnvGeo({ room: true });
+    zg.room = ROOMS.findIndex((r) => r.id === 'dispatch');
+    zg.grid([10, 0.004, -12.1], [6, 0, 0], [0, 0, -5], [0, 1, 0], fr(4), fr(4), (x, y, z) => [(x - 10) / 6, (-12.1 - z) / 5]);
+    const zgeo = zg.build();
+    bakeGeometry(zgeo, new THREE.Matrix4(), lightsNear, occl, null, { exclude: (l) => l.roomIndex === zg.room });
+    const zm = new THREE.MeshStandardMaterial({ map: hazardTexture(), roughness: 0.78, polygonOffset: true, polygonOffsetFactor: -2 });
+    zm.name = 'hazard_zone';
+    const zone = new THREE.Mesh(zgeo, bakedMaterial(zm, this.field, 0, { grid: 2, mix: [1, 0.3] }));
+    zone.receiveShadow = true;
+    zone.renderOrder = 1;
+    this.world.group.add(zone);
     this.field.forceRefresh();
   }
 
@@ -666,6 +579,9 @@ export class LobbyLevel {
     this.muzak2?.stop(0.5);
     this.hum?.stop(0.3);
     this.dispatchLever?.alarm?.stop(0.2);
+    const pp = engine.post.params;
+    pp.uExposure.value = 1; pp.uLift.value.set(0, 0, 0); pp.uGamma.value.set(1, 1, 1); pp.uGain.value.set(1, 1, 1); pp.uRolloff.value = 0; pp.uContrast.value = 1.04;
+    engine.renderer.toneMappingExposure = 1;
   }
 }
 

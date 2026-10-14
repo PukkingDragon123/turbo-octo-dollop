@@ -30,6 +30,13 @@ const FinalShader = {
     uContrast: { value: 1.04 },
     uDesat: { value: 0.0 },     // spectator / dead
     uFlash: { value: 0.0 },     // camera flash
+    // film grade (display-referred, neutral defaults): exposure trim, lift / gamma / gain per channel,
+    // highlight roll-off strength and a gentle toe that keeps blacks soft instead of crushed
+    uExposure: { value: 1.0 },
+    uLift: { value: new THREE.Vector3(0, 0, 0) },
+    uGamma: { value: new THREE.Vector3(1, 1, 1) },
+    uGain: { value: new THREE.Vector3(1, 1, 1) },
+    uRolloff: { value: 0.0 },
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -38,6 +45,8 @@ const FinalShader = {
   fragmentShader: /* glsl */`
     uniform sampler2D tDiffuse;
     uniform float uTime, uGrain, uVignette, uAberration, uDamage, uSanity, uBlur, uGlitch, uFade, uScan, uSat, uContrast, uDesat, uFlash;
+    uniform float uExposure, uRolloff;
+    uniform vec3 uLift, uGamma, uGain;
     uniform vec2 uRes;
     uniform vec3 uFadeColor, uTint;
     varying vec2 vUv;
@@ -80,7 +89,11 @@ const FinalShader = {
         col = mix(col, acc / 5.0, clamp(uBlur, 0.0, 1.0));
       }
       // grade
-      col *= uTint;
+      col *= uTint * uExposure;
+      // soft highlight shoulder (keeps fluorescent panels from clipping into flat white blobs)
+      col = mix(col, col / (1.0 + col * 0.35) * 1.35, uRolloff);
+      col = col * uGain + uLift * (1.0 - col);
+      col = pow(max(col, 0.0), 1.0 / max(uGamma, vec3(0.01)));
       float l = dot(col, vec3(0.299, 0.587, 0.114));
       col = mix(vec3(l), col, uSat * (1.0 - uDesat * 0.85));
       col = (col - 0.5) * uContrast + 0.5;

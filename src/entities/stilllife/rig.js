@@ -1,7 +1,7 @@
 // Still Lifes — bone specs, body assembly (pieces -> one skinned geometry) and per-instance skeletons.
 import * as THREE from 'three';
 import { fbm3, noise3, smoothstep, clamp, lin, PAL } from './core.js';
-import { meshSculpt } from './mesher.js';
+import { meshRaw, finishMesh, clusterBoxes } from './mesher.js';
 import { bodyMaterial, clothMaterial, partsMaterial } from './materials.js';
 
 // Bones are authored in model space (feet at y=0, creature faces -Z) with identity rest rotations.
@@ -27,13 +27,20 @@ export function assembleBody(pieces, look = {}) {
   let nV = 0, nI = 0;
   const stats = [];
   for (const pc of pieces) {
-    const m = meshSculpt(pc.S, { h: pc.h, pad: pc.pad, clip: pc.clip, aoDist: pc.aoDist });
-    outs.push(m); nV += m.nV; nI += m.idx.length; stats.push(m.stats);
+    // mesh each spatially separate cluster on its own grid, share the piece's triangle budget
+    const boxes = pc.clip ? [pc.clip] : clusterBoxes(pc.S, 0.04 + pc.h * 3);
+    const raws = boxes.map((box) => meshRaw(pc.S, { h: pc.h, pad: pc.pad, clip: box }));
+    const tot = raws.reduce((a, r) => a + r.idx.length / 3, 0);
+    for (const raw of raws) {
+      const tris = pc.tris ? Math.max(60, Math.round(pc.tris * (raw.idx.length / 3) / Math.max(1, tot))) : 0;
+      const m = finishMesh(pc.S, raw, { tris, errScale: pc.err, aoDist: pc.aoDist });
+      outs.push(m); nV += m.nV; nI += m.idx.length; stats.push(m.stats);
+    }
   }
   const pos = new Float32Array(nV * 3), nor = new Float32Array(nV * 3), col = new Float32Array(nV * 3);
   const am = new Uint8Array(nV * 4), mi = new Uint8Array(nV * 4), si = new Uint16Array(nV * 4), sw = new Float32Array(nV * 4);
   const idx = nV > 65535 ? new Uint32Array(nI) : new Uint16Array(nI);
-  const floor = look.floor ?? 0.5, stains = look.stains ?? 0.6, fade = look.fade ?? 0.5, sd = look.seed ?? 1, wetSt = look.wetStains ?? 0.5;
+  const floor = look.floor ?? 0.5, stains = look.stains ?? 0.6, fade = look.fade ?? 0.5, sd = look.seed ?? 1, wetSt = (look.wetStains ?? 0.5) * 0.45;
   let vo = 0, io = 0;
   for (const m of outs) {
     for (let i = 0; i < m.nV; i++) {
@@ -61,7 +68,7 @@ export function assembleBody(pieces, look = {}) {
         r += (ROT_LIN[0] * 0.6 - r) * f; g += (ROT_LIN[1] * 0.6 - g) * f; b += (ROT_LIN[2] * 0.55 - b) * f;
       }
       // floor grime creeping up from the feet + dirt attribute
-      const fg = clamp((1 - smoothstep(0.0, 0.6, y)) * floor + dirt * 0.5 * (0.5 + n1), 0, 0.85) * (1 - wIn);
+      const fg = clamp((1 - smoothstep(0.0, 0.7, y)) * floor + dirt * 0.65 * (0.4 + n1), 0, 0.9) * (1 - wIn);
       r += (G_LIN[0] - r) * fg * 0.6; g += (G_LIN[1] - g) * fg * 0.6; b += (G_LIN[2] - b) * fg * 0.6;
       // rust-brown stains (old, some still wet)
       const sN = fbm3(x * 2.7 + sd * 3, y * 2.7 - 2, z * 2.7, 4);
@@ -75,7 +82,7 @@ export function assembleBody(pieces, look = {}) {
         dirt = Math.max(dirt, st * 0.6);
       }
       // cavity darkening
-      const cav = 0.7 + 0.3 * ao;
+      const cav = 0.6 + 0.4 * ao;
       col[k * 3] = r * cav; col[k * 3 + 1] = g * cav; col[k * 3 + 2] = b * cav;
       am[k * 4] = wSu * 255; am[k * 4 + 1] = wRu * 255; am[k * 4 + 2] = wFl * 255; am[k * 4 + 3] = wIn * 255;
       mi[k * 4] = ao * 255; mi[k * 4 + 1] = clamp(thin, 0, 1) * 255; mi[k * 4 + 2] = clamp(wet, 0, 1) * 255; mi[k * 4 + 3] = clamp(dirt, 0, 1) * 255;
@@ -109,9 +116,9 @@ export function assembleBody(pieces, look = {}) {
 
 const IDENT = new THREE.Matrix4();
 // Build a live instance from a cached template {spec, body, parts, cloth, bounds: Sphere}
-export function instantiate(tpl) {
+export function instantiate(tpl, into = null) {
   const spec = tpl.spec;
-  const root = new THREE.Group();
+  const root = into || new THREE.Group();
   const bones = spec.names.map((n) => { const b = new THREE.Bone(); b.name = n; return b; });
   const byName = {};
   for (let i = 0; i < bones.length; i++) {
@@ -137,5 +144,7 @@ export function instantiate(tpl) {
   mk(tpl.cloth, clothMaterial(), 'sl_cloth');
   // rest local positions for animation resets
   const rest = bones.map((b) => b.position.clone());
+  // geometry/materials are shared per variant; only the skeleton's bone texture is per instance
+  root.userData.dispose = () => skeleton.dispose();
   return { root, bones, byName, skeleton, meshes, rest };
 }
