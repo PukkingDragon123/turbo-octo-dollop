@@ -455,13 +455,13 @@ export class LobbyLevel {
     S('plant_pot', -11.3, 0, 5.3, 0);
     S('office_divider_plant', 1, 0, 1, 0.5);
     S('box_medium', 9.8, 0, -5.2, 0.2);
-    S('box_small', 9.9, 0.55, -5.2, -0.3);
+    S('box_small', 9.9, 0.326, -5.2, -0.3); // stacked on the medium box (0.326 m)
     S('traffic_cone', 5.5, 0, -4.8, 0);
     S('rubber_duck', -3.2, 0.78, -5.0, 0.4);
     // locker room
     S('stool', -18, 0, 0, 0);
     S('stool', -16.5, 0, 0.8, 0);
-    S('basketball', -15, 0.2, 3, 0);
+    S('basketball', -15, 0, 3, 0);
     S('suitcase', -13.5, 0, 5.2, 0.3);
     S('coat_rack', -13, 0, -5.2, 0);
     // break room
@@ -473,7 +473,7 @@ export class LobbyLevel {
     S('microwave', 21.6, 0.76, 5.5, Math.PI);
     S('table_folding', 21.6, 0, 5.5, 0);
     S('table_folding', 18, 0, 3.8, 0);
-    for (let k = 0; k < 6; k++) S('dart', 17.6 + k * 0.15, 0.77, 3.8, Math.PI, { rx: Math.PI / 2 });
+    for (let k = 0; k < 6; k++) S('dart', 17.6 + k * 0.15, 0.762, 3.8, Math.PI); // darts lie flat on the table
     S('radio_cassette', 23.3, 0, -1.5, -Math.PI / 2);
     S('trash_can', 13.4, 0, 5.4, 0);
     // lab

@@ -285,7 +285,8 @@ export function populateRoom(level, room, rec, rng) {
       sp(level, 'bed', b.cx, 0, b.z0 + 1.1, 0);
       sp(level, 'lamp_floor', b.x0 + 0.4, 0, b.z0 + 0.4, 0);
       sp(level, 'armchair', b.x1 - 0.7, 0, b.z1 - 0.8, Math.PI * 0.75);
-      if (rng.chance(0.7)) sp(level, rng.pick(['almond_milk', 'canned_food', 'painkillers', 'energy_drink']), b.cx + 0.5, 0.6, b.z0 + 1.1, 0);
+      // on the mattress (0.94 m wide, top at 0.52 m)
+      if (rng.chance(0.7)) sp(level, rng.pick(['almond_milk', 'canned_food', 'painkillers', 'energy_drink']), b.cx + 0.15, 0.52, b.z0 + 1.45, rng.next() * 6);
       break;
     }
     case 'tv_room': {
@@ -300,7 +301,8 @@ export function populateRoom(level, room, rec, rng) {
         sp(level, t, b.x0 + 0.6 + rng.next() * (b.x1 - b.x0 - 1.2), (k % 3) * 0.5, b.z0 + 0.6 + rng.next() * 1.0, rng.next() * 0.4, { sleep: false });
       }
       sp(level, 'pallet', b.cx, 0, b.z1 - 1.2, 0);
-      for (let k = 0; k < 3 + rng.int(0, 2); k++) sp(level, rng.weighted(CRATE_LOOT), b.cx + r(1.5), 0.2, b.z1 - 1.2 + r(0.4), rng.next() * 6);
+      // loot on the pallet's deck (0.146 m), inside its 1.2 x 0.8 footprint
+      for (let k = 0; k < 3 + rng.int(0, 2); k++) sp(level, rng.weighted(CRATE_LOOT), b.cx + r(0.45), 0.146, b.z1 - 1.2 + r(0.25), rng.next() * 6);
       break;
     }
     case 'clipping': {
@@ -340,8 +342,9 @@ export function populateRoom(level, room, rec, rng) {
     case 'workshop': {
       for (const t of ['plank', 'plank', 'screws', 'metal_scrap', 'fabric_scrap', 'wire_spool']) sp(level, t, b.cx + r(1.2), 0, b.z0 + 1.4 + r(0.4), rng.next() * 6);
       sp(level, 'toolbox', b.x0 + 0.6, 0, b.z1 - 0.6, 0.3);
-      sp(level, 'welder', b.cx + 0.4, 0.95, b.z0 + 0.5, 0, { state: { fuel: 1 } });
-      sp(level, 'sample_jar', b.cx - 0.5, 0.95, b.z0 + 0.5, 0);
+      // on the workbench top (0.92 m)
+      sp(level, 'welder', b.cx + 0.4, 0.921, b.z0 + 0.5, 0, { state: { fuel: 1 } });
+      sp(level, 'sample_jar', b.cx - 0.5, 0.921, b.z0 + 0.5, 0);
       break;
     }
     case 'vent_room': {

@@ -13,6 +13,11 @@ function usesUv(mat) {
   return !!(mat.map || mat.normalMap || mat.roughnessMap || mat.metalnessMap || mat.aoMap || mat.emissiveMap || mat.alphaMap || mat.bumpMap || mat.displacementMap);
 }
 
+// attributes carried into a proxy: the standard set plus the device kit's per-vertex paint / grime / wear
+// (dTint, dFx, dWr; read by materials flagged userData.dvMode)
+const COPY = ['position', 'normal', 'uv', 'color', 'dTint', 'dFx', 'dWr'];
+const DEVICE_ATTRS = [['dTint', 4], ['dFx', 4], ['dWr', 2]];
+
 // plain (non-interleaved, non-normalized) Float32 copy of an attribute
 function plain(a) {
   if (!a.isInterleavedBufferAttribute && a.array instanceof Float32Array && !a.normalized) return a;
@@ -40,7 +45,7 @@ function slices(root) {
     if (!src.attributes.position) return;
     const ng = src.index ? src.toNonIndexed() : src;
     let g = new THREE.BufferGeometry();
-    for (const k of ['position', 'normal', 'uv', 'color']) if (ng.attributes[k]) g.setAttribute(k, plain(ng.attributes[k]).clone());
+    for (const k of COPY) if (ng.attributes[k]) g.setAttribute(k, plain(ng.attributes[k]).clone());
     if (ng !== src) ng.dispose();
     if (!g.attributes.normal) g.computeVertexNormals();
     g.applyMatrix4(_m.multiplyMatrices(_inv, o.matrixWorld));
@@ -78,6 +83,13 @@ function mergeFor(mat, list) {
     if (wantColor) {
       const c = g.attributes.color;
       h.setAttribute('color', c && c.itemSize === 3 ? c : new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3));
+    }
+    if (mat.userData?.dvMode) {
+      // zeros read as "no device data" in the shader (neutral tint, no grime)
+      for (const [k, size] of DEVICE_ATTRS) {
+        const a = g.attributes[k];
+        h.setAttribute(k, a && a.itemSize === size ? a : new THREE.BufferAttribute(new Float32Array(n * size), size));
+      }
     }
     for (const k of Object.keys(h.attributes)) h.setAttribute(k, plain(h.attributes[k]));
     return h;
