@@ -26,7 +26,7 @@ const PART_NAMES = ['torso', 'head', 'armL', 'armR', 'legL', 'legR'];
 const PI_OF = BONE_NAMES.map((n) => PART_NAMES.indexOf(partOfBone(n)));
 
 const ARM_LEN = DIM.upper + DIM.fore + DIM.hand;
-const ARM_OUT = 0.045, ARM_R = 0.066, LEG_R = 0.086;
+const ARM_OUT = 0.065, ARM_R = 0.066, LEG_R = 0.086;
 // physics body origins (rest space) and visual shifts per part
 function frames() {
   const armCy = Y.chest - ARM_LEN / 2 + 0.03;
@@ -164,7 +164,7 @@ export function buildRagdoll(cosmetics = {}) {
   ];
   const armHH = Math.max(0.02, ARM_LEN / 2 - ARM_R), legHH = Math.max(0.02, DIM.pelvisY / 2 - LEG_R);
   const parts = {
-    torso: { mesh: groups.torso, half: [0.28, 0.3, 0.32] },
+    torso: { mesh: groups.torso, half: [0.25, 0.3, 0.32] },
     head: { mesh: groups.head, radius: 0.245 },
     armL: { mesh: groups.armL, radius: ARM_R, halfHeight: armHH },
     armR: { mesh: groups.armR, radius: ARM_R, halfHeight: armHH },

@@ -80,19 +80,30 @@ function acquireMerged(cos) {
     for (const p of parts) { Object.assign(over, p.over); Object.assign(springs, p.springs); Object.assign(info, p.info); }
     // geometries owned by this entry (merged) vs shared part geometries
     const owned = new Set(); for (const [mat, list] of by) if (list.length > 1) owned.add(geos.get(mat));
-    e = { key, geos, over, springs, info, owned, refs: 0 };
+    e = { key, geos, over, springs, info, owned, refs: 0, used: 0 };
     MERGED.set(key, e);
+    sweepMerged();
   }
   e.refs++;
+  e.used = ++_useTick;
   return e;
+}
+let _useTick = 0;
+const MERGED_KEEP = 16;
+// drop unreferenced combinations (least recently used first) beyond MERGED_KEEP
+function sweepMerged() {
+  if (MERGED.size <= MERGED_KEEP) return;
+  const idle = [...MERGED.values()].filter((e) => e.refs <= 0).sort((a, b) => a.used - b.used);
+  for (const e of idle) {
+    if (MERGED.size <= MERGED_KEEP) break;
+    for (const g of e.owned) g.dispose();
+    MERGED.delete(e.key);
+  }
 }
 function releaseMerged(e) {
   if (!e) return;
   e.refs--;
-  if (e.refs <= 0 && MERGED.size > 24) {
-    for (const g of e.owned) g.dispose();
-    MERGED.delete(e.key);
-  }
+  if (e.refs <= 0) sweepMerged();
 }
 
 // ---------------------------------------------------------------------------
@@ -137,7 +148,7 @@ class Tracker {
 
 // ---------------------------------------------------------------------------
 let _avatarCount = 0;
-const BOUNDS = new THREE.Sphere(new THREE.Vector3(0, 0.72, 0), 1.0);
+const BOUNDS = new THREE.Sphere(new THREE.Vector3(0, 0.65, 0), 1.45);
 
 export class Avatar {
   constructor(cosmetics = DEFAULT_COSMETICS, opts = { firstPersonHidden: false }) {
