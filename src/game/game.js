@@ -317,7 +317,7 @@ export class Game {
   async loadWorld(desc, lateJoin) {
     if (this.loading) { this.pendingWorld = { desc, lateJoin }; return; }
     this.loading = true;
-    this.ui.setLoading(true, desc);
+    this.ui.setLoading(true, desc, LEVELS[desc.type]?.name);
     const fromType = this.world?.type;
     this.disposeWorld();
     const world = new World(this, desc);

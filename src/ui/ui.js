@@ -292,12 +292,13 @@ export class UI {
   }
 
   // ------------------------------------------------------------------
-  setLoading(on, desc) {
+  setLoading(on, desc, levelName) {
     const l = $('#loading', this.root);
     l.classList.toggle('show', !!on);
     if (on) {
       $('.t', l).textContent = desc?.type === 'lobby' ? 'RETURNING TO HQ' : 'DIMENSIONAL DISPATCH';
-      $('.l', l).textContent = desc?.type === 'lobby' ? 'SUBLEVEL B4' : `DIMENSION 0${desc?.depth > 1 ? '-' + String.fromCharCode(64 + desc.depth) : ''} — THE YELLOW ROOMS`;
+      const place = (levelName || 'Level 0 — The Yellow Rooms').toUpperCase();
+      $('.l', l).textContent = desc?.type === 'lobby' ? 'SUBLEVEL B4' : `DIMENSION 0${desc?.depth > 1 ? '-' + String.fromCharCode(64 + desc.depth) : ''} — ${place}`;
       $('.bar div', l).style.width = '0%';
       audio.ready && audio.play('teleport_whoosh', { volume: 0.5, bus: 'ui' });
     }

@@ -234,7 +234,8 @@ export function applyDevFx(mat, cls, ov = {}) {
     Object.assign(shader.uniforms, U);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\n' + PARS_V)
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDT = dTint; vDF = dFx; vDW = dWr; vDP = position;');
+      // geometry without the device attributes (e.g. a merged distance proxy) reads (0,0,0,1): fall back to neutral
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nbool dvNo = dFx.x < 0.002;\nvDT = dvNo ? vec4(1.0, 1.0, 1.0, 0.5) : dTint; vDF = dvNo ? vec4(1.0, 0.0, 0.0, 0.0) : dFx; vDW = dvNo ? vec2(0.0) : dWr; vDP = position;');
     let fs = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + PARS_F);
     fs = fs.replace('#include <color_fragment>', '#include <color_fragment>\n' + colorChunk(mode));
     fs = fs.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + roughChunk(mode));

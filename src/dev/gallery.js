@@ -37,7 +37,8 @@ async function listModels() {
     const mod = set === 'furniture' ? await import('../entities/models_furniture.js') : set === 'items' ? await import('../entities/models_items.js') : await import('../entities/models_devices.js');
     if (mod.preloadItems) await mod.preloadItems();
     const reg = mod.FURNITURE || mod.ITEMS || mod.DEVICES;
-    return pick(Object.keys(reg)).map((k) => ({ key: k, build: () => buildModel(k, { seed: 3 }).object }));
+    const mopts = P.get('mopts') ? JSON.parse(P.get('mopts')) : {}; // per-model build options, e.g. {"locker_bank":{"count":8}}
+    return pick(Object.keys(reg)).map((k) => ({ key: k, build: () => buildModel(k, { seed: 3, ...(mopts[k] || {}) }).object }));
   }
   if (set === 'synth') {
     // material swatches: a sphere + a rounded slab per texsynth recipe

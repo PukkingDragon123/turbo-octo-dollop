@@ -1075,16 +1075,17 @@ export class DKit {
   // parts[i] (the bone) moves it. places: [[x,y,z,rot?,name?]]; fn(i, bone) builds in the bone frame.
   bones(name, places, fn) {
     const holder = this.grp(0, 0, 0, { name: name + '_skin' });
-    holder.updateMatrix();
-    const inv = holder.matrix.clone().invert();
+    this.root.updateMatrixWorld(true);
+    const inv = holder.matrixWorld.clone().invert();
     const counts = () => { const tb = this.buckets.get(holder); return new Map(tb ? [...tb].map(([key, b]) => [key, b.geo.count]) : []); };
     const bones = [], marks = [];
     places.forEach((pl, i) => {
-      const b = this._place(new THREE.Bone(), pl[0], pl[1], pl[2], { rot: pl[3], name: pl[4] || `${name}_${i}` });
-      b.updateMatrix();
+      // pl[5]: optional parent (e.g. a static mount that orients the bone's hinge axis)
+      const b = this._place(new THREE.Bone(), pl[0], pl[1], pl[2], { rot: pl[3], name: pl[4] || `${name}_${i}`, to: pl[5] });
+      this.root.updateMatrixWorld(true);
       const before = counts();
       const save = [this.tgt, this.cur, this.stack];
-      this.tgt = holder; this.cur = inv.clone().multiply(b.matrix); this.stack = [new THREE.Matrix4()];
+      this.tgt = holder; this.cur = inv.clone().multiply(b.matrixWorld); this.stack = [new THREE.Matrix4()];
       try { fn(i, b); } finally { [this.tgt, this.cur, this.stack] = save; }
       marks.push([before, counts()]);
       bones.push(b);
@@ -1273,7 +1274,7 @@ function toBuffer(g, ao, grime, up) {
       tint[i * 4] = Math.round(A[i * 8] * 255); tint[i * 4 + 1] = Math.round(A[i * 8 + 1] * 255); tint[i * 4 + 2] = Math.round(A[i * 8 + 2] * 255); tint[i * 4 + 3] = Math.round(A[i * 8 + 3] * 255);
       wr[i * 2] = Math.round(clamp(A[i * 8 + 4], 0, 1) * 255); wr[i * 2 + 1] = Math.round(clamp(A[i * 8 + 5], 0, 1) * 255);
     } else { tint[i * 4] = tint[i * 4 + 1] = tint[i * 4 + 2] = 255; tint[i * 4 + 3] = 128; }
-    fx[i * 4] = Math.round((ao ? ao[i] : 1) * 255);
+    fx[i * 4] = Math.max(2, Math.round((ao ? ao[i] : 1) * 255)); // > 0: 0 marks 'attributes missing' in the shader
     fx[i * 4 + 1] = Math.round(clamp(g.e[i] || 0, 0, 1) * 255);
     fx[i * 4 + 2] = Math.round((grime ? grime[i] : 0) * 255);
     fx[i * 4 + 3] = Math.round((up ? up[i] : 0) * 255);

@@ -31,21 +31,21 @@ export function screw(k, x, y, z, o = NO) {
   const slot = o.slot ?? 'metal';
   const opt = { ...fin, rust: o.rust ?? Math.min(1, k.wear.rust * 1.6), chip: 0, edge: 1.2, ...(o.mo || {}) };
   if (o.tint) opt.tint = o.tint;
-  const seg = o.seg ?? (r < 0.0045 ? 7 : r < 0.008 ? 9 : 12);
+  const seg = o.seg ?? (r < 0.0045 ? 6 : r < 0.008 ? 8 : r < 0.014 ? 10 : 12);
   const roll = o.roll ?? k.rng.next() * PI;
   k.push(x, y, z, o.dir ? FACE_ROT[o.dir] : null);
   let h;
   if (kind === 'hex') {
     h = r * 0.62;
-    k.cyl(slot, r * 1.42, r * 0.16, 0, 0, r * 0.08, { ...opt, axis: 'z', seg: 10 });
-    k.cyl(slot, r, h, 0, 0, r * 0.16 + h / 2, { ...opt, axis: 'z', seg: 6, bev: r * 0.1, bevSeg: 1, rot: [0, 0, roll] });
+    k.cyl(slot, r * 1.42, r * 0.16, 0, 0, r * 0.08, { ...opt, axis: 'z', seg: Math.max(6, seg - 2), caps: true });
+    k.cyl(slot, r, h, 0, 0, r * 0.16 + h / 2, { ...opt, axis: 'z', seg: 6, bev: r >= 0.008 ? r * 0.1 : 0, bevSeg: 1, rot: [0, 0, roll] });
     if (o.thread) k.cyl(slot, r * 0.52, o.thread, 0, 0, r * 0.16 + h + o.thread / 2, { ...opt, axis: 'z', seg: 8 });
   } else {
     const prof = kind === 'flat'
-      ? [[0, 0], [r, 0, 1], [r, r * 0.12, 2], [r * 0.94, r * 0.2], [0, r * 0.22]]
-      : kind === 'rivet' ? [[0, 0], [r, 0, 1], [r * 0.86, r * 0.42], [r * 0.45, r * 0.66], [0, r * 0.7]]
-        : kind === 'button' ? [[0, 0], [r, 0, 1], [r * 0.96, r * 0.2], [r * 0.78, r * 0.5], [r * 0.42, r * 0.68], [0, r * 0.72]]
-        : [[0, 0], [r, 0, 1], [r * 0.98, r * 0.28, 2], [r * 0.8, r * 0.52], [r * 0.4, r * 0.62], [0, r * 0.64]];
+      ? [[r, 0], [r, r * 0.12, 2], [r * 0.94, r * 0.2], [0, r * 0.22]]
+      : kind === 'rivet' ? [[r, 0], [r * 0.86, r * 0.42], [r * 0.45, r * 0.66], [0, r * 0.7]]
+        : kind === 'button' ? [[r, 0], [r * 0.96, r * 0.2], [r * 0.78, r * 0.5], [r * 0.42, r * 0.68], [0, r * 0.72]]
+        : [[r, 0], [r * 0.98, r * 0.28, 2], [r * 0.8, r * 0.52], [r * 0.4, r * 0.62], [0, r * 0.64]];
     h = prof[prof.length - 1][1];
     k.lathe(slot, prof, 0, 0, 0, { ...opt, axis: 'z', seg, uv: 'cyl' });
     if (kind !== 'rivet' && kind !== 'button' && k.A) k.label(screwReg(k, kind), r * (kind === 'flat' ? 1.9 : 1.6), r * (kind === 'flat' ? 1.9 : 1.6), 0, 0, h + 0.00012, { rot: [0, 0, roll] });
@@ -127,7 +127,7 @@ export function knob(k, x, y, z, r, o = NO) {
     k.put(o.slot ?? 'dark', axisGeo(flutedGeo(r, h, o.flutes ?? 18), 'z'), 0, 0, z0, { tint: o.tint ?? 0x18181a, rough: o.rough ?? 0.75 });
     k.cyl('metal', r * 0.6, 0.0012, 0, 0, z0 + h + 0.0004, { ...(o.capFin ?? FIN.alu), axis: 'z', seg: 18 });
     k.box(o.pointer ?? '#ece6d6:g', r * 0.13, r * 0.62, 0.0008, 0, r * 0.52, z0 + h + 0.0002, { r: 0.0002 });
-  });
+  }, o.static);
   return g;
 }
 // bat-handle toggle switch: returns the lever group (rotate local X; lever along +Y)
@@ -187,17 +187,21 @@ export function gauge(k, x, y, z, r, o = NO) {
   // bezel ring with a rolled lip
   k.lathe('metal', [[r * 1.18, 0], [r * 1.2, 0.003, 2], [r * 1.16, 0.0075, 2], [r * 1.07, 0.0085, 2], [r * 1.0, 0.004, 2], [r * 0.97, 0.0005]], x, y, z, { ...bez, axis: 'z', seg: 28 });
   k.dlabel(reg, r * 0.985, x, y, z + 0.001, { seg: 28 });
-  const piv = k.grp(x, y, z + 0.0035, { name: o.name || 'needle' });
-  piv.rotation.z = gaugeAngle(o.value ?? 0.3);
-  k.within(piv, () => {
-    const s = new THREE.Shape();
-    s.moveTo(-r * 0.04, -r * 0.2); s.lineTo(r * 0.04, -r * 0.2); s.lineTo(r * 0.013, r * 0.78); s.lineTo(0, r * 0.84); s.lineTo(-r * 0.013, r * 0.78); s.closePath();
-    k.ext(o.needle ?? '#d42a1a:g', s, 0.0012, 0, 0, 0);
-    k.cyl(o.hub ?? '#18181a:m', r * 0.075, 0.003, 0, 0, 0.0015, { axis: 'z', seg: 10, bev: 0.0006, bevSeg: 1 });
-  }, o.static);
   if (o.glass !== false) k.lathe('glass', [[r * 1.0, 0.0062], [r * 0.6, 0.008], [0, 0.0085]], x, y, z, { axis: 'z', seg: 24 });
   if (o.screws) for (let i = 0; i < 3; i++) { const a = HP + (i * TAU) / 3; screw(k, x + Math.cos(a) * r * 1.14, y + Math.sin(a) * r * 1.14, z + 0.006, { r: 0.0018, kind: 'slot' }); }
+  // o.noNeedle: the caller builds the needle itself (e.g. as a bone of a shared skinned mesh)
+  if (o.noNeedle) return [x, y, z + 0.0035, [0, 0, gaugeAngle(o.value ?? 0.3)], o.name || 'needle'];
+  const piv = k.grp(x, y, z + 0.0035, { name: o.name || 'needle' });
+  piv.rotation.z = gaugeAngle(o.value ?? 0.3);
+  k.within(piv, () => needle(k, r, o), o.static);
   return piv;
+}
+// gauge needle + hub at the pivot (current frame, rotates about local Z)
+export function needle(k, r, o = NO) {
+  const s = new THREE.Shape();
+  s.moveTo(-r * 0.04, -r * 0.2); s.lineTo(r * 0.04, -r * 0.2); s.lineTo(r * 0.013, r * 0.78); s.lineTo(0, r * 0.84); s.lineTo(-r * 0.013, r * 0.78); s.closePath();
+  k.ext(o.needle ?? '#d42a1a:g', s, 0.0012, 0, 0, 0);
+  k.cyl(o.hub ?? '#18181a:m', r * 0.075, 0.003, 0, 0, 0.0015, { axis: 'z', seg: 10, bev: 0.0006, bevSeg: 1 });
 }
 
 // ---------------------------------------------------------------------------

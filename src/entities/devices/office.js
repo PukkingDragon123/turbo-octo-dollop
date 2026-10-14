@@ -213,7 +213,7 @@ export function b_reception_desk(o) {
   const k = new DKit('reception_desk', { wear: { chip: 0.1, rust: 0.04, grime: 0.45, dust: 0.35 }, ao: { res: 64 } });
   const A = k.atlas(1024, 1024);
   const R = 1.8, a0 = -38 * DEG, a1 = 38 * DEG, zc = -R + 0.45;
-  const VEN = { tint: 0xc89060, rough: 0.75 }, DW = { tint: 0x5a3a24, rough: 0.8 };
+  const VEN = { tint: 0xb4875c, rough: 0.7 }, DW = { tint: 0x5a3a24, rough: 0.8 };
   const BEI = { tint: 0xa49a7c }, LAM = { tint: 0x8f8670, chip: 0.04 };
   const BR = { ...FIN.brass, rough: 0.5, rust: 0.1 };
   const slab = (slot, mo, r0, r1, y0, y1, aa = a0, ab = a1, seg = 28) => k.put(slot, arcSlab(r0, r1, aa, ab, y0, y1, seg), 0, 0, zc, mo);
@@ -485,51 +485,57 @@ export function b_server_rack(o) {
 // ---------------------------------------------------------------------------
 const LW = 0.45, LH = 1.9, LD = 0.5, LT = 0.012;
 function hazmatSuit(k, x, y, z, s = 1) {
-  const YEL = { tint: 0xe2b81c, rough: 0.7 };
+  const YEL = '#e2b81c:s';
   k.push(x, y, z, null, s);
   k.tube('#c4c7ca:c', [[-0.16, -0.08, 0], [0, 0, 0], [0.16, -0.08, 0]], 0.003, { round: 0.03, radial: 5 });
   k.tor('#c4c7ca:c', 0.02, 0.003, 0, 0.02, 0, { arc: PI * 1.3, rs: 4, ts: 10 });
-  k.sph('plastic', 0.13, 0, 0.0, -0.06, { ...YEL, ws: 14, hs: 10, s: [1, 0.85, 0.75] });
-  k.sph('#26323a:g', 0.1, 0, 0.0, 0.0, { ws: 12, hs: 8, p0: -0.7, pl: 1.4, t0: 0.9, tl: 1.0, s: [1, 0.7, 0.8] });
-  k.lathe('plastic', [[0.05, -0.62], [0.14, -0.6], [0.175, -0.48], [0.18, -0.3], [0.165, -0.14], [0.11, -0.08], [0.05, -0.06]], 0, 0, 0, { ...YEL, seg: 14, s: [1, 1, 0.6], rings: false });
+  k.sph(YEL, 0.13, 0, 0.0, -0.06, { ws: 12, hs: 8, s: [1, 0.85, 0.75] });
+  k.sph('#26323a:g', 0.1, 0, 0.0, 0.0, { ws: 8, hs: 5, p0: -0.7, pl: 1.4, t0: 0.9, tl: 1.0, s: [1, 0.7, 0.8] });
+  k.lathe(YEL, [[0.05, -0.62], [0.14, -0.6], [0.175, -0.48], [0.18, -0.3], [0.165, -0.14], [0.11, -0.08], [0.05, -0.06]], 0, 0, 0, { seg: 12, s: [1, 1, 0.6], rings: false });
   k.box('#1b1b1b:r', 0.355, 0.04, 0.22, 0, -0.5, 0, { r: 0.015 });
   for (const sx of [-1, 1]) {
-    k.tube('plastic', [[sx * 0.14, -0.12, 0], [sx * 0.17, -0.3, 0.01], [sx * 0.17, -0.5, 0.02], [sx * 0.165, -0.6, 0.02]], 0.045, { ...YEL, radial: 9 });
-    k.cyl('#1b1b1b:r', 0.038, 0.06, sx * 0.165, -0.64, 0.02, { seg: 10, bev: 0.008 });
-    k.cyl('#a4a4a4:m', 0.048, 0.02, sx * 0.17, -0.54, 0.02, { seg: 12 });
-    k.tube('plastic', [[sx * 0.08, -0.58, 0], [sx * 0.09, -0.85, 0.01], [sx * 0.09, -1.08, 0.0]], 0.07, { ...YEL, radial: 9 });
-    k.cyl('#1b1b1b:r', 0.06, 0.12, sx * 0.09, -1.14, 0.0, { seg: 12, bev: 0.01 });
-    k.cyl('#a4a4a4:m', 0.072, 0.025, sx * 0.09, -1.0, 0.0, { seg: 12 });
+    k.tube(YEL, [[sx * 0.14, -0.12, 0], [sx * 0.17, -0.3, 0.01], [sx * 0.17, -0.5, 0.02], [sx * 0.165, -0.6, 0.02]], 0.045, { radial: 7, round: 0.05, rseg: 2 });
+    k.cyl('#1b1b1b:r', 0.038, 0.06, sx * 0.165, -0.64, 0.02, { seg: 8, bev: 0.006, bevSeg: 1 });
+    k.cyl('#a4a4a4:m', 0.047, 0.02, sx * 0.17, -0.54, 0.02, { seg: 8 });
+    k.tube(YEL, [[sx * 0.08, -0.58, 0], [sx * 0.09, -0.85, 0.01], [sx * 0.09, -1.08, 0.0]], 0.07, { radial: 7 });
+    k.cyl('#1b1b1b:r', 0.06, 0.12, sx * 0.09, -1.14, 0.0, { seg: 8, bev: 0.008, bevSeg: 1 });
+    k.cyl('#a4a4a4:m', 0.071, 0.025, sx * 0.09, -1.0, 0.0, { seg: 8 });
   }
   k.pop();
 }
-function lockerShell(k, x0, idx, o, body, inner) {
-  k.push(x0, 0, 0);
-  k.box('#141416:p', LW - 0.02, 0.08, LD - 0.04, 0, 0.04, -0.01, { r: 0.003 });
-  for (const sx of [-1, 1]) k.box('paint', LT, LH - 0.08, LD, sx * (LW / 2 - LT / 2), 0.08 + (LH - 0.08) / 2, 0, { ...body, r: 0.002, div: 0.4, dent: 0.0008 });
-  k.box('paint', LW, LT, LD, 0, LH - LT / 2, 0, { ...body, r: 0.003 });
-  k.box('paint', LW - 2 * LT, LT, LD - LT, 0, 0.08 + LT / 2, 0, { ...inner, r: 0 });
-  k.box('paint', LW - 2 * LT, LH - 0.08, LT, 0, 0.08 + (LH - 0.08) / 2, -LD / 2 + LT / 2, { ...inner, r: 0 });
-  k.box('paint', LW, 0.02, 0.01, 0, LH - 0.01, LD / 2 - 0.005, { ...body, r: 0.002 });
-  k.box('paint', LW, 0.02, 0.01, 0, 0.09, LD / 2 - 0.005, { ...body, r: 0.002 });
-  // vents in the top, shelf, coat hook
-  for (let i = 0; i < 4; i++) k.box('#060606', 0.24, 0.001, 0.008, 0, LH + 0.0002, -0.12 + i * 0.03, { r: 0 });
-  k.box('paint', LW - 2 * LT, 0.012, LD - 0.06, 0, 1.6, -0.02, { ...inner, r: 0 });
-  k.box('paint', LW - 0.06, 0.02, 0.012, 0, 1.585, LD / 2 - 0.04, { ...inner, r: 0.002 });
-  k.tube('#c4c7ca:c', [[0, 1.594, -0.03], [0, 1.57, -0.03], [0, 1.555, 0.0], [0, 1.565, 0.02]], 0.004, { radial: 6 });
-  if (o.suit !== false && (idx + (o.suitOffset || 0)) % (o.suitEvery || 1) === 0) hazmatSuit(k, 0, 1.56, -0.02, 0.92);
-  for (const y of [0.3, 1.0, 1.7]) P.hingeHalf(k, -LW / 2 + 0.006, y, LD / 2 + 0.006, 0.07, { part: 0, r: 0.0055, knuckles: 3, slot: '#9a9ea2:m' });
-  P.scuffs(k, 0, 0.1, LD / 2 + 0.0004, LW * 0.9, 0.1, { col: '30,26,20', alpha: 0.4 });
-  k.pop();
+// cabinet run for lockers at xs (shared partitions, one top / bottom / back for the whole bank)
+function lockerCabinet(k, xs, o, body, inner) {
+  const n = xs.length, Wt = n * LW, x0 = xs[0] - LW / 2;
+  k.box('#141416:p', Wt - 0.02, 0.08, LD - 0.04, 0, 0.04, -0.01, { r: 0, wear: 0 });
+  for (let i = 0; i <= n; i++) {
+    const outer = i === 0 || i === n, x = x0 + i * LW + (i === 0 ? LT / 2 : i === n ? -LT / 2 : 0);
+    k.box('paint', LT, LH - 0.08, LD, x, 0.08 + (LH - 0.08) / 2, 0, outer ? { ...body, r: 0.002 } : { ...body, r: 0, wear: 0 });
+  }
+  k.box('paint', Wt, LT, LD, 0, LH - LT / 2, 0, { ...body, r: 0.003 });
+  k.box('paint', Wt - 2 * LT, LT, LD - LT, 0, 0.08 + LT / 2, 0, { ...inner, r: 0, wear: 0 });
+  k.box('paint', Wt - 2 * LT, LH - 0.08, LT, 0, 0.08 + (LH - 0.08) / 2, -LD / 2 + LT / 2, { ...inner, r: 0, wear: 0 });
+  k.box('paint', Wt, 0.02, 0.01, 0, LH - 0.01, LD / 2 - 0.005, { ...body, r: 0.002 });
+  k.box('paint', Wt, 0.02, 0.01, 0, 0.09, LD / 2 - 0.005, { ...body, r: 0.002 });
+  xs.forEach((xc, idx) => {
+    k.push(xc, 0, 0);
+    for (let i = 0; i < 4; i++) k.box('#060606', 0.24, 0.001, 0.008, 0, LH + 0.0002, -0.12 + i * 0.03, { r: 0, wear: 0 });
+    k.box('paint', LW - 2 * LT, 0.012, LD - 0.06, 0, 1.6, -0.02, { ...inner, r: 0, wear: 0 });
+    k.box('paint', LW - 0.06, 0.02, 0.012, 0, 1.585, LD / 2 - 0.04, { ...inner, r: 0, wear: 0 });
+    k.tube('#c4c7ca:c', [[0, 1.594, -0.03], [0, 1.57, -0.03], [0, 1.555, 0.0], [0, 1.565, 0.02]], 0.004, { radial: 5 });
+    if (o.suit !== false && (idx + (o.suitOffset || 0)) % (o.suitEvery || 1) === 0) hazmatSuit(k, 0, 1.56, -0.02, 0.92);
+    for (const y of [0.3, 1.0, 1.7]) k.cyl('#9a9ea2:m', 0.0055, 0.07, -LW / 2 + 0.006, y, LD / 2 + 0.006, { seg: 8 });
+    k.pop();
+  });
+  P.scuffs(k, 0, 0.1, LD / 2 + 0.0004, Wt * 0.95, 0.1, { col: '30,26,20', alpha: 0.4 });
 }
 // door content in the door's local frame (hinge at origin, leaf extends +X); `to` = parent for the label screen
 function lockerDoor(k, idx, o, body, A, to) {
   const DW = LW - 0.016, DH = LH - 0.13, dy0 = 0.105, cx = DW / 2;
   const ds = rrShape(DW, DH, 0.006, cx, dy0 + DH / 2);
   for (const ly of [dy0 + DH - 0.24, dy0 + 0.12]) for (let i = 0; i < 6; i++) ds.holes.push(rrHole(0.22, 0.012, 0.005, cx, ly + (i - 2.5) * 0.024));
-  k.ext('paint', ds, 0.016, 0, 0, 0, { ...body, bev: 0.002, bevSeg: 1, curveSeg: 2 });
+  k.ext('paint', ds, 0.016, 0, 0, 0, { ...body, curveSeg: 2 });
   for (const ly of [dy0 + DH - 0.24, dy0 + 0.12]) {
-    for (let i = 0; i < 6; i++) k.box('paint', 0.22, 0.016, 0.003, cx, ly + (i - 2.5) * 0.024 + 0.002, 0.009, { ...body, rot: [-0.9, 0, 0], r: 0, edge: 1.4 });
+    for (let i = 0; i < 6; i++) k.box('paint', 0.22, 0.016, 0.003, cx, ly + (i - 2.5) * 0.024 + 0.002, 0.009, { ...body, rot: [-0.9, 0, 0], r: 0, wear: 0, edge: 1.4 });
     k.box('#0b0b0b', 0.23, 0.16, 0.002, cx, ly, 0.002, { r: 0 });
   }
   k.box('paint', 0.05, DH - 0.3, 0.02, cx, dy0 + DH / 2, -0.008, { ...body, r: 0.002 });
@@ -542,16 +548,15 @@ function lockerDoor(k, idx, o, body, A, to) {
   const num = String((o.start ?? 1) + idx).padStart(3, '0');
   const np = k.reg('lk_num' + num, 64, 36, (c, w, h) => { const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#f0d488'); g.addColorStop(1, '#9a7a32'); c.fillStyle = g; rrect(c, 0, 0, w, h, h / 2); c.fill(); txt(c, num, w / 2, h / 2 + 1, h * 0.62, { col: '#2a1a04', f: 'bold' }); }, 'm');
   k.label(np, 0.06, 0.034, cx, 1.66, 0.0168);
-  for (const sx of [-1, 1]) P.screw(k, cx + sx * 0.026, 1.66, 0.0168, { r: 0.002, kind: 'button', fin: FIN.brass });
+  for (const sx of [-1, 1]) P.screw(k, cx + sx * 0.026, 1.66, 0.0168, { r: 0.002, kind: 'button', slot: '#c8a254:m', seg: 6 });
   // handle: recessed cup + lift lever + padlock hasp
   const hx = DW - 0.06;
-  k.box('#c4c7ca:c', 0.05, 0.13, 0.008, hx, 1.0, 0.018, { r: 0.004 });
-  k.box('#0e0e0e', 0.034, 0.08, 0.004, hx, 1.0, 0.0222, { r: 0 });
-  k.box('#c4c7ca:c', 0.024, 0.06, 0.012, hx, 1.0, 0.026, { r: 0.004 });
-  k.box('#c4c7ca:c', 0.012, 0.03, 0.004, hx, 0.91, 0.022, { r: 0.002 });
+  k.box('#c4c7ca:c', 0.05, 0.13, 0.008, hx, 1.0, 0.018, { r: 0.003, wear: 0 });
+  k.box('#0e0e0e', 0.034, 0.08, 0.004, hx, 1.0, 0.0222, { r: 0, wear: 0 });
+  k.box('#c4c7ca:c', 0.024, 0.06, 0.012, hx, 1.0, 0.026, { r: 0.003, wear: 0 });
+  k.box('#c4c7ca:c', 0.012, 0.03, 0.004, hx, 0.91, 0.022, { r: 0, wear: 0 });
   k.cyl('#7a7e80:m', 0.004, 0.012, hx, 0.91, 0.026, { axis: 'z', seg: 8 });
-  for (const y of [0.3, 1.0, 1.7]) P.hingeHalf(k, 0, y, 0.004, 0.07, { part: 1, r: 0.0055, knuckles: 3, slot: '#9a9ea2:m' });
-  P.handprint(k, hx - 0.02, 1.06, 0.0162, 0.1, { alpha: 0.18 });
+  for (const y of [0.3, 1.0, 1.7]) k.box('#9a9ea2:m', 0.02, 0.06, 0.0015, 0.006, y, 0.0168, { r: 0 });
   void A;
   return label;
 }
@@ -560,7 +565,7 @@ export function b_locker(o) {
   const k = new DKit('locker', { wear: { chip: 0.2, rust: 0.12, grime: 0.45, dust: 0.45 } });
   const A = k.atlas(512, 1024);
   const { body, inner } = lockerBody(o);
-  lockerShell(k, 0, 0, o, body, inner);
+  lockerCabinet(k, [0], o, body, inner);
   const door = k.grp(-LW / 2 + 0.008, 0, LD / 2 + 0.002, { name: 'door_0' });
   let label = null;
   k.inside(door, () => { label = lockerDoor(k, 0, o, body, A); });
@@ -579,9 +584,9 @@ export function b_locker_bank(o) {
   const k = new DKit('locker_bank', { wear: { chip: 0.2, rust: 0.12, grime: 0.45, dust: 0.45 }, ao: { res: Math.min(96, 40 + n * 6) } });
   const A = k.atlas(1024, 1024);
   const { body, inner } = lockerBody(o);
-  const oo = { suitEvery: 2, ...o };
+  const oo = { suitEvery: 3, ...o };
   const xs = Array.from({ length: n }, (_, i) => (i - (n - 1) / 2) * LW);
-  xs.forEach((x, i) => lockerShell(k, x, i, oo, body, inner));
+  lockerCabinet(k, xs, oo, body, inner);
   k.parts.doors = k.bones('doors', xs.map((x, i) => [x - LW / 2 + 0.008, 0, LD / 2 + 0.002, null, `door_${i}`]), (i, bone) => lockerDoor(k, i, oo, body, A, bone));
   k.box('paint', n * LW + 0.02, 0.03, 0.52, 0, 1.915, 0, { ...body, r: 0.005 });
   k.collide(cbox(n * LW, 1.93, 0.5, 0, 0.965, 0));

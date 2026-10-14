@@ -187,7 +187,14 @@ const scenarios = {
       await page.waitForTimeout(5000);
       const yaw = await bestYaw(p);
       await tp([p[0], 0, p[1]], yaw, k.includes('water') ? -0.25 : -0.02);
+      console.log('yaw', k, yaw);
       await shot('zone_' + k, 5000);
+      if (process.env.AB) {
+        // same view without the light-volume haze cards
+        await ev(() => { __engine.scene.traverse((o) => { if (o.isMesh && o.material?.uniforms?.uHaze) o.visible = false; }); });
+        await shot('zone_' + k + '_nohaze', 2500);
+        await ev(() => { __engine.scene.traverse((o) => { if (o.isMesh && o.material?.uniforms?.uHaze) o.visible = true; }); });
+      }
     }
     await stats('zones');
   },
