@@ -28,6 +28,8 @@ export class Prop {
     this.body = null;
     this.buffer = []; // client interpolation [{t, p, q}]
     this.lastImpact = 0;
+    this.speed = 0;       // host: linear speed at the last visual sync (pre-step speed during contact events)
+    this.spawnT = mgr.world.time ?? 0;
     this.hp = this.def.hp ?? 100;
     this.grabbers = new Map(); // host: playerId -> grab info
     this.bounds = collidersBounds(model.colliders || []);
@@ -201,7 +203,9 @@ export class PropManager {
       } else if (b.bodyType() !== RAPIER.RigidBodyType.Dynamic) {
         b.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
       }
-      if (b.isSleeping()) continue;
+      if (b.isSleeping()) { p.speed = 0; continue; }
+      const lv = b.linvel();
+      p.speed = Math.hypot(lv.x, lv.y, lv.z);
       const t = b.translation();
       const r = b.rotation();
       p.root.position.set(t.x, t.y, t.z);

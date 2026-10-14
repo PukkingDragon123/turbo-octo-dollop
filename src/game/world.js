@@ -137,7 +137,10 @@ export class World {
       this.noise.emit(pos, 4 + intensity * 18 * Math.min(2, 0.5 + mass / 10), 'impact', prop.id);
       const other = ud === a ? b : a;
       if (other?.kind === 'device') other.device?.onHit?.(intensity, prop);
-      if (prop.def.breakF && force > prop.def.breakF && !prop.isHeld()) {
+      // break only on a real impact: settling after spawn (props are placed a few mm above their
+      // support and drop when woken) or resting contact spikes must not shatter furniture
+      const vRel = Math.max(prop.speed, other?.kind === 'prop' ? other.prop?.speed || 0 : 0);
+      if (prop.def.breakF && force > prop.def.breakF && !prop.isHeld() && vRel > 1.6 && now - prop.spawnT > 1.5) {
         this.breakProp(prop);
         continue;
       }

@@ -283,11 +283,18 @@ export class Mission {
     if (!spot) { this.hq('NO STABLE EXIT VECTOR NEARBY. Move the radio and try again.'); return; }
     this.state.extraction = 1;
     this.state.exit = { x: spot.x, z: spot.z, rot: spot.rot, endsAt: this.game.day.time + EXIT_SECONDS, done: 0 };
-    // clear props out of the room footprint
+    // clear props out of the room footprint (including big props that only overlap it with an end,
+    // which the room's colliders would otherwise fling), spread across the open neighbour cell
     const c = new THREE.Vector3(spot.x, 0, spot.z);
-    this.world.props.query(c, 2.4, (p) => {
-      if (Math.abs(p.root.position.x - spot.x) < 1.6 && Math.abs(p.root.position.z - spot.z) < 1.6) {
-        const out = new THREE.Vector3(spot.x + Math.sin(spot.rot) * 3.2, p.root.position.y + 0.3, spot.z + Math.cos(spot.rot) * 3.2);
+    const fx = Math.sin(spot.rot), fz = Math.cos(spot.rot);
+    let k = 0;
+    this.world.props.query(c, 4, (p) => {
+      if (p.frozen) return; // kinematic (sinking / animated) props can't be flung
+      const r = Math.min(1.2, p.radius || 0.3);
+      if (Math.abs(p.root.position.x - spot.x) < 1.6 + r && Math.abs(p.root.position.z - spot.z) < 1.6 + r) {
+        const side = ((k % 3) - 1) * 0.95, up = 0.3 + Math.floor(k / 3) * 0.6;
+        k++;
+        const out = new THREE.Vector3(spot.x + fx * 3.2 + fz * side, p.root.position.y + up, spot.z + fz * 3.2 - fx * side);
         this.world.props.teleport(p, out);
       }
     });

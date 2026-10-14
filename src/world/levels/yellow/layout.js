@@ -316,12 +316,12 @@ function spawnZoneProps(layout, c, rng, seed) {
     case 'office': {
       if (h < 0.3) {
         // desk front (drawers, knee space) is +Z: the chair and the monitor/keyboard face that side.
-        // Desk top is 0.76 m; desk items spawn a few mm above it so they settle without a drop.
+        // Desk top is 0.76 m; desk items spawn just above it so they settle without a drop.
         sp(layout, 'desk', cx, cz - 0.3, r() * 0.04);
         if (rng.chance(0.8)) sp(layout, 'chair_office', cx + r() * 0.3, cz + 0.6, Math.PI + r() * 0.9);
-        if (rng.chance(0.6)) sp(layout, 'crt_monitor', cx - 0.15 + r() * 0.15, cz - 0.42, r() * 0.35, { y: 0.765 });
-        if (rng.chance(0.45)) sp(layout, 'keyboard', cx - 0.15 + r() * 0.08, cz - 0.04, r() * 0.12, { y: 0.765 });
-        if (rng.chance(0.4)) sp(layout, rng.pick(['desk_phone', 'mug', 'paper_stack', 'binder', 'lamp_desk']), cx + 0.45, cz - 0.38, rng.next() * 6.28, { y: 0.765 });
+        if (rng.chance(0.6)) sp(layout, 'crt_monitor', cx - 0.15 + r() * 0.15, cz - 0.42, r() * 0.35, { y: 0.761 });
+        if (rng.chance(0.45)) sp(layout, 'keyboard', cx - 0.15 + r() * 0.08, cz - 0.04, r() * 0.12, { y: 0.761 });
+        if (rng.chance(0.4)) sp(layout, rng.pick(['desk_phone', 'mug', 'paper_stack', 'binder', 'lamp_desk']), cx + 0.45, cz - 0.38, rng.next() * 6.28, { y: 0.761 });
       } else if (h < 0.42) sp(layout, 'desk_cubicle_panel', cx, z0 + 0.15, 0);
       else if (h < 0.5) sp(layout, 'filing_cabinet', cx + r(), cz + r(), rng.pick([0, Math.PI / 2, Math.PI]));
       else if (h < 0.56) sp(layout, rng.pick(['printer', 'plant_pot', 'whiteboard', 'trash_can', 'computer_tower', 'box_medium']), cx + r(), cz + r(), rng.next() * 6.28);
