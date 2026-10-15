@@ -109,7 +109,7 @@ export class UI {
           <div><span class="kbd">GRAB</span> hold to carry physics objects · <span class="kbd">THROW</span> while carrying · <span class="kbd">ROT</span> hold + drag to rotate</div>
           <div><span class="kbd">ITEM</span> use the held item (it shows on the button) · tap a pocket to hold it · drag a pocket up to drop it</div>
           <div><span class="kbd">WATCH</span> raise the wrist terminal (tap STATUS / MAP / TASK) · <span class="kbd">LIGHT</span> flashlight</div>
-          <div><span class="kbd">NEXT</span> next pocket · <span class="kbd">DROP</span> drop the held item · <span class="kbd">MENU</span> pause</div>
+          <div><span class="kbd">NEXT</span> next pocket · <span class="kbd">DROP</span> drop the held item · <span class="kbd">MODE</span> multitool attach / dismantle · <span class="kbd">MENU</span> pause</div>
           <div><span class="kbd">HLTH</span> or tap Healthity's bubble: check-up and what to do next</div>
         </div>
         <div class="desk-only ctl">
@@ -117,7 +117,7 @@ export class UI {
           <div><span class="kbd">LMB</span> hold to GRAB physics objects (and teammates)</div>
           <div>&nbsp;&nbsp;while grabbing: <span class="kbd">WHEEL</span> push/pull · <span class="kbd">R</span>+mouse rotate · <span class="kbd">RMB</span> throw</div>
           <div><span class="kbd">E</span> interact / pick up · <span class="kbd">G</span> drop · <span class="kbd">1-5</span>/<span class="kbd">WHEEL</span> pockets</div>
-          <div><span class="kbd">RMB</span> use held item (eat, drink, heal, weld, dismantle, sample)</div>
+          <div><span class="kbd">RMB</span> use held item · empty hand: multitool (<span class="kbd">R</span> attach / dismantle)</div>
           <div><span class="kbd">F</span> flashlight · <span class="kbd">TAB</span> wristwatch (<span class="kbd">Q</span>/<span class="kbd">E</span> STATUS · MAP · TASK)</div>
           <div><span class="kbd">V</span> push-to-talk · <span class="kbd">H</span> wave · <span class="kbd">J</span> dance · <span class="kbd">B</span> point · <span class="kbd">T</span> 3rd person</div>
           <div><span class="kbd">X</span> ask Healthity for a check-up · <span class="kbd">ESC</span> pause</div>
@@ -307,6 +307,8 @@ export class UI {
     for (const [k, s] of Object.entries(this.screens)) s.classList.toggle('show', k === id);
     this.menuOpen = !!id && id !== 'custom';
     if (id) input.exitLock();
+    // HUD pieces live above the menu layer: hide them now rather than on the next frame
+    if (this.menuOpen) { this.needs?.setVisible(false); this.hotbar?.setVisible(false); this.lobby?.setVisible(false); this._watchPanel(false); }
     this.hud.classList.toggle('hidden', !this.game || this.game.state !== 'playing' || id === 'menu-main' || id === 'runover');
   }
 
@@ -485,7 +487,10 @@ export class UI {
       st.top = `${Math.round(top)}px`; st.bottom = ''; st.width = `${Math.round(width)}px`;
     } else {
       // glance: a small pager under the top HUD, clear of the crosshair (Healthity steps below it)
-      st.top = `${Math.round(this._popBase() + 6)}px`; st.bottom = ''; st.width = `${Math.round(Math.min(window.innerWidth * 0.62, 250))}px`;
+      const top = this._popBase() + 6;
+      const barTop = Math.min(rowTop, this.hotbar.root.getBoundingClientRect().top || rowTop);
+      const width = Math.max(150, Math.min(window.innerWidth * 0.62, 250, (barTop - 8 - top - border) / 0.75));
+      st.top = `${Math.round(top)}px`; st.bottom = ''; st.width = `${Math.round(width)}px`;
     }
   }
 

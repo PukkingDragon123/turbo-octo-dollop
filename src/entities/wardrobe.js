@@ -669,10 +669,11 @@ export class WardrobeChamber {
     this.cone.castShadow = false; this.cone.receiveShadow = false;
     // harness: cable from the rail trolley, yoke with straps (rotates with the subject)
     this.harness = new THREE.Group();
+    this.harness.position.y = 0.22;   // the subject's boots dangle well clear of the grating
     this.root.add(this.harness);
     this.harnessY = 1.5;  // yoke height (subject shoulders)
     const hb = new Batch();
-    hb.add(cyl(0.012, H - 1.5 - 0.25, 'y', 8), M.steel, M4(0, 1.5 + (H - 1.75) / 2, 0));
+    hb.add(cyl(0.012, H - 1.72 - 0.25 - 0.22, 'y', 8), M.steel, M4(0, 1.72 + (H - 1.72 - 0.47) / 2, 0));
     hb.add(rbox(0.12, 0.1, 0.12, 0.015), M.dark, M4(0, 1.72, 0));
     hb.add(rbox(0.62, 0.05, 0.06, 0.015), M.paint, M4(0, 1.62, 0));
     hb.add(scaleUV(new THREE.BoxGeometry(0.2, 0.055, 0.065), 2, 0.5), M.hazard, M4(0, 1.62, 0));
@@ -709,10 +710,10 @@ export class WardrobeChamber {
       this.arms.push(a);
       return a;
     };
-    this.armL = mk(-PI * 0.58, 1.42, { L1: 0.95, L2: 0.88 });
-    this.armR = mk(PI * 0.58, 1.42, { L1: 0.95, L2: 0.88 });
-    this.armB = mk(PI, 1.5, { L1: 1.05, L2: 0.95, color: 0xd8d2c0 });
-    for (const a of this.arms) { a.rest = { yaw: 0, e1: 1.05, bend: 1.85, wrist: 0.25 }; a.toRest(true); }
+    this.armL = mk(-PI * 0.58, 1.36, { L1: 1.05, L2: 1.0 });
+    this.armR = mk(PI * 0.58, 1.36, { L1: 1.05, L2: 1.0 });
+    this.armB = mk(PI, 1.25, { L1: 1.2, L2: 1.1, color: 0xd8d2c0 });
+    for (const a of this.arms) { a.rest = { yaw: 0, e1: 1.75, bend: 2.75, wrist: -1.2 }; a.toRest(true); }
     this.t = 0;
   }
 

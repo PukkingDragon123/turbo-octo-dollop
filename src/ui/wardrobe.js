@@ -9,13 +9,13 @@ const LABEL = { suit: 'SUIT', skin: 'SKIN', hat: 'HAT', visor: 'GEAR', face: 'FA
 
 const CSS = `
 #wardrobe-ui { position: fixed; inset: 0; pointer-events: none; z-index: 12; font-family: var(--font, 'VT323', monospace); color: var(--fg, #ffb43a); }
-#wardrobe-ui .wd-tag { position: absolute; left: 0; top: 0; image-rendering: pixelated; transform: translate(-50%, -100%); opacity: 0; transition: opacity 0.18s steps(3); will-change: transform; }
-#wardrobe-ui .wd-tag.show { opacity: 1; }
+#wardrobe-ui .wd-tag { position: absolute; left: 0; top: 0; image-rendering: pixelated; display: none; will-change: transform; }
+#wardrobe-ui .wd-tag.show { display: block; }
 #wardrobe-ui .wd-panel { position: absolute; left: 12px; top: 12px; bottom: 12px; width: min(440px, 40vw); display: none; flex-direction: column; pointer-events: auto;
   border: calc(var(--px, 2px) * 8) solid transparent; border-image: var(--pa-panel) 8 fill / calc(var(--px, 2px) * 8) stretch; image-rendering: pixelated;
   filter: drop-shadow(0 calc(var(--px, 2px) * 3) 0 rgba(0,0,0,0.55)); padding: 6px 10px 8px; }
 #wardrobe-ui .wd-panel.show { display: flex; animation: wd-in 0.35s steps(5); }
-@keyframes wd-in { from { transform: translateX(-30px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes wd-in { from { transform: translateX(-24px); } to { transform: none; } }
 #wardrobe-ui .wd-panel::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0,0,0,0.22) 0 1px, transparent 1px 3px); pointer-events: none; z-index: 3; }
 #wardrobe-ui .wd-head { display: flex; align-items: center; gap: 8px; flex: none; }
 #wardrobe-ui .wd-head canvas { image-rendering: pixelated; flex: none; }
@@ -81,7 +81,7 @@ const CSS = `
 @media (orientation: portrait) and (max-width: 760px) {
   #wardrobe-ui .wd-panel { left: 6px; right: 6px; top: auto; bottom: 6px; width: auto; height: min(54vh, 470px); padding: 2px 6px 4px; }
   #wardrobe-ui .wd-panel.show { animation: wd-up 0.35s steps(5); }
-  @keyframes wd-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes wd-up { from { transform: translateY(30px); } to { transform: none; } }
   #wardrobe-ui .wd-head canvas { display: none; }
   #wardrobe-ui .wd-title { font-size: 24px; }
   #wardrobe-ui .wd-sub { font-size: 15px; }

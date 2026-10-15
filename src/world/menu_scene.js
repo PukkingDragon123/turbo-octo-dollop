@@ -302,7 +302,7 @@ export class MenuScene {
     const S = this.scene;
     this.hemi = new THREE.HemisphereLight(0x8c8472, 0x1d1610, 0.32);
     S.add(this.hemi);
-    const key = (this.key = new THREE.SpotLight(0xfff0d2, 16, 7.5, 1.05, 0.75, 2));
+    const key = (this.key = new THREE.SpotLight(0xfff0d2, 13, 7.5, 1.05, 0.75, 2));
     key.position.set(0.1, 2.42, -0.12);
     key.target.position.set(0.1, 0.4, -0.15);
     key.castShadow = true;
@@ -310,13 +310,13 @@ export class MenuScene {
     key.shadow.camera.near = 0.4; key.shadow.camera.far = 6;
     key.shadow.bias = -0.0004; key.shadow.normalBias = 0.025;
     S.add(key, key.target);
-    this.keyBase = 16;
-    this.vendLight = new THREE.PointLight(0xc8e6ff, 2.6, 5.5, 2);
+    this.keyBase = 13;
+    this.vendLight = new THREE.PointLight(0xc8e6ff, 2.2, 5.5, 1);
     this.vendLight.position.set(-2.6, 1.25, -2.35);
     S.add(this.vendLight);
-    this.redLight = new THREE.PointLight(0xff2a12, 1.2, 3.2, 2);
+    this.redLight = new THREE.PointLight(0xff2a12, 1.0, 3.2, 1);
     S.add(this.redLight);
-    this.accent = new THREE.PointLight(0xffa040, 0, 2.2, 2);
+    this.accent = new THREE.PointLight(0xffa040, 0, 2.2, 1);
     S.add(this.accent);
   }
 
@@ -416,7 +416,7 @@ export class MenuScene {
     if (this._outline && this._outline.src === av.meshes) return;
     if (this._outline) for (const m of this._outline.list) m.removeFromParent();
     if (!this._outlineMat) {
-      const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.8, 1.45, 0.3), side: THREE.BackSide, transparent: true, opacity: 0, depthWrite: false, fog: false });
+      const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.0, 1.05, 0.22), side: THREE.BackSide, transparent: true, opacity: 0, depthWrite: false, fog: false });
       const W = this.outlineW;
       m.onBeforeCompile = (sh) => {
         sh.uniforms.uOW = W;
@@ -450,7 +450,7 @@ export class MenuScene {
     const bw = this.booth.root;
     const mid = new THREE.Vector3(SEATS[0].x, 1.15, SEATS[0].z).lerp(bw.localToWorld(new THREE.Vector3(0, 1.2, 0.4)), 0.5);
     this.shots.booth = { p: new THREE.Vector3(-1.05, 1.72, 1.85), l: mid, hw: 1.45, hh: 1.25 };
-    this.shots.inside = { p: CHAMBER_POS.clone().add(new THREE.Vector3(0.3, 1.18, 2.45)), l: CHAMBER_POS.clone().add(new THREE.Vector3(0, 1.02, 0)), hw: 0.62, hh: 0.88 };
+    this.shots.inside = { p: CHAMBER_POS.clone().add(new THREE.Vector3(0.4, 1.5, 2.75)), l: CHAMBER_POS.clone().add(new THREE.Vector3(0, 1.42, 0)), hw: 0.85, hh: 1.18 };
     this.rig = { from: null, to: 'table', t: 1, dur: 1, p: new THREE.Vector3(), l: new THREE.Vector3(), hw: 1, hh: 1, shake: 0, drift: true };
     this._snapShot('table');
     this.view = { cx: window.innerWidth / 2, cy: window.innerHeight / 2, fr: null, frT: 0 };
@@ -728,7 +728,7 @@ export class MenuScene {
     const fl = Math.sin(t * 13) > 0.92 || Math.sin(t * 2.1) > 0.995 ? 0.1 : 0.32;
     far.lensMat.color.setRGB(1.6 * fl, 1.6 * fl, 1.3 * fl);
     // vending glow breathing
-    this.vendLight.intensity = 2.6 * (0.9 + 0.1 * Math.sin(t * 3.1) + (Math.random() < 0.01 ? -0.6 : 0));
+    this.vendLight.intensity = 2.2 * (0.9 + 0.1 * Math.sin(t * 3.1) + (Math.random() < 0.01 ? -0.6 : 0));
     // balloon
     if (this.balloon) {
       const o = this.balloon.object;
@@ -1036,7 +1036,7 @@ export class MenuScene {
         break;
       }
       case 'cutIn': {
-        this._hangInBooth(dt);
+        if (!s.done) this._hangInBooth(dt);
         this.fade = clamp(s.t / 0.25, 0, 1);
         if (s.t >= 0.3 && !s.done) {
           s.done = true;
@@ -1151,12 +1151,13 @@ export class MenuScene {
     this.exprT = 0; this.exprNow = 'scared';
     // hang the clone in the harness, facing the camera
     this.harnessPivot.add(you.root);
-    you.root.position.set(0, 0, 0); you.root.rotation.set(0, 0, 0);
+    you.root.position.set(0, 0, 0); you.root.rotation.set(0, PI, 0);
     try { you.av.update(0.016, { grounded: true, speed: 0, expression: 'scared' }); } catch (e) { /* */ }
     you.root.updateMatrixWorld(true);
     const b = you.av.bones;
     let shY = 0.75;
-    if (b?.shL) { const p = b.shL.getWorldPosition(_v1); this.harnessPivot.updateMatrixWorld(true); shY = this.harnessPivot.worldToLocal(p).y; }
+    this.harnessPivot.updateWorldMatrix(true, true);
+    if (b?.shL) shY = you.root.worldToLocal(b.shL.getWorldPosition(_v1)).y;
     you.root.position.set(0, -shY + 0.02, 0);
     // booth arms go back to rest behind the closed doors
     for (const a of this.booth.arms) { a.setGrip(0); a.toRest(true); }
@@ -1168,8 +1169,8 @@ export class MenuScene {
     const k = this.key;
     k.position.copy(CHAMBER_POS).add(_v1.set(0, 3.32, 0.35));
     k.target.position.copy(CHAMBER_POS).add(_v1.set(0, 0.6, 0));
-    k.angle = 0.5; k.penumbra = 0.45; k.intensity = 34; k.distance = 9;
-    this.redLight.position.copy(CHAMBER_POS).add(_v1.set(0.2, 2.1, -1.9));
+    k.angle = 0.55; k.penumbra = 0.5; k.intensity = 15; k.distance = 9;
+    this.redLight.position.copy(CHAMBER_POS).add(_v1.set(0.95, 2.6, -2.15));
     this.vendLight.position.copy(CHAMBER_POS).add(_v1.set(-1.6, 1.6, 1.6));
     this.hemi.intensity = 0.18;
     this.accent.position.copy(CHAMBER_POS).add(_v1.set(0, 1.2, 0.6));
