@@ -24,9 +24,12 @@ const UNLOAD_R = 3;   // beyond this they're dropped
 const LIGHT_R = 3;    // light registration radius (chunks)
 
 const DEAD_FRAC = [0, 0, 0.0, 0.03, 0.06, 0.11, 0.17, 0.26];
-const FOG_DENSITY = 0.034;
-const FOG_LIT = new THREE.Color(0x6a6040);   // haze colour in well-lit halls
+const FOG_DENSITY = 0.03;
+// haze colour in well-lit halls: a dim brown murk, so depth reads as the light giving out rather than grey wash
+const FOG_LIT = new THREE.Color(0x3f3a27);
 const FOG_DARK = new THREE.Color(0x0e0c07);  // in dead / dark sectors
+// field light scale (the probes were calibrated at 0.56)
+const LIGHT_SCALE = 0.78;
 const FLICK_FRAC = [0, 0.0, 0.02, 0.05, 0.09, 0.14, 0.2, 0.3];
 
 const _v = new THREE.Vector3();
@@ -70,22 +73,25 @@ export class YellowLevel {
     // humid haze: the fog colour follows the local light level (see update), density rises with instability
     scene.fog = new THREE.FogExp2(0x3a3424, FOG_DENSITY);
     engine.scene.environmentIntensity = 0.14;
-    this.field.uniforms.uAmbient.value.setRGB(0.012, 0.011, 0.007);
-    this.field.uniforms.uLightScale.value = 0.56;
+    // troffer pools: a steeper falloff (darker between fixtures and down the walls) at the same brightness
+    // right under a fixture; CPU probes (sampleLight) and the outer-ring bake follow the same curve
+    GRID_FALL.value = 0.28;
+    this.field.uniforms.uAmbient.value.setRGB(0.006, 0.0055, 0.0035);
+    this.field.uniforms.uLightScale.value = LIGHT_SCALE;
     this.field.uniforms.uGrid.value.set(CELL, HEIGHT - 0.04, 9, HEIGHT);
     this.hazeOn = engine.qualityName !== 'low';
     const pp = engine.post.params;
     pp.uTint.value.setRGB(1.02, 1.0, 0.9);
-    pp.uSat.value = 0.9;
+    pp.uSat.value = 1.0;
     pp.uGrain.value = 0.045;
     pp.uVignette.value = 0.46;
     // film grade: warm lifted blacks, slightly green-yellow mids, tamed highlights
-    pp.uExposure.value = 0.97;
-    pp.uLift.value.set(0.022, 0.02, 0.008);
+    pp.uExposure.value = 1.06;
+    pp.uLift.value.set(0.01, 0.009, 0.003);
     pp.uGamma.value.set(1.0, 1.01, 0.97);
     pp.uGain.value.set(1.0, 0.985, 0.93);
     pp.uRolloff.value = 0.25;
-    pp.uContrast.value = 1.06;
+    pp.uContrast.value = 1.12;
     engine.renderer.toneMappingExposure = 0.95;
     this._fogCol = new THREE.Color();
     this.world.monsters = this.monsters = new MonsterManager(this);
@@ -454,7 +460,7 @@ export class YellowLevel {
       const dx = l.x - pos.x, dy = l.y - pos.y, dz = l.z - pos.z;
       const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (d > l.radius) continue;
-      let w = (1 / (1 + GRID_FALL.value * d * d)) * Math.max(0, 1 - (d / l.radius) ** 4) * 0.8;
+      let w = (1 / (1 + GRID_FALL.value * d * d)) * Math.max(0, 1 - (d / l.radius) ** 4) * 0.8 * (LIGHT_SCALE / 0.56);
       w *= this.occluder(pos.x, pos.z, l.x, l.z);
       if (w <= 0) continue;
       const c = l.override || l.color;

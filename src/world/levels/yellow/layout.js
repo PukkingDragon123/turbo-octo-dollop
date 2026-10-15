@@ -60,7 +60,7 @@ const SPECIALS = [
 const DOOR_AVOID = {
   fuel_store: ['W'], fuse_office: ['N'], vending_lonely: ['N'], many_doors: ['N'], stairs_nowhere: ['N'],
   storage: ['N'], chairpile: ['N'], cubicle_farm: ['N'], vent_room: ['W', 'E'], clipping: ['W', 'E'],
-  bedroom: ['E', 'S'], office_room: ['N'], tv_room: ['N'], workshop: ['N'],
+  bedroom: ['E', 'S'], office_room: ['N'], tv_room: ['N', 'S'], workshop: ['N'],
 };
 
 function specialSize(kind) {

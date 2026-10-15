@@ -30,16 +30,22 @@ const TONE_INT = [1.0, 1.05, 0.75, 0.95, 0.9, 1.25];
 
 // ---------------------------------------------------------------------------
 // light helpers shared with the level (registration + baking queries)
+const _tube = new THREE.Color(), _tubeTint = new THREE.Color();
 export function cellLightSpec(cell) {
   if (!cell.light) return null;
+  // ageing tubes: every fixture a little off from its neighbours (output and a faint green / pink cast),
+  // so long halls don't read as one flat sheet of light (field.add copies the colour)
+  const a = (cell.lightSeed * 7.31) % 1, b = (cell.lightSeed * 13.7 + 0.37) % 1;
+  _tube.copy(LIGHT_TONES[cell.lightTone] || LIGHT_TONES[0]);
+  if (cell.lightTone === 0 || cell.lightTone === 1 || cell.lightTone === 3) _tube.multiply(_tubeTint.setRGB(1 + (b - 0.5) * 0.05, 1 + (0.5 - Math.abs(b - 0.5)) * 0.04, 1 - (b - 0.5) * 0.06));
   return {
     key: LightField.texel(cell.i, cell.j),
     x: (cell.i + 0.5) * CELL,
     y: HEIGHT - 0.04,
     z: (cell.j + 0.5) * CELL,
     radius: 9,
-    color: LIGHT_TONES[cell.lightTone] || LIGHT_TONES[0],
-    base: TONE_INT[cell.lightTone] ?? 1,
+    color: _tube,
+    base: (TONE_INT[cell.lightTone] ?? 1) * (0.86 + a * 0.2),
     mode: cell.lightMode,
     seed: cell.lightSeed,
   };
@@ -257,10 +263,11 @@ export function buildChunk(level, cx, cz) {
   // cut pile scatters light instead of mirroring it: little specular, so the floor keeps its colour at grazing angles
   add(G.carpet, Mat.get('carpet'), 1, { ao: 'floor', spec: 0.3 });
   add(G.carpetOffice, carpetTint('office', 0xa4a49c), 1, { ao: 'floor', spec: 0.3 });
-  add(G.carpetManila, carpetTint('manila', 0xc89c74), 1, { ao: 'floor', spec: 0.3 });
+  add(G.carpetManila, carpetTint('manila', 0xbea486), 1, { ao: 'floor', spec: 0.3 });
   add(G.slab, Mat.get('concrete_dark'), 4, { ao: 'floor' });
   add(G.tile, Mat.get('tile_pool'), 0, { ao: 'floor' });
-  add(G.ceil, Mat.get('ceiling'), 3, { ao: 'ceil', tiles: true, mix: [0.22, 0.42] });
+  // the tiles only see the troffers' sideways spill: mostly floor bounce, so the lenses glow against a dimmer lid
+  add(G.ceil, Mat.get('ceiling'), 3, { ao: 'ceil', tiles: true, mix: [0.14, 0.32] });
   add(G.enamel, Mat.get('enamel'), 0, { quant: 0.3, mix: [0.5, 0.6] });
   add(G.lens, Mat.get('lightpanel'), 0, { emissive: true, lens: true, quant: 0.6, mix: [0.2, 0.4] });
   add(G.lensLouvre, Mat.get('lightpanel'), 0, { emissive: true, lens: 'louvre', quant: 0.6, mix: [0.2, 0.4] });

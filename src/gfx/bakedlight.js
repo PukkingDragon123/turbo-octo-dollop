@@ -194,7 +194,7 @@ export function sharedField() {
 
 // falloff for broad fluorescent panels: soft near, smooth to zero at radius
 export function lightWeight(d, radius) {
-  const k = 1 / (1 + 0.16 * d * d);
+  const k = 1 / (1 + GRID_FALL.value * d * d);
   const e = d / radius;
   const e2 = e * e;
   const edge = Math.max(0, 1 - e2 * e2);

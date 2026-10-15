@@ -201,7 +201,7 @@ export function decorateRoom(level, room, rec) {
       for (let i = 0; i < n; i++) {
         const l = level._lightsNear(b.cx, b.cz)[0];
         cells[i * 4] = l ? l.key : 0;
-        w[i * 4] = 1.2;
+        w[i * 4] = 0.9;
       }
       geo.setAttribute('aLightCells', new THREE.BufferAttribute(cells, 4));
       geo.setAttribute('aLightW', new THREE.BufferAttribute(w, 4));
@@ -267,8 +267,8 @@ export function populateRoom(level, room, rec, rng) {
             { rx: r(0.35), rz: r(0.35), sleep: false });
         }
       }
-      // a few strays left standing by the walls (south half: the north wall is kept door-free for the pile)
-      for (let k = 0; k < 3; k++) sp(level, 'chair_wood', b.x0 + 0.9 + k * ((b.x1 - b.x0 - 1.8) / 2) + r(0.2), 0, b.z1 - 0.7 - rng.next() * 0.3, rng.next() * 6.28);
+      // a few strays left by the south wall: in the corners and between the two door slots, never in a doorway
+      for (const x of [b.x0 + 0.45, b.cx, b.x1 - 0.45]) sp(level, 'chair_wood', x + r(0.05), 0, b.z1 - 0.45, rng.next() * 6.28);
       break;
     }
     case 'office_room': {
@@ -357,7 +357,7 @@ export function populateRoom(level, room, rec, rng) {
     case 'red_chair': break;
     case 'cubicle_farm': {
       for (let k = 0; k < 4; k++) {
-        const x = b.x0 + 1.2 + (k % 2) * 4.2, z = b.z0 + 1.2 + Math.floor(k / 2) * 2.8;
+        const x = b.x0 + 1.6 + (k % 2) * 4.4, z = b.z0 + 1.2 + Math.floor(k / 2) * 2.8; // clear of the west doors
         sp(level, 'desk_cubicle_panel', x, 0, z - 0.8, 0);
         sp(level, 'desk', x, 0, z, 0);
         sp(level, 'chair_office', x + r(0.3), 0, z + 0.8, rng.next() * 6);
@@ -365,7 +365,7 @@ export function populateRoom(level, room, rec, rng) {
         if (rng.chance(0.3)) sp(level, rng.pick(['desk_phone', 'mug', 'binder', 'keyboard']), x + 0.4, 0.76, z, rng.next() * 6);
       }
       // a snack left on the first desk (not floating mid-room)
-      if (rng.chance(0.5)) sp(level, rng.pick(['chips', 'soda_can', 'candy_bar']), b.x0 + 1.2 - 0.45, 0.76, b.z0 + 1.2 + 0.15, rng.next() * 6);
+      if (rng.chance(0.5)) sp(level, rng.pick(['chips', 'soda_can', 'candy_bar']), b.x0 + 1.6 - 0.45, 0.76, b.z0 + 1.2 + 0.15, rng.next() * 6);
       break;
     }
     case 'workshop': {
@@ -378,7 +378,7 @@ export function populateRoom(level, room, rec, rng) {
       break;
     }
     case 'vent_room': {
-      for (let k = 0; k < 3; k++) sp(level, rng.pick(['bucket', 'pipe', 'barrel', 'cinder_block']), b.cx + r(1.2), 0, b.cz + r(0.8), rng.next() * 6);
+      for (let k = 0; k < 3; k++) sp(level, rng.pick(['bucket', 'pipe', 'barrel', 'cinder_block']), b.cx - 1.4 + k * 1.4 + r(0.2), 0, b.cz + r(0.45), rng.next() * 6);
       break;
     }
     case 'dead_clone': {

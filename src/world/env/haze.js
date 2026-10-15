@@ -22,7 +22,7 @@ export function hazeMaterial(field) {
     uniforms: Object.assign(THREE.UniformsUtils.clone(THREE.UniformsLib.fog), {
       uLightTex: field.uniforms.uLightTex,
       uLightScale: field.uniforms.uLightScale,
-      uHaze: { value: 0.026 },
+      uHaze: { value: 0.02 },
       uTime: field.uniforms.uTime,
     }),
     vertexShader: /* glsl */`
