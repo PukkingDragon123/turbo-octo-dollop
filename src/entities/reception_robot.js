@@ -7,7 +7,7 @@
 // looking its smile gets too wide; it takes a moment to fix that when you look back.
 //
 // Geometry is merged per moving part into one vertex-coloured material (+ a label, a glow and the
-// CRT screen), so the whole robot costs ~14 draw calls.
+// CRT screen), so the whole robot costs ~16 draw calls.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
@@ -55,6 +55,7 @@ const STAMPS = [['APPROVED', 'good'], ['FILED', 'fg'], ['APPROVED', 'good'], ['N
 
 const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _qq = new THREE.Quaternion(), _ee = new THREE.Euler();
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
+const _e1 = new THREE.Vector3(), _w1 = new THREE.Vector3(), _d1 = new THREE.Vector3();
 const DOWN = new THREE.Vector3(0, -1, 0);
 
 // ---------------------------------------------------------------------------------- geometry bins
@@ -322,14 +323,13 @@ export function solveArm(a, target, pole, handQ) {
   const u = T.normalize();
   const ca = (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d), a1 = Math.acos(Math.min(1, Math.max(-1, ca)));
   const w = _v3.copy(pole).addScaledVector(u, -pole.dot(u)).normalize();
-  const E = new THREE.Vector3().copy(u).multiplyScalar(Math.cos(a1) * L1).addScaledVector(w, Math.sin(a1) * L1); // elbow, shoulder-relative
-  const W = u.clone().multiplyScalar(d);                                                                     // wrist, shoulder-relative
-  a.sh.quaternion.setFromUnitVectors(DOWN, E.clone().normalize());
+  const E = _e1.copy(u).multiplyScalar(Math.cos(a1) * L1).addScaledVector(w, Math.sin(a1) * L1); // elbow, shoulder-relative
+  const W = _w1.copy(u).multiplyScalar(d);                                                   // wrist, shoulder-relative
+  a.sh.quaternion.setFromUnitVectors(DOWN, _d1.copy(E).normalize());
   const fore = W.sub(E).normalize().applyQuaternion(_q.copy(a.sh.quaternion).invert());
   a.el.quaternion.setFromUnitVectors(DOWN, fore);
   _q2.copy(a.sh.quaternion).multiply(a.el.quaternion).invert();
   a.wr.quaternion.copy(_q2).multiply(handQ);
-  return E.add(S); // elbow in turret space (debug / tests)
 }
 
 // ---------------------------------------------------------------------------------- device
@@ -363,7 +363,8 @@ export class ReceptionRobot extends Device {
     this.poleR = POLE_REST.clone();
     this._tgt = new THREE.Vector3();
     this._tmp = new THREE.Vector3();
-    this._handQ = BOARD_Q.clone();
+    this._tmp2 = new THREE.Vector3();
+    this._pp = new THREE.Vector3();
     this._pose();
   }
 
@@ -395,9 +396,10 @@ export class ReceptionRobot extends Device {
     this.setState({ say: { n: String(d.n || 'EMPLOYEE').slice(0, 24), i: d.i | 0, g: d.g | 0, from, k: (this.state.say?.k || 0) + 1 } });
   }
 
-  onState(s) {
+  onState(s, fullSync) {
     // other clones' greetings: show on the face and play the voice, no wristwatch spam
-    if (s.say && s.say.from !== net.selfId) this._speak(s.say.n, s.say.i, s.say.g, false);
+    // (a late joiner's full sync carries the last greeting: don't replay it)
+    if (s.say && !fullSync && s.say.from !== net.selfId) this._speak(s.say.n, s.say.i, s.say.g, false);
   }
 
   _speak(name, i, gi, local) {
@@ -516,7 +518,7 @@ export class ReceptionRobot extends Device {
       a.t += dt;
       const u = a.t;
       if (a.kind === 'stamp') {
-        const P = this._paperPoint(a.dx, a.dz, this._v ||= new THREE.Vector3());
+        const P = this._paperPoint(a.dx, a.dz, this._pp);
         const above = _v3.copy(P); above.y += 0.17;
         if (u < 0.45) R.lerpVectors(R_REST, above, ease(u / 0.45));
         else if (u < 0.62) { R.copy(above); R.x += Math.sin(u * 40) * 0.004; }
@@ -537,7 +539,7 @@ export class ReceptionRobot extends Device {
         if (u < 0.35) R.lerpVectors(R_REST, K.setY(K.y + 0.06), ease(u / 0.35));
         else if (u < a.dur - 0.4) {
           const ph = (u - 0.35) / 0.17, n = Math.floor(ph);
-          if (n !== a.taps) { a.taps = n; a.key = Math.floor(Math.random() * 12); keyPos(a.key, K); audio.play('ui_type', { pos: this.m.armR.wr.getWorldPosition(this._tmp2 ||= new THREE.Vector3()), volume: 0.22 }); }
+          if (n !== a.taps) { a.taps = n; a.key = Math.floor(Math.random() * 12); keyPos(a.key, K); audio.play('ui_type', { pos: this.m.armR.wr.getWorldPosition(this._tmp2), volume: 0.22 }); }
           R.copy(K); R.y += 0.035 * Math.abs(Math.sin((ph % 1) * PI + PI / 2));
           rate = 30;
         } else R.lerpVectors(K.setY(K.y + 0.06), R_REST, ease((u - (a.dur - 0.4)) / 0.4));
