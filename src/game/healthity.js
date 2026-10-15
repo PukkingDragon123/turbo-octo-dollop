@@ -41,7 +41,7 @@ const LINES = {
   safe: ['Welcome to Day 1, your probation day! Nothing down here will hunt you today. Probably. Explore!', 'Good news! Day 1 is a guaranteed safe probation day. Use it to explore and stock up!'],
   day2: ['Day 2. Probation is over. Things will start looking for you now. Stay together and stay quiet!'],
   pickup: ['Ooh, {item}! Company property, but you may borrow it.', '{item} acquired. I have logged it in your inventory. On your watch!', 'Nice find! {item}.'],
-  hq: ['Welcome back to HQ! Your locker has cosmetics. The break room has snacks. The lever has... adventure!', 'Reminder: the dispatch lever is in the hazard-striped bay. Pull it when your team is ready.'],
+  hq: ['Welcome back to HQ! Your locker has cosmetics. The break room has snacks. Gloria at reception has... adventure!', 'Reminder: talk to Gloria at reception when your team is ready. She opens the elevator. Do not be late for it.'],
   // Level 0 camp loop (CampMission)
   camp_start: ['Welcome to Level 0! First things first: let\'s build a camp. The TENT KIT crate is right here. Press [E] to open it!'],
   kit_open: ['Tent parts everywhere! Hold LMB to drag a tent pole onto one of the glowing markers.'],
@@ -87,7 +87,7 @@ const TIPS = {
   hq: [
     'Try the terminals in the open office. One of them has an orientation. It is mandatory. Ish.',
     'Your locker lets you change your look. Cosmetics only. Upgrades are not in the budget.',
-    'Gather your team in the dispatch bay, then pull the lever. Anything in the striped zone comes along!',
+    'When your team is ready, talk to Gloria at reception. She opens the elevator gate. Hop in before it closes!',
   ],
 };
 
@@ -185,7 +185,7 @@ export class Healthity {
       : 'Vitals look acceptable!';
     const needs = s.needsActive && !g.isLobby ? ` Hunger ${Math.round(s.hunger)}, thirst ${Math.round(s.thirst)}.` : '';
     const m = g.world.level?.mission;
-    let next = 'Next: pull the dispatch lever with your team.';
+    let next = 'Next: talk to Gloria at reception and take the elevator with your team.';
     if (m?.objective) {
       const o = m.objective();
       next = `Next: ${o.title.toLowerCase()}. ${o.detail}.`;
@@ -254,7 +254,7 @@ export class Healthity {
     }
     const stage = !g.isLobby ? w.level?.mission?.stage : null;
     if (this._introT > 0) {
-      this._introT -= dt;
+      if (!g.ride?.active) this._introT -= dt; // wait for the elevator ride to end
       if (this._introT <= 0) this.say(g.isLobby ? 'hq' : stage === 'camp' ? 'camp_start' : g.day.day <= 1 ? 'safe' : 'day');
     }
     if (g.state === 'playing' && !l.dead && !g.terminal?.active && input.hit('healthity')) this.ask();

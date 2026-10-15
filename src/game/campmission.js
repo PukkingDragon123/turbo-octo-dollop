@@ -281,7 +281,20 @@ export class CampMission extends Mission {
     this._clearSetPieces();
     this.pushState();
     const delay = (ms, fn) => setTimeout(() => { if (!this.disposed) fn(); }, ms);
-    delay(3000, () => this.hq(`Welcome to Level 0, employees. First task: BUILD YOUR CAMP. Your TENT KIT is waiting at the camp site. Open it, drag each part onto its glowing marker and attach it with your built-in multitool (empty hand, RMB).`, 'RECEPTION'));
+    const brief = () => this.hq(`Welcome to Level 0, employees. First task: BUILD YOUR CAMP. Your TENT KIT is waiting at the camp site. Open it, drag each part onto its glowing marker and attach it with your built-in multitool (empty hand, RMB).`, 'RECEPTION');
+    // arriving by elevator: brief when the gate opens (onArrival), not in the middle of the ride
+    if (this.game.ride?.active) {
+      this._brief = brief;
+      delay(45000, () => { if (this._brief) { this._brief = null; brief(); } });
+    } else delay(3000, brief);
+  }
+
+  // called on every peer when the arrival elevator's gate opens (world/elevator_ride.js)
+  onArrival() {
+    if (!this._brief) return;
+    const b = this._brief;
+    this._brief = null;
+    setTimeout(() => { if (!this.disposed) b(); }, 1200);
   }
 
   // host: nothing may stand on the pads or the lever (chunk furniture spawned before the mission existed)
