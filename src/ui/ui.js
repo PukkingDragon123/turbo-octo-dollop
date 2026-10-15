@@ -7,11 +7,15 @@ import { net } from '../net/net.js';
 import { audio } from '../audio/audio.js';
 import { profile, ACHIEVEMENTS } from '../core/profile.js';
 import { buildModel } from '../entities/catalog.js';
-import { itemName, itemDef, SAMPLES } from '../game/itemdefs.js';
+import { itemName, SAMPLES } from '../game/itemdefs.js';
 import { Avatar, COSMETICS } from '../entities/avatar.js';
 import { buildStillLife } from '../entities/optional.js';
 import { damp } from '../core/rng.js';
 import { Q } from '../physics/physics.js';
+import { installPixelCSS, logoPix, Pix, C, glyph } from './pixelart.js';
+import { itemSprite, pixelizeCanvas } from './itemsprites.js';
+import { NeedsWidget } from './needs.js';
+import { Hotbar } from './hotbar.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -28,25 +32,21 @@ export class UI {
     document.body.appendChild(this.root);
     this.root.innerHTML = `
       <div id="hud" class="hidden">
-        <div id="vitals"><div class="row hp">+<span class="v">100</span><span class="max">/100</span></div><div class="row stam">⚡<span class="v">40</span><span class="max">/40</span></div><div class="cond"></div></div>
-        <div id="topright"><div class="cr">$0</div><div class="obj"></div><div class="exit"></div></div>
         <div id="crosshair"></div>
         <div id="prompt"></div>
         <div id="progress"><div class="label"></div><div class="bar"><div class="fill"></div></div></div>
         <div id="timing"><div class="lbl">PULL</div><div class="zone"></div><div class="needle"></div></div>
-        <div id="itemname"></div>
-        <div id="hotbar"></div>
         <div id="feed"></div>
         <div id="toasts"></div>
         <div id="ach"><div>ACHIEVEMENT UNLOCKED</div><div class="t"></div><div class="d" style="color:var(--fg-dim)"></div></div>
-        <div id="voiceind">● TRANSMITTING</div>
+        <div id="voiceind"><i></i>TRANSMITTING</div>
         <div id="netinfo"></div>
-        <div id="death"><div class="t">CLONE TERMINATED</div><div class="c"></div><div class="s"></div></div>
+        <div id="death"><canvas class="skull"></canvas><div class="t">CLONE TERMINATED</div><canvas class="flat"></canvas><div class="c"></div><div class="s"></div></div>
       </div>
       <div id="clickstart">CLICK TO CONTINUE</div>
       <div id="menu-main" class="screen"><div class="crt">
         <div class="boot"></div>
-        <h1>R.O.O.M.</h1>
+        <h1><canvas class="logo" aria-label="R.O.O.M."></canvas></h1>
         <div class="logo-sub">RESEARCH OFFICE FOR OTHERWORLDLY MATTERS</div>
         <label>EMPLOYEE DESIGNATION</label>
         <input type="text" id="in-name" maxlength="16" spellcheck="false"/>
@@ -56,16 +56,16 @@ export class UI {
           <option value="poolrooms">LEVEL 37 · THE POOLROOMS</option>
           <option value="grasslands">LEVEL 1.1 · THE GRASSLANDS</option>
         </select>
-        <div class="menu" style="margin-top:18px">
-          <button class="btn interactive" data-act="solo">SOLO SHIFT</button>
-          <button class="btn interactive" data-act="host">HOST SHIFT (1-4 CLONES)</button>
-          <button class="btn interactive" data-act="join">JOIN SHIFT</button>
-          <button class="btn interactive" data-act="settings">SETTINGS</button>
-          <button class="btn interactive" data-act="controls">CONTROLS</button>
+        <div class="menu" style="margin-top:14px">
+          <button class="btn interactive" data-act="solo" data-icon="solo">SOLO SHIFT</button>
+          <button class="btn interactive" data-act="host" data-icon="host">HOST SHIFT (1-4 CLONES)</button>
+          <button class="btn interactive" data-act="join" data-icon="join">JOIN SHIFT</button>
+          <button class="btn interactive" data-act="settings" data-icon="gear">SETTINGS</button>
+          <button class="btn interactive" data-act="controls" data-icon="pad">CONTROLS</button>
         </div>
         <div id="join-row" style="display:none;margin-top:10px">
           <label>SHIFT CODE</label>
-          <div class="row"><input type="text" id="in-code" maxlength="6" spellcheck="false"/><button class="btn interactive" data-act="dojoin" style="white-space:nowrap">CONNECT</button></div>
+          <div class="row"><input type="text" id="in-code" maxlength="6" spellcheck="false"/><button class="btn interactive" data-act="dojoin" data-icon="ok" style="white-space:nowrap">CONNECT</button></div>
         </div>
         <div class="err" id="menu-err"></div>
         <div class="hint">Online co-op uses peer-to-peer WebRTC. Proximity voice chat needs a microphone (optional).</div>
@@ -75,10 +75,10 @@ export class UI {
         <h2>SHIFT PAUSED</h2>
         <div class="sub" id="pause-code"></div>
         <div class="menu">
-          <button class="btn interactive" data-act="resume">RESUME</button>
-          <button class="btn interactive" data-act="settings">SETTINGS</button>
-          <button class="btn interactive" data-act="controls">CONTROLS</button>
-          <button class="btn interactive" data-act="leave">CLOCK OUT (LEAVE)</button>
+          <button class="btn interactive" data-act="resume" data-icon="play">RESUME</button>
+          <button class="btn interactive" data-act="settings" data-icon="gear">SETTINGS</button>
+          <button class="btn interactive" data-act="controls" data-icon="pad">CONTROLS</button>
+          <button class="btn interactive" data-act="leave" data-icon="door">CLOCK OUT (LEAVE)</button>
         </div>
         <div class="hint">The world keeps running while paused. Monsters do not take breaks.</div>
       </div></div>
@@ -90,44 +90,44 @@ export class UI {
           <span>MUSIC</span><input class="interactive" type="range" min="0" max="1" step="0.05" data-set="music"/>
           <span>AMBIENCE</span><input class="interactive" type="range" min="0" max="1" step="0.05" data-set="ambient"/>
           <span>VOICE CHAT</span><input class="interactive" type="range" min="0" max="1.5" step="0.05" data-set="voice"/>
-          <span>MOUSE SENSITIVITY</span><input class="interactive" type="range" min="0.2" max="3" step="0.05" data-set="sensitivity"/>
+          <span>LOOK SENSITIVITY</span><input class="interactive" type="range" min="0.2" max="3" step="0.05" data-set="sensitivity"/>
           <span>INVERT Y</span><select class="interactive" data-set="invertY"><option value="false">OFF</option><option value="true">ON</option></select>
           <span>GRAPHICS</span><select class="interactive" data-set="quality"><option value="low">LOW</option><option value="medium">MEDIUM</option><option value="high">HIGH</option></select>
           <span>HEALTHITY VOICE</span><select class="interactive" data-set="healthityVoice"><option value="true">ON</option><option value="false">OFF</option></select>
           <span>MICROPHONE</span><select class="interactive" data-set="voiceMode"><option value="open">OPEN MIC</option><option value="ptt">PUSH-TO-TALK [V]</option><option value="off">OFF</option></select>
         </div>
-        <div class="menu" style="margin-top:16px"><button class="btn interactive" data-act="back">BACK</button></div>
+        <div class="menu" style="margin-top:14px"><button class="btn interactive" data-act="back" data-icon="back">BACK</button></div>
       </div></div>
       <div id="controls" class="screen"><div class="crt">
         <h2>CONTROLS</h2>
-        <div class="touch-only" style="font-size:22px;line-height:1.35">
-          LEFT THUMB: drag anywhere to walk · push the stick to the rim to sprint<br/>
-          RIGHT THUMB: drag to look · tap to use what is under the dot<br/>
-          <span class="kbd">USE</span> interact / pick up (shows the action) · <span class="kbd">JUMP</span> · <span class="kbd">DUCK</span> toggle crouch<br/>
-          <span class="kbd">GRAB</span> hold to carry physics objects · <span class="kbd">THROW</span> while carrying · <span class="kbd">ROT</span> hold + drag to rotate<br/>
-          <span class="kbd">ITEM</span> use the held item · <span class="kbd">NEXT</span> switch item · <span class="kbd">DROP</span><br/>
-          <span class="kbd">WATCH</span> raise the wrist terminal · <span class="kbd">◀ ▶</span> tabs · <span class="kbd">SNAP</span> photo in CAM<br/>
-          <span class="kbd">LIGHT</span> flashlight · <span class="kbd">VIEW</span> third person · <span class="kbd">MENU</span> pause<br/>
-          <span class="kbd">HLTH</span> or tap Healthity's bubble: check-up and what to do next
+        <div class="touch-only ctl">
+          <div><span class="kbd">LEFT THUMB</span> drag anywhere to walk · push the stick to the rim to sprint</div>
+          <div><span class="kbd">RIGHT THUMB</span> drag to look · tap to use what is under the dot</div>
+          <div><span class="kbd">USE</span> interact / pick up (a tag shows the action) · <span class="kbd">JUMP</span> · <span class="kbd">DUCK</span> toggle crouch</div>
+          <div><span class="kbd">GRAB</span> hold to carry physics objects · <span class="kbd">THROW</span> while carrying · <span class="kbd">ROT</span> hold + drag to rotate</div>
+          <div><span class="kbd">ITEM</span> use the held item (it shows on the button) · tap a pocket to hold it · drag a pocket up to drop it</div>
+          <div><span class="kbd">WATCH</span> raise the wrist terminal (tap STATUS / MAP / TASK) · <span class="kbd">LIGHT</span> flashlight</div>
+          <div><span class="kbd">NEXT</span> next pocket · <span class="kbd">DROP</span> drop the held item · <span class="kbd">MENU</span> pause</div>
+          <div><span class="kbd">HLTH</span> or tap Healthity's bubble: check-up and what to do next</div>
         </div>
-        <div class="desk-only" style="font-size:24px;line-height:1.35">
-          <span class="kbd">WASD</span> move · <span class="kbd">SHIFT</span> sprint · <span class="kbd">CTRL</span>/<span class="kbd">C</span> crouch · <span class="kbd">SPACE</span> jump<br/>
-          <span class="kbd">LMB</span> hold to GRAB physics objects (and teammates)<br/>
-          &nbsp;&nbsp;while grabbing: <span class="kbd">WHEEL</span> push/pull · <span class="kbd">R</span>+mouse rotate · <span class="kbd">RMB</span> throw<br/>
-          <span class="kbd">E</span> interact / pick up · <span class="kbd">G</span> drop · <span class="kbd">1-5</span>/<span class="kbd">WHEEL</span> slots<br/>
-          <span class="kbd">RMB</span> use held item (eat, drink, heal, weld, dismantle, sample)<br/>
-          <span class="kbd">F</span> flashlight · <span class="kbd">TAB</span> wristwatch (<span class="kbd">Q</span>/<span class="kbd">E</span> tabs, <span class="kbd">LMB</span> photo in CAMERA)<br/>
-          <span class="kbd">V</span> push-to-talk · <span class="kbd">H</span> wave · <span class="kbd">J</span> dance · <span class="kbd">B</span> point · <span class="kbd">T</span> 3rd person<br/>
-          <span class="kbd">X</span> ask Healthity for a check-up · <span class="kbd">ESC</span> pause<br/>
-          There is no HUD: vitals, items, tasks and messages are on your wristwatch. It beeps and you glance at it when something happens.
+        <div class="desk-only ctl">
+          <div><span class="kbd">WASD</span> move · <span class="kbd">SHIFT</span> sprint · <span class="kbd">CTRL</span>/<span class="kbd">C</span> crouch · <span class="kbd">SPACE</span> jump</div>
+          <div><span class="kbd">LMB</span> hold to GRAB physics objects (and teammates)</div>
+          <div>&nbsp;&nbsp;while grabbing: <span class="kbd">WHEEL</span> push/pull · <span class="kbd">R</span>+mouse rotate · <span class="kbd">RMB</span> throw</div>
+          <div><span class="kbd">E</span> interact / pick up · <span class="kbd">G</span> drop · <span class="kbd">1-5</span>/<span class="kbd">WHEEL</span> pockets</div>
+          <div><span class="kbd">RMB</span> use held item (eat, drink, heal, weld, dismantle, sample)</div>
+          <div><span class="kbd">F</span> flashlight · <span class="kbd">TAB</span> wristwatch (<span class="kbd">Q</span>/<span class="kbd">E</span> STATUS · MAP · TASK)</div>
+          <div><span class="kbd">V</span> push-to-talk · <span class="kbd">H</span> wave · <span class="kbd">J</span> dance · <span class="kbd">B</span> point · <span class="kbd">T</span> 3rd person</div>
+          <div><span class="kbd">X</span> ask Healthity for a check-up · <span class="kbd">ESC</span> pause</div>
+          <div class="dim">Hunger and thirst sit on your sleeve patch (top left); your pockets run along the bottom. Everything else lives on the wristwatch.</div>
         </div>
-        <div class="menu" style="margin-top:16px"><button class="btn interactive" data-act="back">BACK</button></div>
+        <div class="menu" style="margin-top:14px"><button class="btn interactive" data-act="back" data-icon="back">BACK</button></div>
       </div></div>
       <div id="custom" class="screen"><div class="crt"><h2>LOCKER #<span id="locker-no">07</span></h2><div class="sub">COSMETICS ONLY — R.O.O.M. DOES NOT ISSUE UPGRADES</div><div id="custom-body"></div>
-        <div class="menu" style="margin-top:10px"><button class="btn interactive" data-act="custom-done">CLOSE LOCKER</button></div></div></div>
+        <div class="menu" style="margin-top:10px"><button class="btn interactive" data-act="custom-done" data-icon="ok">CLOSE LOCKER</button></div></div></div>
       <div id="runover" class="screen"><div class="crt"><h2 id="ro-title">SHIFT TERMINATED</h2><div class="stats" id="ro-stats"></div><div class="hint">Returning to headquarters... cosmetics & achievements are kept. Everything else is company property.</div></div></div>
-      <div id="alert" class="screen"><div class="crt"><h2>NOTICE</h2><div id="alert-text" style="font-size:26px"></div><div class="menu" style="margin-top:14px"><button class="btn interactive" data-act="alert-ok">OK</button></div></div></div>
-      <div id="loading"><div class="t">DISPATCHING</div><div class="l">...</div><div class="bar"><div></div></div></div>
+      <div id="alert" class="screen"><div class="crt"><h2>NOTICE</h2><div id="alert-text"></div><div class="menu" style="margin-top:14px"><button class="btn interactive" data-act="alert-ok" data-icon="ok">OK</button></div></div></div>
+      <div id="loading"><canvas class="sprite"></canvas><div class="t">DISPATCHING</div><div class="l">...</div><div class="bar"><div></div></div></div>
     `;
     // the artifact build runs in a sandboxed frame without WebRTC: solo only
     if (import.meta.env.VITE_SOLO_ONLY) {
@@ -142,15 +142,35 @@ export class UI {
     this.toastEl = $('#toasts', this.root);
     this.promptEl = $('#prompt', this.root);
     this.crossEl = $('#crosshair', this.root);
-    this.hotbarEl = $('#hotbar', this.root);
     this.icons = new Map();
-    this.invVersion = -1;
-    this.itemNameT = 0;
+    this.iconPixes = new Map();
     this.prevScreen = null;
     this.customizing = null;
     this.customAngle = 0;
+    this.needs = new NeedsWidget(document.body);
+    this.hotbar = new Hotbar(this);
+    this.hotbarHiddenByTouch = false;
+    this._pixelArt();
     this._bind();
     this._iconRig();
+  }
+
+  // pixel-art pieces of the DOM screens: logo, death skull + flatline, loading sprite
+  _pixelArt() {
+    installPixelCSS();
+    logoPix('R.O.O.M.', 2).toCanvas($('#menu-main canvas.logo', this.root));
+    const sk = new Pix(15, 13);
+    glyph('skull', C.red2, { pix: sk, x: 2, y: 1 });
+    sk.outline(C.ink).shadow(0.5);
+    sk.toCanvas($('#death canvas.skull', this.root));
+    this._loadPix = new Pix(24, 28);
+    this._deathT = 0;
+  }
+
+  _hudScale() {
+    if (input.touch) return this.game?.touch?.pixelScale || 2;
+    const w = window.innerWidth, h = window.innerHeight;
+    return Math.max(2, Math.min(4, Math.floor(Math.min(w / 560, h / 300))));
   }
 
   // ------------------------------------------------------------------
@@ -417,6 +437,98 @@ export class UI {
     this._prompt = t;
   }
 
+  // where the Healthity pop-up may start (px from the top): below the sleeve patch, the touch button column
+  // (portrait) and an open portrait watch panel
+  _popBase() {
+    let y = this.needs.bottomPx || 0;
+    const t = this.game?.touch;
+    if (t && window.innerHeight > window.innerWidth && t.sysBottom) y = Math.max(y, t.sysBottom);
+    return y;
+  }
+
+  popTopPx() {
+    let y = this._popBase();
+    const wp = this.watchPanelEl;
+    if (wp && wp.classList.contains('show') && !wp.classList.contains('glance')) y = Math.max(y, wp.getBoundingClientRect().bottom);
+    return y;
+  }
+
+  _watchPanel(on, open) {
+    if (!this.watchPanelEl) {
+      if (!on) return;
+      this.watchPanelEl = el('<div id="pxwatch"><div class="wp-in"></div></div>');
+      document.body.appendChild(this.watchPanelEl);
+    }
+    const w = this.game?.watch;
+    const wp = this.watchPanelEl;
+    const inner = wp.firstChild;
+    if (on && w && w.screen.canvas.parentNode !== inner) { inner.appendChild(w.screen.canvas); w.screen.lastDraw = -1; }
+    wp.classList.toggle('show', !!on);
+    wp.classList.toggle('glance', !!on && !open);
+    if (!on) return;
+    // fit between the top HUD and the pockets / tab strip
+    const rowTop = this.hotbar.row.getBoundingClientRect().top || window.innerHeight * 0.75;
+    const border = 2 * 8 * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 2);
+    const st = wp.style;
+    if (open) {
+      const top = this._popBase() + 6;
+      const avail = rowTop - 12 - top;
+      let width = Math.min(window.innerWidth * 0.94, 520);
+      if (width * 0.75 + border > avail) width = Math.max(180, (avail - border) / 0.75);
+      st.top = `${Math.round(top)}px`; st.bottom = ''; st.width = `${Math.round(width)}px`;
+    } else {
+      // glance: a small pager just above the pockets, clear of the crosshair and Healthity
+      st.top = ''; st.bottom = `${Math.round(window.innerHeight - rowTop + 10)}px`; st.width = `${Math.round(Math.min(window.innerWidth * 0.62, 250))}px`;
+    }
+  }
+
+  // death screen: a flatlining EKG strip in pixel art
+  _flatline(dt) {
+    this._deathT += dt;
+    const cv = $('#death canvas.flat', this.root);
+    if (!this._flatPix) this._flatPix = new Pix(96, 16);
+    const p = this._flatPix;
+    p.clear();
+    for (let x = 0; x < 96; x += 6) p.vline(x, 1, 14, [255, 90, 58, 40]);
+    p.hline(0, 95, 8, [255, 90, 58, 40]);
+    const head = Math.floor((this._deathT * 30) % 120);
+    for (let x = 0; x < 96; x++) {
+      const age = (head - x + 120) % 120;
+      if (age > 90) continue;
+      const blip = x > 20 && x < 30 && this._deathT < 1.2 ? Math.round(Math.sin((x - 20) / 10 * Math.PI) * 6) : 0;
+      p.set(x, 8 - blip, age < 3 ? C.red5 : age < 30 ? C.red : C.red2);
+    }
+    p.toCanvas(cv);
+  }
+
+  // loading screen: a little hazmat clone tumbling through the void
+  _loadingAnim(dt) {
+    const l = $('#loading', this.root);
+    if (!l.classList.contains('show')) return;
+    this._loadT = (this._loadT || 0) + dt;
+    if ((this._loadDraw = (this._loadDraw || 0) - dt) > 0) return;
+    this._loadDraw = 1 / 12;
+    const p = this._loadPix;
+    p.clear();
+    const t = this._loadT;
+    const f = Math.floor(t * 6) % 4;
+    // speed lines
+    for (let i = 0; i < 6; i++) { const x = (i * 5 + 2) % 24, y = Math.floor((t * 60 + i * 13) % 34) - 6; p.vline(x, y, y + 3, [255, 180, 58, 90]); }
+    const bob = [0, 1, 0, -1][f];
+    const ox = 6, oy = 6 + bob;
+    // body: chubby hazmat sack-doll, arms flailing
+    p.rbox(ox + 2, oy + 6, 9, 10, 3, C.hz);
+    p.rbox(ox + 3, oy, 7, 7, 3, C.hz4);
+    p.rect(ox + 4, oy + 2, 5, 3, C.ink2); p.set(ox + 5, oy + 3, C.cyan); p.set(ox + 7, oy + 3, C.cyan);
+    const arm = [[-3, 4], [-3, 2], [-3, 6], [-3, 3]][f];
+    p.rod(ox + 2, oy + 8, ox + 2 + arm[0], oy + 8 - arm[1], 1.2, ['#3e300a', '#715a14', '#a8871f', '#d9b437', '#f2d469', '#fff1a8'], { round: true, spec: false });
+    p.rod(ox + 10, oy + 8, ox + 13, oy + 8 - [2, 5, 3, 6][f], 1.2, ['#3e300a', '#715a14', '#a8871f', '#d9b437', '#f2d469', '#fff1a8'], { round: true, spec: false });
+    p.rect(ox + 3, oy + 15, 3, 3, C.hz2); p.rect(ox + 7, oy + 15, 3, 3 - (f % 2), C.hz2);
+    p.hline(ox + 2, ox + 10, oy + 11, C.hz1);
+    p.rim(0.3, 0.25).outline(C.ink);
+    p.toCanvas($('canvas.sprite', l));
+  }
+
   runOver(stats) {
     $('#ro-title', this.root).textContent = stats.reason || 'SHIFT TERMINATED';
     const m = Math.floor(stats.time / 60), s = stats.time % 60;
@@ -529,14 +641,29 @@ export class UI {
     return cv;
   }
 
+  // pixel-art item sprite (24x24 Pix): hand-built for pocketable items, otherwise a palette-quantized 3D render
+  iconPix(type, variant) {
+    const key = variant ? `${type}:${variant}` : type;
+    if (this.iconPixes.has(key)) return this.iconPixes.get(key);
+    let p = null;
+    try { p = itemSprite(type, variant); } catch (e) { p = null; }
+    if (!p) {
+      try {
+        const m = buildModel(type, { seed: 1 });
+        if (!this.iconRT88) this.iconRT88 = new THREE.WebGLRenderTarget(88, 88);
+        const cv = this._renderToCanvas(m.object, this.iconRT88, 88, 88, new THREE.Vector3(0.7, 0.6, 1));
+        p = pixelizeCanvas(cv);
+      } catch (e) { p = null; }
+    }
+    this.iconPixes.set(key, p);
+    return p;
+  }
+
   icon(type) {
     if (this.icons.has(type)) return this.icons.get(type);
     let url = '';
-    try {
-      const m = buildModel(type, { seed: 1 });
-      const cv = this._renderToCanvas(m.object, this.iconRT, 128, 128, new THREE.Vector3(0.7, 0.6, 1));
-      url = cv.toDataURL();
-    } catch (e) { /* icon optional */ }
+    const p = this.iconPix(type);
+    if (p) { try { url = p.scaled(4).toDataURL(); } catch (e) { url = ''; } }
     this.icons.set(type, url);
     return url;
   }
@@ -560,76 +687,47 @@ export class UI {
   // ------------------------------------------------------------------
   update(dt) {
     const g = this.game;
-    if (!g || g.state !== 'playing' || !g.world) return;
+    this._loadingAnim(dt);
+    if (!g || g.state !== 'playing' || !g.world) { this.needs.setVisible(false); this.hotbar.setVisible(false); return; }
     const l = g.local;
     const s = l.survival;
-    // vitals
-    const hp = $('#vitals .hp .v', this.root);
-    hp.textContent = Math.max(0, Math.round(s.health));
-    $('#vitals .stam .v', this.root).textContent = Math.round(s.stamina);
-    $('#vitals .stam .max', this.root).textContent = `/${s.maxStamina}`;
-    const conds = s.conditions().slice(0, 3);
-    $('#vitals .cond', this.root).textContent = conds.join(' · ');
-    // credits / objectives
-    $('#topright .cr', this.root).textContent = `$${g.run.credits}`;
-    const mission = g.world.level?.mission;
-    let obj = '', exit = '';
-    if (mission) {
-      const n = mission.generators.filter((x) => x.running).length;
-      const lk = mission.linksCount();
-      obj = n < 3 ? `GEN ${n}/3` : lk < 3 ? `LINK ${lk}/3` : mission.state.exit ? '' : 'EXTRACT';
-      if (mission.state.exit && !mission.state.exit.done) {
-        const t = Math.ceil(mission.exitTimeLeft());
-        exit = `EXIT ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-      }
+    // ---- pixel HUD: sleeve patch (hunger / thirst / health / money) and the inventory bar
+    const loading = $('#loading', this.root).classList.contains('show');
+    const view = !this.menuOpen && !this.customizing && !g.terminal?.active && !loading && !this.hud.classList.contains('hidden');
+    const sc = this._hudScale();
+    const na = s.needsActive;
+    const needsOn = view && !l.dead && (na === undefined ? !g.isLobby : !!na);
+    this.needs.setScale(sc);
+    this.needs.setVisible(needsOn);
+    if (needsOn) {
+      const mission = g.world.level?.mission;
+      const quota = mission?.quota?.need;
+      const credits = g.run?.credits ?? 0;
+      const stage = mission?.stage;
+      const selling = stage ? ['sell', 'exit', 'done'].includes(stage) : !!quota;
+      const money = selling || credits > 0 ? { credits, quota: quota || 0 } : null;
+      const v = l.vel;
+      this.needs.update(dt, { hunger: s.hunger, thirst: s.thirst, health: s.health, speed: v ? Math.hypot(v.x, v.z) : 0 }, money);
     }
-    $('#topright .obj', this.root).textContent = obj;
-    $('#topright .exit', this.root).textContent = exit;
+    if (!input.touch) this.hotbar.setScale(sc);
+    const invOn = view && !l.dead && !(input.touch && this.hotbarHiddenByTouch);
+    this.hotbar.setVisible(invOn);
+    if (invOn) this.hotbar.update(dt, l);
     // prompt & crosshair
     let prompt = l.dead ? null : g.terminal?.active ? null : l.focus?.prompt || this._prompt;
     if (prompt && input.touch) prompt = prompt.replace(/^\[[^\]]*\]\s*/, '');
     if (this.promptEl.textContent !== (prompt || '')) this.promptEl.textContent = prompt || '';
     this.crossEl.className = l.grab ? 'grab' : l.focus?.prompt ? 'focus' : '';
     this.crossEl.style.display = l.dead || g.terminal?.active || this.customizing ? 'none' : 'block';
-    // hotbar
-    if (l.inv.version !== this.invVersion) {
-      const changedSel = this._lastSel !== l.inv.selected;
-      this._lastSel = l.inv.selected;
-      this.invVersion = l.inv.version;
-      this.hotbarEl.innerHTML = '';
-      l.inv.slots.forEach((it, i) => {
-        const sl = el(`<div class="slot ${i === l.inv.selected ? 'sel' : ''}"><span class="num">${i + 1}</span></div>`);
-        if (it) {
-          const src = this.icon(it.type);
-          if (src) { const im = el('<img/>'); im.src = src; sl.appendChild(im); }
-          let tag = '';
-          if (it.type === 'flashlight') tag = `${Math.round((it.state.charge ?? 1) * 100)}%`;
-          if (it.type === 'welder') tag = `${Math.round((it.state.fuel ?? 1) * 100)}%`;
-          if (it.type === 'sample_jar') tag = it.state.kind ? 'FULL' : 'EMPTY';
-          if (it.state.lit) tag = 'LIT';
-          if (tag) { const t = el('<span class="tag"></span>'); t.textContent = tag; sl.appendChild(t); }
-        }
-        this.hotbarEl.appendChild(sl);
-      });
-      const cur = l.inv.current;
-      if (changedSel || cur) {
-        const nm = $('#itemname', this.root);
-        nm.textContent = cur ? (cur.type === 'sample_jar' && cur.state.kind ? `Sample: ${SAMPLES[cur.state.kind]?.name}` : itemName(cur.type)) + (itemDef(cur.type).use ? '  [RMB]' : '') : '';
-        nm.style.opacity = '1';
-        this.itemNameT = 2.2;
-      }
-    }
-    this.itemNameT -= dt;
-    if (this.itemNameT <= 0) $('#itemname', this.root).style.opacity = '0';
-    // flashlight charge tag refresh (cheap)
-    if (Math.floor(g.time) !== this._lastSec) { this._lastSec = Math.floor(g.time); this.invVersion = -1; }
     // death screen
     const death = $('#death', this.root);
     death.classList.toggle('show', l.dead);
     if (l.dead) {
       $('.c', death).textContent = `Cause: ${s.deathCause || 'unknown'}`;
       const sp = l.spectating;
-      $('.s', death).innerHTML = sp ? `SPECTATING ${sp.name.toUpperCase()} — <span class="kbd">LMB</span>/<span class="kbd">RMB</span> switch<br/>Teammates can re-clone you at the CLONING PAD for ${g.cloneCost()} CR` : 'No living employees remain...';
+      const html = sp ? `SPECTATING ${sp.name.toUpperCase()} — ${input.touch ? '<span class="kbd">PREV</span>/<span class="kbd">NEXT</span>' : '<span class="kbd">LMB</span>/<span class="kbd">RMB</span>'} switch<br/>Teammates can re-clone you at the CLONING PAD for ${g.cloneCost()} CR` : 'No living employees remain...';
+      if (this._deathHtml !== html) { this._deathHtml = html; $('.s', death).innerHTML = html; }
+      this._flatline(dt);
     }
     // voice indicator
     $('#voiceind', this.root).classList.toggle('on', !!g.voice?.transmitting);
@@ -658,7 +756,11 @@ export class UI {
     // raised wrist terminal: steer the viewmodel camera onto the watch face (stronger on small screens)
     const ws = l.arms?.watchScreen;
     const raise = l.dead || this.customizing ? 0 : Math.max(0, Math.min(1, (l.watchRaised - 0.25) / 0.75));
-    if (ws && raise > 0) {
+    // portrait screens are too narrow for the 3D close-up: the watch face is shown as a framed panel instead
+    const portrait = window.innerHeight > window.innerWidth * 1.15;
+    const panel = portrait && view && !l.dead && (l.watchOpen || (g.watch?.peeking && !l.grab)) && raise > 0.3;
+    this._watchPanel(panel, l.watchOpen);
+    if (ws && raise > 0 && !portrait) {
       if (!this._wsPos) this._wsPos = new THREE.Vector3();
       ws.getWorldPosition(this._wsPos);
       engine.vmFocus = this._wsPos;
@@ -671,7 +773,7 @@ export class UI {
     const lowbp = Math.max(0, (3400 - s.blood) / 2000);
     P.uBlur.value = damp(P.uBlur.value, Math.min(1, lowbp + (s.rest < 15 ? 0.35 : 0) + (s.microsleep > 0 ? 1 : 0)), 3, dt);
     P.uDesat.value = damp(P.uDesat.value, l.dead ? 1 : Math.min(0.6, lowbp * 0.5), 2, dt);
-    P.uScan.value = l.dead ? 0.5 : (l.watchOpen && g.watch?.tab === 'camera' ? 0.6 : 0);
+    P.uScan.value = l.dead ? 0.5 : 0;
     if (s.microsleep > 0) P.uFade.value = Math.max(P.uFade.value, Math.min(1, s.microsleep * 2));
     else if (!g.cutscene) P.uFade.value = damp(P.uFade.value, s.sleeping ? 0.85 : 0, 2, dt);
     P.uFlash.value = damp(P.uFlash.value, 0, 10, dt);

@@ -1,10 +1,22 @@
 // Local survival simulation: hunger, thirst, blood volume & pressure, bleeding, fractures,
 // infection, stamina, sleep/insomnia and sanity. Rates are per real-time second and tuned so
 // a careful team can survive a full 70-minute dimension with the supplies they find.
+//
+// SIMPLE MODE (ADVANCED_SURVIVAL = false, the default for now): only health, hunger, thirst, stamina and
+// bleeding matter. Blood pressure / blood volume, infection, sanity (hallucinations, fake warnings),
+// fractures, rest / microsleep / insomnia keep their code paths but are held at neutral values every
+// tick (so other systems writing to them are neutralised too). Flip the flag to bring them back.
+//
+// needsActive: hunger & thirst only drain while true. Level 0 keeps it false until the camp is built
+// (CampMission); Game.loadWorld turns it on for every other level.
 import { clamp } from '../core/rng.js';
+
+export const ADVANCED_SURVIVAL = false;
 
 export class Survival {
   constructor() {
+    this.advanced = ADVANCED_SURVIVAL;
+    this.needsActive = true;
     this.reset();
   }
 
@@ -63,20 +75,21 @@ export class Survival {
       opts = { ...opts, heavy: false, fractureChance: 0, fracture: false };
       if (this.health - amount < 15) amount = Math.max(0, this.health - 15);
     }
+    const adv = this.advanced;
     this.health -= amount;
     this.pain = clamp(this.pain + amount / 60, 0, 1);
     this.lastDamage = this.time;
     this.damageFlash = Math.min(1, this.damageFlash + amount / 35 + 0.25);
-    this.sanity = clamp(this.sanity - amount * 0.2, 0, 100);
+    if (adv) this.sanity = clamp(this.sanity - amount * 0.2, 0, 100);
     if (kind === 'slash') {
       this.bleed = Math.max(this.bleed, opts.heavy === false ? 1 : 2);
       this.bleedTimer = 0;
-      if (Math.random() < (opts.fractureChance ?? 0.2)) this.fracture = true;
+      if (adv && Math.random() < (opts.fractureChance ?? 0.2)) this.fracture = true;
     } else if (kind === 'bite') {
       this.bleed = Math.max(this.bleed, 1);
-      this.infection = clamp(this.infection + 14, 0, 100);
+      if (adv) this.infection = clamp(this.infection + 14, 0, 100);
     } else if (kind === 'fall') {
-      if (opts.fracture) this.fracture = true;
+      if (adv && opts.fracture) this.fracture = true;
     } else if (kind === 'blunt' && amount > 25 && !this.safeDay && Math.random() < 0.3) {
       this.bleed = Math.max(this.bleed, 1);
     }
@@ -97,28 +110,31 @@ export class Survival {
     if (this.dead) return;
     this.time += dt;
     const lobby = !!ctx.lobby;
+    const adv = this.advanced;
     this.safeDay = !!ctx.safeDay;
+    if (!adv) this._neutralise();
     const sleepMul = this.sleeping ? 0.5 : 1;
     const fever = this.infection > 50;
-    // hunger & thirst
-    if (!lobby) {
+    // hunger & thirst (only once the level switched them on: Level 0 waits for the camp)
+    if (!lobby && this.needsActive) {
       this.hunger -= dt * (100 / (34 * 60)) * (ctx.sprinting ? 1.6 : 1) * sleepMul;
       this.thirst -= dt * (100 / (24 * 60)) * (ctx.sprinting ? 1.6 : 1) * (fever ? 1.5 : 1) * sleepMul;
-      this.rest -= dt * (100 / (40 * 60)) * (ctx.sprinting ? 1.3 : 1) * (this.sleeping ? 0 : 1);
     }
+    if (!lobby && adv) this.rest -= dt * (100 / (40 * 60)) * (ctx.sprinting ? 1.3 : 1) * (this.sleeping ? 0 : 1);
     this.hunger = clamp(this.hunger, 0, 100);
     this.thirst = clamp(this.thirst, 0, 100);
     if (this.hunger <= 0) this.health -= dt * 0.18;
     if (this.thirst <= 0) this.health -= dt * 0.32;
 
-    // bleeding (light clots after a while, heavy slows to light)
+    // bleeding (light clots after a while, heavy slows to light). Simple mode: it costs health directly.
     if (this.bleed > 0) {
       this.bleedTimer += dt;
-      const rate = this.bleed >= 2 ? 9 : 2.2;
-      this.blood -= rate * dt * (ctx.sprinting ? 1.5 : 1);
+      const mul = ctx.sprinting ? 1.5 : 1;
+      if (adv) this.blood -= (this.bleed >= 2 ? 9 : 2.2) * dt * mul;
+      else this.health = Math.max(this.safeDay ? Math.min(this.health, 15) : -1, this.health - (this.bleed >= 2 ? 0.45 : 0.1) * dt * mul);
       if (this.bleed === 1 && this.bleedTimer > 100) { this.bleed = 0; this.bleedTimer = 0; }
       if (this.bleed >= 2 && this.bleedTimer > 140) { this.bleed = 1; this.bleedTimer = 0; }
-      if (!lobby) this.infection += dt * 0.05; // open wound
+      if (!lobby && adv) this.infection += dt * 0.05; // open wound
     } else if (this.hunger > 35 && this.thirst > 35) {
       this.blood = Math.min(5000, this.blood + dt * 1.4);
     }
@@ -160,13 +176,14 @@ export class Survival {
       this.health = Math.min(100, this.health + dt * 0.25);
     }
     this.rest = clamp(this.rest, 0, 100);
-    if (this.rest < 12 && !this.sleeping) {
+    if (adv && this.rest < 12 && !this.sleeping) {
       this.microsleep -= dt;
       if (this.microsleep < -6 - Math.random() * 10) this.microsleep = 0.6 + Math.random() * 0.8;
     } else this.microsleep = Math.min(this.microsleep, 0);
 
     // sanity
-    if (!lobby) {
+    if (!adv) this.sanity = 100;
+    else if (!lobby) {
       let ds = 0;
       if ((ctx.light ?? 1) < 0.12) ds -= 0.32;
       else if ((ctx.light ?? 1) < 0.3) ds -= 0.08;
@@ -182,7 +199,7 @@ export class Survival {
     } else {
       this.sanity = Math.min(100, this.sanity + dt * 2);
     }
-    this.insomnia = this.sanity < 30 || this.stress > 0.35 || (ctx.monsterNear || 0) > 0.3;
+    this.insomnia = adv && (this.sanity < 30 || this.stress > 0.35 || (ctx.monsterNear || 0) > 0.3);
 
     // natural healing
     if (this.bleed === 0 && this.hunger > 45 && this.thirst > 45 && this.blood > 3800 && this.infection < 50) {
@@ -192,29 +209,42 @@ export class Survival {
     this.damageFlash = Math.max(0, this.damageFlash - dt * 1.2);
 
     if (this.blood <= 1500) this.die('blood loss');
-    if (this.health <= 0) this.die(this.hunger <= 0 ? 'starvation' : this.thirst <= 0 ? 'dehydration' : this.infection >= 100 ? 'infection' : 'injuries');
+    if (this.health <= 0) this.die(this.hunger <= 0 ? 'starvation' : this.thirst <= 0 ? 'dehydration' : this.infection >= 100 ? 'infection' : this.bleed ? 'blood loss' : 'injuries');
 
+    if (!adv) this._neutralise();
     this._detectChanges();
+  }
+
+  // simple mode: hold the advanced systems at neutral values (also undoes writes from level code)
+  _neutralise() {
+    this.infection = 0;
+    this.fracture = false;
+    this.sanity = 100;
+    this.rest = 100;
+    this.microsleep = 0;
+    this.insomnia = false;
+    this.blood = 5000;
   }
 
   // condition flags for UI/Healthity
   conditions() {
     const c = [];
+    const adv = this.advanced;
     if (this.bleed >= 2) c.push('HEAVY BLEEDING');
     else if (this.bleed === 1) c.push('BLEEDING');
-    if (this.fracture) c.push('FRACTURE');
-    if (this.infection > 50) c.push('INFECTION');
-    else if (this.infection > 25) c.push('INFECTED WOUND');
+    if (adv && this.fracture) c.push('FRACTURE');
+    if (adv && this.infection > 50) c.push('INFECTION');
+    else if (adv && this.infection > 25) c.push('INFECTED WOUND');
     if (this.hunger < 20) c.push('STARVING');
     else if (this.hunger < 40) c.push('HUNGRY');
     if (this.thirst < 20) c.push('DEHYDRATED');
     else if (this.thirst < 40) c.push('THIRSTY');
-    if (this.rest < 20) c.push('EXHAUSTED');
-    else if (this.rest < 40) c.push('TIRED');
-    if (this.sanity < 25) c.push('PSYCHOSIS');
-    else if (this.sanity < 50) c.push('ANXIOUS');
-    if (this.blood < 3200) c.push('LOW BLOOD PRESSURE');
-    if (this.insomnia) c.push('INSOMNIA');
+    if (adv && this.rest < 20) c.push('EXHAUSTED');
+    else if (adv && this.rest < 40) c.push('TIRED');
+    if (adv && this.sanity < 25) c.push('PSYCHOSIS');
+    else if (adv && this.sanity < 50) c.push('ANXIOUS');
+    if (adv && this.blood < 3200) c.push('LOW BLOOD PRESSURE');
+    if (adv && this.insomnia) c.push('INSOMNIA');
     return c;
   }
 

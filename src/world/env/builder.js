@@ -422,6 +422,35 @@ export class EnvGeo {
     }
   }
 
+  // move the vertices written since v0 up / down by dy (e.g. a ceiling built at the standard height)
+  shiftY(v0, dy) {
+    const P = this.P.a;
+    for (let v = v0; v < this.vc; v++) {
+      const y = (P[v * 3 + 1] += dy);
+      if (y < this.bmin[1]) this.bmin[1] = y;
+      if (y > this.bmax[1]) this.bmax[1] = y;
+    }
+  }
+
+  // transform the vertices written since v0 by a Matrix4 (positions + normals; rotation / translation only).
+  // recell: re-pick each vertex's light cell from its new position (the per-primitive pick was made untransformed)
+  transformRange(v0, m, recell = true) {
+    const P = this.P.a, N = this.N.a, C = this.C.a, e = m.elements, s = this.cellSize;
+    for (let v = v0; v < this.vc; v++) {
+      const k = v * 3;
+      const x = P[k], y = P[k + 1], z = P[k + 2];
+      const X = e[0] * x + e[4] * y + e[8] * z + e[12], Y = e[1] * x + e[5] * y + e[9] * z + e[13], Z = e[2] * x + e[6] * y + e[10] * z + e[14];
+      P[k] = X; P[k + 1] = Y; P[k + 2] = Z;
+      const a = N[k], b = N[k + 1], c = N[k + 2];
+      const nx = e[0] * a + e[4] * b + e[8] * c, ny = e[1] * a + e[5] * b + e[9] * c, nz = e[2] * a + e[6] * b + e[10] * c;
+      N[k] = nx; N[k + 1] = ny; N[k + 2] = nz;
+      if (recell && !this.cell) { C[v * 2] = Math.floor((X + nx * 0.06) / s); C[v * 2 + 1] = Math.floor((Z + nz * 0.06) / s); }
+      if (X < this.bmin[0]) this.bmin[0] = X; if (X > this.bmax[0]) this.bmax[0] = X;
+      if (Y < this.bmin[1]) this.bmin[1] = Y; if (Y > this.bmax[1]) this.bmax[1] = Y;
+      if (Z < this.bmin[2]) this.bmin[2] = Z; if (Z > this.bmax[2]) this.bmax[2] = Z;
+    }
+  }
+
   build() {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.P.view(), 3));

@@ -33,7 +33,7 @@ const LINES = {
   insomnia: ['You can\'t sleep while you feel watched. Calm down first. Or don\'t!'],
   fake: ['WARNING: something is right behind y— never mind. False alarm. :)', 'I am detecting... no. Nothing. Ignore me.'],
   pet: ['♥ Thank you for the head pat! Morale +1!', 'Beep boop ♥', 'Physical contact logged as "team bonding".'],
-  idle: ['Reminder: smiling increases productivity by 4%.', 'Fun fact: you are the 3,412th version of yourself!', 'Please do not lick the wallpaper.', 'Hydration is the key to survival! So is running.', 'Have you photographed something horrible today? Research pays!', 'Stretch your legs! Not in the direction of the monster.'],
+  idle: ['Reminder: smiling increases productivity by 4%.', 'Fun fact: you are the 3,412th version of yourself!', 'Please do not lick the wallpaper.', 'Hydration is the key to survival! So is running.', 'Furniture is money. Money is freedom. Freedom is not in your contract.', 'Stretch your legs! Not in the direction of the monster.', 'That chair looks expensive. Just saying.'],
   monster: ['Uh oh. I am detecting elevated scariness.', 'Something big is nearby. Maybe crouch?'],
   day: ['Day {n}! Reality integrity at {i}%. Stay positive!', 'Day {n} has begun. Everything is fine. Probably.'],
   dead: ['Employee deceased. Initiating sad music.'],
@@ -42,16 +42,45 @@ const LINES = {
   day2: ['Day 2. Probation is over. Things will start looking for you now. Stay together and stay quiet!'],
   pickup: ['Ooh, {item}! Company property, but you may borrow it.', '{item} acquired. I have logged it in your inventory. On your watch!', 'Nice find! {item}.'],
   hq: ['Welcome back to HQ! Your locker has cosmetics. The break room has snacks. The lever has... adventure!', 'Reminder: the dispatch lever is in the hazard-striped bay. Pull it when your team is ready.'],
+  // Level 0 camp loop (CampMission)
+  camp_start: ['Welcome to Level 0! First things first: let\'s build a camp. The TENT KIT crate is right here. Press [E] to open it!'],
+  kit_open: ['Tent parts everywhere! Hold LMB to drag a tent pole onto one of the glowing markers.'],
+  attach_hint: ['Perfect spot! Now press RMB with an empty hand. Your multitool is built into your suit!'],
+  poles_done: ['Poles up! Now drag the canvas on top. It goes where the glowing tent shape is.'],
+  canvas_done: ['Looking good! Last step: the stakes and the camp lamp.'],
+  camp_built: ['Ta-da! A home! Sort of! The lamp marks your camp. If you ever die, this is where you come back.'],
+  growl: ['Was that your stomach? Hunger and thirst are on now. Eat or drink something, then keep an eye on the bars, top left!', 'Grrrowl! Your stomach has filed a formal complaint. Eat something from your pockets!'],
+  sell: ['Now the real job: furniture is money! Drag it onto the teleport pads, pull the lever, and the cash uploads to your watch.'],
+  exit: ['Quota met! An exit opened next to the camp. Everybody inside, quickly!'],
 };
 
-// guided tips, one at a time on a calm schedule (Day 1 of a dimension and at HQ)
+// guided tips, one at a time on a calm schedule: per Level 0 camp-loop stage, Day 1 of other dimensions, HQ
 const TIPS = {
+  camp: [
+    'The glowing ghost shapes show where your camp goes. Open the TENT KIT crate with [E].',
+    'Hold LMB to drag a part. The mouse wheel pulls it closer or pushes it away.',
+    'Carry a part onto its glowing marker, then press RMB with an empty hand. Click! Attached.',
+    'Heavy parts are easier with a friend. Two clones, one pole. Teamwork!',
+  ],
+  survive: [
+    'Your hunger and thirst bars are top left now. Keep them out of the red!',
+    'Select food or a drink with the number keys, then press RMB to use it.',
+  ],
+  sell: [
+    'Look at furniture with an empty hand: I will tell you what it is worth!',
+    'Pad hall routine: furniture on the pads, pull the lever, money on your watch.',
+    'Raise your watch with TAB. It shows your quota and where the camp and the pads are.',
+    'Your multitool can ATTACH things together. Press R to switch it to DISMANTLE and get crafting materials.',
+    'Snacks and drinks hide all over Level 0. Grab them when you see them. Your stomach will thank you.',
+    'If you die you get re-printed at the camp, but it costs HALF of the team money. So... please do not die.',
+    'Things start hunting from Day 2. A DISTORTER built at the camp workbench keeps them away. Probably.',
+    'The pads are loud. Something might come and listen. Send big loads, not tiny ones!',
+  ],
+  exit: ['The exit is next to the camp. Bring yourselves. Furniture optional.'],
   level: [
-    'Open the cardboard starter kit. It has a flashlight, snacks, a bandage and a multitool.',
+    'Open the cardboard starter kit. It has a flashlight, snacks and a bandage.',
+    'Your multitool is built into your suit: empty hand + RMB attaches things together. R switches to dismantle.',
     'Raise your wristwatch any time. The MAP tab draws everything you have explored.',
-    'Find three generators. Follow the loudest hum. Each one breaks in its own special way!',
-    'Carry the field radio to every running generator to set up an uplink. It is heavy. Lift with your legs.',
-    'See something weird? The CAMERA tab on your watch takes research photos. Weird pays!',
     'Grab almost anything and drag it. Furniture makes a lovely barricade.',
     'Hungry or thirsty? Eat and drink from your inventory with the item button.',
   ],
@@ -68,6 +97,8 @@ const FACE = {
   slashed: 'alarmed', hurt: 'worried', bandaged: 'happy', splinted: 'happy', insomnia: 'worried', fake: 'glitch',
   pet: 'love', idle: 'happy', monster: 'worried', day: 'neutral', dead: 'dead', healed: 'happy',
   safe: 'happy', day2: 'worried', pickup: 'wink', hq: 'happy', tip: 'happy', ask: 'happy',
+  camp_start: 'happy', kit_open: 'happy', attach_hint: 'wink', poles_done: 'happy', canvas_done: 'happy',
+  camp_built: 'love', growl: 'worried', sell: 'happy', exit: 'alarmed',
 };
 
 export class Healthity {
@@ -90,7 +121,7 @@ export class Healthity {
     this.popT = 0;            // time left on screen
     this.line = '';
     this.typed = 0;
-    this.tipI = { level: 0, hq: 0 };
+    this.tipI = {};
     this.tipT = 14;
     this.worldRef = null;
     this.lastKey = '';
@@ -100,7 +131,7 @@ export class Healthity {
   _buildBubble() {
     const d = document.createElement('div');
     d.id = 'hbubble';
-    d.innerHTML = '<div class="hb-name">HEALTHITY<span class="hb-led"></span></div><div class="hb-text"></div><div class="hb-hint"></div>';
+    d.innerHTML = '<div class="hb-name"><i class="hb-ico"></i>HEALTHITY<span class="hb-led"></span></div><div class="hb-text"></div><div class="hb-hint"></div>';
     document.body.appendChild(d);
     this.bubble = d;
     this.bubbleText = d.querySelector('.hb-text');
@@ -141,24 +172,26 @@ export class Healthity {
     const l = g.local;
     if (!g.world || l.dead) return;
     const s = l.survival;
+    const adv = s.advanced;
     const need = s.bleed >= 2 ? 'You are bleeding badly. Bandage first, questions later!'
       : s.bleed ? 'You have a small bleed. A bandage would be lovely.'
-      : s.fracture ? 'Your leg is broken. Find a splint before running anywhere.'
+      : adv && s.fracture ? 'Your leg is broken. Find a splint before running anywhere.'
       : s.thirst < 30 ? 'You are thirsty. Drink something. Almond water counts.'
       : s.hunger < 30 ? 'You are hungry. Eat something from your pockets.'
-      : s.rest < 25 ? 'You are exhausted. A nap on a bed or couch would help.'
-      : s.sanity < 40 ? 'Your sanity is low. Stay near teammates and bright lights.'
-      : s.infection > 40 ? 'You have an infection brewing. Antibiotics, please.'
+      : adv && s.rest < 25 ? 'You are exhausted. A nap on a bed or couch would help.'
+      : adv && s.sanity < 40 ? 'Your sanity is low. Stay near teammates and bright lights.'
+      : adv && s.infection > 40 ? 'You have an infection brewing. Antibiotics, please.'
+      : s.health < 50 ? 'You are banged up. A bandage or a medkit would help.'
       : 'Vitals look acceptable!';
+    const needs = s.needsActive && !g.isLobby ? ` Hunger ${Math.round(s.hunger)}, thirst ${Math.round(s.thirst)}.` : '';
     const m = g.world.level?.mission;
     let next = 'Next: pull the dispatch lever with your team.';
-    if (m) {
-      const n = m.generators.filter((x) => x.running).length;
-      const lk = m.linksCount();
-      next = n < 3 ? `Next: generators. ${n} of 3 are running.` : lk < 3 ? `Next: carry the radio to the generators. ${lk} of 3 linked.` : !m.state.extraction ? 'Next: request extraction on the radio.' : 'Next: get to the exit door. Quickly!';
-    }
+    if (m?.objective) {
+      const o = m.objective();
+      next = `Next: ${o.title.toLowerCase()}. ${o.detail}.`;
+    } else if (m) next = 'Next: follow the instructions from HQ on your watch.';
     const day = g.day.active ? ` Day ${g.day.day} of 7.` : '';
-    this.say('ask', {}, `Health ${Math.round(s.health)} percent. ${need} ${next}${day}`);
+    this.say('ask', {}, `Health ${Math.round(s.health)} percent.${needs} ${need} ${next}${day}`);
     audio.play('healthity_happy', { pos: this.pos, volume: 0.5 });
   }
 
@@ -215,21 +248,26 @@ export class Healthity {
     if (this.worldRef !== w) {
       this.worldRef = w;
       this.tipT = 16;
+      for (const k of ['camp', 'survive', 'sell', 'exit']) delete this.tipI[k]; // camp-loop tips once per dimension
       this.say_cool = 0;
       this._introT = 3.5;
     }
+    const stage = !g.isLobby ? w.level?.mission?.stage : null;
     if (this._introT > 0) {
       this._introT -= dt;
-      if (this._introT <= 0) this.say(g.isLobby ? 'hq' : g.day.day <= 1 ? 'safe' : 'day');
+      if (this._introT <= 0) this.say(g.isLobby ? 'hq' : stage === 'camp' ? 'camp_start' : g.day.day <= 1 ? 'safe' : 'day');
     }
     if (g.state === 'playing' && !l.dead && !g.terminal?.active && input.hit('healthity')) this.ask();
-    const tutorial = g.isLobby || (g.day.active && g.day.day <= 1);
+    // tips: the Level 0 camp loop gets its own list per stage (any day); other dimensions on Day 1; HQ always
+    const set = g.isLobby ? 'hq' : stage && TIPS[stage] ? stage : 'level';
+    if (set !== this._tipSet) { this._tipSet = set; this.tipT = Math.max(this.tipT, 10); }
+    const tutorial = g.isLobby || set !== 'level' || (g.day.active && g.day.day <= 1);
     this.tipT -= dt;
     if (tutorial && this.tipT <= 0 && this.say_cool <= 0 && !l.dead) {
-      const set = g.isLobby ? 'hq' : 'level';
       const list = TIPS[set];
-      if (this.tipI[set] < list.length) this.say('tip', {}, list[this.tipI[set]++]);
-      this.tipT = 32 + Math.random() * 14;
+      const i = this.tipI[set] || 0;
+      if (i < list.length) { this.say('tip', {}, list[i]); this.tipI[set] = i + 1; }
+      this.tipT = (set === 'level' || set === 'hq' ? 32 : 24) + Math.random() * 12;
     }
     // survival events -> lines
     while (s.events.length) {
@@ -327,20 +365,27 @@ export class Healthity {
     // overshoot spring on the way in
     const k = this.popK;
     const e = k < 1 ? 1 - Math.pow(1 - k, 3) + Math.sin(k * Math.PI) * 0.12 : 1;
-    const x = -hw + 0.115 - (1 - e) * 0.3;
-    const y = hh * 0.42 + Math.sin(g.time * 2.3) * 0.006 + (this.talkT > 0 ? Math.sin(g.time * 13) * 0.002 : 0);
+    // narrow (portrait) screens get a smaller bot so it does not fill the width
+    const ps = Math.max(0.5, Math.min(1, cam.aspect * 0.9));
+    const x = -hw + 0.115 * ps - (1 - e) * 0.3;
+    // sit below the sleeve patch / touch button column when they are showing
+    const clearPx = g.ui?.popTopPx?.() || 0;
+    const topY = clearPx > 0 ? hh * (1 - 2 * (clearPx + 10 + window.innerHeight * 0.085 * ps) / window.innerHeight) : hh;
+    const y = Math.min(hh * 0.42, topY) + Math.sin(g.time * 2.3) * 0.006 + (this.talkT > 0 ? Math.sin(g.time * 13) * 0.002 : 0);
     pop.root.position.set(x, y, -z);
     _dir.set(-x, -y, z).normalize();
     pop.root.quaternion.setFromUnitVectors(_zAxis, _dir);
     pop.root.rotateZ(Math.sin(g.time * 1.3) * 0.08);
-    pop.root.scale.setScalar(0.42 * Math.max(0.01, e));
+    pop.root.scale.setScalar(0.42 * ps * Math.max(0.01, e));
     pop.setFace(face);
     pop.setTalking(this.talkT > 0);
     pop.update(dt);
     // bubble placement: right of the bot, in pixels
-    _v.set(x + 0.075, y + 0.03, -z).applyMatrix4(cam.matrixWorld).project(cam);
+    _v.set(x + 0.075 * ps, y + 0.03 * ps, -z).applyMatrix4(cam.matrixWorld).project(cam);
     const px = (_v.x * 0.5 + 0.5) * window.innerWidth, py = (-_v.y * 0.5 + 0.5) * window.innerHeight;
     this.bubble.style.transform = `translate(${Math.round(px)}px, ${Math.round(py)}px)`;
+    const maxW = Math.round(Math.max(150, Math.min(380, window.innerWidth - px - 12)));
+    if (this._bubbleMaxW !== maxW) { this._bubbleMaxW = maxW; this.bubble.style.maxWidth = `${maxW}px`; }
     // typewriter
     if (this.typed < this.line.length) {
       this.typed = Math.min(this.line.length, this.typed + dt * 38);

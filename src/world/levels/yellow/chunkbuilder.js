@@ -6,17 +6,20 @@
 import * as THREE from 'three';
 import * as Mat from '../../../gfx/materials.js';
 import { bakeGeometry, bakedMaterial, LightField } from '../../../gfx/bakedlight.js';
-import { CELL, CHUNK, HEIGHT, W, getLayout, wallN, wallW, wallTransmission, cellInfo, floorDiv } from './layout.js';
+import { CELL, CHUNK, HEIGHT, W, getLayout, wallN, wallW, wallTransmission, cellInfo, floorDiv, LANDMARKS } from './layout.js';
 import { buildModel } from '../../../entities/catalog.js';
 import { hash01 } from '../../../core/rng.js';
 import { EnvGeo, fr } from '../../env/builder.js';
 import { GridBaker } from '../../env/gridbake.js';
-import { ceilingCell, ceilingVoid } from '../../env/ceiling.js';
+import { ceilingCell } from '../../env/ceiling.js';
 import { emitWallEdge, pillar, T } from '../../env/walls.js';
 import { pipeRun } from '../../env/pipes.js';
 import { fixtureMaterial } from '../../env/fixtures.js';
 import { lightVolumes } from '../../env/haze.js';
 import { floatingDebris } from '../../env/debris.js';
+import { tallCeiling, pendantTroffer, lowCeiling, ceilingStep } from '../../env/tall.js';
+import { rackBay } from '../../env/racks.js';
+import { signMaterial, wallSign, floorPaint } from '../../env/signs.js';
 
 export const LIGHT_TONES = [
   new THREE.Color(1.0, 0.92, 0.72),  // 0 warm fluorescent
@@ -25,8 +28,9 @@ export const LIGHT_TONES = [
   new THREE.Color(1.0, 0.8, 0.55),   // 3 manila
   new THREE.Color(1.0, 0.12, 0.08),  // 4 red
   new THREE.Color(0.8, 0.95, 1.05),  // 5 pool
+  new THREE.Color(1.0, 0.8, 0.86),   // 6 party / playroom
 ];
-const TONE_INT = [1.0, 1.05, 0.75, 0.95, 0.9, 1.25];
+const TONE_INT = [1.0, 1.05, 0.75, 0.95, 0.9, 1.25, 1.0];
 
 // ---------------------------------------------------------------------------
 // light helpers shared with the level (registration + baking queries)
@@ -137,6 +141,30 @@ function carpetTint(k, hex) { return _carpets[k] || (_carpets[k] = Mat.make('car
 // maintenance block walls: the same synthesized set as the HQ, older paint (tinted)
 let _cmuDirty = null;
 function cmuDirty() { return _cmuDirty || (_cmuDirty = Mat.make('cmu', { color: 0xa69e88 })); }
+// exposed concrete deck of tall halls, warehouse racking paint
+let _deck = null, _rackUp = null, _rackBeam = null;
+function deckMat() { return _deck || (_deck = Mat.make('concrete', { color: 0x77726a })); }
+function rackUpMat() { return _rackUp || (_rackUp = Mat.make('metal_blue', { color: 0x2f5b8c })); }
+function rackBeamMat() { return _rackBeam || (_rackBeam = Mat.make('metal_red', { color: 0xd0601c })); }
+
+// subtract axis-aligned rects (holes) from a rect: returns the remaining pieces [[x0, z0, x1, z1], ...]
+function subtractRects(base, holes) {
+  let out = [base];
+  for (const h of holes) {
+    const next = [];
+    for (const r of out) {
+      const [x0, z0, x1, z1] = r;
+      if (h[0] >= x1 || h[2] <= x0 || h[1] >= z1 || h[3] <= z0) { next.push(r); continue; }
+      const hx0 = Math.max(x0, h[0]), hx1 = Math.min(x1, h[2]), hz0 = Math.max(z0, h[1]), hz1 = Math.min(z1, h[3]);
+      if (hz0 > z0) next.push([x0, z0, x1, hz0]);
+      if (hz1 < z1) next.push([x0, hz1, x1, z1]);
+      if (hx0 > x0) next.push([x0, hz0, hx0, hz1]);
+      if (hx1 < x1) next.push([hx1, hz0, x1, hz1]);
+    }
+    out = next;
+  }
+  return out;
+}
 
 const _bb = new THREE.Box3();
 const _dp = new THREE.Vector3(), _dq = new THREE.Quaternion(), _ds = new THREE.Vector3();
@@ -164,17 +192,13 @@ export function buildChunk(level, cx, cz) {
     trim: new EnvGeo({ cap: 4096 }), rubber: new EnvGeo(), metal: new EnvGeo(), fixture: new EnvGeo({ color: true }),
     carpet: new EnvGeo({ edge: true, wet: true, cap: 2048 }), slab: new EnvGeo({ edge: true, wet: true }), tile: new EnvGeo({ edge: true }),
     carpetOffice: new EnvGeo({ edge: true, wet: true }), carpetManila: new EnvGeo({ edge: true, wet: true }), lensLouvre: new EnvGeo(),
+    carpetCamp: new EnvGeo({ edge: true, wet: true }), carpetLounge: new EnvGeo({ edge: true, wet: true }), vct: new EnvGeo({ edge: true, wet: true }),
     ceil: new EnvGeo({ edge: true, wet: true, cap: 4096 }), enamel: new EnvGeo({ cap: 2048 }), lens: new EnvGeo(), plenum: new EnvGeo(), debris: new EnvGeo(),
-    pipe: new EnvGeo(), insul: new EnvGeo(), paper: new EnvGeo(),
+    pipe: new EnvGeo(), insul: new EnvGeo(), paper: new EnvGeo(), deck: new EnvGeo({ wet: true }), rackUp: new EnvGeo(), rackBeam: new EnvGeo(), sign: new EnvGeo(),
   };
 
-  // the spawn room's ceiling is torn open where the clones fall through
-  let cut = null;
-  for (const r of layout.specials) {
-    if (r.kind !== 'spawn') continue;
-    const cxm = (cx * N + r.rx + r.w / 2) * CELL, czm = (cz * N + r.rz + r.h / 2) * CELL;
-    cut = { x0: cxm - 1.2, z0: czm - 1.2, x1: cxm + 1.2, z1: czm + 1.2 };
-  }
+  // floor pits of special rooms (world rects)
+  const holes = layout.holes.map((h) => [ox + h.x0, oz + h.z0, ox + h.x1, oz + h.z1]);
   // --- floors & ceilings ---
   const wetAt = (x, z) => {
     // average wetness of the cells touching a floor vertex: soft transitions instead of cell squares
@@ -184,19 +208,40 @@ export function buildChunk(level, cx, cz) {
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { s += wetOfCell(info(i, j)); n++; }
     return s / n;
   };
+  const F3 = fr(3);
   for (const c of layout.cells) {
     const x0 = c.i * CELL, z0 = c.j * CELL;
-    const g = c.floor === 'concrete' ? G.slab : c.floor === 'tile' ? G.tile
-      : c.zone === 'office' || c.special?.kind === 'cubicle_farm' || c.special?.kind === 'office_room' ? G.carpetOffice
+    const g = c.floor === 'concrete' ? G.slab : c.floor === 'tile' ? G.tile : c.floor === 'vct' ? G.vct
+      : c.carpet === 'camp' ? G.carpetCamp : c.carpet === 'lounge' ? G.carpetLounge
+      : c.carpet === 'office' || c.zone === 'office' || c.special?.kind === 'cubicle_farm' || c.special?.kind === 'office_room' ? G.carpetOffice
       : c.zone === 'manila' || c.roomStyle === 'manila' ? G.carpetManila : G.carpet;
     const [e0, e1] = baker.edgeInfo(c.i, c.j, false);
     g.edge0 = e0; g.edge1 = e1; g.ao = 1;
-    if (g.Wt) g.wetFn = (x, y, z) => wetAt(x, z);
-    g.grid([x0, 0, z0 + CELL], [CELL, 0, 0], [0, 0, -CELL], [0, 1, 0], fr(3), fr(3), (x, y, z) => [x, z]);
-    ceilingCell(G, baker, c, seed, cut);
+    g.wetFn = g.Wt ? (x, y, z) => wetAt(x, z) : null;
+    // cells over a pit: subdivide at the pit edges and leave the pit open
+    const hs = holes.filter((h) => h[0] < x0 + CELL && h[2] > x0 && h[1] < z0 + CELL && h[3] > z0);
+    if (!hs.length) g.grid([x0, 0, z0 + CELL], [CELL, 0, 0], [0, 0, -CELL], [0, 1, 0], F3, F3, (x, y, z) => [x, z]);
+    else {
+      const us = new Set(F3), vs = new Set(F3);
+      for (const h of hs) {
+        for (const x of [h[0], h[2]]) if (x > x0 && x < x0 + CELL) us.add((x - x0) / CELL);
+        // grid b runs from z0 + CELL towards z0 (v = 0 at z0 + CELL)
+        for (const z of [h[1], h[3]]) if (z > z0 && z < z0 + CELL) vs.add((z0 + CELL - z) / CELL);
+      }
+      const U = [...us].sort((a, b) => a - b), V = [...vs].sort((a, b) => a - b);
+      g.grid([x0, 0, z0 + CELL], [CELL, 0, 0], [0, 0, -CELL], [0, 1, 0], U, V, (x, y, z) => [x, z], (iu, iv) => {
+        const mx = x0 + ((U[iu] + U[iu + 1]) / 2) * CELL, mz = z0 + CELL - ((V[iv] + V[iv + 1]) / 2) * CELL;
+        return hs.some((h) => mx > h[0] && mx < h[2] && mz > h[1] && mz < h[3]);
+      });
+    }
+    g.wetFn = null;
+    if (c.ceil > HEIGHT + 0.01) {
+      tallCeiling(G, c, seed, (di, dj) => info(c.i + di, c.j + dj));
+      if (!c.noPendant) pendantTroffer(G, c, seed, c.ceil);
+    } else if (c.ceil < HEIGHT - 0.01) lowCeiling(G, baker, c, seed);
+    else ceilingCell(G, baker, c, seed, null);
     if (c.water) rec.waterCells.push(c);
   }
-  if (cut) ceilingVoid(G, cut, hash01(cx, cz, 5, seed));
 
   // --- walls on owned edges (N & W of each cell) ---
   const ctx = {
@@ -204,21 +249,37 @@ export function buildChunk(level, cx, cz) {
     styleOf: (i, j) => styleOfCell(info(i, j)),
     wetOf: (i, j) => wetOfCell(info(i, j)),
   };
+  const gWall = (style) => G[style] || G.wall;
   for (const c of layout.cells) {
     const tN = layout.edgesN[c.lj * N + c.li];
     if (tN) emitWallEdge(ctx, c.i, c.j, 'x', tN);
     const tW = layout.edgesW[c.lj * N + c.li];
     if (tW) emitWallEdge(ctx, c.i, c.j, 'z', tW);
+    // ceiling-height steps: bulkheads over openings, the upper walls of tall halls
+    const cN = info(c.i, c.j - 1), cW = info(c.i - 1, c.j);
+    if (cN.ceil !== c.ceil) ceilingStep(gWall, rec.colliders, c.i, c.j, 'x', tN, cN, c, styleOfCell);
+    if (cW.ceil !== c.ceil) ceilingStep(gWall, rec.colliders, c.i, c.j, 'z', tW, cW, c, styleOfCell);
   }
-  for (const p of layout.pillars) pillar(ctx, (cx * N + p.li) * CELL, (cz * N + p.lj) * CELL, p.size);
+  for (const p of layout.pillars) {
+    const i = cx * N + p.li, j = cz * N + p.lj;
+    let h = HEIGHT;
+    for (const [di, dj] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) h = Math.max(h, info(i + di, j + dj).ceil);
+    pillar(ctx, i * CELL, j * CELL, p.size, h);
+  }
 
   // --- maintenance pipe racks (layout decor + extra runs along maintenance walls) ---
   const solidW = (i, j) => { const t = baker.edgeW(i, j); return t === W.FULL || t === W.LOW || t === W.WINDOW; };
   const solidN = (i, j) => { const t = baker.edgeN(i, j); return t === W.FULL || t === W.LOW || t === W.WINDOW; };
   for (const d of layout.decor) {
-    if (d.kind !== 'pipes') continue;
-    const i = cx * N + d.li, j = cz * N + d.lj;
-    pipeRun(G, i, j, hash01(i, j, 81, seed), solidW(i, j), solidW(i + 1, j), 'x');
+    if (d.kind === 'pipes') {
+      const i = cx * N + d.li, j = cz * N + d.lj;
+      pipeRun(G, i, j, hash01(i, j, 81, seed), solidW(i, j), solidW(i + 1, j), 'x');
+    } else if (d.kind === 'rack') {
+      // warehouse racking on the cell's N edge line; posts shared with the bay to the west
+      const i = cx * N + d.li, j = cz * N + d.lj;
+      const hasRack = (ii, jj) => { const L = getLayout(seed, floorDiv(ii, N), floorDiv(jj, N), variantFn(floorDiv(ii, N), floorDiv(jj, N))); const li = ii - floorDiv(ii, N) * N, lj = jj - floorDiv(jj, N) * N; return (L.block[lj * N + li] & 1) !== 0; };
+      rackBay(G, i * CELL, (i + 1) * CELL, j * CELL, !hasRack(i - 1, j), true, rec.colliders, d.h);
+    }
   }
   for (const c of layout.cells) {
     if (c.zone !== 'maintenance' || c.reserved) continue;
@@ -230,6 +291,7 @@ export function buildChunk(level, cx, cz) {
     }
   }
   if (rec.waterCells.length) floatingDebris(G, rec.waterCells, seed);
+  wayfinding(G.sign, layout, info, seed);
   lap('geo');
 
   // --- materials & meshes ---
@@ -264,10 +326,14 @@ export function buildChunk(level, cx, cz) {
   add(G.carpet, Mat.get('carpet'), 1, { ao: 'floor', spec: 0.3 });
   add(G.carpetOffice, carpetTint('office', 0xa4a49c), 1, { ao: 'floor', spec: 0.3 });
   add(G.carpetManila, carpetTint('manila', 0xbea486), 1, { ao: 'floor', spec: 0.3 });
+  add(G.carpetCamp, carpetTint('camp', 0xb8977a), 1, { ao: 'floor', spec: 0.3 });
+  add(G.carpetLounge, carpetTint('lounge', 0xa0584a), 1, { ao: 'floor', spec: 0.3 });
+  add(G.vct, Mat.get('linoleum'), 1, { ao: 'floor' });
   add(G.slab, Mat.get('concrete_dark'), 4, { ao: 'floor' });
   add(G.tile, Mat.get('tile_pool'), 0, { ao: 'floor' });
   // the tiles only see the troffers' sideways spill: mostly floor bounce, so the lenses glow against a dimmer lid
   add(G.ceil, Mat.get('ceiling'), 3, { ao: 'ceil', tiles: true, mix: [0.14, 0.32] });
+  add(G.deck, deckMat(), 3, { quant: 0.3, mix: [0.3, 0.45] });
   add(G.enamel, Mat.get('enamel'), 0, { quant: 0.3, mix: [0.5, 0.6] });
   add(G.lens, Mat.get('lightpanel'), 0, { emissive: true, lens: true, quant: 0.6, mix: [0.2, 0.4] });
   add(G.lensLouvre, Mat.get('lightpanel'), 0, { emissive: true, lens: 'louvre', quant: 0.6, mix: [0.2, 0.4] });
@@ -276,6 +342,9 @@ export function buildChunk(level, cx, cz) {
   add(G.pipe, Mat.get('pipe_paint'), 0, { quant: 0.3, cast: true });
   add(G.insul, Mat.get('insulation'), 0, { quant: 0.3, cast: true });
   add(G.paper, Mat.get('paper'), 0, { quant: 0.3 });
+  add(G.rackUp, rackUpMat(), 0, { quant: 0.3, cast: true });
+  add(G.rackBeam, rackBeamMat(), 0, { quant: 0.3, cast: true });
+  add(G.sign, signMaterial(), 0, { quant: 0.3 });
   // faint light shafts in the humid air under each fixture
   if (level.hazeOn !== false) {
     const haze = lightVolumes(layout, level);
@@ -335,8 +404,22 @@ export function buildChunk(level, cx, cz) {
   const phys = level.world.physics;
   const ud = { kind: 'static', surface: 'world' };
   const cols = [];
-  cols.push(phys.addStaticBox(ox + N * CELL / 2, -0.25, oz + N * CELL / 2, N * CELL / 2, 0.25, N * CELL / 2, { kind: 'static', surface: 'floor' }));
-  cols.push(phys.addStaticBox(ox + N * CELL / 2, HEIGHT + 0.25, oz + N * CELL / 2, N * CELL / 2, 0.25, N * CELL / 2, { kind: 'static', surface: 'ceiling' }));
+  // floor slab (minus the pits, which build their own floors)
+  for (const [x0, z0, x1, z1] of subtractRects([ox, oz, ox + N * CELL, oz + N * CELL], holes)) {
+    cols.push(phys.addStaticBox((x0 + x1) / 2, -0.25, (z0 + z1) / 2, (x1 - x0) / 2, 0.25, (z1 - z0) / 2, { kind: 'static', surface: 'floor' }));
+  }
+  // ceiling slabs: one box per run of equal-height cells in each row
+  for (let lj = 0; lj < N; lj++) {
+    let li = 0;
+    while (li < N) {
+      const h = layout.cells[lj * N + li].ceil;
+      let e = li + 1;
+      while (e < N && layout.cells[lj * N + e].ceil === h) e++;
+      const x0 = ox + li * CELL, x1 = ox + e * CELL, z0 = oz + lj * CELL;
+      cols.push(phys.addStaticBox((x0 + x1) / 2, h + 0.25, z0 + CELL / 2, (x1 - x0) / 2, 0.25, CELL / 2, { kind: 'static', surface: 'ceiling' }));
+      li = e;
+    }
+  }
   for (const b of rec.colliders) {
     cols.push(phys.addStaticBox((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2,
       (b.max.x - b.min.x) / 2, (b.max.y - b.min.y) / 2, (b.max.z - b.min.z) / 2, ud));
@@ -353,6 +436,90 @@ export function buildChunk(level, cx, cz) {
   lap('phys');
   buildStats.n++;
   return rec;
+}
+
+// ---------------------------------------------------------------------------
+// Wayfinding: signs and floor markings of the arrival complex, plus blue TELEPORT PADS plates on maze walls in the
+// chunks around it (the arrow points the way to the pad hall as the crow flies)
+const SIGN_RANGE = 96; // metres from the pad hall
+function wayfinding(g, layout, info, seed) {
+  const N = CHUNK;
+  const pad = LANDMARKS.padHall, camp = LANDMARKS.camp, el = LANDMARKS.elevator;
+  const T2 = T / 2;
+  // --- arrival complex: fixed set (each placed by the chunk that owns that wall) ---
+  const own = (i, j) => i >= layout.cx * N && i < layout.cx * N + N && j >= layout.cz * N && j < layout.cz * N + N;
+  const fixed = [
+    // camp: on the north wall either side of the alcove, east wall (towards the passage), south wall
+    { i: 2, j: 2, axis: 'x', side: 1, at: 0.5, y: 1.75, w: 1.1, h: 0.24, r: 'pads_r' },
+    { i: 4, j: 2, axis: 'x', side: 1, at: 0.5, y: 1.75, w: 1.1, h: 0.24, r: 'pads_r' },
+    { i: 6, j: 5, axis: 'z', side: -1, at: 0.5, y: 1.6, w: 1.1, h: 0.24, r: 'pads_l' },
+    { i: 6, j: 2, axis: 'z', side: -1, at: 1.5, y: 1.6, w: 1.1, h: 0.24, r: 'pads_r' },
+    { i: 4, j: 7, axis: 'x', side: -1, at: 0.5, y: 1.6, w: 1.1, h: 0.24, r: 'pads_l' },
+    // camp: stencil on the south wall
+    { i: 4, j: 7, axis: 'x', side: -1, at: 1.0, y: 2.25, w: 3.4, h: 0.4, r: 'camp', depth: 0.002 },
+    // elevator alcove: ARRIVALS plate above the opening (camp side of the alcove's north wall line)
+    { i: 2, j: 2, axis: 'x', side: 1, at: 2.55, y: 2.62, w: 1.05, h: 0.23, r: 'arrivals' },
+    // passage walls
+    { i: 6, j: 3, axis: 'x', side: 1, at: 1.0, y: 1.6, w: 1.1, h: 0.24, r: 'pads_r' },
+    { i: 7, j: 5, axis: 'x', side: -1, at: 1.0, y: 1.6, w: 1.1, h: 0.24, r: 'pads_l' },
+    { i: 6, j: 3, axis: 'x', side: 1, at: 2.2, y: 1.6, w: 1.1, h: 0.24, r: 'camp_l' },
+    // pad hall: big stencils high on the north and south walls, plates by the maze exits
+    { i: 9, j: 0, axis: 'x', side: 1, at: 1.5, y: 4.4, w: 7.5, h: 1.2, r: 'hall', depth: 0.002 },
+    { i: 9, j: 8, axis: 'x', side: -1, at: 1.5, y: 4.4, w: 7.5, h: 1.2, r: 'hall', depth: 0.002 },
+    { i: 13, j: 8, axis: 'x', side: -1, at: 0.0, y: 3.4, w: 5.0, h: 0.6, r: 'sell', depth: 0.002 },
+    { i: 14, j: 1, axis: 'z', side: -1, at: 1.5, y: 3.4, w: 5.0, h: 0.6, r: 'sell', depth: 0.002 },
+  ];
+  for (const f of fixed) {
+    if (!own(f.i, f.j)) continue;
+    const plane = (f.axis === 'x' ? f.j : f.i) * CELL + f.side * T2;
+    const along = (f.axis === 'x' ? f.i : f.j) * CELL + f.at;
+    wallSign(g, { axis: f.axis, plane, side: f.side }, along, f.y, f.w, f.h, f.r, f.depth ?? 0.012);
+  }
+  // pad hall floor: hazard border around the pad zone + guide line and arrows from the passage
+  const c0 = layout.cx * N * CELL, z0c = layout.cz * N * CELL, c1 = c0 + N * CELL, z1c = z0c + N * CELL;
+  const inChunk = (x, z) => x >= c0 && x < c1 && z >= z0c && z < z1c;
+  if (inChunk(pad.x, pad.z)) {
+    const bx = pad.w / 2 - 2.2, bz = pad.d / 2 - 3.0;
+    floorPaint(g, pad.x, pad.z - bz, 1, 0, bx * 2, 0.24, 'hazard', 1.2);
+    floorPaint(g, pad.x, pad.z + bz, 1, 0, bx * 2, 0.24, 'hazard', 1.2);
+    floorPaint(g, pad.x - bx, pad.z, 0, 1, bz * 2 - 0.24, 0.24, 'hazard', 1.2);
+    floorPaint(g, pad.x + bx, pad.z, 0, 1, bz * 2 - 0.24, 0.24, 'hazard', 1.2);
+    // guide line from the west entrance into the hall
+    floorPaint(g, pad.x - pad.w / 2 + 1.8, pad.z, 1, 0, 3.4, 0.12, 'line');
+    for (let k = 0; k < 2; k++) floorPaint(g, pad.x - pad.w / 2 + 1.0 + k * 1.6, pad.z + 0.6, 1, 0, 0.6, 0.6, 'arrow');
+  }
+  // camp -> passage: taped arrows on the carpet
+  if (inChunk(LANDMARKS.passage.x, LANDMARKS.passage.z)) {
+    for (let k = 0; k < 3; k++) floorPaint(g, LANDMARKS.passage.x - 2.2 + k * 2.2, LANDMARKS.passage.z, 1, 0, 0.55, 0.55, 'arrow');
+  }
+  void camp; void el;
+  // --- maze plates (seeded) ---
+  for (const c of layout.cells) {
+    if (c.landmark || c.special) continue;
+    const dx0 = (c.i + 0.5) * CELL - pad.x, dz0 = (c.j + 0.5) * CELL - pad.z;
+    if (dx0 * dx0 + dz0 * dz0 > SIGN_RANGE * SIGN_RANGE) continue;
+    for (const axis of ['x', 'z']) {
+      const t = axis === 'x' ? layout.edgesN[c.lj * N + c.li] : layout.edgesW[c.lj * N + c.li];
+      if (t !== W.FULL) continue;
+      const nb = axis === 'x' ? info(c.i, c.j - 1) : info(c.i - 1, c.j);
+      for (const side of [1, -1]) {
+        const cellOn = side > 0 ? c : nb; // the cell this face looks into
+        if (!cellOn || cellOn.landmark || cellOn.special || cellOn.ceil < 1.9) continue;
+        if (hash01(c.i * 2 + (axis === 'x' ? 0 : 1), c.j, side > 0 ? 171 : 172, seed) > 0.045) continue;
+        const plane = (axis === 'x' ? c.j : c.i) * CELL + side * T2;
+        const along = (axis === 'x' ? c.i : c.j) * CELL + CELL / 2;
+        const sx = axis === 'x' ? along : plane, sz = axis === 'x' ? plane : along;
+        // viewer facing the wall looks along -n; their right is (n.z, -n.x)
+        const n = axis === 'x' ? [0, side] : [side, 0];
+        const rx = n[1], rz = -n[0];
+        const tx = pad.x - sx, tz = pad.z - sz;
+        const d = Math.hypot(tx, tz);
+        if (d < 14) continue;
+        const a = (tx * rx + tz * rz) / d;
+        wallSign(g, { axis, plane, side }, along, 1.62, 1.05, 0.23, a >= 0 ? 'pads_r' : 'pads_l');
+      }
+    }
+  }
 }
 
 export { floorDiv };

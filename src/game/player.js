@@ -60,6 +60,7 @@ export class LocalPlayer {
     this.grab = null; // {id, lp:Vector3, dist, sendT}
     this.useAction = null; // {type, t, dur, slot}
     this.holdAction = null; // hold-RMB tool actions
+    this.mtMode = 'attach'; // built-in multitool: 'attach' | 'dismantle' ([R] with an empty hand)
     this.holdE = null;
     this.focus = null; // current interaction focus {kind, target, prompt}
     this.flashOn = false;
@@ -449,7 +450,7 @@ export class LocalPlayer {
     this.roll = damp(this.roll || 0, -strafe * 0.025 + Math.sin(t * 0.7) * sway, 6, dt);
     _e.set(this.pitch + Math.sin(t * 0.53) * sway * 0.5, this.yaw, this.roll + (s.sleeping ? sleepDrop * 0.9 : 0));
     cam.quaternion.setFromEuler(_e);
-    const fovTarget = 72 + (this.sprinting ? 7 : 0) + (this.watchOpen && this.game.watch?.tab === 'camera' ? -22 : 0);
+    const fovTarget = 72 + (this.sprinting ? 7 : 0);
     cam.fov = damp(cam.fov, fovTarget, 6, dt);
     cam.updateProjectionMatrix();
 
@@ -478,7 +479,7 @@ export class LocalPlayer {
         const p = ud.prop;
         let pr = p.custom?.prompt?.(this, hit) ?? null;
         if (!pr && p.def.pocket && (!p.frozen || p.type === 'dart')) pr = `[${input.keyName('interact')}] Pick up ${itemName(p.type)}`;
-        if (!pr && p.def.sleep) pr = this.survival.insomnia ? 'Can\'t sleep... something is watching' : `[${input.keyName('interact')}] Sleep`;
+        if (!pr && p.def.sleep && this.survival.advanced) pr = this.survival.insomnia ? 'Can\'t sleep... something is watching' : `[${input.keyName('interact')}] Sleep`;
         if (!pr && p.def.use === 'drink' && !p.def.pocket) pr = `[${input.keyName('interact')}] Drink from ${itemName(p.type)}`;
         if (pr) focus = { kind: 'prop', target: p, prompt: pr, hit };
         else focus = { kind: 'propinfo', target: p, prompt: null, hit };
@@ -496,6 +497,8 @@ export class LocalPlayer {
       const tca = oc.dot(_fwd);
       if (tca > 0 && tca < 2.2 && oc.lengthSq() - tca * tca < 0.05) focus = { kind: 'healthity', target: bot, prompt: `[${input.keyName('interact')}] Pat Healthity`, hit: null };
     }
+    // empty hand: furniture shows its name, pad value and what the built-in multitool would do
+    if (focus && focus.kind === 'propinfo' && !this._handItemUse()) focus.prompt = this.game.tools.mtPrompt(focus.target, this);
     this.focus = focus;
     this.lookHit = hit;
 
@@ -522,7 +525,7 @@ export class LocalPlayer {
           return;
         }
         net.toHost('pickup', { id: t.id });
-      } else if (t.def.sleep) {
+      } else if (t.def.sleep && this.survival.advanced) {
         if (this.survival.insomnia) {
           this.game.healthity?.say('insomnia');
           return;
@@ -576,7 +579,7 @@ export class LocalPlayer {
   _updateGrab(dt) {
     const cam = engine.camera;
     _fwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
-    if (!this.grab && input.mouseHit(0) && !(this.watchOpen && this.game.watch?.tab === 'camera')) {
+    if (!this.grab && input.mouseHit(0)) {
       const hit = this.world.physics.raycast(cam.position, _fwd, GRAB_REACH, Q.grab, null, (c) => c !== this.collider);
       if (hit && hit.ud) {
         if (hit.ud.kind === 'prop' && hit.ud.prop.body && !hit.ud.prop.frozen && !hit.ud.prop.def.static) {
@@ -594,7 +597,8 @@ export class LocalPlayer {
     if (!this.grab) return;
     this.grab.t += dt;
     // check the throw first so a quick RMB+LMB release in one frame still throws
-    if (input.mouseHit(2)) {
+    // (a carried camp part is attached with the multitool instead: see _updateMultitool)
+    if (input.mouseHit(2) && !this._mtOwnsRmb()) {
       this.releaseGrab(true);
       return;
     }
@@ -733,16 +737,57 @@ export class LocalPlayer {
       if (this.useAction.t >= this.useAction.dur) this._finishUse();
       return;
     }
-    if (!cur || this.grab) {
-      this.holdAction = null;
+    // built-in multitool: an empty hand (or a held item without an RMB use)
+    if (!this._handItemUse()) { this._updateMultitool(dt); return; }
+    if (this.grab) {
+      this._endHold();
       return;
     }
     const def = itemDef(cur.type);
-    const watchCam = this.watchOpen && this.game.watch?.tab === 'camera';
-    if (watchCam) return;
     if (input.mouseHit(2)) this._startUse(cur, def);
     if (this.holdAction) {
-      if (!input.mouseDown(2)) { this.holdAction.end?.(); this.holdAction = null; }
+      if (!input.mouseDown(2)) this._endHold();
+      else this.holdAction.tick(dt);
+    }
+  }
+
+  // the selected item's RMB use (null = the hand is free for the built-in multitool)
+  _handItemUse() {
+    const cur = this.inv.current;
+    return cur ? itemDef(cur.type).use || null : null;
+  }
+
+  // RMB belongs to the multitool while carrying a camp part (attach it instead of throwing it)
+  _mtOwnsRmb() {
+    if (this._handItemUse() || !this.grab || this.grab.id == null || !this.world) return false;
+    return !!this.world.props.get(this.grab.id)?.def.camp;
+  }
+
+  _endHold() {
+    if (!this.holdAction) return;
+    this.holdAction.end?.();
+    this.holdAction = null;
+  }
+
+  toggleMultitoolMode() {
+    this.mtMode = this.mtMode === 'attach' ? 'dismantle' : 'attach';
+    this.game.ui.toast(`MULTITOOL: ${this.mtMode === 'attach' ? 'ATTACH' : 'DISMANTLE'} MODE`);
+    audio.play('ui_select', { volume: 0.5, bus: 'ui' });
+  }
+
+  // hold RMB: attach / detach / dismantle what is aimed at (or the carried camp part)
+  _updateMultitool(dt) {
+    const tools = this.game.tools;
+    if (!this.grab && input.hit('rotate')) this.toggleMultitoolMode();
+    if (this.grab && !this._mtOwnsRmb()) { this._endHold(); return; } // RMB throws (see _updateGrab)
+    if (this.grab) {
+      const p = this.world.props.get(this.grab.id);
+      const pr = p && tools.mtPrompt(p, this);
+      if (pr) this.focus = { kind: 'mt', target: p, prompt: pr, hit: null };
+    }
+    if (input.mouseHit(2) && !this.holdAction) this.holdAction = tools.begin('multitool', null, this);
+    if (this.holdAction) {
+      if (!input.mouseDown(2)) this._endHold();
       else this.holdAction.tick(dt);
     }
   }
@@ -822,7 +867,7 @@ export class LocalPlayer {
 
   _cancelUse() {
     this.useAction = null;
-    if (this.holdAction) { this.holdAction.end?.(); this.holdAction = null; }
+    this._endHold();
   }
 
   dropItem(item, thrown) {

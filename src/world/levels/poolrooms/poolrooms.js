@@ -126,7 +126,7 @@ export class PoolroomsLevel extends YellowLevel {
     this.mapT = 0;
     this.prevEnv = null;
     this.missionChunks = missionChunks(this.seed);
-    this.starterExtra = ['water_tester'];
+    this.starterExtra = []; // (the water tester was retired from the kit)
     registerPoolAudio();
   }
 
@@ -204,7 +204,7 @@ export class PoolroomsLevel extends YellowLevel {
   hostStart(desc) {
     super.hostStart(desc);
     setTimeout(() => this.mission?.hq('LEVEL 37 ADVISORY: The generators are located DOWNSTREAM. The halls are sealed on foot — board the RAFT at the dock and punt it forward (hold [E] while looking at the deck). Bring the field radio.', 'HQ'), 6500);
-    setTimeout(() => this.mission?.hq('WATER SAFETY: Use your AQUA-CHECK tester (RMB) before wading or drinking. Deep water exhausts clones. Report anything large moving beneath the surface.', 'HQ'), 17000);
+    setTimeout(() => this.mission?.hq('WATER SAFETY: Deep water exhausts clones. Do not drink the pool water. Report anything large moving beneath the surface.', 'HQ'), 17000);
   }
 
   startAudio() {

@@ -1,44 +1,68 @@
 // The R.O.O.M. Corporate Wrist Terminal: a chunky retro watch on the clone's left wrist.
-// Tabs: STATUS (vitals + EKG) · INV · CAMERA (research photos) · RESEARCH · MAP · MSG · TASKS.
-// Drawn on a canvas that is mapped onto the 3D watch screen in the first-person viewmodel.
-// There is no screen HUD: notices (HQ radio, pickups, warnings, achievements) make the watch beep and the
-// clone glances at the wrist for a moment, showing the notice on the watch face.
+// Three tabs: STATUS (health, food, water, stamina + EKG) · MAP · TASK (objective, money vs quota).
+// The face is pixel art: drawn at 160x120 with the kit's bitmap font and sprites, scaled x3 onto the
+// canvas that is mapped onto the 3D watch screen, with a phosphor glow and an LCD dot grid.
+// Notices (HQ radio, pickups, warnings, achievements) make the watch beep and the clone glances at
+// the wrist for a moment, showing the notice in big type.
 import * as THREE from 'three';
-import { engine } from '../core/engine.js';
 import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
-import { profile } from '../core/profile.js';
-import { CrtScreen, text, bar, box, wrap, FONT } from './crt.js';
-import { SAMPLES, itemName } from '../game/itemdefs.js';
+import { CrtScreen } from './crt.js';
+import { itemName } from '../game/itemdefs.js';
 import { CELL, wallN, wallW, W } from '../world/levels/yellow/layout.js';
+import { Pix, text, textWidth, wrapText, FONT3, FONT5, bitmap } from './pixelart.js';
 
-const TABS = ['status', 'inv', 'camera', 'research', 'map', 'msg', 'tasks'];
-const TAB_NAMES = ['STAT', 'INV', 'CAM', 'RSCH', 'MAP', 'MSG', 'TASK'];
+const TABS = ['status', 'map', 'task'];
+const TAB_NAMES = ['STATUS', 'MAP', 'TASK'];
+const TAB_ICON = ['pulse', 'map', 'task'];
+const AW = 160, AH = 120, K = 3;
+
+// phosphor palette (green terminal)
+const P = { bg: '#020f05', fg: '#4dff7a', dim: '#1f9a40', faint: '#0c3a1a', hi: '#d8ffe0', bad: '#ff5a4a', badDim: '#7a1e18', warn: '#ffd060', cyan: '#9fd8ff' };
+
+const MINI = {
+  heart: ['.#.#.', '#####', '#####', '.###.', '..#..'],
+  food: ['.##..', '#..#.', '####.', '.####', '..##.'],
+  drop: ['..#..', '.###.', '#####', '#####', '.###.'],
+  bolt: ['..##.', '.##..', '####.', '..##.', '.##..'],
+  coin: ['.###.', '##.##', '#.#.#', '##.##', '.###.'],
+  pulse: ['..#...', '..#...', '.#.#.#', '##..#.', '......'],
+  map: ['##.##', '#.#.#', '#.#.#', '#.#.#', '##.##'],
+  task: ['.###.', '#...#', '#.#.#', '#...#', '#####'],
+};
 
 export class Watch {
   constructor(game) {
     this.game = game;
-    this.screen = new CrtScreen(512, 384, 'green');
+    this.screen = new CrtScreen(AW * K, AH * K, 'green');
     this.screen.fps = 15;
+    this.art = new Pix(AW, AH);
+    this.artCv = document.createElement('canvas');
+    this.artCv.width = AW; this.artCv.height = AH;
     this.tabIdx = 0;
     this.messages = [];
-    this.ekg = new Float32Array(120);
+    this.ekg = new Float32Array(90);
     this.ekgPhase = 0;
     this.ekgI = 0;
-    this.photoRequest = false;
-    this.lastPhoto = null;
-    this.viewfinder = null;
     this.notices = [];
     this.peekT = 0;
     this._beepT = 0;
     this._exitPeekT = 0;
     this._hurtPeekT = 0;
     this._lastSel = -1;
-    this._buildViewfinder();
     this.attach(game.local.arms);
   }
 
   get tab() { return TABS[this.tabIdx]; }
+  get tabs() { return TAB_NAMES; }
+
+  setTab(i) {
+    i = ((i % TABS.length) + TABS.length) % TABS.length;
+    if (i === this.tabIdx) return;
+    this.tabIdx = i;
+    this.screen.lastDraw = -1;
+    if (audio.ready) audio.play('watch_beep', { volume: 0.3, bus: 'ui' });
+  }
 
   attach(arms) {
     if (arms?.watchScreen) {
@@ -67,49 +91,23 @@ export class Watch {
     if (this.messages.length > 30) this.messages.pop();
   }
 
-  _buildViewfinder() {
-    const d = document.createElement('div');
-    d.id = 'viewfinder';
-    d.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9;display:none;font-family:VT323,monospace;color:#d8ffd8;text-shadow:0 0 6px #6f6';
-    d.innerHTML = `
-      <div style="position:absolute;left:8vw;top:10vh;width:60px;height:60px;border-left:3px solid;border-top:3px solid"></div>
-      <div style="position:absolute;right:8vw;top:10vh;width:60px;height:60px;border-right:3px solid;border-top:3px solid"></div>
-      <div style="position:absolute;left:8vw;bottom:14vh;width:60px;height:60px;border-left:3px solid;border-bottom:3px solid"></div>
-      <div style="position:absolute;right:8vw;bottom:14vh;width:60px;height:60px;border-right:3px solid;border-bottom:3px solid"></div>
-      <div style="position:absolute;left:50%;top:50%;width:90px;height:60px;margin:-30px 0 0 -45px;border:2px solid rgba(220,255,220,0.6)"></div>
-      <div style="position:absolute;left:calc(8vw + 10px);top:calc(10vh + 10px);font-size:30px"><span id="vf-rec" style="color:#ff4040">●</span> R.O.O.M. RESEARCH CAM</div>
-      <div id="vf-info" style="position:absolute;right:calc(8vw + 10px);top:calc(10vh + 10px);font-size:26px;text-align:right"></div>
-      <div id="vf-subj" style="position:absolute;left:50%;top:calc(50% + 46px);transform:translateX(-50%);font-size:26px;white-space:nowrap"></div>
-      <div style="position:absolute;left:50%;bottom:calc(14vh + 10px);transform:translateX(-50%);font-size:24px">[LMB] CAPTURE · [Q/E] TABS · [TAB] LOWER</div>
-      <img id="vf-last" style="position:absolute;right:calc(8vw + 10px);bottom:calc(14vh + 40px);width:200px;border:3px solid #fff;box-shadow:0 0 12px #000;display:none;transform:rotate(3deg)"/>`;
-    document.body.appendChild(d);
-    this.viewfinder = d;
-  }
+  // the research camera was retired; kept so the main loop's call stays harmless
+  captureIfRequested() {}
 
   update(dt) {
     const g = this.game;
     const l = g.local;
-    if (!g.world) { this.viewfinder.style.display = 'none'; return; }
+    if (!g.world) return;
     this.peekT = Math.max(0, this.peekT - dt);
     this._beepT -= dt;
     this._autoNotices(dt);
-    // tab switching
+    // tab switching (Q / E while the watch is up)
     if (l.watchOpen && !l.dead && !g.terminal.active) {
-      if (input.hit('tabPrev')) { this.tabIdx = (this.tabIdx - 1 + TABS.length) % TABS.length; audio.play('watch_beep', { volume: 0.3, bus: 'ui' }); }
-      if (input.pressed.has('KeyE')) { this.tabIdx = (this.tabIdx + 1) % TABS.length; audio.play('watch_beep', { volume: 0.3, bus: 'ui' }); }
-      if (this.tab === 'camera' && input.mouseHit(0)) this.snap();
-    }
-    const camMode = l.watchOpen && this.tab === 'camera' && !l.dead && l.watchRaised > 0.6;
-    this.viewfinder.style.display = camMode ? 'block' : 'none';
-    if (camMode) {
-      const subj = (g.world.monsters?.photoSubjects(engine.camera) || []).concat(g.world.level?.photoSubjects?.(engine.camera) || []);
-      const vfS = this.viewfinder.querySelector('#vf-subj');
-      vfS.textContent = subj.length ? `SUBJECT: ${subj[0].subject} (~${subj[0].value} CR)` : 'NO SUBJECT';
-      this.viewfinder.querySelector('#vf-info').innerHTML = `FILM ${12 - (l.photos?.length || 0)}/12<br/>DAY ${g.day.day}/7`;
-      this.viewfinder.querySelector('#vf-rec').style.opacity = Math.floor(g.time * 2) % 2 ? 1 : 0.2;
+      if (input.hit('tabPrev')) this.setTab(this.tabIdx - 1);
+      if (input.pressed.has('KeyE')) this.setTab(this.tabIdx + 1);
     }
     // EKG
-    const hr = l.survival.heartRate;
+    const hr = l.survival.heartRate || 72;
     this.ekgPhase += dt * hr / 60;
     const ph = this.ekgPhase % 1;
     let v = 0;
@@ -120,9 +118,10 @@ export class Watch {
       else if (ph >= 0.19 && ph < 0.23) v = -0.35;
       else if (ph > 0.35 && ph < 0.47) v = Math.sin((ph - 0.35) / 0.12 * Math.PI) * 0.25;
     }
-    this.ekg[this.ekgI = (this.ekgI + 1) % this.ekg.length] = v;
+    this._ekgAcc = (this._ekgAcc || 0) + dt;
+    while (this._ekgAcc > 1 / 45) { this._ekgAcc -= 1 / 45; this.ekg[this.ekgI = (this.ekgI + 1) % this.ekg.length] = v; }
     // draw
-    if (l.watchRaised > 0.05 || Math.random() < 0.05) this.screen.draw(dt, (ctx, w, h, pal, t) => this._draw(ctx, w, h, pal, t));
+    if (l.watchRaised > 0.05 || Math.random() < 0.05) this.screen.draw(dt, (ctx, w, h, pal, t) => this._present(ctx, w, h, t));
     else this.screen.time += dt;
   }
 
@@ -140,7 +139,7 @@ export class Watch {
     }
     // evacuation countdown: check the wrist regularly
     const m = g.world.level?.mission;
-    if (m?.state.exit && !m.state.exit.done) {
+    if (m?.state?.exit && !m.state.exit.done && m.exitTimeLeft) {
       this._exitPeekT -= dt;
       const left = Math.ceil(m.exitTimeLeft());
       if (this._exitPeekT <= 0 || (left <= 10 && this._exitPeekT <= 6)) {
@@ -157,328 +156,287 @@ export class Watch {
     }
   }
 
-  snap() {
-    const g = this.game;
-    const l = g.local;
-    l.photos = l.photos || [];
-    if (l.photos.length >= 12) { g.ui.toast('Film roll full — transmit research at the radio', 'warn'); audio.play('ui_error', { volume: 0.4 }); return; }
-    audio.play('camera_shutter', { volume: 0.8 });
-    audio.play('camera_flash', { volume: 0.5 });
-    engine.post.params.uFlash.value = 0.85;
-    g.world.fx.flashLight(engine.camera.position.clone(), 0xffffff, 20, 0.15, 14);
-    g.world.noise && g.world.noise.emit(l.pos, 7, 'flash');
-    const subj = (g.world.monsters?.photoSubjects(engine.camera) || []).concat(g.world.level?.photoSubjects?.(engine.camera) || []);
-    subj.sort((a, b) => b.value - a.value);
-    const best = subj[0];
-    this.photoRequest = true; // thumbnail captured right after the next render
-    const ph = { subject: best ? best.subject : 'NOTHING OF INTEREST', key: best?.key || `none:${Date.now()}`, value: best ? best.value : 0, thumb: null, t: Date.now() };
-    l.photos.push(ph);
-    this.pendingPhoto = ph;
-    l.stats.photos++;
-    if (best?.ach) profile.unlock(best.ach);
-    g.ui.toast(best ? `PHOTO: ${best.subject} (~${best.value} CR)` : 'Photo taken (no research value)', best ? 'good' : '');
-    // stun Still Lifes caught in the flash (host)
-    if (best) g.world.monsters?.flashStun?.(engine.camera.position);
+  // ------------------------------------------------------------------ presentation
+  _present(ctx, w, h, t) {
+    const a = this.art;
+    a.clear();
+    this._draw(a, t);
+    a.toCanvas(this.artCv);
+    ctx.imageSmoothingEnabled = false;
+    ctx.shadowColor = 'rgba(77,255,122,0.85)';
+    ctx.shadowBlur = 7;
+    ctx.drawImage(this.artCv, 0, 0, w, h);
+    ctx.shadowBlur = 0;
+    // LCD dot grid between art pixels
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    for (let x = 0; x < w; x += K) ctx.fillRect(x, 0, 1, h);
+    for (let y = 2; y < h; y += K) ctx.fillRect(0, y, w, 1);
   }
 
-  // called by the main loop right after rendering
-  captureIfRequested(canvas) {
-    if (!this.photoRequest || !this.pendingPhoto) return;
-    this.photoRequest = false;
-    try {
-      const c = document.createElement('canvas');
-      c.width = 240; c.height = 135;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(canvas, 0, 0, c.width, c.height);
-      ctx.fillStyle = 'rgba(255,200,80,0.9)';
-      ctx.font = '14px VT323, monospace';
-      ctx.fillText(new Date().toISOString().slice(0, 16).replace('T', ' '), 6, 130);
-      this.pendingPhoto.thumb = c.toDataURL('image/jpeg', 0.7);
-      this.pendingPhoto.img = c;
-      const im = this.viewfinder.querySelector('#vf-last');
-      im.src = this.pendingPhoto.thumb;
-      im.style.display = 'block';
-      clearTimeout(this._imT);
-      this._imT = setTimeout(() => { im.style.display = 'none'; }, 2500);
-    } catch (e) { /* ignore */ }
-    this.pendingPhoto = null;
-  }
-
-  // ------------------------------------------------------------------
-  _draw(ctx, w, h, pal, t) {
+  _draw(a, t) {
     const g = this.game;
     const l = g.local;
-    const s = l.survival;
-    // header: tab strip + day
-    const tabs = TAB_NAMES;
-    const tw = (w - 12) / tabs.length;
     const glance = this.peeking && !l.watchOpen;
-    tabs.forEach((n, i) => {
+    // faint background raster
+    for (let y = 22; y < AH; y += 4) for (let x = 2; x < AW; x += 4) a.set(x, y, P.faint);
+    // tab strip
+    const tw = Math.floor((AW - 4) / TABS.length);
+    TABS.forEach((_, i) => {
       const sel = i === this.tabIdx && !glance;
-      if (sel) { ctx.fillStyle = pal.fg; ctx.fillRect(6 + i * tw, 4, tw - 3, 30); }
-      text(ctx, n, 6 + i * tw + tw / 2 - 1, 4, 26, sel ? pal.bg : pal.dim, 'center');
+      const x = 2 + i * tw;
+      if (sel) { a.rect(x, 1, tw - 2, 10, P.fg); a.hline(x, x + tw - 3, 11, P.fg); }
+      else { a.frame(x, 1, tw - 2, 10, P.faint); a.hline(x, x + tw - 3, 10, P.dim); }
+      const lw = 6 + 2 + textWidth(TAB_NAMES[i], FONT5);
+      const lx = Math.round(x + (tw - 2 - lw) / 2);
+      glyphMini(a, TAB_ICON[i], lx, 4, sel ? P.bg : P.dim);
+      text(a, TAB_NAMES[i], lx + 8, 3, sel ? P.bg : P.dim);
     });
-    text(ctx, `DAY ${g.day.active ? g.day.day : '-'}/7`, 10, 38, 34, pal.hi);
-    text(ctx, g.day.active ? `${g.day.leftString()}` : 'HQ', w - 10, 38, 34, pal.fg, 'right');
-    ctx.fillStyle = pal.dim;
-    ctx.fillRect(6, 74, w - 12, 2);
-    const y0 = 80;
-    if (glance) { this._notice(ctx, w, h, pal, t, y0); return; }
+    // day + clock
+    const day = g.day?.active ? `DAY ${g.day.day}/7` : 'HQ  B4';
+    text(a, day, 4, 14, P.hi);
+    const clk = g.day?.active ? g.day.leftString() : 'ON SHIFT';
+    text(a, clk, AW - 4, 14, P.fg, { align: 'right' });
+    a.hline(2, AW - 3, 22, P.dim);
+    const y0 = 25;
+    if (glance) { this._notice(a, t, y0); return; }
     switch (this.tab) {
-      case 'status': this._status(ctx, w, h, pal, t, y0, s); break;
-      case 'inv': this._inv(ctx, w, h, pal, t, y0); break;
-      case 'camera': {
-        text(ctx, 'RESEARCH CAMERA', 20, y0 + 10, 34, pal.hi);
-        text(ctx, `FILM: ${12 - (l.photos?.length || 0)}/12`, 20, y0 + 56, 30, pal.fg);
-        text(ctx, 'AIM AT ANOMALIES,', 20, y0 + 110, 28, pal.fg);
-        text(ctx, 'MONSTERS & STILL LIFES.', 20, y0 + 140, 28, pal.fg);
-        text(ctx, '[LMB] CAPTURE', 20, y0 + 200, 30, Math.floor(t * 2) % 2 ? pal.hi : pal.dim);
-        const last = l.photos?.[l.photos.length - 1];
-        if (last?.img) { ctx.drawImage(last.img, w - 250, h - 150, 240, 135); box(ctx, w - 250, h - 150, 240, 135, pal.fg); }
-        break;
-      }
-      case 'research': {
-        text(ctx, `CREDITS: ${g.run.credits} CR`, 20, y0 + 4, 32, pal.hi);
-        text(ctx, 'PHOTOS (transmit at radio):', 20, y0 + 44, 24, pal.dim);
-        const ph = l.photos || [];
-        ph.slice(-6).forEach((p, i) => text(ctx, `- ${p.subject.slice(0, 26)} ${p.value}`, 26, y0 + 72 + i * 26, 24, p.value ? pal.fg : pal.dim));
-        if (!ph.length) text(ctx, '  (none)', 26, y0 + 72, 24, pal.dim);
-        const jars = l.inv.slots.filter((x) => x && x.type === 'sample_jar');
-        text(ctx, 'SAMPLES HELD:', 20, y0 + 250, 24, pal.dim);
-        jars.forEach((j, i) => text(ctx, `- ${j.state.kind ? SAMPLES[j.state.kind]?.name : 'empty jar'}`, 26, y0 + 278 + i * 26, 24, j.state.kind ? pal.good : pal.dim));
-        if (!jars.length) text(ctx, '  (none)', 26, y0 + 278, 24, pal.dim);
-        break;
-      }
-      case 'map': this._map(ctx, w, h, pal, t, y0); break;
-      case 'msg': {
-        let y = y0 + 4;
-        for (const m of this.messages.slice(0, 9)) {
-          const lines = wrap(ctx, `${m.from}: ${m.msg}`, w - 40, 22);
-          for (const ln of lines.slice(0, 2)) { text(ctx, ln, 20, y, 22, m.from === 'HEALTHITY' ? pal.good : pal.fg); y += 22; }
-          y += 6;
-          if (y > h - 30) break;
-        }
-        if (!this.messages.length) text(ctx, 'NO MESSAGES', 20, y0 + 10, 28, pal.dim);
-        break;
-      }
-      case 'tasks': this._tasks(ctx, w, h, pal, t, y0); break;
+      case 'status': this._status(a, t, y0); break;
+      case 'map': this._map(a, t, y0); break;
+      case 'task': this._task(a, t, y0); break;
       default: break;
     }
     // a notice that arrives while the watch is up runs as a banner along the bottom
     if (this.peeking && this.notices[0]) {
       const n = this.notices[0];
-      ctx.fillStyle = pal.bg;
-      ctx.fillRect(0, h - 40, w, 40);
-      ctx.fillStyle = n.kind === 'bad' || n.kind === 'warn' ? pal.bad : pal.fg;
-      ctx.fillRect(0, h - 40, w, 3);
+      const bad = n.kind === 'bad' || n.kind === 'warn';
+      a.rect(0, AH - 11, AW, 11, P.bg);
+      a.hline(0, AW - 1, AH - 11, bad ? P.bad : P.fg);
       const msg = `${n.from ? n.from + ': ' : ''}${n.text}`;
-      ctx.font = `26px ${FONT}`;
-      const tw2 = ctx.measureText(msg).width;
-      const x = tw2 > w - 20 ? w - ((t * 90) % (tw2 + w)) : 10;
-      text(ctx, msg, x, h - 34, 26, n.kind === 'bad' || n.kind === 'warn' ? pal.bad : pal.hi);
+      const mw = textWidth(msg, FONT5);
+      const x = mw > AW - 6 ? Math.round(AW - ((t * 30) % (mw + AW))) : 3;
+      text(a, msg, x, AH - 9, bad ? P.bad : P.hi);
     }
   }
 
-  _notice(ctx, w, h, pal, t, y0) {
+  _notice(a, t, y0) {
     const n = this.notices[0];
     if (!n) return;
     const bad = n.kind === 'bad' || n.kind === 'warn';
-    const col = bad ? pal.bad : n.kind === 'good' ? pal.good : n.kind === 'healthity' ? pal.good : pal.hi;
-    // blinking notice lamp + source
-    if (Math.floor(t * 4) % 2 || !bad) { ctx.fillStyle = col; ctx.fillRect(14, y0 + 12, 14, 14); }
-    text(ctx, `${(n.from || 'NOTICE').toUpperCase()}${n.n > 1 ? ' x' + n.n : ''}`, 38, y0 + 4, 32, bad ? pal.bad : pal.fg);
+    const col = bad ? P.bad : n.kind === 'good' || n.kind === 'healthity' ? P.hi : P.hi;
+    if (Math.floor(t * 4) % 2 || !bad) { a.rect(4, y0 + 1, 5, 5, bad ? P.bad : P.fg); a.set(5, y0 + 2, P.hi); }
+    text(a, `${(n.from || 'NOTICE').toUpperCase()}${n.n > 1 ? ' X' + n.n : ''}`, 12, y0, bad ? P.bad : P.fg);
     // big type: the glance is short and the watch face small on a phone
-    let fs = 48;
-    let lines = wrap(ctx, n.text.toUpperCase(), w - 36, fs);
-    if (lines.length > 4) { fs = 38; lines = wrap(ctx, n.text.toUpperCase(), w - 36, fs); }
-    lines.slice(0, 5).forEach((ln, i) => text(ctx, ln, 18, y0 + 44 + i * fs, fs, col));
-    // older notices, dimmed
-    let y = y0 + 50 + Math.min(5, lines.length) * fs + 6;
-    for (const o of this.notices.slice(1, 3)) {
-      if (y > h - 60) break;
-      text(ctx, `- ${o.text}`.slice(0, 38), 18, y, 22, pal.dim);
-      y += 24;
-    }
+    let sc = 2;
+    let wrapped = wrapLines(n.text, (AW - 8) / 2);
+    if (wrapped.length > 4) { sc = 1; wrapped = wrapText(n.text, AW - 8); }
+    const lh = sc === 2 ? 16 : 9;
+    wrapped.slice(0, sc === 2 ? 4 : 8).forEach((ln, i) => text(a, ln, 4, y0 + 10 + i * lh, col, { scale: sc }));
     // vitals strip
     const s = this.game.local.survival;
-    text(ctx, 'HP', 14, h - 34, 26, s.health < 30 ? pal.bad : pal.fg);
-    bar(ctx, 50, h - 30, 150, 18, s.health / 100, s.health < 30 ? pal.bad : pal.fg, pal.dim);
-    text(ctx, `${this.game.run.credits} CR`, w - 14, h - 34, 26, pal.hi, 'right');
+    glyphMini(a, 'heart', 4, AH - 8, s.health < 30 ? P.bad : P.fg);
+    segBar(a, 11, AH - 9, 50, 7, s.health / 100, s.health < 30 ? P.bad : P.fg);
+    glyphMini(a, 'coin', AW - 8, AH - 8, P.warn);
+    text(a, `${this.game.run?.credits ?? 0}`, AW - 11, AH - 9, P.hi, { align: 'right' });
   }
 
-  _inv(ctx, w, h, pal, t, y0) {
-    const g = this.game;
-    const inv = g.local.inv;
-    text(ctx, 'CARRIED ITEMS', 20, y0 + 2, 30, pal.hi);
-    text(ctx, `${g.run.credits} CR`, w - 20, y0 + 2, 30, pal.fg, 'right');
-    inv.slots.forEach((it, i) => {
-      const y = y0 + 40 + i * 44;
-      const sel = i === inv.selected;
-      if (sel) { ctx.fillStyle = pal.fg; ctx.fillRect(14, y - 2, w - 28, 38); }
-      const c = sel ? pal.bg : it ? pal.fg : pal.dim;
-      text(ctx, `${i + 1}`, 24, y + 2, 30, c);
-      if (!it) { text(ctx, '- empty -', 60, y + 2, 28, c); return; }
-      const nm = it.type === 'sample_jar' && it.state.kind ? `Sample: ${SAMPLES[it.state.kind]?.name}` : itemName(it.type);
-      text(ctx, nm.slice(0, 24), 60, y + 2, 28, c);
-      let tag = '';
-      if (it.type === 'flashlight') tag = `${Math.round((it.state.charge ?? 1) * 100)}%`;
-      if (it.type === 'welder') tag = `${Math.round((it.state.fuel ?? 1) * 100)}%`;
-      if (it.type === 'sample_jar') tag = it.state.kind ? 'FULL' : 'EMPTY';
-      if (it.state.lit) tag = 'LIT';
-      if (tag) text(ctx, tag, w - 24, y + 2, 28, c, 'right');
-    });
-    text(ctx, 'USE ITEM · NEXT · DROP', 20, h - 32, 24, Math.floor(t * 1.5) % 2 ? pal.dim : pal.fg);
-  }
-
-  _status(ctx, w, h, pal, t, y0, s) {
+  _status(a, t, y0) {
+    const s = this.game.local.survival;
     const rows = [
-      ['HP', s.health / 100, s.health < 30],
-      ['BLD', s.blood / 5000, s.blood < 3200],
-      ['FOOD', s.hunger / 100, s.hunger < 25],
-      ['H2O', s.thirst / 100, s.thirst < 25],
-      ['REST', s.rest / 100, s.rest < 25],
-      ['SAN', s.sanity / 100, s.sanity < 30],
+      ['heart', 'HEALTH', (s.health ?? 100) / 100, s.health < 30],
+      ['food', 'FOOD', (s.hunger ?? 100) / 100, s.hunger < 25],
+      ['drop', 'WATER', (s.thirst ?? 100) / 100, s.thirst < 25],
+      ['bolt', 'STAMINA', (s.stamina ?? 40) / (s.maxStamina || 40), (s.stamina ?? 40) < 8],
     ];
-    rows.forEach(([label, f, warn], i) => {
-      const y = y0 + 4 + i * 33;
-      text(ctx, label, 10, y, 28, warn ? pal.bad : pal.fg);
-      bar(ctx, 76, y + 4, 176, 22, f, warn ? pal.bad : pal.fg, pal.dim);
+    rows.forEach(([ic, label, f, warn], i) => {
+      const y = y0 + i * 12;
+      const blink = warn && Math.floor(t * 3) % 2;
+      const c = warn ? (blink ? P.badDim : P.bad) : P.fg;
+      glyphMini(a, ic, 3, y + 1, c);
+      text(a, label, 11, y, warn ? P.bad : P.hi);
+      segBar(a, 56, y, 82, 7, f, c);
+      text(a, `${Math.round(Math.max(0, Math.min(1, f)) * 100)}`, AW - 3, y + 1, warn ? P.bad : P.dim, { font: FONT3, align: 'right' });
     });
-    const x2 = 268;
-    text(ctx, `BP ${s.bpSys}/${s.bpDia}`, x2, y0 + 4, 30, s.bpSys < 90 ? pal.bad : pal.hi);
-    text(ctx, `HR ${Math.round(s.heartRate)}`, x2, y0 + 36, 30, s.heartRate > 140 ? pal.bad : pal.hi);
-    text(ctx, `${s.temp.toFixed(1)}C  INF ${Math.round(s.infection)}%`, x2, y0 + 68, 24, s.infection > 50 ? pal.bad : pal.fg);
     // EKG
-    const ey = y0 + 140, eh = 34;
-    ctx.strokeStyle = pal.fg;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    const n = this.ekg.length;
+    const ey = y0 + 50, eh = 26;
+    a.frame(2, ey, AW - 4, eh, P.faint);
+    for (let x = 6; x < AW - 4; x += 8) a.vline(x, ey + 1, ey + eh - 2, P.faint);
+    const n = this.ekg.length, ew = AW - 52;
+    let px = -1, py = -1;
     for (let i = 0; i < n; i++) {
       const v = this.ekg[(this.ekgI + 1 + i) % n];
-      const x = x2 + (i / (n - 1)) * (w - x2 - 10);
-      const y = ey - v * eh;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      const x = 4 + Math.round(i / (n - 1) * (ew - 2)), y = ey + Math.round(eh / 2 + 2 - v * (eh / 2 - 3));
+      if (px >= 0) a.line(px, py, x, y, i > n - 4 ? P.hi : P.fg);
+      px = x; py = y;
     }
-    ctx.stroke();
-    const conds = s.conditions();
-    const lines = conds.length ? conds.slice(0, 2) : ['NOMINAL'];
-    lines.forEach((c, i) => text(ctx, c, x2, y0 + 172 + i * 26, 24, conds.length ? pal.bad : pal.good));
-    const g = this.game;
-    const m = g.world?.level?.mission;
-    let obj = 'HQ: GO TO DISPATCH';
-    if (m) {
-      const n = m.generators.filter((x) => x.running).length;
-      const lk = m.linksCount();
-      obj = n < 3 ? `GENERATORS ${n}/3` : lk < 3 ? `UPLINKS ${lk}/3` : m.state.exit ? 'REACH THE EXIT' : 'CALL EXTRACTION';
-      if (m.state.exit && !m.state.exit.done) {
-        const left = Math.ceil(m.exitTimeLeft());
-        obj = `EXIT ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
-      }
-    }
-    text(ctx, `STA ${Math.round(s.stamina)}/${s.maxStamina}`, 10, h - 30, 24, s.stamina < 8 ? pal.bad : pal.fg);
-    text(ctx, `${g.run.credits} CR · ${obj}`, w - 10, h - 30, 24, m?.state.exit ? (Math.floor(t * 3) % 2 ? pal.bad : pal.hi) : pal.hi, 'right');
+    const hr = Math.round(s.heartRate || 72);
+    text(a, 'BPM', AW - 6, ey + 3, P.dim, { font: FONT3, align: 'right' });
+    text(a, `${hr}`, AW - 6, ey + 10, hr > 140 ? P.bad : P.hi, { align: 'right', scale: 1 });
+    if (Math.floor(t * (hr / 30)) % 2) glyphMini(a, 'heart', AW - 44, ey + 3, P.bad);
+    // conditions
+    const conds = s.conditions ? s.conditions() : [];
+    const line = conds.length ? conds.slice(0, 2).join(' · ') : 'ALL VITALS NOMINAL';
+    text(a, line.toUpperCase().slice(0, 30), 3, AH - 9, conds.length ? (Math.floor(t * 2) % 2 ? P.bad : P.badDim) : P.dim);
   }
 
-  _map(ctx, w, h, pal, t, y0) {
+  _map(a, t, y0) {
     const g = this.game;
     const lvl = g.world.level;
     const l = g.local;
-    if (!lvl.visited) {
-      text(ctx, 'HQ FLOORPLAN', 20, y0 + 10, 32, pal.hi);
-      text(ctx, 'SUBLEVEL B4 — no mapping needed.', 20, y0 + 56, 24, pal.fg);
-      text(ctx, 'Reception · Office · Lockers', 20, y0 + 96, 24, pal.dim);
-      text(ctx, 'Break Room · Cloning Lab · Dispatch', 20, y0 + 122, 24, pal.dim);
+    if (!lvl?.visited) {
+      text(a, 'HQ FLOORPLAN', 4, y0 + 2, P.hi);
+      text(a, 'SUBLEVEL B4 - NO MAPPING', 4, y0 + 14, P.fg);
+      const rooms = ['RECEPTION', 'OFFICE', 'LOCKERS', 'BREAK ROOM', 'CLONING LAB', 'DISPATCH BAY'];
+      rooms.forEach((r, i) => { a.rect(6, y0 + 28 + i * 10, 3, 3, P.dim); text(a, r, 13, y0 + 26 + i * 10, P.dim); });
       return;
     }
+    const top = y0, bot = AH - 2;
     const cx = Math.floor(l.pos.x / CELL), cz = Math.floor(l.pos.z / CELL);
     const R = 7;
-    const cs = Math.floor((Math.min(w, h - y0) - 30) / (R * 2 + 1));
-    const ox = w / 2 - cs / 2 - (l.pos.x / CELL - cx - 0.5) * cs, oy = y0 + (h - y0) / 2 - cs / 2 - (l.pos.z / CELL - cz - 0.5) * cs;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(10, y0, w - 20, h - y0 - 10);
-    ctx.clip();
-    ctx.shadowBlur = 0;
+    const cs = 7;
+    const mx = AW / 2, my = (top + bot) / 2;
+    const ox = Math.round(mx - cs / 2 - (l.pos.x / CELL - cx - 0.5) * cs), oy = Math.round(my - cs / 2 - (l.pos.z / CELL - cz - 0.5) * cs);
+    const inside = (x, y) => x >= 2 && x < AW - 2 && y >= top && y < bot;
+    const put = (x, y, c) => { if (inside(x, y)) a.set(x, y, c); };
+    const hl = (x0, x1, y, c) => { for (let x = x0; x <= x1; x++) put(x, y, c); };
+    const vl = (x, y0_, y1, c) => { for (let y = y0_; y <= y1; y++) put(x, y, c); };
     for (let dj = -R; dj <= R; dj++) {
-      for (let di = -R; di <= R; di++) {
+      for (let di = -R - 4; di <= R + 4; di++) {
         const i = cx + di, j = cz + dj;
         if (!lvl.visited.has(`${i},${j}`)) continue;
         const x = ox + di * cs, y = oy + dj * cs;
-        ctx.fillStyle = 'rgba(77,255,122,0.16)';
-        ctx.fillRect(x + 1, y + 1, cs - 2, cs - 2);
-        ctx.strokeStyle = pal.fg;
-        ctx.lineWidth = 2;
+        for (let yy = 1; yy < cs; yy++) for (let xx = 1; xx < cs; xx++) if ((xx + yy) % 2 === 0) put(x + xx, y + yy, P.faint);
         const vf = lvl.variantFn;
         const n = lvl.mapWall ? lvl.mapWall(i, j, false) : wallN(lvl.seed, i, j, vf), wv = lvl.mapWall ? lvl.mapWall(i, j, true) : wallW(lvl.seed, i, j, vf);
-        if (n && n !== W.ARCH) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + cs, y); ctx.stroke(); }
-        if (wv && wv !== W.ARCH) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + cs); ctx.stroke(); }
+        if (n && n !== W.ARCH) hl(x, x + cs, y, P.fg);
+        if (wv && wv !== W.ARCH) vl(x, y, y + cs, P.fg);
       }
     }
-    const toMap = (p) => [ox + (p.x / CELL - cx) * cs, oy + (p.z / CELL - cz) * cs];
-    // markers
+    const toMap = (p) => [Math.round(ox + (p.x / CELL - cx) * cs), Math.round(oy + (p.z / CELL - cz) * cs)];
     const m = lvl.mission;
     if (m) {
-      for (const gen of m.generators) {
+      for (const gen of m.generators || []) {
         const known = lvl.visited.has(`${Math.floor(gen.root.position.x / CELL)},${Math.floor(gen.root.position.z / CELL)}`) || g.day.day >= 2;
-        const [x, y] = toMap(gen.root.position);
         if (!known) continue;
-        ctx.fillStyle = gen.running ? pal.good : pal.bad;
-        ctx.fillRect(x - 6, y - 6, 12, 12);
-        text(ctx, gen.label.slice(-1), x + 8, y - 12, 22, pal.hi);
+        const [x, y] = toMap(gen.root.position);
+        for (let yy = -2; yy <= 2; yy++) for (let xx = -2; xx <= 2; xx++) put(x + xx, y + yy, gen.running ? P.hi : P.bad);
+        put(x, y, P.bg);
       }
-      const radio = m.radio();
+      const radio = m.radio?.();
       if (radio) {
         const [x, y] = toMap(radio.root.position);
-        ctx.strokeStyle = pal.hi;
-        ctx.strokeRect(x - 5, y - 5, 10, 10);
-        text(ctx, 'R', x + 7, y - 12, 20, pal.hi);
+        hl(x - 2, x + 2, y - 2, P.cyan); hl(x - 2, x + 2, y + 2, P.cyan); vl(x - 2, y - 2, y + 2, P.cyan); vl(x + 2, y - 2, y + 2, P.cyan);
       }
-      if (m.state.exit) {
+      if (m.state?.exit) {
         const [x, y] = toMap(new THREE.Vector3(m.state.exit.x, 0, m.state.exit.z));
-        if (Math.floor(t * 3) % 2) { ctx.fillStyle = pal.hi; ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill(); }
-        text(ctx, 'EXIT', x + 10, y - 12, 22, pal.hi);
+        if (Math.floor(t * 3) % 2) for (let yy = -3; yy <= 3; yy++) for (let xx = -3; xx <= 3; xx++) if (xx * xx + yy * yy <= 9) put(x + xx, y + yy, P.warn);
+        if (inside(x + 5, y - 3)) text(a, 'EXIT', x + 5, y - 3, P.warn, { font: FONT3 });
       }
     }
     for (const r of g.remotes.values()) {
       if (!r.inWorld) continue;
       const [x, y] = toMap(r.pos);
-      ctx.fillStyle = r.dead ? pal.bad : '#9fd8ff';
-      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+      for (const [xx, yy] of [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1]]) put(x + xx, y + yy, r.dead ? P.bad : P.cyan);
     }
-    // player arrow
-    const [px, py] = toMap(l.pos);
-    ctx.translate(px, py);
-    ctx.rotate(-l.yaw);
-    ctx.fillStyle = pal.hi;
-    ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(7, 8); ctx.lineTo(-7, 8); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    text(ctx, 'N', w - 30, y0 + 4, 24, pal.dim);
+    // player arrow (rotated triangle)
+    const ang = -l.yaw;
+    const pts = [[0, -5], [3.5, 3.5], [0, 2], [-3.5, 3.5]].map(([x, y]) => [mx + x * Math.cos(ang) - y * Math.sin(ang), my + x * Math.sin(ang) + y * Math.cos(ang)]);
+    a.poly(pts, P.hi);
+    a.set(Math.round(mx), Math.round(my), P.fg);
+    // frame + compass
+    a.frame(1, top - 1, AW - 2, bot - top + 2, P.dim);
+    a.rect(AW - 12, top + 1, 9, 9, P.bg);
+    text(a, 'N', AW - 10, top + 2, P.hi);
   }
 
-  _tasks(ctx, w, h, pal, t, y0) {
+  _task(a, t, y0) {
     const g = this.game;
     const m = g.world.level?.mission;
+    let obj = null;
+    try { obj = m?.objective?.() || null; } catch (e) { obj = null; }
+    let y = y0;
     if (!m) {
-      text(ctx, 'HQ OBJECTIVES', 20, y0 + 6, 32, pal.hi);
-      ['- Customize at your LOCKER', '- Grab snacks in the BREAK ROOM', '- Read the ORIENTATION terminal', '- Gather your team in the', '  DISPATCH BAY & pull the lever'].forEach((s, i) => text(ctx, s, 20, y0 + 50 + i * 30, 26, pal.fg));
+      text(a, 'HQ ORIENTATION', 4, y, P.hi);
+      y += 11;
+      for (const s of ['VISIT YOUR LOCKER', 'GRAB SNACKS: BREAK ROOM', 'READ THE ORIENTATION', 'GATHER IN DISPATCH BAY', 'PULL THE LEVER']) {
+        a.frame(4, y + 1, 5, 5, P.dim);
+        text(a, s, 12, y, P.fg);
+        y += 10;
+      }
       return;
     }
-    text(ctx, `DIMENSION 0 · INTEGRITY ${Math.round((1 - g.day.instability()) * 100)}%`, 20, y0 + 4, 26, pal.hi);
-    let y = y0 + 40;
-    for (const gen of m.generators) {
-      const done = gen.running;
-      text(ctx, `[${done ? 'X' : ' '}] Repair ${gen.label}`, 20, y, 26, done ? pal.good : pal.fg);
-      y += 28;
-      text(ctx, `[${gen.state.linked ? 'X' : ' '}]   uplink radio${gen.state.link > 0 && !gen.state.linked ? ` ${Math.round(gen.state.link * 100)}%` : ''}`, 20, y, 22, gen.state.linked ? pal.good : pal.dim);
-      y += 26;
+    if (obj) {
+      a.rect(3, y, 6, 7, P.fg); a.set(5, y + 2, P.bg); a.set(6, y + 3, P.bg); a.set(5, y + 4, P.bg);
+      const title = wrapText(obj.title || 'OBJECTIVE', AW - 16);
+      title.slice(0, 2).forEach((ln, i) => text(a, ln, 12, y + i * 9, P.hi));
+      y += Math.min(2, title.length) * 9 + 2;
+      if (obj.detail) {
+        const det = wrapText(obj.detail, AW - 8);
+        det.slice(0, 4).forEach((ln, i) => text(a, ln, 4, y + i * 9, P.fg));
+        y += Math.min(4, det.length) * 9 + 2;
+      }
+      if (typeof obj.progress === 'number') {
+        segBar(a, 4, y, AW - 30, 7, obj.progress, P.fg);
+        text(a, `${Math.round(Math.max(0, Math.min(1, obj.progress)) * 100)}%`, AW - 4, y, P.hi, { align: 'right' });
+        y += 11;
+      }
+    } else {
+      // fallback checklist from the generator mission
+      const gens = m.generators || [];
+      for (const gen of gens) {
+        const done = gen.running;
+        a.frame(4, y + 1, 5, 5, done ? P.fg : P.dim);
+        if (done) { a.set(5, y + 3, P.hi); a.set(6, y + 4, P.hi); a.set(7, y + 2, P.hi); }
+        text(a, `REPAIR ${String(gen.label || 'GENERATOR').toUpperCase()}`.slice(0, 22), 12, y, done ? P.dim : P.fg);
+        if (gen.state?.linked) text(a, 'LINK', AW - 4, y, P.hi, { align: 'right', font: FONT3 });
+        y += 9;
+      }
+      if (m.state) {
+        const ex = m.state.exit;
+        a.frame(4, y + 1, 5, 5, m.state.extraction ? P.fg : P.dim);
+        text(a, 'REQUEST EXTRACTION', 12, y, m.state.extraction ? P.dim : P.fg);
+        y += 9;
+        if (ex && !ex.done && m.exitTimeLeft) {
+          const left = Math.ceil(m.exitTimeLeft());
+          text(a, `EVACUATE ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`, 4, y + 1, Math.floor(t * 3) % 2 ? P.bad : P.warn, { scale: 1 });
+          y += 10;
+        }
+      }
     }
-    const ex = m.state.exit;
-    text(ctx, `[${m.state.extraction ? 'X' : ' '}] Request extraction (radio)`, 20, y + 4, 26, m.state.extraction ? pal.good : pal.fg);
-    y += 34;
-    text(ctx, `[ ] Evacuate${ex && !ex.done ? ` — ${Math.ceil(m.exitTimeLeft())}s` : ''}`, 20, y, 26, ex ? pal.hi : pal.fg);
+    // money vs quota
+    const q = m.quota?.need;
+    const cr = g.run?.credits ?? 0;
+    const by = AH - 20;
+    a.hline(2, AW - 3, by - 3, P.faint);
+    glyphMini(a, 'coin', 4, by + 1, P.warn);
+    text(a, q ? `${cr} / ${q} CR` : `${cr} CR`, 12, by, P.hi);
+    if (q) {
+      const met = cr >= q;
+      text(a, met ? 'QUOTA MET' : 'QUOTA', AW - 4, by, met ? P.hi : P.dim, { align: 'right', font: FONT3 });
+      segBar(a, 4, by + 10, AW - 8, 7, cr / q, met ? P.hi : P.warn);
+    }
     void t;
   }
 
-  dispose() { this.viewfinder.remove(); }
+  dispose() {}
 }
+
+// greedy wrap at 2x scale: maxW is in 1x glyph units
+function wrapLines(str, maxW) { return wrapText(str, maxW, FONT5, 1); }
+
+function glyphMini(a, name, x, y, c) { bitmap(MINI[name] || MINI.heart, { '#': c }, a, x, y); }
+
+// chunky segmented bar in the phosphor style
+function segBar(a, x, y, w, h, f, c) {
+  f = Math.max(0, Math.min(1, Number.isFinite(f) ? f : 0));
+  a.frame(x, y, w, h, P.dim);
+  const segs = Math.max(4, Math.floor((w - 2) / 5));
+  const sw = (w - 2) / segs;
+  const n = f * segs;
+  for (let i = 0; i < segs; i++) {
+    const sx = Math.round(x + 1 + i * sw + 1), ex = Math.round(x + 1 + (i + 1) * sw) - 1;
+    if (i < Math.floor(n)) a.rect(sx, y + 2, ex - sx + 1, h - 4, c);
+    else if (i < n) a.rect(sx, y + 2, Math.max(1, Math.round((ex - sx + 1) * (n - i))), h - 4, c);
+    else a.set(sx, y + Math.floor(h / 2), P.faint);
+  }
+}
+

@@ -4,56 +4,14 @@
 import * as THREE from 'three';
 import * as Mat from '../../../gfx/materials.js';
 import { CELL, CHUNK, HEIGHT } from './layout.js';
-import { buildModel, modelHalfHeight } from '../../../entities/catalog.js';
+import { modelHalfHeight } from '../../../entities/catalog.js';
 import { RNG, hash3 } from '../../../core/rng.js';
 import { makeDevice } from '../../../game/devicekinds.js';
 import { CRATE_LOOT } from '../../../game/itemdefs.js';
-import { bakedMaterial } from '../../../gfx/bakedlight.js';
 import { EnvGeo } from '../../env/builder.js';
-import { GridBaker } from '../../env/gridbake.js';
-
-// merged static room geometry, lit by the chunk's grid light field like the rest of the level
-function bakeInto(level, rec, g, mat, o = {}) {
-  if (g.isEmpty()) return null;
-  const geo = g.build();
-  const baker = rec._roomBaker || (rec._roomBaker = new GridBaker(level.seed, level.variantFn, rec.cx, rec.cz));
-  const mix = o.mix || [1, 0.3];
-  baker.bake(geo, { direct: mix[0], bounce: mix[1], quant: o.quant ?? 0.15 });
-  const m = new THREE.Mesh(geo, bakedMaterial(mat, level.field, o.grime ?? 0, { grid: 1, mix }));
-  m.receiveShadow = true;
-  m.castShadow = !!o.cast;
-  m.matrixAutoUpdate = false;
-  rec.group.add(m);
-  return m;
-}
-
-const _q = new THREE.Quaternion();
-const _e = new THREE.Euler();
-
-function roomBounds(room, rec) {
-  const x0 = (rec.cx * CHUNK + room.rx) * CELL, z0 = (rec.cz * CHUNK + room.rz) * CELL;
-  return { x0, z0, x1: x0 + room.w * CELL, z1: z0 + room.h * CELL, cx: x0 + (room.w * CELL) / 2, cz: z0 + (room.h * CELL) / 2 };
-}
-
-function placeStatic(level, rec, type, x, y, z, rotY = 0, opts = {}) {
-  const m = buildModel(type, { seed: (x * 13 + z * 7) | 0, ...(opts.modelOpts || {}) });
-  const o = m.object;
-  o.position.set(x, y + (opts.useHalf === false ? 0 : m.halfHeight ?? 0), z);
-  o.rotation.set(opts.rx || 0, rotY, opts.rz || 0);
-  if (opts.scale) o.scale.setScalar(opts.scale);
-  rec.group.add(o);
-  level.prepStatic(o, rec);
-  if (opts.collide && m.colliders?.length) {
-    o.updateMatrixWorld(true);
-    const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
-    o.matrixWorld.decompose(p, q, s);
-    const res = level.world.physics.addStaticCollidersFromDesc(m.colliders, p, q, { kind: 'static', surface: 'prop' });
-    rec.physicsColliders.push(...res.colliders);
-    rec.extraBodies = rec.extraBodies || [];
-    rec.extraBodies.push(res.body);
-  }
-  return { o, m };
-}
+import { bakeInto, roomBounds, placeStatic, sp, spPlaced } from './roomkit.js';
+import { WEIRD, decorateWeird, populateWeird } from './weird.js';
+import { Placer } from './placement.js';
 
 // the pipe cluster's open floor duct is a critter exit: they run to the mouth and climb inside
 function pipeExit(level, { o, m }) {
@@ -90,6 +48,7 @@ export function decorateRoom(level, room, rec) {
   const b = roomBounds(room, rec);
   const rid = `${rec.cx},${rec.cz}:${room.kind}`;
   const rng = new RNG(hash3(rec.cx, rec.cz, 4242, level.seed));
+  if (WEIRD.has(room.kind)) decorateWeird(level, room, rec);
   switch (room.kind) {
     case 'spawn': {
       // the torn-open ceiling (shaft, hanging tiles / tees, cables) is built with the chunk ceiling
@@ -241,18 +200,90 @@ export function decorateRoom(level, room, rec) {
 }
 
 // ---------------------------------------------------------------------------
-function sp(level, type, x, y, z, rotY = 0, opts = {}) {
-  const hh = modelHalfHeight(type);
-  _q.setFromEuler(_e.set(opts.rx || 0, rotY, opts.rz || 0));
-  // resting props start on their support (they settle briefly, then sleep); piles get a little air
-  const lift = opts.sleep === false ? 0.012 : 0.001;
-  return level.world.props.spawn(type, new THREE.Vector3(x, y + hh + lift, z), _q, { sleep: opts.sleep !== false, state: opts.state });
-}
-
 export function populateRoom(level, room, rec, rng) {
+  if (WEIRD.has(room.kind)) { populateWeird(level, room, rec, rng); return; }
   const b = roomBounds(room, rec);
   const r = (a) => rng.range(-a, a);
+  // furnished rooms go through the placement checker (doors can be cut into any wall they don't avoid)
+  const placer = new Placer(level);
+  const put = (type, x, z, rot = 0, o = {}) => spPlaced(level, placer, type, x, z, rot, o);
   switch (room.kind) {
+    case 'break_room': {
+      // vending machines, fridge and water cooler along the north wall; a table with chairs; a counter of sorts
+      put('vending_snack', b.x0 + 0.62, b.z0 + 0.55, 0);
+      put('vending_drink', b.x0 + 1.62, b.z0 + 0.55, 0);
+      put('fridge', b.x1 - 0.95, b.z0 + 0.5, 0);
+      put('water_cooler', b.x1 - 0.32, b.z0 + 0.32, 0);
+      const t = put('table_round', b.cx + r(0.2), b.cz + 0.5, 0);
+      if (t) {
+        for (let k = 0; k < 3; k++) { const a = k * 2.1 + r(0.3); put('chair_folding', t.root.position.x + Math.cos(a) * 0.72, t.root.position.z + Math.sin(a) * 0.72, -a - Math.PI / 2); }
+        sp(level, rng.pick(['mug', 'soda_can', 'chips']), t.root.position.x + 0.1, 0.72, t.root.position.z, r(3));
+      }
+      const tf = put('table_folding', b.x0 + 0.95, b.z1 - 0.55, 0);
+      if (tf) {
+        const th = modelHalfHeight('table_folding') * 2;
+        sp(level, 'microwave', tf.root.position.x - 0.35, th, tf.root.position.z - 0.05, 0);
+        sp(level, 'coffee_machine', tf.root.position.x + 0.4, th, tf.root.position.z - 0.1, 0);
+      }
+      put('trash_can', b.x1 - 0.35, b.z1 - 0.35, 0);
+      break;
+    }
+    case 'living_room': {
+      put('couch', b.cx, b.z0 + 0.6, 0);
+      const tr = put('table_round', b.cx, b.cz - 0.1, 0);
+      if (tr && rng.chance(0.6)) sp(level, 'radio_cassette', tr.root.position.x + 0.05, 0.72, tr.root.position.z, r(1));
+      put('armchair', b.x0 + 0.75, b.cz + 0.5, 1.2);
+      put('armchair', b.x1 - 0.75, b.cz + 0.5, -1.2);
+      const cab = put('cabinet_low', b.cx, b.z1 - 0.35, Math.PI);
+      if (cab) sp(level, 'tv_crt', cab.root.position.x, 0.8, cab.root.position.z - 0.02, Math.PI + r(0.08));
+      put('lamp_floor', b.x0 + 0.4, b.z0 + 0.4, 0);
+      put('plant_pot', b.x1 - 0.4, b.z0 + 0.4, 0);
+      put('bookshelf', b.x1 - 0.65, b.z1 - 0.3, Math.PI);
+      break;
+    }
+    case 'library': {
+      for (let k = 0; k < 8; k++) {
+        put('bookshelf', b.x0 + 0.7 + k * 1.0, b.z0 + 0.25, 0);
+        if (rng.chance(0.85)) put('bookshelf', b.x0 + 0.7 + k * 1.0, b.z1 - 0.25, Math.PI);
+      }
+      const d = put('desk', b.cx, b.cz, Math.PI);
+      if (d) {
+        sp(level, 'lamp_desk', d.root.position.x + 0.5, 0.76, d.root.position.z, Math.PI);
+        sp(level, 'binder', d.root.position.x - 0.2, 0.76, d.root.position.z + 0.05, r(0.5));
+      }
+      put('chair_wood', b.cx + 0.3, b.cz - 0.75, 0.2);
+      put('chair_wood', b.cx - 1.6, b.cz + 0.5, 1.4);
+      put('globe', b.cx + 1.8, b.cz, 0);
+      put('armchair', b.x1 - 1.0, b.cz + 0.3, -1.4);
+      break;
+    }
+    case 'server_room': {
+      for (let k = 0; k < 3; k++) {
+        put('server_rack', b.x0 + 1.2 + k * 1.75, b.z0 + 0.6, 0);
+        if (rng.chance(0.7)) put('server_rack', b.x0 + 1.2 + k * 1.75, b.z1 - 0.6, Math.PI);
+      }
+      const d = put('desk', b.cx, b.cz, 0);
+      if (d) {
+        sp(level, 'crt_monitor', d.root.position.x - 0.15, 0.76, d.root.position.z - 0.12, 0);
+        sp(level, 'keyboard', d.root.position.x - 0.15, 0.76, d.root.position.z + 0.2, 0);
+      }
+      put('computer_tower', b.cx + 1.4, b.cz - 0.2, r(0.4));
+      put('computer_tower', b.cx - 1.5, b.cz + 0.3, r(0.4));
+      put('box_small', b.cx + 1.2, b.cz + 0.8, r(1));
+      put('chair_office', b.cx + 0.2, b.cz + 0.75, Math.PI + r(0.5));
+      break;
+    }
+    case 'locker_room': {
+      for (let k = 0; k < 6; k++) {
+        put('locker', b.x0 + 1.4 + k * 0.5, b.z0 + 0.3, 0);
+        if (k < 5) put('locker', b.x0 + 1.4 + k * 0.5, b.z1 - 0.3, Math.PI);
+      }
+      for (let k = 0; k < 3; k++) put('stool', b.x0 + 1.6 + k * 0.9, b.cz + r(0.2), r(1));
+      put('suitcase', b.x1 - 0.7, b.cz + 0.6, r(1));
+      put('trash_can', b.x0 + 0.4, b.cz, 0);
+      if (rng.chance(0.7)) put(rng.pick(['bandage', 'energy_drink', 'flashlight', 'battery']), b.cx + r(1), b.cz + r(0.4), r(3));
+      break;
+    }
     case 'chairpile': {
       // the iconic chaotic pile of stacked chairs: each layer drops onto its own staggered slots (no two chairs
       // start inside each other, so the pile collapses into a heap instead of exploding apart)

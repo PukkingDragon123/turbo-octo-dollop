@@ -5,9 +5,11 @@ import * as tall from './tall.js';
 import * as twin from './twin.js';
 import * as crawler from './crawler.js';
 import * as mass from './mass.js';
+import * as hound from './hound.js';
+import * as partygoer from './partygoer.js';
 import { textureData, TEX_NAMES } from './textures.js';
 
-const BUILDERS = { watcher, tall, twin, crawler, mass };
+const BUILDERS = { watcher, tall, twin, crawler, mass, hound, partygoer };
 
 function geoData(g, transfer) {
   if (!g) return null;

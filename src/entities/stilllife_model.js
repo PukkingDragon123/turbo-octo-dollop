@@ -6,4 +6,4 @@
 //
 // buildStillLife(variant, seed) -> { root, update(dt, state), height, radius }
 //   state: { speed, moving, attacking 0..1, alert 0..1, lookTarget?: Vector3 (world), frozen }
-export { STILL_LIFE_VARIANTS, buildStillLife, buildStats, prewarmStillLifes } from './stilllife/index.js';
+export { STILL_LIFE_VARIANTS, CREATURE_VARIANTS, buildStillLife, buildStats, prewarmStillLifes } from './stilllife/index.js';

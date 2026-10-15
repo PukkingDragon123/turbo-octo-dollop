@@ -16,6 +16,7 @@ import { buildRagdoll } from '../entities/avatar.js';
 import { buildStillLife, prewarmStillLifes } from '../entities/stilllife_model.js';
 import { BacteriaBody, prewarmBacteria } from '../entities/monsters/bacteria_body.js';
 import { itemDef } from './itemdefs.js';
+import { Elevator } from '../world/elevator_ride.js';
 
 const _v = new THREE.Vector3();
 
@@ -224,12 +225,13 @@ export class Game {
       audio.play('radio_static_burst', { volume: 0.4, bus: 'ui' });
     });
     net.onClient('revived', (d) => {
+      const paid = d.cost != null ? ` -$${d.cost}` : '';
       if (d.id === net.selfId) {
         this.local.revive({ pos: new THREE.Vector3().fromArray(d.p), yaw: d.yaw || 0 });
-        this.ui.toast('CLONE RESTORED. Welcome back, valued employee.', 'good');
+        this.ui.toast(d.cost != null ? `CLONED.${paid}` : 'CLONE RESTORED. Welcome back, valued employee.', d.cost ? 'bad' : 'good');
         profile.unlock('cloned');
       } else {
-        this.ui.feed(`${this.roster.get(d.id)?.name || 'A clone'} has been re-cloned`, 'good');
+        this.ui.feed(`${this.roster.get(d.id)?.name || 'A clone'} has been re-cloned.${paid}`, d.cost ? 'bad' : 'good');
       }
       audio.play('clone_splat', { pos: new THREE.Vector3().fromArray(d.p) });
     });
@@ -317,17 +319,20 @@ export class Game {
   async loadWorld(desc, lateJoin) {
     if (this.loading) { this.pendingWorld = { desc, lateJoin }; return; }
     this.loading = true;
-    this.ui.setLoading(true, desc, LEVELS[desc.type]?.name);
+    // an elevator ride (world/elevator_ride.js) plays instead of the loading screen while it is running
+    if (!this.ride?.active) this.ui.setLoading(true, desc, LEVELS[desc.type]?.name);
     const fromType = this.world?.type;
     this.disposeWorld();
     const world = new World(this, desc);
     this.world = world;
+    // hunger & thirst drain everywhere by default; a level's mission may hold them back (Level 0: until the camp is up)
+    this.local.survival.needsActive = true;
     world.level = createLevel(desc.type, world, desc);
     this.run.levelType = desc.type;
     this.run.seed = desc.seed;
     if (desc.depth) this.run.depth = desc.depth;
     try {
-      await world.level.build((p, label) => this.ui.setLoadingProgress(p, label));
+      await world.level.build((p, label) => { if (!this.ride?.active) this.ui.setLoadingProgress(p, label); });
     } catch (e) {
       console.error('[game] level build failed', e);
     }
@@ -336,7 +341,8 @@ export class Game {
     // roster order is the host's join order (clients rebuild it from the host's list), so indexes never collide
     const idx = [...this.roster.keys()].indexOf(net.selfId);
     const arrival = !!desc.arrival && !lateJoin;
-    const sp = world.level.spawnPoint(Math.max(0, idx), lateJoin, arrival);
+    Elevator.afterBuild(this, world, desc); // arrival car (dispatch by elevator)
+    const sp = Elevator.spawn(this, world, desc, world.level.spawnPoint(Math.max(0, idx), lateJoin, arrival), Math.max(0, idx), lateJoin);
     this.local.attachWorld(world, sp);
     if (desc.type === 'lobby') {
       // everyone is alive & fresh in the lobby
@@ -351,7 +357,8 @@ export class Game {
     audio.setReverb(world.level.reverb || 'office');
     world.level.startAudio?.();
     if (net.isHost) {
-      world.level.hostStart?.(desc);
+      world.level.hostStart?.(Elevator.hostDesc(this, world, desc));
+      Elevator.hostStart(this, world, desc);
       const me = this.roster.get(net.selfId);
       if (me) me.loaded = true;
     } else {
@@ -383,7 +390,7 @@ export class Game {
     this.loading = false;
     this.ui.setLoading(false);
     if (!this.menuBackdrop) this.ui.onWorldLoaded(desc, fromType);
-    if (arrival) this._arrivalSequence(sp);
+    if (arrival && !Elevator.ownsArrival(this)) this._arrivalSequence(sp);
     if (this.pendingWorld) {
       const pw = this.pendingWorld;
       this.pendingWorld = null;
@@ -439,18 +446,27 @@ export class Game {
     }
     net.toAll('playerDied', { id: from, cause: d.cause });
     this._broadcastRoster();
+    this.world.level?.mission?.onPlayerDied?.(from, d);
     this._checkAllDead();
   }
 
+  // the level's mission re-clones the dead by itself (Level 0 camp: automatic, costs half the money)
+  get autoClone() { return !!this.world?.level?.mission?.autoClone; }
+
   _checkAllDead() {
     if (!net.isHost || !this.world || this.isLobby) return;
+    if (this.autoClone) return;
     const all = [...this.roster.values()];
     if (all.length && all.every((r) => r.dead)) {
       setTimeout(() => this.hostRunOver('ALL CLONES TERMINATED'), 3500);
     }
   }
 
-  cloneCost() { return 150 + (this.run.depth - 1) * 50; }
+  // what bringing a dead clone back costs right now (auto-cloning missions: half the team's money)
+  cloneCost() {
+    if (this.autoClone) return Math.floor(this.run.credits / 2);
+    return 150 + (this.run.depth - 1) * 50;
+  }
 
   _hostClone(targetId, from, padId) {
     if (!this.world) return;
@@ -465,15 +481,24 @@ export class Game {
     const p = pad ? pad.root.position.clone().add(_v.set(0, 0.3, 0)) : this.world.level.spawnPoint(0, true).pos;
     this.run.credits -= cost;
     this.pushRun();
-    r.dead = false;
-    this.world.level?.removeBody?.(r.id);
-    net.toAll('revived', { id: r.id, p: p.toArray(), yaw: 0 });
+    this.hostRevive(r.id, p, 0);
     if (from === net.selfId) profile.unlock('revived'); else if (from) net.toPeer(from, 'ach', 'revived');
-    this.world.fxAll({ k: 'sparks', p: [p.x, p.y + 0.5, p.z], n: 30 });
-    this._broadcastRoster();
   }
 
-  hostRunOver(reason) {
+  // host: bring a dead clone back at pos (the caller handles payment; cost is only shown to players)
+  hostRevive(id, pos, yaw = 0, cost = null) {
+    const r = this.roster.get(id);
+    if (!this.world || !r || !r.dead) return false;
+    r.dead = false;
+    this.world.level?.removeBody?.(r.id);
+    net.toAll('revived', { id: r.id, p: pos.toArray(), yaw, cost });
+    this.world.fxAll({ k: 'sparks', p: [pos.x, pos.y + 0.5, pos.z], n: 30 });
+    this._broadcastRoster();
+    return true;
+  }
+
+  // extra: merged into the run-over stats (e.g. { success: true, quota } for a completed shift)
+  hostRunOver(reason, extra = {}) {
     if (!net.isHost) return;
     if (this.runOverPending) return;
     this.runOverPending = true;
@@ -482,8 +507,10 @@ export class Game {
       depth: this.run.depth,
       day: this.day.day,
       earned: this.run.earned,
+      credits: this.run.credits,
       deaths: this.run.deaths,
       time: Math.round((Date.now() - this.run.startedAt) / 1000),
+      ...extra,
     };
     net.toAll('runOver', stats);
     setTimeout(() => {
@@ -524,7 +551,7 @@ export class Game {
     this.hostLoadWorld({ type: next, seed: (Math.random() * 1e9) | 0, depth: this.run.depth, arrival: true, carry });
   }
 
-  hostDispatch(carry, type) {
+  hostDispatch(carry, type, extra = null) {
     // from lobby into the first dimension (fresh run); `type` lets test hooks start in a later dimension,
     // otherwise the dimension picked on the main menu (Level 0 by default)
     if (!type) type = LEVELS[profile.settings.destination]?.ready ? profile.settings.destination : 'yellow';
@@ -533,7 +560,7 @@ export class Game {
     this.run.depth = depth;
     for (const r of this.roster.values()) r.dead = false;
     this.unlockAll('first_day');
-    this.hostLoadWorld({ type, seed: (Math.random() * 1e9) | 0, depth, arrival: true, carry, fresh: true });
+    this.hostLoadWorld({ type, seed: (Math.random() * 1e9) | 0, depth, arrival: true, carry, fresh: true, ...(extra || {}) });
   }
 
   // Temporary, probe-lit monster instances placed in the scene while shaders compile, so the first
@@ -594,11 +621,14 @@ export class Game {
     profile.stat('deaths');
     if ((profile.data.stats.deaths || 0) >= 10) profile.unlock('disposable');
     const alive = [...this.roster.values()].some((r) => r.id !== net.selfId && !r.dead);
-    this.ui.feed(alive ? 'Your clone has been terminated. Teammates can re-clone you at the cloning pad.' : 'Your clone has been terminated.', 'bad', 'R.O.O.M.');
+    const m = this.world?.level?.mission;
+    if (m?.autoClone) this.ui.feed(`Your clone has been terminated. A new one is being printed at camp. Cost: half of the team's money ($${this.cloneCost()}).`, 'bad', 'R.O.O.M.');
+    else this.ui.feed(alive ? 'Your clone has been terminated. Teammates can re-clone you at the cloning pad.' : 'Your clone has been terminated.', 'bad', 'R.O.O.M.');
   }
 
   onItemUsed(type, wasBleeding) {
     this.world?.level?.onItemUsed?.(type);
+    this.world?.level?.mission?.onItemUsed?.(type);
     if ((type === 'bandage' || type === 'medkit') && wasBleeding && this.local.survival.bleed === 0) profile.unlock('medic');
     if (type === 'almond_water' || type === 'almond_milk') {
       if (profile.stat('almond') >= 10) profile.unlock('hydrated');
@@ -612,7 +642,7 @@ export class Game {
   // ------------------------------------------------------------------
   update(dt) {
     this.time += dt;
-    if (!this.world || this.loading) return;
+    if (!this.world || this.loading) { this.ride?.update(dt); return; }
     // cutscenes
     if (this.cutscene) {
       const c = this.cutscene;
@@ -638,6 +668,7 @@ export class Game {
         if (Object.keys(all).length) net.toRemotes('poses', all);
       }
     }
+    this.ride?.update(dt); // elevator ride: runs last, owns the camera while active
     // pose of the host's own local player goes into the roster directly via toHost
   }
 }

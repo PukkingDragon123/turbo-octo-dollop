@@ -19,13 +19,14 @@ import { LightField } from '../gfx/bakedlight.js';
 
 const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
-const EXIT_SECONDS = 120;
-const STARTER = ['flashlight', 'protein_bar', 'almond_milk', 'bandage', 'multitool'];
+export const EXIT_SECONDS = 120;
+// (the multitool is built into the suit now: empty hand + RMB)
+export const STARTER = ['flashlight', 'protein_bar', 'almond_milk', 'bandage'];
 
 export const CRATE_TIERS = [
   { id: 'basic', name: 'RATIONS CRATE', cost: 120, n: 4, pool: ['almond_water', 'canned_food', 'protein_bar', 'soda_can', 'chips', 'almond_milk', 'candy_bar', 'energy_drink'] },
   { id: 'medical', name: 'MEDICAL CRATE', cost: 160, n: 4, pool: ['medkit', 'bandage', 'bandage', 'antibiotics', 'painkillers', 'splint', 'almond_water'] },
-  { id: 'tools', name: 'FIELD EQUIPMENT', cost: 200, n: 4, pool: ['battery', 'battery', 'flare', 'glowstick', 'welder', 'sample_jar', 'sample_jar', 'flashlight', 'noise_maker', 'multitool'] },
+  { id: 'tools', name: 'FIELD EQUIPMENT', cost: 200, n: 4, pool: ['battery', 'battery', 'flare', 'glowstick', 'welder', 'sample_jar', 'sample_jar', 'flashlight', 'noise_maker'] },
   { id: 'random', name: 'MYSTERY CRATE', cost: 90, n: 3, pool: null },
 ];
 
@@ -532,7 +533,8 @@ class RadioBehaviour {
       items: [
         { label: `TRANSMIT RESEARCH (${photos} photo${photos === 1 ? '' : 's'})`, hint: '5%', disabled: !pwr || !photos, act: 'photos' },
         { label: `DEPOSIT SAMPLES (${jars} held)`, hint: '5%', disabled: !pwr, act: 'samples' },
-        { label: 'ORDER SUPPLY CRATE >', hint: '10%', disabled: !pwr, act: 'order' },
+        // credits can't buy anything any more: supply ordering is discontinued
+        { label: 'ORDER SUPPLY CRATE', hint: 'DISCONTINUED', disabled: true, act: 'none' },
         { label: 'OBJECTIVES >', act: 'tasks' },
         { label: this.mission.state.extraction ? 'EXTRACTION IN PROGRESS' : 'REQUEST EXTRACTION', hint: links >= 3 ? '' : `${links}/3`, disabled: !pwr || links < 3 || !!this.mission.state.extraction, act: 'extract' },
       ],
@@ -574,8 +576,7 @@ class RadioBehaviour {
     const b = this.prop.state.battery ?? 40;
     if (b <= 0 && a !== 'extract') return;
     if (a === 'buy') {
-      m.orderCrate(d.tier);
-      this.mission.world.props.setState(this.prop.id, { battery: Math.max(0, b - 10) });
+      void d; // supply ordering is discontinued (credits can't buy anything)
     } else if (a === 'drain') {
       this.mission.world.props.setState(this.prop.id, { battery: Math.max(0, b - (d?.n || 5)) });
     } else if (a === 'extract') {
@@ -647,7 +648,7 @@ class RadioBehaviour {
 
 // =============================================================================
 // Starter box / supply crate
-class BoxBehaviour {
+export class BoxBehaviour {
   constructor(prop, mission, kind) {
     this.prop = prop;
     this.mission = mission;
@@ -737,7 +738,7 @@ class ClonePadBehaviour {
 
 // =============================================================================
 // Exit door + decontamination room
-class ExitDoor extends Device {
+export class ExitDoor extends Device {
   constructor(world, id, mission, e) {
     super(world, id, {});
     this.mission = mission;

@@ -315,13 +315,14 @@ function swapSkip(s) {
   return o;
 }
 
-// square pillar at a cell corner: corner-beaded column with skirting all around
-export function pillar(ctx, px, pz, size) {
+// square pillar at a cell corner: corner-beaded column with skirting all around (height: up to the highest
+// ceiling around the corner in tall sectors)
+export function pillar(ctx, px, pz, size, height = H) {
   const g = ctx.G.wall;
   const hs = size / 2;
   g.wet = 0; g.ao = 1;
-  g.bevelBox(px - hs, 0, pz - hs, px + hs, H, pz + hs, 0.012, { py: true, ny: true }, (x, y, z) => [x + z, y]);
-  ctx.colliders.push({ min: { x: px - hs, y: 0, z: pz - hs }, max: { x: px + hs, y: H, z: pz + hs } });
+  g.bevelBox(px - hs, 0, pz - hs, px + hs, height, pz + hs, 0.012, { py: true, ny: true }, (x, y, z) => [x + z, y]);
+  ctx.colliders.push({ min: { x: px - hs, y: 0, z: pz - hs }, max: { x: px + hs, y: height, z: pz + hs } });
   const s = skirtFor(ctx, 'wall');
   const ext = s.prof[0][0];
   s.g.extrude(s.prof, 'x', pz + hs, 1, px - hs - ext, px + hs + ext, [true, true]);

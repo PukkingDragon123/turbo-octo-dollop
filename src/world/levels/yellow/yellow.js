@@ -8,12 +8,14 @@ import { profile } from '../../../core/profile.js';
 import { hash01, RNG, hash3 } from '../../../core/rng.js';
 import { LightField, GRID_FALL } from '../../../gfx/bakedlight.js';
 import { PlanarReflection, makeWaterMaterial } from '../../../gfx/water.js';
-import { CELL, CHUNK, CHUNK_M, HEIGHT, getLayout, cellInfo, wallN, wallW, wallPassable, missionChunks, clearLayoutCache, W } from './layout.js';
+import { CELL, CHUNK, CHUNK_M, HEIGHT, getLayout, cellInfo, wallN, wallW, wallPassable, missionChunks, clearLayoutCache, W, LANDMARKS, edgeBlocked } from './layout.js';
 import { buildChunk, cellLightSpec, makeOccluder, makeAO } from './chunkbuilder.js';
 import { decorateRoom, populateRoom } from './rooms.js';
 import { Placer } from './placement.js';
+import { weirdPhotoSubject } from './weird.js';
+import { registerLootables } from '../../../entities/lootables.js';
 import { modelHalfHeight } from '../../../entities/catalog.js';
-import { Mission } from '../../../game/mission.js';
+import { CampMission } from '../../../game/campmission.js';
 import { MonsterManager } from '../../../game/monsters.js';
 import { Anomalies } from '../../../game/anomalies.js';
 import { Critters } from '../../../game/critters.js';
@@ -46,6 +48,7 @@ export class YellowLevel {
     this.field = world.field;
     this.chunks = new Map();
     this.populated = new Set();
+    this.hibernated = new Map(); // chunk key -> props despawned with their chunk (host)
     this.variants = new Map();
     this.lightCells = new Set(); // registered light texel keys
     this.devicesByRoom = new Map();
@@ -63,6 +66,8 @@ export class YellowLevel {
     this.dayApplied = 0;
     this.visited = new Set(); // explored cells (for the watch map)
     this.time = 0;
+    // arrival complex (seed independent): { camp, padHall, elevator: { x, z, yaw }, passage, exits } in world metres
+    this.landmarks = JSON.parse(JSON.stringify(LANDMARKS));
     clearLayoutCache();
   }
 
@@ -94,8 +99,10 @@ export class YellowLevel {
     pp.uContrast.value = 1.12;
     engine.renderer.toneMappingExposure = 0.95;
     this._fogCol = new THREE.Color();
+    // drawers, cabinets, lockers, boxes ... can be searched once for supplies
+    registerLootables(this.world);
     this.world.monsters = this.monsters = new MonsterManager(this);
-    this.mission = new Mission(this);
+    this.mission = new CampMission(this);
     this.anomalies = new Anomalies(this);
     this.critters = new Critters(this);
     // initial chunks around spawn (blocking)
@@ -112,17 +119,21 @@ export class YellowLevel {
     this._applyDayLights(1, true);
   }
 
+  // the camp clearing (arrival complex, see layout.js LANDMARKS)
   spawnCenter() {
-    return new THREE.Vector3(4 * CELL, 0, 4 * CELL);
+    return new THREE.Vector3(this.landmarks.camp.x, 0, this.landmarks.camp.z);
   }
 
+  // clones arrive in the personnel lift: standing inside the car in the elevator alcove, facing its doors
   spawnPoint(index = 0, lateJoin = false, arrival = false) {
-    const c = this.spawnCenter();
-    const offs = [[-1.2, -1.2], [1.2, -1.2], [-1.2, 1.2], [1.2, 1.2]];
+    const el = this.landmarks.elevator;
+    const offs = [[-0.45, -0.35], [0.45, -0.35], [-0.45, 0.4], [0.45, 0.4]];
     const o = offs[index % 4];
-    const pos = new THREE.Vector3(c.x + o[0], arrival ? HEIGHT - 1.25 : 0.02, c.z + o[1]);
-    if (lateJoin) pos.y = HEIGHT - 1.25;
-    return { pos, yaw: Math.atan2(o[0], o[1]), arrival: arrival || lateJoin, vy: arrival || lateJoin ? -2 : 0 };
+    const s = Math.sin(el.yaw), c = Math.cos(el.yaw);
+    // car-local (x right, z towards the doors) -> world
+    const pos = new THREE.Vector3(el.x + o[0] * c + o[1] * s, 0.06, el.z - o[0] * s + o[1] * c);
+    // a player's forward is (-sin yaw, -cos yaw): face the doors
+    return { pos, yaw: el.yaw + Math.PI, arrival: arrival || lateJoin, vy: 0 };
   }
 
   hostStart(desc) {
@@ -207,6 +218,12 @@ export class YellowLevel {
     if (l.forced) return;
     const h = hash01(l.ci, l.cj, 77, this.seed);
     let mode = l.baseMode;
+    // the camp, the passage and the pad hall keep their lights until reality itself goes (day 7)
+    const lm = l.cell?.landmark;
+    if (lm && lm !== 'apron' && day < 7) {
+      if (mode !== l.mode) { l.mode = mode; l._force = true; this.field.dirty = true; }
+      return;
+    }
     if (h < DEAD_FRAC[day]) mode = 'dead';
     else if (h < DEAD_FRAC[day] + FLICK_FRAC[day] && mode === 'on') mode = 'flicker';
     if (this.poweredCells?.has(`${l.ci},${l.cj}`)) mode = 'on';
@@ -236,9 +253,11 @@ export class YellowLevel {
     this.buildMs = (this.buildMs || 0) * 0.8 + (performance.now() - t0) * 0.2;
     this.chunks.set(key, rec);
     // special rooms: static decor + devices
+    const t1 = performance.now();
     for (const room of rec.layout.specials) {
       decorateRoom(this, room, rec);
     }
+    this.decoMs = (this.decoMs || 0) * 0.8 + (performance.now() - t1) * 0.2;
     if (net.isHost) this._populate(key);
     return rec;
   }
@@ -246,6 +265,7 @@ export class YellowLevel {
   _unloadChunk(key) {
     const rec = this.chunks.get(key);
     if (!rec) return;
+    this._hibernate(rec, key);
     rec.group.removeFromParent();
     if (rec.waterMesh) this.reflection.meshes.delete(rec.waterMesh);
     rec.group.traverse((o) => { if (o.isMesh && o.geometry && !o.userData.sharedGeo) o.geometry.dispose(); });
@@ -265,11 +285,50 @@ export class YellowLevel {
   }
 
   // host: spawn a chunk's props the first time it is loaded
+  // Host: when a chunk unloads, the furniture / clutter the level spawned there and nobody has touched (never
+  // grabbed or welded, asleep, inside the chunk) is despawned and remembered with its pose and state; it comes back
+  // exactly so when the chunk loads again. Keeps the live prop count (draw calls, bodies, probe updates) bounded
+  // however far the team wanders. Everything a player moved stays live.
+  _hibernate(rec, key) {
+    if (!net.isHost || this._disposing) return;
+    const x0 = rec.cx * CHUNK_M, z0 = rec.cz * CHUNK_M;
+    const keep = [];
+    for (const p of [...this.world.props.props.values()]) {
+      if (!p.levelSpawn || p.touched || p.dead || p.frozen || p.welds?.length || p.state.welded || p.isHeld()) continue;
+      const pos = p.root.position;
+      if (pos.x < x0 || pos.x >= x0 + CHUNK_M || pos.z < z0 || pos.z >= z0 + CHUNK_M || pos.y < -6) continue;
+      if (p.body && !p.body.isSleeping()) continue;
+      keep.push({ t: p.type, p: pos.toArray(), q: p.root.quaternion.toArray(), s: { ...p.state }, mo: p.modelOpts || null });
+      this.world.props.despawn(p.id);
+    }
+    if (keep.length) this.hibernated.set(key, (this.hibernated.get(key) || []).concat(keep));
+  }
+
+  _wake(key) {
+    const list = this.hibernated.get(key);
+    if (!list) return;
+    this.hibernated.delete(key);
+    const id0 = this.world.props.nextId;
+    for (const h of list) {
+      this.world.props.spawn(h.t, new THREE.Vector3().fromArray(h.p), new THREE.Quaternion().fromArray(h.q), { sleep: true, state: h.s, modelOpts: h.mo });
+    }
+    this._tagSpawns(id0);
+  }
+
+  // everything spawned since id0 belongs to the level's population (eligible for hibernation)
+  _tagSpawns(id0) {
+    const props = this.world.props;
+    for (let id = id0; id < props.nextId; id++) { const p = props.get(id); if (p) p.levelSpawn = true; }
+  }
+
   _populate(key) {
-    if (!net.isHost || this.populated.has(key)) return;
+    if (!net.isHost) return;
+    if (this.populated.has(key)) { this._wake(key); return; }
     const rec = this.chunks.get(key);
     if (!rec) return;
     this.populated.add(key);
+    const id0 = this.world.props.nextId;
+    const t0 = performance.now();
     const ox = rec.cx * CHUNK_M, oz = rec.cz * CHUNK_M;
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
@@ -285,7 +344,9 @@ export class YellowLevel {
     let base = null; // last desk-like spawn: {from: [x, z, rot], to: [x, z, rot]} or false when it was dropped
     for (const sp of rec.layout.spawns) {
       let x = ox + sp.x, z = oz + sp.z, rotY = sp.rotY || 0;
-      if (sp.y) {
+      if (sp.abs) {
+        // stock on warehouse racks: placed on the deck as laid out
+      } else if (sp.y) {
         // on top of the last base: follow its nudge / turn
         if (!base) continue;
         const [fx, fz, fr] = base.from, [tx, tz, tr] = base.to;
@@ -305,6 +366,8 @@ export class YellowLevel {
     }
     const rng = new RNG(hash3(rec.cx, rec.cz, 991, this.seed));
     for (const room of rec.layout.specials) populateRoom(this, room, rec, rng);
+    this._tagSpawns(id0);
+    this.popMs = (this.popMs || 0) * 0.8 + (performance.now() - t0) * 0.2;
   }
 
   // ---------------------------------------------------------------
@@ -416,9 +479,31 @@ export class YellowLevel {
       const dx = Math.max(0, Math.abs(cam.x - cx) - half), dz = Math.max(0, Math.abs(cam.z - cz) - half);
       rec.group.visible = dx * dx + dz * dz < 46 * 46;
     }
+    // props: cull by size class (small clutter goes first) and by walls: a prop is drawn only if a ray from the
+    // camera to its centre or to either side of it gets past the solid walls of the cell grid (doors / arches /
+    // half walls let it through). Held / moving / nearby props always draw.
+    let n = 0, vis = 0;
     for (const p of this.world.props.props.values()) {
-      p.root.visible = p.root.position.distanceToSquared(cam) < 40 * 40;
+      const r = p.root;
+      const dx = r.position.x - cam.x, dz = r.position.z - cam.z;
+      const d2 = dx * dx + dz * dz + (r.position.y - cam.y) ** 2;
+      const rad = p.radius ?? 0.3;
+      const maxD = rad < 0.22 ? 17 : rad < 0.55 ? 28 : 38;
+      let v;
+      if (d2 > maxD * maxD) v = false;
+      else if (d2 < 36 || p.grabbers?.size || p.speed > 0.05) v = true;
+      else v = this._seen(cam.x, cam.z, r.position.x, r.position.z, Math.min(0.6, rad * 0.8), dx, dz);
+      r.visible = v;
+      n++; if (v) vis++;
     }
+    this.cullStats = { props: n, visible: vis };
+  }
+
+  // 2D line of sight across the wall grid (centre ray + two rays offset sideways by `side`)
+  _seen(x0, z0, x1, z1, side, dx, dz) {
+    if (this.occluder(x0, z0, x1, z1) > 0) return true;
+    const l = Math.hypot(dx, dz) || 1, ox = (-dz / l) * side, oz = (dx / l) * side;
+    return this.occluder(x0, z0, x1 + ox, z1 + oz) > 0 || this.occluder(x0, z0, x1 - ox, z1 - oz) > 0;
   }
 
   _updateLightLevel() {
@@ -476,8 +561,76 @@ export class YellowLevel {
     return cellInfo(this.seed, Math.floor(x / CELL), Math.floor(z / CELL), this.variantFn);
   }
 
-  floorY() { return 0; }
-  ceilingY() { return HEIGHT; }
+  // floor height (pits of special rooms are below 0) and ceiling height (tall halls, low rooms) at a point
+  floorY(x, z) {
+    if (x === undefined) return 0;
+    const c = this.cell(x, z);
+    if (!c?.pit) return 0;
+    const p = c.special?.pit;
+    if (!p) return 0;
+    const ox = Math.floor(x / CHUNK_M) * CHUNK_M, oz = Math.floor(z / CHUNK_M) * CHUNK_M;
+    const lx = x - ox, lz = z - oz;
+    return lx > p.x0 && lx < p.x1 && lz > p.z0 && lz < p.z1 ? -(p.floorAt ?? p.depth) : 0;
+  }
+  ceilingY(x, z) {
+    if (x === undefined) return HEIGHT;
+    return this.cell(x, z)?.ceil ?? HEIGHT;
+  }
+
+  // Player movement hook (called by player.js every frame for the local clone, before its wish velocity):
+  // slides push clones down their chutes, ball pits slow them down. Returns a speed factor or undefined.
+  waterMotion(player, dt) {
+    const p = player.pos;
+    const rec = this.chunks.get(this._key(Math.floor(p.x / CHUNK_M), Math.floor(p.z / CHUNK_M)));
+    if (!rec || (!rec.slides?.length && !rec.ballPits?.length)) return undefined;
+    if (rec.slides) {
+      for (const s of rec.slides) {
+        const dx = s.bx - s.ax, dz = s.bz - s.az, L2 = dx * dx + dz * dz;
+        if (L2 < 1e-6) continue;
+        let t = ((p.x - s.ax) * dx + (p.z - s.az) * dz) / L2;
+        if (t < -0.05 || t > 1.05) continue;
+        t = Math.max(0, Math.min(1, t));
+        const qx = s.ax + dx * t, qz = s.az + dz * t;
+        if ((p.x - qx) ** 2 + (p.z - qz) ** 2 > (s.hw + 0.12) ** 2) continue;
+        const sy = s.ay + (s.by - s.ay) * t;
+        if (p.y < sy - 0.3 || p.y > sy + 0.4) continue;
+        // on the chute: drive the velocity along it towards `speed` (the yank is added after the player's own
+        // acceleration, so aim for the target from the damped velocity); little steering while sliding
+        const L = Math.sqrt(L2), ux = dx / L, uz = dz / L;
+        const k = 1 - Math.exp(-16 * dt);
+        const along = player.vel.x * ux + player.vel.z * uz;
+        const want = s.speed ?? 6;
+        const add = Math.max(0, want - along * (1 - k));
+        player.yank.x += ux * add;
+        player.yank.z += uz * add;
+        if (!this._slideSnd || this.time - this._slideSnd > 0.9) { this._slideSnd = this.time; audio.play('scrape_short', { volume: 0.35 }); }
+        return 0.25;
+      }
+    }
+    if (rec.ballPits) for (const b of rec.ballPits) {
+      if (p.x > b.x0 && p.x < b.x1 && p.z > b.z0 && p.z < b.z1 && p.y < b.y) return 0.62;
+    }
+    return undefined;
+  }
+
+  // debug / test helper: special rooms of the given kinds within R chunks of the origin -> [{kind, x, z, cx, cz}]
+  findRooms(kinds = null, R = 6) {
+    const out = [];
+    for (let cz = -R; cz <= R; cz++) for (let cx = -R; cx <= R; cx++) {
+      const L = getLayout(this.seed, cx, cz, this.variantFn(cx, cz));
+      for (const r of L.specials) {
+        if (kinds && !kinds.includes(r.kind)) continue;
+        out.push({ kind: r.kind, cx, cz, x: (cx * CHUNK + r.rx + r.w / 2) * CELL, z: (cz * CHUNK + r.rz + r.h / 2) * CELL, w: r.w * CELL, d: r.h * CELL });
+      }
+    }
+    return out.sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
+  }
+
+  // nav: pits and crawlspaces cost extra (monsters prefer to walk around)
+  cellCost(i, j) {
+    const c = cellInfo(this.seed, i, j, this.variantFn);
+    return c.pit ? 12 : c.crawl ? 3 : 0;
+  }
 
   waterDepth(x, z) {
     const c = this.cell(x, z);
@@ -500,7 +653,12 @@ export class YellowLevel {
     else if (d === 2) t = wallN(this.seed, i, j + 1, v);
     else if (d === 3) t = wallW(this.seed, i, j, v);
     else t = wallW(this.seed, i + 1, j, v);
-    return wallPassable(t);
+    if (!wallPassable(t)) return false;
+    // warehouse racks stand on open edges
+    if (d === 0) return !edgeBlocked(this.seed, i, j, 'n', v);
+    if (d === 2) return !edgeBlocked(this.seed, i, j + 1, 'n', v);
+    if (d === 3) return !edgeBlocked(this.seed, i, j, 'w', v);
+    return !edgeBlocked(this.seed, i + 1, j, 'w', v);
   }
 
   isChunkLoaded(x, z) {
@@ -552,6 +710,8 @@ export class YellowLevel {
         if (room.kind === 'stairs_nowhere') consider(c, 'STAIRS TO NOWHERE', `room:${rec.cx},${rec.cz}`, 55);
         if (room.kind === 'many_doors') consider(c, 'FALSE DOORS', `room:${rec.cx},${rec.cz}`, 45);
         if (room.kind === 'endless_hall') consider(c, 'NON-EUCLIDEAN CORRIDOR', `room:${rec.cx},${rec.cz}`, 70);
+        const ws = weirdPhotoSubject(room.kind);
+        if (ws) consider(c, ws[0], `room:${rec.cx},${rec.cz}:${room.kind}`, ws[1]);
       }
       if (rec.deadClone) consider(rec.deadClone.clone().setY(0.3), 'DECEASED PREDECESSOR', `dc:${rec.cx},${rec.cz}`, 40);
     }
@@ -569,6 +729,7 @@ export class YellowLevel {
   }
 
   onPropGrabbed(prop, from) {
+    prop.touched = true; // a player moved it: never hibernated
     this.mission?.onPropGrabbed?.(prop, from);
   }
 
@@ -595,6 +756,7 @@ export class YellowLevel {
   }
 
   dispose() {
+    this._disposing = true;
     this.ambience?.stop(0.5);
     this.humLoop?.stop(0.3);
     this.mission?.dispose();

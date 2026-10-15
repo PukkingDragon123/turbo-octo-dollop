@@ -3,14 +3,17 @@
 //  use:      action when the player presses RMB while it is the selected slot
 //  fx:       survival effect when consumed
 //  breakF:   impact force (N) above which it breaks; into: spawned pieces/materials
-//  dismantle: materials yielded when taken apart with the multitool
-//  sample:   research sample worth credits when deposited into the radio
+//  dismantle: materials yielded when taken apart with the (built-in) multitool
+//  sample:   research sample worth credits when deposited into the radio (older dimensions)
+//  camp:     Level 0 tent-kit part (dragged onto its ghost marker and attached with the multitool)
+//  sell:     $ paid by the teleport pads (overrides SELL_VALUE / the mass estimate, see sellValue())
 export const ITEM = {
   // --- starter kit ---
   flashlight: { name: 'Flashlight', pocket: true, use: 'flashlight', battery: 1 },
   protein_bar: { name: 'Protein Bar', pocket: true, use: 'eat', fx: { hunger: 35, stamina: 10 } },
   almond_milk: { name: 'Almond Milk', pocket: true, use: 'drink', fx: { thirst: 35, hunger: 8, sanity: 6 } },
   bandage: { name: 'Bandage', pocket: true, use: 'heal', fx: { bleed: -1, health: 8, infection: -5 } },
+  // the multitool is built into the suit now (empty hand + RMB); the item only survives in older loot tables
   multitool: { name: 'Multitool', pocket: true, use: 'multitool' },
 
   // --- consumables ---
@@ -126,6 +129,18 @@ export const ITEM = {
   supply_crate: { name: 'Supply Crate', device: 'crate' },
   starter_box: { name: 'Starter Kit', device: 'starter' },
   clone_pad: { name: 'Cloning Pad', device: 'clonepad' },
+
+  // --- Level 0 camp kit (CampMission) ---
+  camp_kit: { name: 'Tent Kit', device: 'campkit', sell: 0 },
+  camp_pole: { name: 'Tent Pole', camp: true, sell: 0 },
+  camp_canvas: { name: 'Tent Canvas', camp: true, sell: 0 },
+  camp_stakes: { name: 'Tent Stakes', camp: true, sell: 0 },
+  camp_lamp: { name: 'Camp Lamp', camp: true, sell: 0 },
+
+  // --- crafted camp gear (game/crafting.js, game/basecamp.js) ---
+  trolley: { name: 'Wheel Trolley', sell: 0, dismantle: ['plank', 'metal_scrap', 'screws'] },
+  distorter: { name: 'Distorter', sell: 0, dismantle: ['wire_spool', 'metal_scrap'] },
+  field_bench: { name: 'Field Workbench', sell: 0, dismantle: ['plank', 'plank', 'metal_scrap', 'screws'] },
 };
 
 export function itemDef(type) {
@@ -141,8 +156,39 @@ export const CRATE_LOOT = [
   ['almond_water', 10], ['canned_food', 8], ['protein_bar', 8], ['energy_drink', 6], ['candy_bar', 5],
   ['medkit', 5], ['bandage', 8], ['antibiotics', 4], ['painkillers', 5], ['splint', 4],
   ['battery', 7], ['glowstick', 6], ['flare', 5], ['sample_jar', 6], ['welder', 2], ['flashlight', 3],
-  ['screws', 5], ['tape_roll', 3], ['multitool', 2], ['almond_milk', 5], ['soda_can', 4], ['noise_maker', 2],
+  ['screws', 5], ['tape_roll', 3], ['almond_milk', 5], ['soda_can', 4], ['noise_maker', 2],
 ];
+
+// Teleport-pad payout ($) per furniture type (Level 0 economy). Tuned so one clone dragging furniture to the
+// pad hall makes a $1500 quota in roughly 20-40 minutes: big pieces are worth the walk, clutter is pocket change.
+export const SELL_VALUE = {
+  couch: 210, bed: 190, desk: 160, bookshelf: 140, filing_cabinet: 125, armchair: 110, tv_crt: 105,
+  computer_tower: 95, printer: 90, crt_monitor: 85, mattress: 80, microwave: 75, chair_office: 70,
+  radio_cassette: 70, hand_truck: 65, table_folding: 60, suitcase: 60, table_round: 55, whiteboard: 55,
+  barrel: 55, toolbox: 50, crate_wood: 50, desk_cubicle_panel: 45, step_ladder: 45, globe: 45,
+  lamp_floor: 45, office_divider_plant: 40, chair_wood: 40, fire_extinguisher: 40, plant_pot: 35,
+  fuel_can: 35, water_jug: 30, chair_folding: 30, lamp_desk: 28, coat_rack: 28, rubber_duck: 25,
+  stool: 25, pallet: 22, desk_phone: 22, clock_desk: 22, keyboard: 18, trash_can: 18, box_large: 18,
+  basketball: 16, traffic_cone: 15, wet_floor_sign: 15, bucket: 15, tire: 14, box_medium: 12, pipe: 12,
+  plant_small: 12, broom: 10, mop: 10, vent_grate: 10, box_small: 8, mug: 6, cinder_block: 6, sandbag: 5,
+  binder: 5, paper_stack: 3, ceiling_tile: 2, barricade_panel: 20, spike_trap: 15,
+};
+
+// $ the teleport pads pay for one prop: by type, else estimated from mass; scaled by condition (state.cond 0..1).
+// Mission props, ragdolls and camp parts are worth nothing (and are left on the pad).
+export function sellValue(type, mass = 5, state = null) {
+  if (type.startsWith('rag_')) return 0;
+  const d = ITEM[type];
+  let v;
+  if (d && d.sell !== undefined) v = d.sell;
+  else if (SELL_VALUE[type] !== undefined) v = SELL_VALUE[type];
+  else if (d?.mission || d?.device || d?.camp) v = 0;
+  else if (d?.material) v = 4;
+  else if (d?.pocket) v = d.use === 'eat' || d.use === 'drink' || d.use === 'heal' ? 5 : 8;
+  else v = Math.round(Math.min(120, Math.max(4, mass * 3)));
+  const cond = state?.cond ?? 1;
+  return Math.round(v * Math.min(1, Math.max(0.3, cond)));
+}
 
 // Crafting recipes (workbench)
 export const RECIPES = [

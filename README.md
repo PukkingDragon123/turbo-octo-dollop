@@ -144,7 +144,16 @@ When Day 7 ends, the dimension is gone and so is anyone still inside it.
 ### Level 0: the Yellow Rooms
 
 * An endless world generated in 24 m chunks from a seed, identical on every peer.
-* Sectors: classic yellow halls, cubicle offices, concrete maintenance areas, flooded sectors with reflective water, pillar halls, dark zones and manila rooms.
+* **Arrival complex** (the same for every seed): the personnel lift stands in an alcove on the north side of a 15 × 15 m **camp clearing** under warm light. A 6 m wide passage leads east to the 18 × 24 m, 6.6 m tall **teleport pad hall**, which has wide exits to the maze on three sides. Blue TELEPORT PADS plates with arrows hang on maze walls up to ~100 m out.
+* Sectors:
+  * classic yellow halls, cubicle offices, concrete maintenance areas, flooded sectors with reflective water, pillar halls, dark zones and manila rooms;
+  * **atriums**: vast open halls with 6 m ceilings, giant pillars and hanging lights;
+  * **corridor sectors**: long parallel corridors with rhythmic lighting;
+  * **low rooms**: 1.85 m ceilings, with crawlspaces you have to crouch through;
+  * **warehouses**: 7 m ceilings and aisles of pallet racking stacked with boxes and crates;
+  * **lounges**: sofas, armchairs, TVs and lamps.
+* Furniture is the loot. Rooms are furnished with sets that make sense together: lounge sets, desk pods, break nooks, bedroom sets, vending machines, lockers, fridges, shelves, arcade cabinets and pianos. Anything can be hauled to the pads and sold.
+* Drawers, cabinets, lockers, fridges, boxes, crates, suitcases, toolboxes, trash cans and vending machines can be **searched** once ([E]) for food, drink and materials.
 * Memorable rooms:
   * chair piles;
   * a bedroom;
@@ -157,8 +166,20 @@ When Day 7 ends, the dimension is gone and so is anyone still inside it.
   * a workshop;
   * an **endless hallway** that keeps sending you back;
   * the remains of previous clones;
-  * a glimpse of the Poolrooms.
+  * a glimpse of the Poolrooms;
+  * break rooms, living rooms, libraries, server rooms and locker rooms.
+* Rare weird rooms:
+  * a **slide pit**: a playground chute and a spiral flume you really slide down into a 2.6 m deep ball pit;
+  * a play tower over a ball pit;
+  * a sunken carpet conversation pit;
+  * towers of stacked chairs rising into the dark;
+  * a room with all its furniture on the ceiling;
+  * giant furniture;
+  * a corridor of identical doors;
+  * an office party frozen mid-celebration;
+  * a room tilted 9°.
 * Lighting is "dynamic baked" fluorescent light. Every vertex stores its strongest lights, so individual tubes can flicker, die or turn red while the whole level renders with a few materials. Moving objects get per-object light probes.
+* Performance: props are culled by size and by walls (a 2D line of sight over the cell grid). Untouched furniture in chunks far from every player is put away and comes back exactly as it was.
 
 ### Level 37: the Poolrooms
 

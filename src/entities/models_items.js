@@ -23,6 +23,7 @@ import './items/food.js';
 import './items/medical.js';
 import './items/gear.js';
 import './items/craft.js';
+import './items/basecraft.js';
 import './items/pool.js';
 
 // Catalogue order (kept from the original library: UI lists and debug galleries iterate it)

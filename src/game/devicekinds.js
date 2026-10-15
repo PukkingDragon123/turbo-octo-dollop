@@ -80,7 +80,9 @@ export class VendingMachine extends ModelDevice {
     super(world, id, key, opts);
     this.drink = key === 'vending_drink';
     this.list = this.drink ? DRINKS : SNACKS;
-    this.price = opts.backrooms ? 25 : 0;
+    // credits can't buy anything: machines out in the Backrooms are free but only hold a few snacks
+    this.price = 0;
+    this.stock = opts.backrooms ? 3 : Infinity;
     this.state = { stuck: null, busy: 0, sold: 0, broken: opts.backrooms ? (Math.random() < 0.2 ? 1 : 0) : 0 };
     this.scr = this.screen('main', 256, 128, 'green', 1.6);
     this.spin = new Map(); // coil index -> t
@@ -101,7 +103,7 @@ export class VendingMachine extends ModelDevice {
         return {
           title: self.drink ? 'R.O.O.M. COLA' : 'SNAK-MATIC 3000',
           subtitle: self.price ? `${g.run.credits} CR` : 'EMPLOYEE PERK',
-          lines: [self.state.broken ? { t: 'OUT OF ORDER. DO NOT SHAKE.', c: 'bad' } : { t: self.price ? 'Snacks billed to your team account.' : 'Complimentary refreshments. Consumption is mandatory.', c: 'dim', s: 20 }],
+          lines: [self.state.broken ? { t: 'OUT OF ORDER. DO NOT SHAKE.', c: 'bad' } : self.state.sold >= self.stock ? { t: 'SOLD OUT.', c: 'bad' } : { t: self.price ? 'Snacks billed to your team account.' : 'Complimentary refreshments. Consumption is mandatory.', c: 'dim', s: 20 }],
           items,
           footer: '[W/S] SELECT  [E] VEND  [TAB] LEAVE',
         };
@@ -110,7 +112,7 @@ export class VendingMachine extends ModelDevice {
     });
   }
   hostAction(a, d, from) {
-    if (a !== 'vend' || this.state.busy || this.state.broken) return;
+    if (a !== 'vend' || this.state.busy || this.state.broken || this.state.sold >= this.stock) return;
     const g = this.world.game;
     if (this.price) {
       if (g.run.credits < this.price) return;
@@ -827,7 +829,12 @@ export class CreepyTV extends ModelDevice {
 }
 
 // ---------------------------------------------------------------------------
+// Extension point: modules can supply their own builder for a device kind (game/crafting.js registers
+// the workbench's crafting station here) without this file importing them.
+export const DEVICE_FACTORIES = {};
+
 export function makeDevice(world, kind, id, opts = {}) {
+  if (DEVICE_FACTORIES[kind]) return DEVICE_FACTORIES[kind](world, id, opts);
   switch (kind) {
     case 'vending_snack': case 'vending_drink': return new VendingMachine(world, id, kind, opts);
     case 'water_cooler': return new WaterCooler(world, id, opts);

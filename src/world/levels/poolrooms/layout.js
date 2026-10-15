@@ -562,7 +562,7 @@ function sp(layout, type, x, z, rotY = 0, extra = {}) {
   layout.spawns.push({ type, x, z, rotY, ...extra });
 }
 
-const LOOT_RARE = [['almond_water', 7], ['protein_bar', 3], ['chips', 2], ['soda_can', 3], ['energy_drink', 2], ['bandage', 3], ['battery', 3], ['glowstick', 2], ['sample_jar', 3], ['canned_food', 2], ['painkillers', 1], ['candy_bar', 2], ['flare', 1], ['medkit', 0.6], ['antibiotics', 0.9], ['flashlight', 0.6], ['multitool', 0.6], ['screws', 1], ['fabric_scrap', 2], ['wire_spool', 1], ['tape_roll', 1], ['water_tester', 0.7]];
+const LOOT_RARE = [['almond_water', 7], ['protein_bar', 3], ['chips', 2], ['soda_can', 3], ['energy_drink', 2], ['bandage', 3], ['battery', 3], ['glowstick', 2], ['sample_jar', 3], ['canned_food', 2], ['painkillers', 1], ['candy_bar', 2], ['flare', 1], ['medkit', 0.6], ['antibiotics', 0.9], ['flashlight', 0.6], ['multitool', 0.6], ['screws', 1], ['fabric_scrap', 2], ['wire_spool', 1], ['tape_roll', 1]];
 
 function spawnZoneProps(layout, c, rng, seed) {
   if (c.pool || c.void) return;

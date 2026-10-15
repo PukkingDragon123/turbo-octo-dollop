@@ -4,19 +4,33 @@
 //    smashes through barricades and retreats after a strike.
 //  - Still Lifes: wrong-anatomy copies of clones. Watchers creep closer when unobserved,
 //    crawlers skitter in the dark and flee light, twins giggle, masses lumber and attack.
+//  - Hounds (creatures/hound.js) gallop at noise and bolt from light; Smilers (creatures/smiler.js)
+//    hang in dark sectors and rush whoever stares at them; Partygoers (creatures/partygoer.js) only
+//    move unobserved and snatch what you hold.
+//  - Every creature respects distorter safe zones (world.safeZones) and, from Day 2 once the team has
+//    a camp, periodically RAIDS it: knocks things over and drags loot away (see Agent.raidUpdate).
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
 import { net } from '../net/net.js';
 import { audio } from '../audio/audio.js';
-import { RAPIER, GROUPS, G, groups, Q } from '../physics/physics.js';
 import { BacteriaBody } from '../entities/monsters/bacteria_body.js';
 import { buildStillLife } from '../entities/optional.js';
+import { buildSmiler } from '../entities/monsters/smiler.js';
+import { RAPIER, G, groups, Q } from '../physics/physics.js';
 import { RNG } from '../core/rng.js';
 import { CELL, HEIGHT } from '../world/levels/yellow/layout.js';
+import { Agent, angleLerp, zoneAt } from './creatures/agent.js';
+import { HoundAI } from './creatures/hound.js';
+import { SmilerAI } from './creatures/smiler.js';
+import { PartygoerAI } from './creatures/partygoer.js';
+import { BaseSystems } from './basecamp.js';
+import { isLitState } from './itemfx.js';
+import { itemName } from './itemdefs.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _f = new THREE.Vector3();
+const _c = new THREE.Color();
 const _frustum = new THREE.Frustum();
 const _m4 = new THREE.Matrix4();
 const UP = new THREE.Vector3(0, 1, 0);
@@ -24,130 +38,15 @@ const UP = new THREE.Vector3(0, 1, 0);
 // Day 1 is the probation day: nothing hunts you yet
 const BACTERIA_BY_DAY = [0, 0, 1, 2, 2, 3, 3, 4];
 const STILL_BY_DAY = [0, 0, 1, 2, 3, 4, 5, 6];
-
-function angleLerp(a, b, t) {
-  let d = b - a;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return a + d * t;
-}
-
-// ===========================================================================
-// Host-side AI agents
-class Agent {
-  constructor(mgr, id, type, pos, halfH = 0.8, radius = 0.35) {
-    this.mgr = mgr;
-    this.world = mgr.world;
-    this.id = id;
-    this.type = type;
-    this.pos = pos.clone();
-    this.vel = new THREE.Vector3();
-    this.yaw = Math.random() * Math.PI * 2;
-    this.state = 'roam';
-    this.stateT = 0;
-    this.path = null;
-    this.pathI = 0;
-    this.repathT = 0;
-    this.look = null;
-    this.attackT = 0;
-    this.hp = 3;
-    this.frozen = false;
-    this.farT = 0;
-    this.radius = radius;
-    this.halfH = halfH;
-    const desc = RAPIER.ColliderDesc.capsule(this.halfH, this.radius).setCollisionGroups(GROUPS.monster).setTranslation(pos.x, pos.y + this.halfH + this.radius, pos.z);
-    this.collider = this.world.physics.world.createCollider(desc);
-    this.world.physics.setUserData(this.collider, { kind: 'monster', monster: this });
-    this.controller = this.world.physics.world.createCharacterController(0.03);
-    this.controller.enableAutostep(0.35, 0.2, false);
-    this.controller.enableSnapToGround(0.3);
-    this.controller.setApplyImpulsesToDynamicBodies(true);
-    this.controller.setCharacterMass(90);
-    this.lastPos = pos.clone();
-    this.stuckT = 0;
-  }
-
-  setState(s) {
-    if (this.state === s) return;
-    this.state = s;
-    this.stateT = 0;
-    this.path = null;
-  }
-
-  // move toward a world point using grid paths; returns remaining distance
-  moveTo(dt, target, speed) {
-    const lvl = this.mgr.level;
-    this.repathT -= dt;
-    const direct = this.pos.distanceTo(target) < 4 && this.world.physics.lineOfSight(_v.copy(this.pos).setY(0.8), _v2.copy(target).setY(0.8));
-    let wp;
-    if (direct) wp = target;
-    else {
-      if (!this.path || this.repathT <= 0 || this.pathI >= this.path.length) {
-        this.repathT = 1.2;
-        this.path = lvl.nav.findPath(this.pos.x, this.pos.z, target.x, target.z, 900);
-        this.pathI = 0;
-      }
-      if (this.path && this.pathI < this.path.length) {
-        const p = this.path[this.pathI];
-        wp = _v2.set(p[0], 0, p[1]);
-        if (Math.hypot(p[0] - this.pos.x, p[1] - this.pos.z) < 0.9) this.pathI++;
-        // string pulling: skip ahead if the next is visible
-        if (this.pathI + 1 < this.path.length) {
-          const n = this.path[this.pathI + 1];
-          if (this.world.physics.lineOfSight(_v.copy(this.pos).setY(0.8), new THREE.Vector3(n[0], 0.8, n[1]))) this.pathI++;
-        }
-      } else wp = target;
-    }
-    const dx = wp.x - this.pos.x, dz = wp.z - this.pos.z;
-    const d = Math.hypot(dx, dz);
-    if (d > 0.05) {
-      const want = Math.atan2(-dx, -dz);
-      this.yaw = angleLerp(this.yaw, want, Math.min(1, dt * 7));
-      this.vel.x += ((dx / d) * speed - this.vel.x) * Math.min(1, dt * 6);
-      this.vel.z += ((dz / d) * speed - this.vel.z) * Math.min(1, dt * 6);
-    } else {
-      this.vel.x *= 0.8;
-      this.vel.z *= 0.8;
-    }
-    return this.pos.distanceTo(target);
-  }
-
-  integrate(dt) {
-    const desired = { x: this.vel.x * dt + 1e-4, y: -0.6 * dt, z: this.vel.z * dt + 7e-5 };
-    this.collider.setTranslation({ x: this.pos.x, y: this.pos.y + this.halfH + this.radius, z: this.pos.z });
-    this.controller.computeColliderMovement(this.collider, desired, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, groups(G.MONSTER, G.STATIC | G.PROP | G.PLAYER));
-    const mv = this.controller.computedMovement();
-    this.pos.x += mv.x; this.pos.y += mv.y; this.pos.z += mv.z;
-    // monsters walk on the static floor (they shove furniture, never climb onto it)
-    const g = this.world.physics.raycast(_v.set(this.pos.x, this.pos.y + 0.9, this.pos.z), _v2.set(0, -1, 0), 4, Q.world);
-    if (g) this.pos.y = g.point.y;
-    else if (this.pos.y < 0) this.pos.y = 0;
-    this.collider.setTranslation({ x: this.pos.x, y: this.pos.y + this.halfH + this.radius, z: this.pos.z });
-    // stuck detection
-    const moved = Math.hypot(this.pos.x - this.lastPos.x, this.pos.z - this.lastPos.z);
-    const wanted = Math.hypot(this.vel.x, this.vel.z) * dt;
-    if (wanted > 0.01 && moved < wanted * 0.25) this.stuckT += dt;
-    else this.stuckT = Math.max(0, this.stuckT - dt * 2);
-    this.lastPos.copy(this.pos);
-  }
-
-  dispose() {
-    try {
-      this.world.physics.world.removeCharacterController(this.controller);
-      this.world.physics.removeCollider(this.collider);
-    } catch (e) { /* freed */ }
-  }
-
-  snapshot() {
-    return {
-      id: this.id, t: this.type, v: this.variant || null,
-      p: [+this.pos.x.toFixed(2), +this.pos.y.toFixed(2), +this.pos.z.toFixed(2)],
-      y: +this.yaw.toFixed(2), s: this.state,
-      l: this.look ? [+this.look.x.toFixed(1), +this.look.y.toFixed(1), +this.look.z.toFixed(1)] : null,
-      a: +this.attackT.toFixed(2), f: this.frozen ? 1 : 0, i: +(this.intensity || 0).toFixed(2),
-    };
-  }
-}
+// newer creatures (land levels only); a solo clone gets a little less of them from Day 4
+const HOUND_BY_DAY = [0, 0, 1, 1, 1, 2, 2, 3];
+const SMILER_BY_DAY = [0, 0, 0, 1, 1, 1, 2, 2];
+const PARTY_BY_DAY = [0, 0, 1, 1, 1, 1, 2, 2];
+// camp raids: seconds between raids by day, raiders per raid
+const RAID_GAP = [0, 0, 150, 130, 115, 100, 90, 75];
+const RAIDERS = [0, 0, 1, 1, 2, 2, 2, 3];
+const STAGE_RAIDS = new Set(['survive', 'sell', 'exit']);
+const LABEL = { bacteria: 'THE BACTERIA', hound: 'HOUND', smiler: 'SMILER', partygoer: 'PARTYGOER' };
 
 class BacteriaAI extends Agent {
   constructor(mgr, id, pos) {
@@ -166,6 +65,8 @@ class BacteriaAI extends Agent {
     this.screeched = false;
   }
 
+  get idleState() { return 'roam'; }
+
   update(dt) {
     const mgr = this.mgr;
     const day = mgr.game.day.day;
@@ -173,28 +74,30 @@ class BacteriaAI extends Agent {
     this.intensity = this.state === 'chase' ? 1 : this.state === 'stalk' ? 0.6 : aggro * 0.5;
     this.stateT += dt;
     this.cooldown -= dt;
+    if (this.zoneReact(dt)) return;
     const players = mgr.alivePlayers();
-    // ---- perception ----
+    // ---- perception (clones inside a distorter field are invisible to it) ----
     let seen = null, seenD = 1e9;
     const head = _v.copy(this.pos).setY(2.0);
     _f.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     for (const pl of players) {
+      if (pl.safe) continue;
       const chest = _v2.copy(pl.pos).setY(pl.pos.y + 0.8);
       const d = head.distanceTo(chest);
       if (d > 32) continue;
       const lum = pl.flash ? 1.2 : mgr.lightAt(pl.pos);
       const visDist = 5 + lum * 20 + (pl.flash ? 8 : 0);
       if (d > visDist) continue;
-      const dir = chest.clone().sub(this.pos).setY(0).normalize();
-      if (d > 4.5 && dir.dot(_f) < -0.1) continue;
+      const dx = chest.x - this.pos.x, dz = chest.z - this.pos.z, dl = Math.hypot(dx, dz) || 1;
+      if (d > 4.5 && (dx * _f.x + dz * _f.z) / dl < -0.1) continue;
       if (!this.world.physics.lineOfSight(head, chest)) continue;
       if (d < seenD) { seen = pl; seenD = d; }
     }
     // hearing
-    const heard = this.world.noise.loudestFor(this.pos, 0.9 + aggro * 0.6, this.noiseT);
+    const heard = this.hear(0.9 + aggro * 0.6, this.noiseT);
     if (seen) {
       this.target = seen;
-      this.lastKnown = seen.pos.clone();
+      this.lastKnown = (this.lastKnown || new THREE.Vector3()).copy(seen.pos);
       this.lostT = 0;
     } else this.lostT += dt;
 
@@ -203,7 +106,21 @@ class BacteriaAI extends Agent {
     if (flare && this.state !== 'flee') {
       this.setState('flee');
       this.fleeFrom = flare.clone();
+      if (this.raid) this.endRaid();
       mgr.sound('bacteria_growl', this.pos, 0.8);
+    }
+
+    // ---- camp raid (abandoned the moment it spots a clone) ----
+    if (this.raid && this.state !== 'flee') {
+      if (seen) { this.raid = null; this.setState('chase'); }
+      else {
+        this.raidUpdate(dt, 2.6 + aggro, { knocks: 4, dragMax: 60 });
+        this.noiseT = this.world.noise.time - 0.1;
+        if (this.raidLabel !== 'smash') this.attackT = Math.max(0, this.attackT - dt * 2);
+        this.integrate(dt);
+        if (Math.random() < dt * 0.5) mgr.sound('bacteria_click', this.pos, 0.8);
+        return;
+      }
     }
 
     // ---- state machine ----
@@ -270,7 +187,7 @@ class BacteriaAI extends Agent {
         const speed = 4.6 + aggro * 1.6 + (this.stateT < 1 ? 1 : 0);
         const d = this.moveTo(dt, tgt, speed);
         this.look = tgt.clone().setY(1.1);
-        if (this.target && !this.target.dead && this.lostT < 0.5 && this.pos.distanceTo(this.target.pos) < 1.7 && this.cooldown <= 0) {
+        if (this.target && !this.target.dead && !this.target.safe && this.lostT < 0.5 && this.pos.distanceTo(this.target.pos) < 1.7 && this.cooldown <= 0) {
           this.setState('attack');
           this.attackT = 0;
           mgr.sound('bacteria_attack', this.pos, 1);
@@ -390,10 +307,13 @@ class StillLifeAI extends Agent {
     this.goal = null;
   }
 
+  get idleState() { return this.variant === 'watcher' || this.variant === 'tall' || this.variant === 'twin' ? 'idle' : 'roam'; }
+
   update(dt) {
     const mgr = this.mgr;
     this.stateT += dt;
     this.cooldown -= dt;
+    if (this.zoneReact(dt)) return;
     if (this.stunT > 0) {
       this.stunT -= dt;
       this.frozen = true;
@@ -403,10 +323,14 @@ class StillLifeAI extends Agent {
     }
     const players = mgr.alivePlayers();
     let near = null, nd = 1e9;
-    for (const p of players) { const d = p.pos.distanceTo(this.pos); if (d < nd) { nd = d; near = p; } }
-    const watched = players.some((p) => mgr.isWatchedBy(p, this.pos.clone().setY(0.8)));
-    const lit = players.some((p) => p.flash && mgr.isWatchedBy(p, this.pos.clone().setY(0.6), 0.93) && p.pos.distanceTo(this.pos) < 14);
-    this.look = near ? near.pos.clone().setY(1.0) : null;
+    for (const p of players) { if (p.safe) continue; const d = p.pos.distanceTo(this.pos); if (d < nd) { nd = d; near = p; } }
+    _v.copy(this.pos).setY(0.8);
+    let watched = false, lit = false;
+    for (const p of players) {
+      if (!watched && mgr.isWatchedBy(p, _v)) watched = true;
+      if (!lit && p.flash && p.pos.distanceTo(this.pos) < 14 && mgr.isWatchedBy(p, _v2.copy(this.pos).setY(0.6), 0.93)) lit = true;
+    }
+    if (near) this.lookAt(near.pos, 1.0); else this.look = null;
     this.frozen = false;
     switch (this.variant) {
       case 'watcher':
@@ -502,6 +426,10 @@ class MonsterView {
     this.snap = snap;
     this.time = 0;
     this.dissolve = 1;
+    this._look = new THREE.Vector3();
+    this._vel = new THREE.Vector3();
+    this._st = {};
+    this.stepT = 0;
     if (this.type === 'bacteria') {
       this.body = new BacteriaBody(snap.id);
       this.root = this.body.root;
@@ -510,16 +438,20 @@ class MonsterView {
         if (Math.random() < 0.08) mgr.dropResidueLocal(p);
       };
       this.presence = audio.loop('bacteria_presence', { pos: this.pos.clone().setY(1.6), volume: 0.9 });
+    } else if (this.type === 'smiler') {
+      this.sm = buildSmiler(snap.id);
+      this.root = this.sm.root;
     } else {
-      this.sl = buildStillLife(this.variant || 'watcher', snap.id);
+      // Still Lifes, Hounds and Partygoers share the sculpted / skinned creature pipeline
+      this.sl = buildStillLife(this.type === 'still' ? this.variant || 'watcher' : this.type, snap.id);
       this.root = this.sl.root;
     }
     this.root.position.copy(this.pos);
     mgr.world.group.add(this.root);
     mgr.world.registerDynamic(this.root);
     // collision proxy so the local player can't walk through monsters
-    const r = this.type === 'bacteria' ? 0.38 : this.sl?.radius || 0.35;
-    const hh = this.type === 'bacteria' ? 0.75 : Math.max(0.2, (this.sl?.height || 1.2) / 2 - r);
+    const r = this.type === 'bacteria' ? 0.38 : this.type === 'smiler' ? 0.24 : this.type === 'hound' ? 0.34 : this.sl?.radius || 0.35;
+    const hh = this.type === 'bacteria' ? 0.75 : this.type === 'smiler' ? 0.5 : this.type === 'hound' ? 0.14 : Math.max(0.2, (this.sl?.height || 1.2) / 2 - r);
     this.colHalf = hh + r;
     this.collider = null;
     if (!net.isHost) {
@@ -552,25 +484,40 @@ class MonsterView {
       this.yaw = angleLerp(this.yaw, a.s.y, Math.min(1, dt * 10));
     }
     while (this.buffer.length > 3 && this.buffer[1].t < rt) this.buffer.shift();
-    const vel = _v2.subVectors(this.pos, this.prevPos).divideScalar(Math.max(dt, 1e-3));
+    const vel = this._vel.subVectors(this.pos, this.prevPos).divideScalar(Math.max(dt, 1e-3));
     this.root.position.copy(this.pos);
     this.root.rotation.y = this.yaw;
     const s = this.snap;
-    const look = s.l ? new THREE.Vector3().fromArray(s.l) : null;
+    const look = s.l ? this._look.fromArray(s.l) : null;
+    const sp = Math.hypot(vel.x, vel.z);
     if (this.body) {
-      this.body.update(dt, { velocity: vel.clone(), state: s.s, lookTarget: look, attackT: s.a, ceilingY: HEIGHT, intensity: s.i, frozen: !!s.f });
-      this.presence?.setPosition(this.pos.clone().setY(1.7));
+      const st = s.s === 'flinch' ? 'hurt' : s.s;
+      this.body.update(dt, { velocity: vel, state: st, lookTarget: look, attackT: s.a, ceilingY: HEIGHT, intensity: s.i, frozen: !!s.f });
+      this.presence?.setPosition(_v.copy(this.pos).setY(1.7));
       this.presence?.setParam?.('intensity', s.s === 'chase' ? 1 : 0.3);
       if (this.dissolve > 0) { this.dissolve = Math.max(0, this.dissolve - dt * 0.8); this.body.setDissolve?.(this.dissolve); }
+    } else if (this.sm) {
+      const st = this._st;
+      st.state = s.s; st.intensity = s.i; st.attacking = s.a; st.lookTarget = look; st.frozen = !!s.f; st.speed = sp;
+      this.sm.update(dt, st);
     } else if (this.sl) {
-      const sp = Math.hypot(vel.x, vel.z);
-      this.sl.update(dt, { speed: sp, moving: sp > 0.1, attacking: s.a, alert: s.s === 'chase' ? 1 : 0.3, lookTarget: look, frozen: !!s.f });
+      const st = this._st;
+      st.speed = sp; st.moving = sp > 0.1; st.attacking = s.a; st.lookTarget = look; st.frozen = !!s.f; st.mode = s.s; st.intensity = s.i;
+      st.alert = s.s === 'chase' || s.s === 'hunt' || s.s === 'run' || s.s === 'pounce' || s.s === 'follow' ? 1 : s.s === 'flinch' || s.s === 'flee' ? 0.8 : 0.3;
+      this.sl.update(dt, st);
+      if (this.type === 'hound' && sp > 0.4) {
+        // padding gallop: soft quick steps, louder at speed
+        this.stepT -= dt * (1.2 + sp * 0.9);
+        if (this.stepT <= 0) { this.stepT = 1; audio.play('hound_step', { pos: _v.copy(this.pos).setY(0.2), volume: Math.min(1, 0.25 + sp * 0.12), intensity: Math.min(1, sp / 6) }); }
+      }
     }
     this.collider?.setTranslation({ x: this.pos.x, y: this.pos.y + this.colHalf, z: this.pos.z });
   }
 
   headPos(out) {
     if (this.body?.getHeadWorldPosition) return this.body.getHeadWorldPosition(out);
+    if (this.sm) return out.copy(this.pos).setY(this.pos.y + 1.6);
+    if (this.type === 'hound') return out.copy(this.pos).setY(this.pos.y + 0.6);
     return out.copy(this.pos).setY(this.pos.y + (this.sl?.height || 1.2) * 0.85);
   }
 
@@ -580,6 +527,7 @@ class MonsterView {
     this.root.removeFromParent();
     this.root.userData.dispose?.(); // Still Life instance resources (shared geometry/materials stay cached)
     this.body?.dispose?.();
+    this.sm?.dispose?.();
     if (this.collider) { try { this.mgr.world.physics.removeCollider(this.collider); } catch (e) { /* freed */ } }
   }
 }
@@ -599,41 +547,66 @@ export class MonsterManager {
     this.residue = []; // {pos, t}
     this.residueMeshes = [];
     this.rng = new RNG(level.seed ^ 0xbac7);
+    this.typeCool = {};       // creature type -> seconds before it may spawn again
+    this.raidT = 70;          // host: seconds to the next camp raid
+    this.raidActive = 0;
+    this.fakeCamp = null;     // debug / test camp when the mission has none
+    this._players = [];
+    this._playerPool = [];
+    this._playersAt = -1;
+    this._litList = [];
+    this._litAt = -1;
     net.onClient('mons', (list) => this._onSnap(list));
     net.onClient('hurt', (d) => this._onHurt(d));
     net.onClient('residue', (d) => this._addResidueMesh(new THREE.Vector3().fromArray(d.p)));
+    net.onClient('yoink', (d) => this._onYoink(d));
     net.onHost('residueLocal', (d) => this.dropResidue(new THREE.Vector3().fromArray(d.p)));
     net.onHost('flash', (d) => this._hostFlash(d));
+    net.onHost('yoinked', (d, from) => this._hostYoinked(d, from));
+    // camp systems: distorter safe zones, wheel trolleys, field workbench (and world.safeZones / world.isSafe)
+    this.base = new BaseSystems(this);
   }
 
   // ---------- host helpers ----------
+  // living players in this world, rebuilt once per frame (records are pooled: do not keep them)
   alivePlayers() {
-    const out = [];
+    if (this._playersAt === this.time) return this._players;
+    this._playersAt = this.time;
+    const out = this._players;
+    out.length = 0;
+    let n = 0;
+    const rec = (id, pos, flash, yaw, pitch) => {
+      const r = this._playerPool[n] || (this._playerPool[n] = { id: null, pos: null, flash: false, dead: false, yaw: 0, pitch: 0, safe: false });
+      n++;
+      r.id = id; r.pos = pos; r.flash = flash; r.yaw = yaw; r.pitch = pitch; r.dead = false;
+      r.safe = !!zoneAt(this.world, pos);
+      out.push(r);
+    };
     const l = this.game.local;
-    if (!l.dead && l.world) out.push({ id: net.selfId, pos: l.pos, flash: l.flashOn, dead: false, yaw: l.yaw, pitch: l.pitch });
+    if (!l.dead && l.world) rec(net.selfId, l.pos, l.flashOn, l.yaw, l.pitch);
     for (const r of this.game.remotes.values()) {
       if (r.dead || !r.inWorld) continue;
-      out.push({ id: r.id, pos: r.pos, flash: !!r.pose?.fl, dead: false, yaw: r.yaw, pitch: r.pitch });
+      rec(r.id, r.pos, !!r.pose?.fl, r.yaw, r.pitch);
     }
     return out;
   }
 
   lightAt(pos) {
-    const c = new THREE.Color();
-    this.level.sampleLight(_v.copy(pos).setY(1.2), c);
-    return Math.min(1.2, c.r * 0.3 + c.g * 0.59 + c.b * 0.11);
+    this.level.sampleLight(_v.copy(pos).setY(1.2), _c);
+    return Math.min(1.2, _c.r * 0.3 + _c.g * 0.59 + _c.b * 0.11);
   }
 
   // is the player looking toward point p (with line of sight)?
   isWatchedBy(pl, p, dotMin = 0.72) {
-    const eye = _v.copy(pl.pos).setY(pl.pos.y + 1.15);
-    const dir = _v2.subVectors(p, eye);
-    const d = dir.length();
-    if (d > 35) return false;
-    dir.divideScalar(d);
-    const fwd = new THREE.Vector3(-Math.sin(pl.yaw) * Math.cos(pl.pitch), Math.sin(pl.pitch), -Math.cos(pl.yaw) * Math.cos(pl.pitch));
-    if (fwd.dot(dir) < dotMin) return false;
-    return this.world.physics.lineOfSight(eye, p);
+    const ex = pl.pos.x, ey = pl.pos.y + 1.15, ez = pl.pos.z;
+    let dx = p.x - ex, dy = p.y - ey, dz = p.z - ez;
+    const d = Math.hypot(dx, dy, dz);
+    if (d > 35 || d < 1e-4) return d < 1e-4;
+    dx /= d; dy /= d; dz /= d;
+    const cp = Math.cos(pl.pitch);
+    const dot = -Math.sin(pl.yaw) * cp * dx + Math.sin(pl.pitch) * dy - Math.cos(pl.yaw) * cp * dz;
+    if (dot < dotMin) return false;
+    return this.world.physics.lineOfSight(_f.set(ex, ey, ez), p);
   }
 
   nearestFlare(pos, r) {
@@ -644,12 +617,29 @@ export class MonsterManager {
     return best;
   }
 
+  // nearest lit flare / glowstick (Hounds and Smilers can't stand any light source)
+  nearestLight(pos, r) {
+    if (this._litAt !== this.time) {
+      this._litAt = this.time;
+      this._litList.length = 0;
+      for (const p of this.world.props.props.values()) if ((p.type === 'flare' || p.type === 'glowstick') && isLitState(p.type, p.state)) this._litList.push(p);
+    }
+    let best = null, bd = r * r;
+    for (const p of this._litList) {
+      const d = p.root.position.distanceToSquared(pos);
+      if (d < bd) { bd = d; best = p.root.position; }
+    }
+    return best;
+  }
+
   sound(name, pos, vol = 1) {
     this.world.fxAll({ k: 'snd', n: name, p: [+pos.x.toFixed(2), 1.6, +pos.z.toFixed(2)], v: vol });
   }
 
   damagePlayer(pl, dmg, kind, from, cause, opts = {}) {
-    const d = { dmg, kind, from: from.toArray(), cause, heavy: opts.heavy };
+    // a distorter field protects whoever stands inside it
+    if (zoneAt(this.world, pl.pos)) return;
+    const d = { dmg, kind, from: from.toArray(), cause, heavy: opts.heavy, san: opts.sanity || 0 };
     if (pl.id === net.selfId) this._onHurt(d);
     else net.toPeer(pl.id, 'hurt', d);
     this.world.fxAll({ k: 'blood', p: [pl.pos.x, pl.pos.y + 0.9, pl.pos.z], n: 14 });
@@ -659,6 +649,7 @@ export class MonsterManager {
     const l = this.game.local;
     if (l.dead) return;
     const died = l.survival.damage(d.dmg, d.kind, { cause: d.cause, heavy: d.heavy });
+    if (d.san) l.survival.sanity = Math.max(0, l.survival.sanity - d.san);
     l.shake = 1;
     audio.play('hurt', { volume: 1 });
     // knockback away from attacker
@@ -676,6 +667,8 @@ export class MonsterManager {
       a.setState('stunned');
       a.vel.addScaledVector(dir, 3);
       this.sound('bacteria_growl', a.pos, 1);
+    } else if (a.onHit) {
+      if (a.onHit(dir)) this._kill(a);
     } else {
       a.hp--;
       a.vel.addScaledVector(dir, 4);
@@ -687,7 +680,7 @@ export class MonsterManager {
   _kill(a) {
     this.world.fxAll({ k: 'sparks', p: a.pos.clone().setY(0.6).toArray(), n: 10 });
     this.world.fxAll({ k: 'dust', p: a.pos.clone().setY(0.5).toArray(), n: 30, c: [0.85, 0.75, 0.6] });
-    this.dropResidue(a.pos, 'still_life_tissue');
+    if (a.type !== 'smiler') this.dropResidue(a.pos, 'still_life_tissue');
     a.dispose();
     this.agents.delete(a.id);
   }
@@ -722,17 +715,53 @@ export class MonsterManager {
 
   // debug / scripted spawns (host)
   debugSpawn(type, pos, variant = 'watcher') {
-    const a = type === 'bacteria' ? new BacteriaAI(this, this.nextId++, pos) : new StillLifeAI(this, this.nextId++, pos, variant);
+    const a = this._make(type, pos, variant);
     this.agents.set(a.id, a);
     return a;
   }
 
+  // console helper: spawn a creature `dist` metres in front of the local player
+  spawnNear(type = 'hound', dist = 6, variant = 'watcher') {
+    const l = this.game.local;
+    const p = new THREE.Vector3(l.pos.x - Math.sin(l.yaw) * dist, 0, l.pos.z - Math.cos(l.yaw) * dist);
+    return this.debugSpawn(type, p, variant);
+  }
+
+  _make(type, pos, variant) {
+    const id = this.nextId++;
+    switch (type) {
+      case 'bacteria': return new BacteriaAI(this, id, pos);
+      case 'hound': return new HoundAI(this, id, pos);
+      case 'smiler': return new SmilerAI(this, id, pos);
+      case 'partygoer': return new PartygoerAI(this, id, pos);
+      default: return new StillLifeAI(this, id, pos, variant);
+    }
+  }
+
+  typeCooldown(type, sec) { this.typeCool[type] = Math.max(this.typeCool[type] || 0, sec); }
+
+  // ---------- camp ----------
+  // the team's camp ({pos, radius, built}) once it exists: mission.camp, else a debug camp
+  camp() {
+    const m = this.level.mission;
+    const c = m?.camp;
+    if (c && c.pos && c.built !== false) return c;
+    return this.fakeCamp;
+  }
+
+  _raidsAllowed() {
+    const m = this.level.mission;
+    if (this.fakeCamp && this.camp() === this.fakeCamp) return true;
+    return !m?.stage || STAGE_RAIDS.has(m.stage);
+  }
+
   // ---------- spawning ----------
-  _spawnPoint(minD, maxD) {
+  // a free cell-centre point minD..maxD away from a random player (or from `around`), out of sight
+  _spawnPoint(minD, maxD, around = null, accept = null) {
     const players = this.alivePlayers();
     if (!players.length) return null;
     for (let tries = 0; tries < 30; tries++) {
-      const base = players[this.rng.int(0, players.length - 1)].pos;
+      const base = around || players[this.rng.int(0, players.length - 1)].pos;
       const a = this.rng.next() * Math.PI * 2;
       const d = this.rng.range(minD, maxD);
       const x = base.x + Math.cos(a) * d, z = base.z + Math.sin(a) * d;
@@ -741,14 +770,20 @@ export class MonsterManager {
       if (!c || c.special?.kind === 'spawn') continue;
       const cx = (Math.floor(x / CELL) + 0.5) * CELL, cz = (Math.floor(z / CELL) + 0.5) * CELL;
       const p = new THREE.Vector3(cx, 0, cz);
-      if (players.some((pl) => pl.pos.distanceTo(p) < minD * 0.8)) continue;
-      if (players.some((pl) => this.isWatchedBy(pl, p.clone().setY(1.2), 0.5))) continue;
+      const minSep = around ? Math.min(minD, 14) * 0.8 : minD * 0.8;
+      if (players.some((pl) => pl.pos.distanceTo(p) < minSep)) continue;
+      if (players.some((pl) => this.isWatchedBy(pl, _v2.copy(p).setY(1.2), 0.5))) continue;
+      if (zoneAt(this.world, p, 2)) continue;
+      const camp = this.camp();
+      if (!around && camp && p.distanceTo(camp.pos) < camp.radius + 6) continue;
+      if (accept && !accept(p)) continue;
       return p;
     }
     return null;
   }
 
   _hostSpawning(dt) {
+    for (const k in this.typeCool) this.typeCool[k] -= dt;
     this.spawnT -= dt;
     if (this.spawnT > 0) return;
     this.spawnT = 6;
@@ -756,40 +791,164 @@ export class MonsterManager {
     const depthBonus = Math.min(2, this.level.depth - 1);
     const wantB = Math.min(5, BACTERIA_BY_DAY[day] + (day >= 3 ? depthBonus : 0));
     const wantS = STILL_BY_DAY[day] + depthBonus;
-    const bac = [...this.agents.values()].filter((a) => a.type === 'bacteria');
-    const sl = [...this.agents.values()].filter((a) => a.type === 'still');
-    if (bac.length < wantB) {
-      const p = this._spawnPoint(28, 42);
-      if (p) {
-        const a = new BacteriaAI(this, this.nextId++, p);
-        this.agents.set(a.id, a);
-      }
+    let bac = 0, sl = 0, hound = 0, smiler = 0, party = 0;
+    for (const a of this.agents.values()) {
+      if (a.raid) continue; // raiders come on top of the day's population
+      if (a.type === 'bacteria') bac++;
+      else if (a.type === 'still') sl++;
+      else if (a.type === 'hound') hound++;
+      else if (a.type === 'smiler') smiler++;
+      else if (a.type === 'partygoer') party++;
     }
-    if (sl.length < wantS) {
+    if (bac < wantB) {
+      const p = this._spawnPoint(28, 42);
+      if (p) this.debugSpawn('bacteria', p);
+    }
+    if (sl < wantS) {
       const p = this._spawnPoint(14, 30);
       if (p) {
         const variants = day < 3 ? [['watcher', 3], ['tall', 2], ['twin', 1]] : [['watcher', 3], ['crawler', 3], ['twin', 2], ['mass', 1], ['tall', 1]];
-        const v = this.rng.weighted(variants);
-        const a = new StillLifeAI(this, this.nextId++, p, v);
-        this.agents.set(a.id, a);
+        this.debugSpawn('still', p, this.rng.weighted(variants));
+      }
+    }
+    // newer creatures stay on dry land (no hounds paddling through the Poolrooms)
+    if (this.world.type !== 'poolrooms' && !this.level.game.isLobby) {
+      const solo = this.alivePlayers().length <= 1 && day >= 4 ? 1 : 0;
+      const want = (tbl) => Math.max(0, (tbl[day] || 0) - solo);
+      if (hound < want(HOUND_BY_DAY) && !(this.typeCool.hound > 0)) {
+        const p = this._spawnPoint(22, 36);
+        if (p) this.debugSpawn('hound', p);
+      }
+      if (smiler < want(SMILER_BY_DAY) && !(this.typeCool.smiler > 0)) {
+        // only where it is properly dark
+        const p = this._spawnPoint(12, 28, null, (q) => this.lightAt(q) < 0.12);
+        if (p) this.debugSpawn('smiler', p);
+        else this.typeCooldown('smiler', 12);
+      }
+      if (party < (PARTY_BY_DAY[day] || 0) && !(this.typeCool.partygoer > 0)) {
+        // left standing among furniture, like a mannequin after the office party
+        const p = this._spawnPoint(16, 30, null, (q) => {
+          let n = 0;
+          this.world.props.query(q, 2.6, (pr) => { if (pr.mass > 6) n++; });
+          return n > 0;
+        });
+        if (p) this.debugSpawn('partygoer', p);
       }
     }
     // cull agents far from everyone (they'll respawn nearer)
     const players = this.alivePlayers();
     for (const a of [...this.agents.values()]) {
-      const nd = Math.min(...players.map((p) => p.pos.distanceTo(a.pos)), 1e9);
-      if (nd > 70 || !this.level.isChunkLoaded(a.pos.x, a.pos.z) || a.vanish) {
+      let nd = 1e9;
+      for (const p of players) nd = Math.min(nd, p.pos.distanceTo(a.pos));
+      if ((nd > 70 && !a.raid) || !this.level.isChunkLoaded(a.pos.x, a.pos.z) || a.vanish) {
         a.dispose();
         this.agents.delete(a.id);
       }
     }
   }
 
+  // ---------- camp raids (host) ----------
+  _hostRaids(dt) {
+    const camp = this.camp();
+    const day = this.game.day.day;
+    if (!camp || day < 2 || !this._raidsAllowed() || this.world.type === 'poolrooms') { this.raidT = Math.max(this.raidT, 45); return; }
+    this.raidT -= dt;
+    if (this.raidT > 0) return;
+    this.raidT = (RAID_GAP[day] || 90) + this.rng.range(-20, 20);
+    this.startRaid();
+  }
+
+  // send creatures at the camp now (also a console helper: __game.world.monsters.startRaid())
+  startRaid(count = null) {
+    const camp = this.camp();
+    if (!camp || !net.isHost) return 0;
+    if (!this.level.isChunkLoaded(camp.pos.x, camp.pos.z)) return 0; // nobody near enough to witness it
+    const day = Math.max(2, this.game.day.day);
+    const n = count ?? RAIDERS[Math.min(7, day)] ?? 1;
+    const raiders = [];
+    // creatures already out there turn toward the camp first
+    const cands = [...this.agents.values()].filter((a) => !a.raid && (a.type === 'bacteria' || a.type === 'hound' || a.type === 'partygoer') && a.state !== 'chase' && a.state !== 'attack' && a.pos.distanceTo(camp.pos) < 60);
+    cands.sort((a, b) => a.pos.distanceTo(camp.pos) - b.pos.distanceTo(camp.pos));
+    for (const a of cands) { if (raiders.length >= n) break; raiders.push(a); }
+    // then fresh ones from the dark around it
+    const types = day >= 3 ? ['hound', 'bacteria', 'partygoer', 'hound'] : ['hound', 'partygoer'];
+    for (let i = raiders.length; i < n; i++) {
+      const p = this._spawnPoint(16, 28, camp.pos);
+      if (!p) break;
+      raiders.push(this.debugSpawn(types[(i + this.rng.int(0, 3)) % types.length], p));
+    }
+    for (const a of raiders) a.startRaid(camp);
+    if (raiders.length) {
+      this.raidActive += raiders.length;
+      const covered = zoneAt(this.world, camp.pos);
+      net.toAll('hq', { text: covered ? 'CAMP SENSOR: movement closing on your camp. Distorter field is up.' : 'CAMP SENSOR: movement closing on your camp. It is not protected.', from: 'CAMP' });
+      this.world.fxAll({ k: 'snd', n: 'radio_static_burst', p: camp.pos.toArray(), v: 0.6 });
+    }
+    return raiders.length;
+  }
+
+  raidEnded() { this.raidActive = Math.max(0, this.raidActive - 1); }
+
+  onRaidKnock(a, p) {
+    const snd = a.type === 'bacteria' ? 'bacteria_attack' : a.type === 'hound' ? 'hound_snarl' : 'party_giggle';
+    this.sound(snd, a.pos, 0.9);
+    this.world.fxAll({ k: 'impact', m: p.material, p: p.root.position.toArray(), i: 0.9 });
+    this.world.noise.emit(p.root.position, 16, 'smash');
+  }
+
+  // a creature bounced off a distorter field
+  onRepelled(a, z, edge) {
+    const snd = a.type === 'bacteria' ? 'bacteria_growl' : a.type === 'hound' ? 'hound_yelp' : a.type === 'smiler' ? 'smiler_hiss' : a.type === 'partygoer' ? 'party_giggle' : 'stilllife_scream';
+    this.sound(snd, a.pos, 0.9);
+    this.base.onRepelled(z, edge, a);
+  }
+
+  // ---------- partygoer snatching ----------
+  // victim's client: hand over the held item (or a random one)
+  _onYoink(d) {
+    const l = this.game.local;
+    if (l.dead) return;
+    const inv = l.inv;
+    let slot = inv.current ? inv.selected : -1;
+    if (slot < 0) {
+      const full = [];
+      inv.slots.forEach((it, i) => { if (it) full.push(i); });
+      if (full.length) slot = full[Math.floor(Math.random() * full.length)];
+    }
+    let type = null, state = null;
+    if (slot >= 0) {
+      const it = inv.remove(slot);
+      type = it.type; state = it.state;
+      if (type === 'flashlight' && l.flashOn && inv.find('flashlight') < 0) l.flashOn = false;
+      l._cancelUse?.();
+      this.game.ui.toast(`Something snatched your ${itemName(type)}!`, 'bad');
+    } else this.game.ui.toast('Something shoved you from behind!', 'bad');
+    audio.play('party_giggle', { volume: 0.9 });
+    l.survival.sanity = Math.max(0, l.survival.sanity - 6);
+    net.toHost('yoinked', { mon: d.mon, type, state });
+  }
+
+  _hostYoinked(d, from) {
+    const a = this.agents.get(d.mon);
+    const victim = this.alivePlayers().find((p) => p.id === from);
+    if (!d.type) {
+      // empty pockets: a shove and a giggle
+      if (victim && a) this.damagePlayer(victim, 8, 'blunt', a.pos, 'a Partygoer');
+      return;
+    }
+    const at = a ? _v.set(a.pos.x - Math.sin(a.yaw) * 0.5, 0.9, a.pos.z - Math.cos(a.yaw) * 0.5) : _v.copy(victim?.pos || this.game.local.pos).setY(1);
+    const p = this.world.props.spawn(d.type, at.clone(), new THREE.Quaternion(), { state: d.state || {} });
+    if (p && a?.carryProp) a.carryProp(p);
+  }
+
   // ---------- update ----------
   update(dt) {
     this.time += dt;
     if (net.isHost) {
-      if (!this.level.game.isLobby) this._hostSpawning(dt);
+      if (!this.level.game.isLobby) {
+        this._hostSpawning(dt);
+        this._hostRaids(dt);
+      }
       for (const a of this.agents.values()) a.update(Math.min(dt, 0.05));
       this.snapT -= dt;
       if (this.snapT <= 0) {
@@ -799,10 +958,12 @@ export class MonsterManager {
     }
     for (const v of this.views.values()) v.update(dt);
     this._localPerception(dt);
+    this.base.update(dt);
   }
 
   _onSnap(list) {
-    const seen = new Set();
+    const seen = this._seenIds || (this._seenIds = new Set());
+    seen.clear();
     for (const s of list) {
       seen.add(s.id);
       let v = this.views.get(s.id);
@@ -826,7 +987,7 @@ export class MonsterManager {
     _frustum.setFromProjectionMatrix(_m4);
     for (const v of this.views.values()) {
       const d = v.pos.distanceTo(l.pos);
-      const w = v.type === 'bacteria' ? 1 : 0.5;
+      const w = v.type === 'bacteria' ? 1 : v.type === 'smiler' || v.type === 'hound' ? 0.75 : 0.5;
       near = Math.max(near, w * Math.max(0, 1 - d / 22));
       if (d < 26 && _frustum.containsPoint(v.headPos(_v))) {
         if (this.world.physics.lineOfSight(cam.position, _v)) {
@@ -834,7 +995,8 @@ export class MonsterManager {
           v.seenByLocal = true;
         }
       }
-      if (v.type === 'bacteria' && v.snap.s === 'chase' && d < 25) chased = true;
+      if ((v.type === 'bacteria' || v.type === 'hound') && (v.snap.s === 'chase' || v.snap.s === 'pounce') && d < 25) chased = true;
+      if (v.type === 'smiler' && v.snap.s === 'charge' && d < 20) chased = true;
     }
     this.localNear = near;
     this.localVisible = visible;
@@ -855,13 +1017,14 @@ export class MonsterManager {
       const ndc = hp.clone().project(camera);
       const centred = 1 - Math.min(1, Math.hypot(ndc.x, ndc.y));
       const q = Math.max(0.2, centred) * Math.max(0.3, 1 - d / 24);
-      if (v.type === 'bacteria') out.push({ subject: 'THE BACTERIA', key: `bac:${v.id}`, value: Math.round(220 * q + 40), dist: d, ach: 'photo_bacteria' });
+      if (v.type === 'bacteria') out.push({ subject: LABEL.bacteria, key: `bac:${v.id}`, value: Math.round(220 * q + 40), dist: d, ach: 'photo_bacteria' });
+      else if (LABEL[v.type]) out.push({ subject: LABEL[v.type], key: `${v.type}:${v.id}`, value: Math.round(160 * q + 30), dist: d });
       else out.push({ subject: `STILL LIFE (${(v.variant || '').toUpperCase()})`, key: `sl:${v.id}`, value: Math.round(140 * q + 25), dist: d, ach: 'stilllife' });
     }
     return out;
   }
 
-  // camera flash: Still Lifes in front of the flash freeze for a moment
+  // camera flash: Still Lifes in front of the flash freeze for a moment, Hounds/Smilers bolt
   flashStun(camPos) {
     net.toHost('flash', { p: camPos.toArray() });
   }
@@ -869,14 +1032,15 @@ export class MonsterManager {
   _hostFlash(d) {
     const p = new THREE.Vector3().fromArray(d.p);
     for (const a of this.agents.values()) {
-      if (a.type !== 'still' || a.pos.distanceTo(p) > 12) continue;
-      if (!this.world.physics.lineOfSight(p, a.pos.clone().setY(0.8))) continue;
+      if (a.type === 'bacteria' || a.pos.distanceTo(p) > 12) continue;
+      if (!this.world.physics.lineOfSight(p, _v.copy(a.pos).setY(0.8))) continue;
+      if (a.onFlash) { a.onFlash(p); continue; }
       a.stunT = 2.5;
       a.vel.set(0, 0, 0);
     }
   }
 
-  playFx() {}
+  playFx(m, p) { this.base.playFx(m, p); }
 
   dispose() {
     for (const a of this.agents.values()) a.dispose();
@@ -884,9 +1048,9 @@ export class MonsterManager {
     for (const v of this.views.values()) v.dispose();
     this.views.clear();
     for (const m of this.residueMeshes) m.removeFromParent();
-    for (const t of ['mons', 'hurt', 'residue']) net.clientHandlers.delete(t);
-    net.hostHandlers.delete('residueLocal');
-    net.hostHandlers.delete('flash');
+    this.base.dispose();
+    for (const t of ['mons', 'hurt', 'residue', 'yoink']) net.clientHandlers.delete(t);
+    for (const t of ['residueLocal', 'flash', 'yoinked']) net.hostHandlers.delete(t);
   }
 }
 

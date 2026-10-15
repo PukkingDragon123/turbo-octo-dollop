@@ -1,12 +1,23 @@
-// Tool actions: welding (real fixed physics joints), multitool dismantling, sample collection
-// and melee swings. Client side produces hold actions; the host owns the physical results.
+// Tool actions: welding (real fixed physics joints), the built-in multitool (attach / detach / dismantle,
+// camp-part snapping), sample collection and melee swings. Client side produces hold actions; the host
+// owns the physical results.
+//
+// Built-in multitool (empty hand, or a held item without an RMB use, + hold RMB):
+//   * camp part near its ghost marker -> ATTACH it to the camp (CampMission.hostCampAttach)
+//   * welded prop                      -> DETACH (remove its joints)
+//   * mode 'attach' (default)          -> ATTACH: fixed joint to whatever it touches (prop or world)
+//   * mode 'dismantle' ([R] toggles)   -> DISMANTLE into materials
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
+import { input } from '../core/input.js';
 import { net } from '../net/net.js';
 import { RAPIER, Q } from '../physics/physics.js';
 import { audio } from '../audio/audio.js';
-import { itemDef, SAMPLES } from './itemdefs.js';
+import { itemDef, itemName, SAMPLES, sellValue } from './itemdefs.js';
 import { profile } from '../core/profile.js';
+
+const MT_RANGE = 2.6;
+const MT_COLORS = { attach: 0x6fe0ff, camp: 0x8dffa6, detach: 0xffa040, dismantle: 0xff7a30 };
 
 const _f = new THREE.Vector3();
 const _v = new THREE.Vector3();
@@ -19,6 +30,7 @@ export class Tools {
     this.beads = []; // visual weld beads {mesh, t}
     this._bound = false;
     this.weldLoop = null;
+    this.beam = null; // multitool zap beam (local visual)
     this.bindHost();
   }
 
@@ -27,7 +39,9 @@ export class Tools {
     net.onHost('weldTick', (d, from) => this._hostWeldTick(d, from));
     net.onHost('dismantle', (d, from) => this._hostDismantle(d, from));
     net.onHost('hit', (d, from) => this._hostHit(d, from));
+    net.onHost('mt', (d, from) => this._hostMultitool(d, from));
     net.onClient('welded', (d) => this._showBead(d));
+    net.onClient('mtMsg', (d) => { this.game.ui.toast(d.text, d.kind || 'warn'); if (d.kind !== 'good') audio.play('ui_error', { volume: 0.35, bus: 'ui' }); });
   }
 
   get world() { return this.game.world; }
@@ -153,20 +167,28 @@ export class Tools {
     if (other) { other.welds = other.welds || []; other.welds.push(rec); }
     prop.hp = Math.max(prop.hp, 140);
     prop.touched = true;
+    // replicate "is attached" so every peer's multitool knows to offer DETACH
+    w.props.setState(prop.id, { welded: prop.welds.length });
+    if (other) w.props.setState(other.id, { welded: other.welds.length });
     net.toAll('welded', { a: prop.id, lp: a1.toArray() });
     w.fxAll({ k: 'snd', n: 'spark', p: point.toArray(), v: 0.8 });
   }
 
   unweld(prop) {
     const w = this.world;
-    if (!prop.welds) return;
+    if (!prop.welds?.length) return;
     for (const rec of prop.welds) {
       try { w.physics.world.removeImpulseJoint(rec.joint, true); } catch (e) { /* gone */ }
       if (rec.anchor) w.physics.removeBody(rec.anchor);
       const other = rec.b != null ? w.props.get(rec.a === prop.id ? rec.b : rec.a) : null;
-      if (other?.welds) other.welds = other.welds.filter((x) => x !== rec);
+      if (other?.welds) {
+        other.welds = other.welds.filter((x) => x !== rec);
+        if (!other.dead) w.props.setState(other.id, { welded: other.welds.length });
+      }
     }
     prop.welds = [];
+    prop.body?.wakeUp();
+    if (!prop.dead) w.props.setState(prop.id, { welded: 0 });
   }
 
   _showBead(d) {
@@ -181,39 +203,197 @@ export class Tools {
     this.beads.push({ mesh: m, t: 0 });
   }
 
-  // ---------------- multitool ----------------
-  _multitoolAction() {
-    let t = 0, target = null, soundT = 0;
+  // ---------------- built-in multitool ----------------
+  // What the multitool would do to this prop: { act, label, dur, prompt } | { blocked: text } | null
+  mtVerdict(prop, player = this.game.local) {
+    if (!prop || prop.dead || !this.world) return null;
+    const m = this.world.level?.mission;
+    const name = itemName(prop.type);
+    if (prop.def.camp) {
+      const c = m?.campAttachCheck?.(prop);
+      if (!c) return null;
+      return c.ok ? { act: 'camp', label: 'ATTACHING', dur: 0.45, prompt: `[RMB] ATTACH ${name.toUpperCase()}` } : { blocked: c.text, prompt: `${name} — ${c.text}` };
+    }
+    if (prop.frozen || prop.def.static) return null;
+    if (prop.state.welded > 0) return { act: 'detach', label: 'DETACHING', dur: 0.7, prompt: '[RMB] DETACH' };
+    if ((player.mtMode || 'attach') === 'dismantle') {
+      const def = itemDef(prop.type);
+      if (!def.dismantle && !def.into?.length && !def.breakF) return { blocked: `Can't take the ${name.toLowerCase()} apart`, prompt: `[RMB] Dismantle — not possible  [${input.keyName('rotate')}] Mode` };
+      return { act: 'dismantle', label: 'DISMANTLING', dur: 2.2, prompt: `[RMB] DISMANTLE  [${input.keyName('rotate')}] Mode` };
+    }
+    return { act: 'attach', label: 'ATTACHING', dur: 0.7, prompt: `[RMB] ATTACH  [${input.keyName('rotate')}] Mode` };
+  }
+
+  // interaction prompt for a prop the empty-handed clone is looking at (name, pad value, multitool action)
+  mtPrompt(prop, player = this.game.local) {
+    const v = this.mtVerdict(prop, player);
+    if (!v) return null;
+    if (prop.def.camp) return v.prompt;
+    const m = this.world.level?.mission;
+    const val = m?.showValues ? sellValue(prop.type, prop.mass, prop.state) : 0;
+    return `${itemName(prop.type)}${val ? ` $${val}` : ''} · [LMB] Drag · ${v.prompt}`;
+  }
+
+  // the hold-RMB action (item = the old multitool item, or null for the built-in one)
+  _multitoolAction(item, player = this.game.local) {
+    let t = 0, target = null, act = null, soundT = 0, sparkT = 0, finished = false, warned = false;
+    const ui = this.game.ui;
+    const reset = () => { t = 0; target = null; act = null; ui.progress(null); this._beamOff(); };
     return {
+      multitool: true,
       tick: (dt) => {
-        const hit = this._aim(2.0);
-        const prop = hit?.ud?.kind === 'prop' ? hit.ud.prop : null;
-        // devices can consume multitool use (generator bolts etc.)
-        if (hit?.ud?.kind === 'device' && hit.ud.device.toolUse) {
-          hit.ud.device.toolUse('multitool', this.game.local, dt, hit);
+        if (finished) return; // one action per RMB press
+        let prop = null, point = null, normal = null;
+        if (player.grab && player.grab.id != null) {
+          prop = this.world.props.get(player.grab.id) || null;
+          point = player.grab.point || prop?.root.position;
+        } else {
+          const hit = this._aim(MT_RANGE);
+          // devices can consume multitool use (generator bolts etc.)
+          if (hit?.ud?.kind === 'device' && hit.ud.device.toolUse) {
+            hit.ud.device.toolUse('multitool', player, dt, hit);
+            this._beamTo(hit.point, 'attach', dt);
+            return;
+          }
+          if (hit?.ud?.kind === 'prop') { prop = hit.ud.prop; point = hit.point; normal = hit.normal; }
+        }
+        const v = prop ? this.mtVerdict(prop, player) : null;
+        if (!v || v.blocked) {
+          if (v?.blocked && !warned) { warned = true; ui.toast(v.blocked, 'warn'); audio.play('ui_error', { volume: 0.35, bus: 'ui' }); }
+          reset();
           return;
         }
-        if (!prop || (!itemDef(prop.type).dismantle && !prop.welds?.length && !prop.def.breakF)) {
-          t = 0;
-          target = null;
-          this.game.ui.progress(null);
-          return;
-        }
-        if (target !== prop.id) { target = prop.id; t = 0; }
+        if (target !== prop.id || act !== v.act) { target = prop.id; act = v.act; t = 0; }
         t += dt;
+        this._beamTo(point, act, dt);
+        sparkT -= dt;
+        if (sparkT <= 0) {
+          sparkT = 0.07;
+          if (act === 'dismantle' || act === 'detach') this.world.fx.sparks(point, 3, normal, [1, 0.6, 0.25], 2.5);
+          else this.world.fx.sparks(point, 3, normal, act === 'camp' ? [0.5, 1, 0.6] : [0.45, 0.85, 1], 2);
+        }
         soundT -= dt;
-        if (soundT <= 0) { soundT = 0.28; audio.play('multitool', { pos: hit.point, volume: 0.6 }); }
-        this.game.ui.progress(t / 2.2, 'DISMANTLING');
-        if (t >= 2.2) {
-          t = 0;
-          target = null;
-          this.game.ui.progress(null);
-          net.toHost('dismantle', { id: prop.id });
-          audio.play('dismantle', { pos: hit.point });
+        if (soundT <= 0) { soundT = 0.28; audio.play(act === 'dismantle' ? 'multitool' : 'weld_crackle', { pos: point, volume: 0.45 }); }
+        ui.progress(t / v.dur, v.label);
+        if (t >= v.dur) {
+          finished = true;
+          net.toHost('mt', { id: prop.id, a: act, p: point.toArray() });
+          if (act === 'dismantle') audio.play('dismantle', { pos: point });
+          else {
+            audio.play('bolt_turn', { pos: point, volume: 0.9 });
+            audio.play('spark', { pos: point, volume: 0.7 });
+          }
+          this.world.fx.weldSparks(point, normal);
+          this.world.fx.flashLight(point, MT_COLORS[act], 8, 0.15, 4);
+          if (player.arms) player.arms.throwKick = 0.35;
+          reset();
         }
       },
-      end: () => this.game.ui.progress(null),
+      end: () => reset(),
     };
+  }
+
+  // jagged zap beam from the wrist emitter to the target point (local visual)
+  _beamTo(point, act, dt) {
+    if (!point) return;
+    if (!this.beam) {
+      const n = 14;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x6fe0ff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
+      line.frustumCulled = false;
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), new THREE.MeshBasicMaterial({ color: 0xbff4ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+      engine.scene.add(line, glow);
+      this.beam = { line, glow, n, t: 0 };
+    }
+    const b = this.beam;
+    b.t += dt || 0.016;
+    const col = MT_COLORS[act] ?? MT_COLORS.attach;
+    b.line.material.color.setHex(col);
+    b.glow.material.color.setHex(col);
+    const cam = engine.camera;
+    const start = _v.set(0.16, -0.24, -0.38).applyQuaternion(cam.quaternion).add(cam.position);
+    const arr = b.line.geometry.attributes.position.array;
+    const len = start.distanceTo(point);
+    for (let i = 0; i < b.n; i++) {
+      const k = i / (b.n - 1);
+      const jit = i === 0 || i === b.n - 1 ? 0 : Math.sin(k * Math.PI) * 0.045 * Math.min(1, len);
+      arr[i * 3] = start.x + (point.x - start.x) * k + (Math.random() - 0.5) * jit;
+      arr[i * 3 + 1] = start.y + (point.y - start.y) * k + (Math.random() - 0.5) * jit;
+      arr[i * 3 + 2] = start.z + (point.z - start.z) * k + (Math.random() - 0.5) * jit;
+    }
+    b.line.geometry.attributes.position.needsUpdate = true;
+    b.line.visible = true;
+    b.glow.visible = true;
+    b.glow.position.copy(point);
+    b.glow.scale.setScalar(0.7 + Math.random() * 0.6);
+  }
+
+  _beamOff() {
+    if (!this.beam) return;
+    this.beam.line.visible = false;
+    this.beam.glow.visible = false;
+  }
+
+  // host: carry out a finished multitool action
+  _hostMultitool(d, from) {
+    const w = this.world;
+    const prop = w?.props.get(d.id);
+    if (!prop || prop.dead) return;
+    const p = d.p ? new THREE.Vector3().fromArray(d.p) : prop.root.position.clone();
+    const say = (text, kind = 'warn') => net.toPeer(from, 'mtMsg', { text, kind });
+    w.noise.emit(p, 9, 'multitool');
+    if (d.a === 'camp') {
+      const m = w.level?.mission;
+      if (m?.hostCampAttach) m.hostCampAttach(prop, from);
+      else say('Nothing to attach it to here.');
+    } else if (d.a === 'detach') {
+      if (!prop.welds?.length) { w.props.setState(prop.id, { welded: 0 }); return; }
+      this.unweld(prop);
+      w.fxAll({ k: 'sparks', p: p.toArray(), n: 14 });
+      w.fxAll({ k: 'snd', n: 'wire_connect', p: p.toArray(), v: 0.8, pi: 0.8 });
+    } else if (d.a === 'dismantle') {
+      this._hostDismantle({ id: prop.id });
+    } else if (d.a === 'attach') {
+      if (!prop.body || prop.frozen) return;
+      const other = this._touching(prop, p);
+      if (!other) { say('Nothing to attach it to. Push it against something first.'); return; }
+      if (other === 'world' && prop.welds?.some((r) => r.anchor)) { say('Already attached there.'); return; }
+      w.grab.releaseAllFor(prop.id);
+      this.weld(prop, other === 'world' ? null : other, p);
+      w.fxAll({ k: 'sparks', p: p.toArray(), n: 18 });
+      w.fxAll({ k: 'snd', n: 'fuse_insert', p: p.toArray(), v: 0.9 });
+      if (from === net.selfId) profile.unlock('welder'); else net.toPeer(from, 'ach', 'welder');
+    }
+  }
+
+  // host: what a prop is touching (the prop closest to point wins over static geometry): Prop | 'world' | null
+  _touching(prop, point) {
+    const w = this.world;
+    const phys = w.physics;
+    let best = null, bd = Infinity, stat = false;
+    const n = prop.body.numColliders();
+    for (let i = 0; i < n; i++) {
+      const col = prop.body.collider(i);
+      phys.world.contactPairsWith(col, (other) => {
+        let touching = false;
+        phys.world.contactPair(col, other, (manifold) => { if (manifold.numContacts() > 0) touching = true; });
+        if (!touching) return;
+        const ud = phys.getUserData(other);
+        if (ud?.kind === 'prop' && ud.prop !== prop && ud.prop.body && !ud.prop.dead) {
+          const dd = ud.prop.root.position.distanceToSquared(point);
+          if (dd < bd) { bd = dd; best = ud.prop; }
+        } else if (ud?.kind === 'static' || ud?.kind === 'device' || !ud) stat = true;
+      });
+    }
+    if (best) return best;
+    if (stat) return 'world';
+    // resting contacts can be missing (sleeping pairs): fall back to a probe around the aimed point
+    phys.overlapSphere(point, 0.2, Q.solid, (c, ud) => {
+      if (ud?.kind === 'prop' && ud.prop !== prop && ud.prop.body && !best) best = ud.prop;
+      else if (ud?.kind === 'static' || ud?.kind === 'device') stat = true;
+    });
+    return best || (stat ? 'world' : null);
   }
 
   _hostDismantle(d) {

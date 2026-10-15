@@ -1,11 +1,12 @@
-// The R.O.O.M. underground office (lobby): reception, open-plan office, locker room with a
-// mirror, break room (vending, water cooler, aquarium, darts, couch & TV), cloning laboratory
-// and the dimensional dispatch bay. Slightly uncanny: chairs sink, posters and clocks change
-// when nobody is looking, the receptionist turns to watch you.
+// The R.O.O.M. underground office (lobby): reception with GLORIA, the android receptionist, and the
+// dimensional elevator; open-plan office, locker room with a mirror, break room (vending, water cooler,
+// aquarium, darts, couch & TV), cloning laboratory and the loading bay. Talk to the receptionist to be
+// dispatched: she opens the elevator gate, and everyone inside the car when it closes rides it to the
+// next dimension. Slightly uncanny: chairs sink, posters and clocks change when nobody is looking, the
+// receptionist turns to stare at you whenever nobody is looking at her.
 import * as THREE from 'three';
 import { engine } from '../../core/engine.js';
 import { net } from '../../net/net.js';
-import { input } from '../../core/input.js';
 import { audio } from '../../audio/audio.js';
 import * as Mat from '../../gfx/materials.js';
 import { bakedMaterial, bakeGeometry, LightField } from '../../gfx/bakedlight.js';
@@ -13,14 +14,16 @@ import { buildLobbyShell, bakeLobbyShell } from '../env/lobbyshell.js';
 import { EnvGeo, fr } from '../env/builder.js';
 import { Q } from '../../physics/physics.js';
 import { buildModel, modelHalfHeight } from '../../entities/catalog.js';
-import { makeDevice, ModelDevice } from '../../game/devicekinds.js';
+import { makeDevice } from '../../game/devicekinds.js';
 import { Device } from '../../game/devices.js';
 import { CrtScreen, text } from '../../ui/crt.js';
 import { LORE } from '../../game/lore.js';
-import { buildUnfinishedClone, buildReceptionist } from '../../entities/optional.js';
+import { buildUnfinishedClone } from '../../entities/optional.js';
 import * as Critters from '../../entities/optional.js';
 import { MonsterManager } from '../../game/monsters.js';
-import { ReceptionRobot } from '../../entities/reception_robot.js';
+import { ReceptionistBot } from '../../entities/receptionist.js';
+import { HQElevator } from '../hq_elevator.js';
+import { CAR } from '../../entities/elevator.js';
 
 const H = 2.8;
 const T = 0.18;
@@ -99,9 +102,11 @@ export class LobbyLevel {
     try {
       this.field.update(this.world.time || 0);
       this._elevEnv = engine.captureEnvironment(new THREE.Vector3(0, 1.5, 13.6), 0.1, 40);
-      this.elevatorSteel.envMap = this._elevEnv;
-      this.elevatorSteel.envMapIntensity = 1.0;
-      this.elevatorSteel.needsUpdate = true;
+      for (const m of this.elevatorSteel) {
+        m.envMap = this._elevEnv;
+        m.envMapIntensity = 1.0;
+        m.needsUpdate = true;
+      }
     } catch (e) { /* keeps the scene environment */ }
   }
 
@@ -129,7 +134,7 @@ export class LobbyLevel {
     const P = { panel: { lower: 'panel', upper: 'paint', split: 1.0 }, tile: { lower: 'tile', upper: 'paint_white', split: 1.3 }, labt: { lower: 'tile_green', upper: 'paint_white', split: 1.3 } };
     const W = [
       // reception (x -7..7, z 6..16)
-      [-7, 16, 7, 16, P.panel, null, [{ a: 5.5, b: 8.5, top: 2.3, door: 'elevator' }]],
+      [-7, 16, 7, 16, P.panel, null, [{ a: 7 - CAR.GW / 2, b: 7 + CAR.GW / 2, top: CAR.GH, door: 'elevator' }]],
       [-7, 6, -7, 16, null, P.panel],
       [7, 6, 7, 16, P.panel, P.tile],
       [-12, 6, -2, 6, 'paint', P.panel],
@@ -202,20 +207,15 @@ export class LobbyLevel {
     const L = LORE;
     // --- Reception ---
     this.recDesk = this._dev('reception_desk', 'reception_desk', 0, 0, 10.2, 0);
-    if (buildReceptionist) {
-      this.receptionist = buildReceptionist();
+    // GLORIA: the android receptionist (talk to her to be dispatched), lit by the two troffers above her
+    {
       const rp = this.recDesk.anchors.receptionist;
-      this.receptionist.root.position.set(rp ? rp.x : 0, 0, rp ? 10.2 + rp.z : 9.4);
-      this.world.group.add(this.receptionist.root);
-      this.world.registerDynamic(this.receptionist.root);
+      const at = new THREE.Vector3(rp ? rp.x : 0, 0, rp ? 10.2 + rp.z : 9.4);
+      this.receptionist = new ReceptionistBot(this.world, 'receptionist', { lobby: this, ...this._roomLightsFor(at.clone().setY(1.3), 2, 0.55) });
+      this.receptionist.root.position.copy(at);
+      this.receptionist.build();
+      this.world.addDevice(this.receptionist);
     }
-    // GREET-O-TRON 9000: service robot on casters beside the counter's left end, angled towards the visitors
-    this.recRobot = new ReceptionRobot(this.world, 'reception_robot');
-    this.recRobot.root.position.set(-1.78, 0, 10.05);
-    this.recRobot.root.rotation.y = 0.3;
-    this.recRobot.build();
-    this.world.addDevice(this.recRobot);
-    this.world.registerDynamic(this.recRobot.root);
     const bellA = this.recDesk.anchors.bell;
     this._dev('service_bell', 'bell', bellA ? bellA.x : 0.6, bellA ? bellA.y : 1.05, bellA ? 10.2 + bellA.z : 10.6, 0, { onRing: () => this._receptionistSnap() });
     if (this.recDesk.model.screens?.main?.mesh) {
@@ -228,9 +228,9 @@ export class LobbyLevel {
     this._dev('poster', 'poster_r2', 6.911, 1.5, 14.2, -Math.PI / 2, { texts: L.posters.slice(3), creepy: L.creepy, color: '#8a3a3a' });
     this._static('plant_pot', -6.3, 0, 15.3, 0);
     this._static('plant_pot', 6.25, 0, 7, 1, true, { seed: 244 }); // foliage clear of the east wall
-    this._static('exit_sign', 0, 2.61, 15.909, Math.PI, false); // above the elevator header, on the wall
-    // elevator doors (decorative) on the south wall
-    this._elevator(0, 15.9);
+    this._static('exit_sign', -4.2, 2.61, 15.909, Math.PI, false);
+    // the dimensional elevator on the south wall (opened by the receptionist)
+    this._elevator(0, 16 - T / 2);
     // --- Office ---
     this._dev('crt_terminal', 'term_shift', -8.52, 0.762, -3.5, Math.PI / 2, { program: 'shift', palette: 'green' });
     this._dev('crt_terminal', 'term_howto', 8.52, 0.762, 3.0, -Math.PI / 2, { program: 'howto', palette: 'amber' });
@@ -279,18 +279,11 @@ export class LobbyLevel {
     this._dev('server_rack', 'rack3', -21.4, 0, -10.2, Math.PI / 2);
     this._dev('crt_terminal', 'term_records', -5.08, 0.762, -9.5, -Math.PI / 2, { program: 'records', palette: 'cyan', lore: 0 });
     this._static('desk', -5, 0, -9.5, -Math.PI / 2);
-    // --- Dispatch bay ---
+    // --- Loading bay (the old dispatch bay: its blast door stays sealed; dispatch is by elevator now) ---
     this.dispatchDoor = this._dev('dispatch_door', 'dispatch_door', 13, 0, -17.9, 0, { collide: false });
-    this.dispatchLever = new DispatchLever(this.world, 'dispatch_lever', this);
-    this.dispatchLever.root.position.set(16.6, 0, -14.2);
-    this.dispatchLever.root.rotation.y = -0.4;
-    this.dispatchLever.build();
-    this.world.addDevice(this.dispatchLever);
-    this.world.registerDynamic(this.dispatchLever.root);
     this._static('hazard_sign', 9.5, 1.4, -17.909, 0, false);
     this._static('fuse_box', 21.909, 1.3, -10, -Math.PI / 2, false);
     this._static('fire_alarm', 4.091, 1.5, -12, Math.PI / 2, false);
-    this.dispatchZone = new THREE.Box3(new THREE.Vector3(10, -0.5, -17.2), new THREE.Vector3(16, 3, -12.1));
     // collision for dispatch door halves (closed)
     this.doorCols = [
       this.world.physics.addStaticBox(11.7, 1.3, -17.95, 1.6, 1.3, 0.15, { kind: 'static' }),
@@ -304,60 +297,29 @@ export class LobbyLevel {
     this.beaconLight = addPL(0xff3010, 0, 9, 13, 2.4, -16.8);
   }
 
+  // the dimensional elevator: landing doors in the south wall, the car behind it (see world/hq_elevator.js)
   _elevator(x, z) {
-    // sealed elevator bank on the south wall (local +z faces the room): brushed stainless frame with
-    // chamfered jambs, two door leaves, a grooved sill, the floor indicator and a call station
-    const g = new THREE.Group();
-    // own brushed-steel instance: it gets a local reflection probe of the reception once the room is lit
-    // (see update); metal ignores the diffuse light probe, so it is left out of the probe swap
-    const steel = Mat.get('stainless').clone();
-    steel.name = 'elevator_steel';
-    steel.color.set(0xe6e9ec);
-    steel.roughness = 0.5;
-    steel.userData = { ...steel.userData, noProbe: true };
-    this.elevatorSteel = steel;
-    const meshOf = (eg, mat) => { const geo = eg.build(); for (const k of ['aCell', 'aAO', 'aRoom']) geo.deleteAttribute(k); const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; g.add(m); return m; };
-    const shaft = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 2.3), Mat.get('plastic_black'));
-    shaft.position.set(0, 1.15, -0.07);
-    g.add(shaft);
-    const fr = new EnvGeo({ cellSize: 1000 });
-    for (const sx of [-1, 1]) fr.chamferBox(sx < 0 ? -1.74 : 1.5, 0, -0.08, sx < 0 ? -1.5 : 1.74, 2.42, 0.1, 0.014, 'pz', { nz: true, ny: true }, (px, py) => [py * 0.5, px]);
-    fr.chamferBox(-1.74, 2.28, -0.08, 1.74, 2.5, 0.1, 0.014, 'pz', { nz: true }, (px, py) => [px * 0.5, py]);
-    fr.chamferBox(-1.5, 0, -0.12, 1.5, 0.007, 0.12, 0.003, 'py', { ny: true }, (px, py, pz) => [px * 0.5, pz * 4]);
-    // call station
-    fr.chamferBox(1.86, 1.0, 0.0, 2.0, 1.32, 0.012, 0.004, 'pz', { nz: true }, (px, py) => [px, py]);
-    meshOf(fr, steel);
-    const mkDoor = (x0, x1) => {
-      const d = new EnvGeo({ cellSize: 1000 });
-      d.chamferBox(x0, 0.012, -0.05, x1, 2.28, -0.012, 0.004, 'pz', { nz: true }, (px, py) => [py * 0.5, px]);
-      d.chamferBox(x0 + 0.02, 0.012, -0.012, x1 - 0.02, 0.25, -0.009, 0.002, 'pz', { nz: true }, (px, py) => [px * 0.5, py]);
-      return meshOf(d, steel);
-    };
-    const doorL = mkDoor(-1.49, -0.004);
-    const doorR = mkDoor(0.004, 1.49);
-    // buttons (up lit)
-    const btn = new EnvGeo({ cellSize: 1000 });
-    btn.tube('z', 0.012, 0.022, 1.93, 1.2, 0.022, 14, [false, true]);
-    btn.tube('z', 0.012, 0.022, 1.93, 1.11, 0.022, 14, [false, true]);
-    const bm = meshOf(btn, Mat.get('emissive_amber'));
-    bm.castShadow = false;
-    // floor indicator: amber segment display behind dark glass
-    const c = document.createElement('canvas'); c.width = 256; c.height = 64;
-    const cx = c.getContext('2d');
-    cx.fillStyle = '#120a04'; cx.fillRect(0, 0, 256, 64);
-    cx.fillStyle = '#ff9a2a'; cx.font = 'bold 44px "VT323", monospace'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
-    cx.fillText('B4  \u25bc', 128, 34);
-    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-    const ind = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.125), new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 1.8, roughness: 0.2 }));
-    ind.position.set(0, 2.39, 0.102);
-    g.add(ind);
-    g.position.set(x, 0, z);
-    g.rotation.y = Math.PI;
-    this.world.group.add(g);
-    this.world.registerDynamic(g);
-    this.elevatorDoors = [doorL, doorR];
-    // the wall opening behind the doors has no wall collider of its own
-    this.world.physics.addStaticBox(x, 1.15, z + 0.1, 1.5, 1.15, T / 2 + 0.02, { kind: 'static' });
+    const el = new HQElevator(this.world, 'hq_elevator', this);
+    el.root.position.set(x, 0, z);
+    el.root.rotation.y = Math.PI; // local +z faces the reception
+    const L = this._roomLightsFor(new THREE.Vector3(x, 1.8, z - 1.2), 2, 0.5);
+    el.setRoomLights(L.lights, L.ambient);
+    el.build();
+    el.car.syncLights();
+    this.world.addDevice(el);
+    this.elevator = el;
+    // landing steel + brass get the reception's reflection probe once the room is lit
+    this.elevatorSteel = [el.mats.steel, el.mats.brass];
+  }
+
+  // nearest ceiling lights of the lobby as virtual key lights for hand-lit set pieces
+  _roomLightsFor(at, n = 2, k = 0.5) {
+    const near = this.lights.map((l) => ({ l, d: Math.hypot(l.x - at.x, l.y - at.y, l.z - at.z) })).sort((a, b) => a.d - b.d).slice(0, n);
+    const lights = near.map(({ l }) => ({ pos: new THREE.Vector3(l.x, l.y - 0.05, l.z), color: l.color.clone(), intensity: l.intensity * 2.6 * k * 2 }));
+    const amb = new THREE.Color();
+    this.sampleLight?.(at, amb);
+    amb.multiplyScalar(0.16);
+    return { lights, ambient: amb };
   }
 
   _scoreboard(x, z) {
@@ -387,8 +349,10 @@ export class LobbyLevel {
     s.texture.needsUpdate = true;
   }
 
+  // the service bell makes her look up at whoever rang it
   _receptionistSnap() {
-    this.recLookT = 2.5;
+    const r = this.receptionist;
+    if (r) { r.attend = 1; r.anim.twitch = { t: 0, dir: 1 }; }
   }
 
   _bake() {
@@ -426,10 +390,15 @@ export class LobbyLevel {
   }
 
   // ---------------------------------------------------------------
+  // everyone arrives at HQ in the elevator car (its gate opens on load) and steps out into reception
   spawnPoint(index = 0) {
-    const offs = [[-1, 13.6], [1, 13.6], [-1, 12.4], [1, 12.4]];
+    const offs = [[-0.5, 0.45], [0.5, 0.45], [-0.5, -0.35], [0.5, -0.35]];
     const o = offs[index % 4];
-    return { pos: new THREE.Vector3(o[0], 0.02, o[1]), yaw: 0, arrival: false };
+    const car = this.elevator?.car;
+    if (!car) return { pos: new THREE.Vector3(o[0], 0.02, 13.6), yaw: 0, arrival: false };
+    car.root.updateMatrixWorld(true);
+    const pos = car.root.localToWorld(new THREE.Vector3(o[0], 0.02, o[1]));
+    return { pos, yaw: 0, arrival: false };
   }
 
   hostStart() {
@@ -518,16 +487,6 @@ export class LobbyLevel {
     const t = this.time;
     // muzak gets slightly warbly over time (uncanny)
     this.muzak?.setParam('warble', Math.min(0.6, t / 600));
-    // receptionist: watches you, but only moves when nobody looks
-    if (this.receptionist) {
-      const g = this.game;
-      let tgt = null, bd = 1e9;
-      const cand = [g.local.pos, ...[...g.remotes.values()].filter((r) => r.inWorld).map((r) => r.pos)];
-      for (const p of cand) { const d = p.distanceTo(this.receptionist.root.position); if (d < bd) { bd = d; tgt = p; } }
-      const watched = !this.recDesk.unobserved();
-      this.recLookT = Math.max(0, (this.recLookT || 0) - dt);
-      this.receptionist.update(dt, { lookTarget: tgt ? tgt.clone().setY(1.1) : null, snap: !watched || this.recLookT > 0 });
-    }
     if (this.recScreen && this.recScreen.time - this.recScreen.lastDraw > 0.25) {
       this.recScreen.draw(dt, (ctx, w, h, pal, tt) => {
         text(ctx, 'R.O.O.M. RECEPTION', 10, 8, 26, pal.hi);
@@ -544,16 +503,9 @@ export class LobbyLevel {
     this.labLight.intensity = 2.2 + Math.sin(t * 1.7) * 0.4;
     // sinking chair (host)
     this._uncannyChair(dt);
-    // dispatch door & beacons
-    const ds = this.dispatchLever?.state;
-    const counting = ds?.count > 0;
-    const left = counting ? Math.max(0, ds.count - this.world.time) : 0;
-    const open = counting && left < 6 ? 1 : 0;
-    this.doorOpen = (this.doorOpen || 0) + (open - (this.doorOpen || 0)) * Math.min(1, dt * 1.5);
+    // loading bay beacons spin while the elevator counts down (the blast door stays sealed)
+    const counting = this.elevator?.state.ph === 'board';
     const P = this.dispatchDoor?.parts || {};
-    const travel = this.dispatchDoor?.model.params?.travel ?? 1.55;
-    if (P.left) P.left.position.x = (P.left.userData.x0 ?? P.left.position.x) - this.doorOpen * travel;
-    if (P.right) P.right.position.x = (P.right.userData.x0 ?? P.right.position.x) + this.doorOpen * travel;
     for (const r of P.beaconReflectors || []) r.rotation.y += dt * (counting ? 9 : 0);
     for (const l of P.beaconLamps || []) {
       if (!l.material) continue;
@@ -561,12 +513,7 @@ export class LobbyLevel {
       l.material.emissiveIntensity = counting ? 4 : 0.15;
     }
     this.beaconLight.intensity = counting ? 4 + Math.sin(t * 16) * 3 : 0;
-    const passable = this.doorOpen > 0.8;
-    this.doorCols.forEach((c) => c.setEnabled(!passable));
-    if (counting) {
-      engine.post.params.uGlitch.value = Math.max(0, (6 - left) / 6) * 0.35;
-      if (this.doorOpen > 0.3 && Math.random() < dt * 30) this.world.fx.dustBurst(new THREE.Vector3(13 + (Math.random() - 0.5) * 3, 1.3, -17.6), 1, [0.2, 0.2, 0.25], 0.6);
-    } else if (!this.game.cutscene) engine.post.params.uGlitch.value = 0;
+    if (!this.game.cutscene && !this.game.ride) engine.post.params.uGlitch.value = 0;
   }
 
   _uncannyChair(dt) {
@@ -619,9 +566,7 @@ export class LobbyLevel {
   floorY() { return 0; }
   sampleKindAt() { return null; }
 
-  inDispatchZone(p) { return this.dispatchZone.containsPoint(p); }
-
-  serialize() { return { lever: this.dispatchLever?.state }; }
+  serialize() { return null; }
   applySync() {}
 
   onImpact() {}
@@ -633,87 +578,9 @@ export class LobbyLevel {
     this.muzak?.stop(0.5);
     this.muzak2?.stop(0.5);
     this.hum?.stop(0.3);
-    this.dispatchLever?.alarm?.stop(0.2);
     const pp = engine.post.params;
     pp.uExposure.value = 1; pp.uLift.value.set(0, 0, 0); pp.uGamma.value.set(1, 1, 1); pp.uGain.value.set(1, 1, 1); pp.uRolloff.value = 0; pp.uContrast.value = 1.04;
     engine.renderer.toneMappingExposure = 1;
-  }
-}
-
-// ---------------------------------------------------------------------------
-class DispatchLever extends ModelDevice {
-  constructor(world, id, lobby) {
-    super(world, id, 'dispatch_lever', {});
-    this.lobby = lobby;
-    this.state = { count: 0 };
-    this.scr = this.screen('main', 256, 192, 'amber', 1.5);
-    this.anim = 0;
-    this.alarm = null;
-    this.lastTick = 0;
-  }
-  prompt() {
-    const k = input.keyName('interact');
-    if (this.state.count > 0) return `[${k}] ABORT DISPATCH`;
-    return `[${k}] PULL LEVER — dispatch the team into Dimension 0`;
-  }
-  interact() { this.send('pull'); }
-  hostAction(a) {
-    if (a !== 'pull') return;
-    if (this.state.count > 0) {
-      this.setState({ count: 0 });
-      net.toAll('hq', { text: 'DISPATCH ABORTED. Please make up your minds.', from: 'DISPATCH' });
-      return;
-    }
-    this.setState({ count: this.world.time + 12 });
-    this.world.fxAll({ k: 'snd', n: 'lever', p: this.root.position.toArray(), v: 1 });
-    net.toAll('hq', { text: 'DIMENSIONAL DISPATCH IN 12 SECONDS. All clones to the dispatch bay. Bring snacks.', from: 'DISPATCH' });
-  }
-  onState(s) {
-    if (s.count > 0 && !this.alarm) {
-      this.alarm = audio.loop('radio_static', { pos: this.lobby.dispatchDoor.root.position.clone().setY(2), volume: 0.6 });
-      audio.play('alarm', { pos: this.root.position, volume: 1 });
-    }
-    if (!s.count && this.alarm) { this.alarm.stop(0.3); this.alarm = null; }
-  }
-  update(dt) {
-    const counting = this.state.count > 0;
-    this.anim += ((counting ? 1 : 0) - this.anim) * Math.min(1, dt * 6);
-    if (this.parts.handle) this.parts.handle.rotation.x = -0.6 + this.anim * 1.2;
-    for (const l of this.parts.lamps || []) {
-      if (!l.material) continue;
-      if (!l.userData.own) { l.material = l.material.clone(); l.userData.own = true; }
-      const armed = l.name === 'lamp_armed';
-      l.material.emissiveIntensity = armed ? (counting && Math.floor(this.world.time * 4) % 2 ? 4 : 0.1) : (counting ? 0.1 : 2.5);
-    }
-    const left = counting ? Math.max(0, this.state.count - this.world.time) : 0;
-    if (counting) {
-      const s = Math.ceil(left);
-      if (s !== this.lastTick) {
-        this.lastTick = s;
-        audio.play(s <= 3 ? 'alarm' : 'countdown_tick', { pos: this.root.position, volume: 0.9 });
-      }
-      if (net.isHost && left <= 0 && !this.fired) {
-        this.fired = true;
-        // props inside the hazard zone come along
-        const carry = [];
-        for (const p of this.world.props.props.values()) {
-          if (p.dead || !this.lobby.inDispatchZone(p.root.position)) continue;
-          if (p.type === 'fish') continue;
-          carry.push({ type: p.type, state: p.state, q: p.root.quaternion.toArray() });
-        }
-        this.world.game.hostDispatch(carry.slice(0, 24));
-      }
-    }
-    this.scr.draw(dt, (ctx, w, h, pal, t) => {
-      text(ctx, 'DISPATCH', 10, 6, 32, pal.hi);
-      if (counting) {
-        text(ctx, `T-${Math.ceil(left)}`, w / 2, 60, 76, Math.floor(t * 4) % 2 ? pal.bad : pal.hi, 'center');
-      } else {
-        text(ctx, 'DIMENSION 0', 10, 56, 26, pal.fg);
-        text(ctx, 'STATUS: READY', 10, 90, 26, pal.good);
-        text(ctx, 'PULL LEVER', 10, 130, 26, Math.floor(t * 2) % 2 ? pal.fg : pal.dim);
-      }
-    });
   }
 }
 
@@ -748,9 +615,9 @@ function hazardTexture() {
   ctx.fillStyle = 'rgba(217,169,28,0.9)';
   ctx.font = 'bold 108px "Arial Black", Arial';
   ctx.textAlign = 'center';
-  ctx.fillText('STAND HERE', S / 2, S * 0.49);
+  ctx.fillText('LOADING', S / 2, S * 0.49);
   ctx.font = 'bold 60px "IBM Plex Mono", monospace';
-  ctx.fillText('DISPATCH ZONE', S / 2, S * 0.59);
+  ctx.fillText('CARGO \u2192 ELEVATOR', S / 2, S * 0.59);
   // wear: chipped paint (sealer showing through), boot scuffs, a darker trafficked lane
   for (let k = 0; k < 2600; k++) {
     const x = rnd() * S, y = rnd() * S, r = 1 + rnd() * rnd() * 7;

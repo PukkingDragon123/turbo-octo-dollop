@@ -10,10 +10,14 @@ import * as tall from './tall.js';
 import * as twin from './twin.js';
 import * as crawler from './crawler.js';
 import * as mass from './mass.js';
+import * as hound from './hound.js';
+import * as partygoer from './partygoer.js';
 import * as BL from '../../gfx/bakedlight.js';
 
 export const STILL_LIFE_VARIANTS = ['watcher', 'crawler', 'twin', 'mass', 'tall'];
-const BUILDERS = { watcher, tall, twin, crawler, mass };
+// other creatures built with the same sculpt / skin / animate pipeline (game/creatures/*)
+export const CREATURE_VARIANTS = ['hound', 'partygoer'];
+const BUILDERS = { watcher, tall, twin, crawler, mass, hound, partygoer };
 const templates = new Map();
 export const buildStats = {};
 if (typeof window !== 'undefined') window.__slStats = buildStats;
@@ -38,7 +42,7 @@ export function getTemplate(variant) {
 }
 
 // collider dimensions per variant (known before the template exists)
-const DIMS = { watcher: [1.58, 0.32], tall: [2.38, 0.35], twin: [1.36, 0.36], crawler: [0.62, 0.34], mass: [1.45, 0.55] };
+const DIMS = { watcher: [1.58, 0.32], tall: [2.38, 0.35], twin: [1.36, 0.36], crawler: [0.62, 0.34], mass: [1.45, 0.55], hound: [0.78, 0.34], partygoer: [1.72, 0.3] };
 const waiters = new Map();
 let workerBusy = false;
 
@@ -105,7 +109,7 @@ export function prewarmStillLifes() {
   const idle = window.requestIdleCallback || ((f) => setTimeout(f, 30));
   prewarmPromise = new Promise((resolve) => {
     // most likely spawns first (day 1-2 spawns watchers, talls and twins)
-    const todo = ['watcher', 'tall', 'twin', 'crawler', 'mass'].filter((v) => !templates.has(v));
+    const todo = ['watcher', 'tall', 'twin', 'hound', 'partygoer', 'crawler', 'mass'].filter((v) => !templates.has(v));
     const finish = () => {
       workerBusy = false;
       for (const k of [...waiters.keys()]) flushWaiters(k); // anything the worker could not deliver

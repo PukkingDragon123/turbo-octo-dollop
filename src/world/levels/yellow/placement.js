@@ -6,6 +6,7 @@ import { CELL, CHUNK, W, wallN, wallW, getLayout } from './layout.js';
 import { wallPieces, T, DOOR_W, ARCH_W } from '../../env/walls.js';
 import { buildModel } from '../../../entities/catalog.js';
 
+const RACK_HALF = 0.55; // warehouse rack bays stand on cell edge lines (env/racks.js, 1.0 m deep)
 const fpCache = new Map();
 const _box = new THREE.Box3();
 // local footprint of a model: centre offset (x, z) and half extents. Visual bounds: collider bounds are
@@ -87,6 +88,18 @@ export function obstacles(level, x0, z0, x1, z1, out = []) {
       const px = (cx * CHUNK + p.li) * CELL, pz = (cz * CHUNK + p.lj) * CELL, hs = p.size / 2 + pad;
       if (px + hs < x0 - 1 || px - hs > x1 + 1 || pz + hs < z0 - 1 || pz - hs > z1 + 1) continue;
       out.push(aabbRect(px - hs, pz - hs, px + hs, pz + hs));
+    }
+    // floor pits of special rooms and warehouse rack bays
+    const ox = cx * CHUNK * CELL, oz = cz * CHUNK * CELL;
+    for (const h of L.holes) {
+      if (ox + h.x1 < x0 - 1 || ox + h.x0 > x1 + 1 || oz + h.z1 < z0 - 1 || oz + h.z0 > z1 + 1) continue;
+      out.push(aabbRect(ox + h.x0 - 0.15, oz + h.z0 - 0.15, ox + h.x1 + 0.15, oz + h.z1 + 0.15));
+    }
+    for (const d of L.decor) {
+      if (d.kind !== 'rack') continue;
+      const rx = ox + d.li * CELL, rz = oz + d.lj * CELL;
+      if (rx + CELL < x0 - 1 || rx > x1 + 1 || rz + 0.6 < z0 - 1 || rz - 0.6 > z1 + 1) continue;
+      out.push(aabbRect(rx - 0.05, rz - RACK_HALF, rx + CELL + 0.05, rz + RACK_HALF));
     }
   }
   return out;

@@ -80,7 +80,8 @@ export function hazeMaterial(field) {
 
 // geometry for every lit fixture of a chunk layout
 export function lightVolumes(layout, level) {
-  const lit = layout.cells.filter((c) => c.light);
+  // (no shaft under a low ceiling: the fixture is right above the clones' heads)
+  const lit = layout.cells.filter((c) => c.light && !(c.ceil < HEIGHT - 0.3));
   if (!lit.length) return null;
   const n = lit.length * 4;
   const pos = new Float32Array(n * 3), cel = new Float32Array(n * 2), q = new Float32Array(n * 2);

@@ -1,5 +1,5 @@
 // Item state -> visuals & behaviour: lit glowsticks/flares (with a small pool of real lights),
-// filled sample jars, cups of water, armed noise makers, spike traps.
+// filled sample jars, cups of water, armed noise makers, spike traps, the attached camp lamp.
 import * as THREE from 'three';
 import { net } from '../net/net.js';
 import { audio } from '../audio/audio.js';
@@ -29,6 +29,8 @@ export function applyItemVisual(type, s, model, lit = isLitState(type, s)) {
     ud.setOn?.(false);
   } else if (type === 'water_tester') {
     ud.setResult?.(s?.result || null);
+  } else if (type === 'camp_lamp') {
+    ud.setLit?.(!!s?.lit); // lights up once attached to the camp
   }
 }
 

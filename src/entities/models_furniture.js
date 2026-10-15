@@ -31,6 +31,7 @@ import './furniture/beds.js';
 import './furniture/electronics.js';
 import './furniture/decor.js';
 import './furniture/utility.js';
+import './furniture/loot.js';
 
 export { FURNITURE };
 
