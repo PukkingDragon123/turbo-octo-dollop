@@ -93,12 +93,16 @@ class GoldfishAI {
     // the centre of the team along the waterway (it keeps up with them)
     let cx = this.pos.x;
     if (players.length) { cx = 0; for (const p of players) cx += p.pos.x; cx /= players.length; }
+    // Day 1 is safe: it only circles far below (a shape in the dark), it never comes up to attack
+    const passive = day <= 1;
+    if (passive && this.state !== 'lurk' && this.state !== 'dive') this.setState('dive');
     switch (this.state) {
       case 'lurk': {
         // slow deep orbit somewhere under / ahead of the team
         this.orbitA += dt * 0.11;
         want.set(cx + Math.cos(this.orbitA) * 9, CANAL_Y + 1.0 + Math.sin(this.t * 0.2) * 0.4, (CANAL_Z0 + CANAL_Z1) / 2 + Math.sin(this.orbitA * 1.7) * 3.2);
         speed = 1.4;
+        if (passive) { want.y = CANAL_Y + 0.8; break; }
         if (tg && this.cool <= 0 && (tg.swimming || this.hunger > 0.35)) { this.target = tg; this.setState(tg.swimming ? 'stalk' : Math.random() < 0.45 ? 'surface' : 'stalk'); }
         else if (this.t > 18 && Math.random() < dt * 0.04) this.setState('surface');
         break;
@@ -170,7 +174,12 @@ class GoldfishAI {
     this.pos.addScaledVector(this.vel, dt);
     this.bounds(this.pos);
     const hs = Math.hypot(this.vel.x, this.vel.z);
-    if (hs > 0.15) this.yaw = angLerp(this.yaw, Math.atan2(-this.vel.x, -this.vel.z), Math.min(1, dt * (this.state === 'lunge' ? 6 : 2)));
+    const stare = (this.state === 'surface' || this.state === 'stalk') && this.target?.pl;
+    if (stare && hs < 0.9) {
+      // hanging in the water, it turns its crowd of eyes toward you
+      const t = this.target.pl.pos;
+      this.yaw = angLerp(this.yaw, Math.atan2(-(t.x - this.pos.x), -(t.z - this.pos.z)), Math.min(1, dt * 1.2));
+    } else if (hs > 0.15) this.yaw = angLerp(this.yaw, Math.atan2(-this.vel.x, -this.vel.z), Math.min(1, dt * (this.state === 'lunge' ? 6 : 2)));
     this.pitch += (clamp(Math.atan2(this.vel.y, Math.max(0.3, hs)), -0.6, 0.6) - this.pitch) * Math.min(1, dt * 3);
   }
 
@@ -330,6 +339,7 @@ class Leeches {
   update(dt) {
     const lvl = this.mgr.level, l = lvl.game.local;
     const wl = lvl.waterLevel;
+    const safeDay = lvl.game.day.day <= 1; // Day 1: they wriggle about but never go for you
     const inWater = !l.dead && l.waterDepth > 0.12 && l.pos.y < wl + 0.05 && !l.onRaft;
     const infected = lvl.waterInfected(l.pos.x, l.pos.z);
     // spawn around a clone in the water (more in contaminated, overgrown water)
@@ -350,7 +360,7 @@ class Leeches {
       e.ph += dt * 9;
       const d = e.pos.distanceTo(tgt);
       if (d > 14 || e.t > 60 || lvl.waterDepth(e.pos.x, e.pos.z) < 0.08) { this.list.splice(i, 1); continue; }
-      const chase = inWater && d < 6;
+      const chase = inWater && d < 6 && !safeDay;
       const want = chase ? Math.atan2(tgt.x - e.pos.x, tgt.z - e.pos.z) : e.yaw + Math.sin(e.t * 0.7 + i) * 0.6;
       e.yaw = angLerp(e.yaw, want, Math.min(1, dt * 3));
       e.speed += ((chase ? 0.75 : 0.18) - e.speed) * Math.min(1, dt * 2);
@@ -491,6 +501,7 @@ export class PoolCreatures {
   strike(a, tg) {
     const lvl = this.level, pl = tg.pl;
     const day = this.game.day.day;
+    if (day <= 1) return; // the first day is safe
     const dir = _v.set(pl.pos.x - a.pos.x, 0, pl.pos.z - a.pos.z).normalize();
     this.fx('bite', pl.pos);
     this.world.noise.emit(pl.pos.clone(), 30, 'splash');

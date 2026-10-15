@@ -42,7 +42,7 @@ export function cellLightSpec(c) {
     z: (c.j + 0.5) * CELL,
     radius: sky ? (giant ? 15 : 12.5) : pend ? 12.5 : c.ceil > 4 ? 11 : 9,
     color: LIGHT_TONES[c.lightTone] || LIGHT_TONES[0],
-    base: (TONE_INT[c.lightTone] ?? 1) * (sky && giant ? 1.35 : pend ? 1.1 : 1),
+    base: (TONE_INT[c.lightTone] ?? 1) * (sky && giant ? 1.05 : pend ? 0.95 : 1),
     mode: c.lightMode,
     seed: c.lightSeed,
     sky,
@@ -594,6 +594,12 @@ function* emitCeilings(B, Q, layout, ox, oz) {
     const CM = c.roomStyle === 'yellow' ? B.yCeil : B.wall;
     CM.setTint(1, 1, 1);
     CM.hface(y, -1, x0, x1, z0, z1, holes);
+    if (c.special && c.ceil <= HEIGHT + 0.01 && layout.cz === 0 && !layout.void) {
+      // flat roof of a room box inside a giant hall (seen from the deck: a tiled parapet top)
+      B.concrete.setTint(0.62, 0.66, 0.64);
+      B.concrete.hface(HEIGHT + ROOF - 0.06, 1, x0, x1, z0, z1);
+      B.concrete.setTint(1, 1, 1);
+    }
     if (kind === 'panel') panelLight(B, cxm, y, czm, hw, hd, CM);
     else if (kind === 'sky') skyLight(B, cxm, y, czm, hw);
     else if (kind === 'pendant') pendantLamp(B, cxm, y, PEND_Y, czm);
@@ -679,6 +685,7 @@ function spawnHole(B, x, y, z) {
 // ---------------------------------------------------------------------------
 // Walls
 const DOOR_A = 0.9, DOOR_B = 2.1, DOOR_SPRING = 1.6;
+const ROOF = 0.32; // parapet of the rooms standing in the giant halls
 
 function* emitWalls(B, Q, layout, ox, oz, rec) {
   const N = CHUNK;
@@ -705,7 +712,10 @@ function emitEdge(B, Q, c, o, axis, type, rec) {
   const h = T / 2;
   const fyC = floorOf(c), fyO = floorOf(o);
   const y0 = Math.min(fyC, fyO) - 0.001;
-  const top = Math.max(ceilOf(c), ceilOf(o));
+  // rooms standing inside the giant halls are low boxes with a parapet, not walls up to the vault
+  const roomC = c?.special && c.ceil <= HEIGHT + 0.01, roomO = o?.special && o.ceil <= HEIGHT + 0.01;
+  const boxEdge = !c?.void && !o?.void && roomC !== roomO && Math.max(ceilOf(c), ceilOf(o)) > TALL;
+  const top = boxEdge ? HEIGHT + ROOF : Math.max(ceilOf(c), ceilOf(o));
   const tall = top > HEIGHT + 0.5;
   const M = B.wall;
   M.setTint(1, 1, 1);

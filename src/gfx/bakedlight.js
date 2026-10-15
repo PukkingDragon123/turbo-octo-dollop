@@ -25,6 +25,9 @@ export const FIELD_SIZE = 128;
 // Reality "liquefaction" (0 = solid, 1 = walls flow like wet paint), shared by every baked material and driven
 // by gfx/distort.js together with the screen-space warp of the post stack.
 export const LIQUID = { value: 0 };
+// Level 0 (grid: 1) troffer falloff 1 / (1 + k d^2): shared by the shader, the outer-ring bake (gridbake.js)
+// and the CPU probes, so dynamic objects stay matched to the walls around them
+export const GRID_FALL = { value: 0.16 };
 
 export class LightField {
   constructor() {
@@ -55,6 +58,7 @@ export class LightField {
       uRoomB: { value: roomsB },
       uRoomKey: { value: new THREE.Vector2(1.5, 40) },
       uLiquid: LIQUID,
+      uGridFall: GRID_FALL,
     };
     this.globalMul = 1;
     this.tint = new THREE.Color(1, 1, 1);
@@ -687,6 +691,7 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
 
   const fsPars = `
       ${grid === 1 ? `flat varying vec2 vCell; flat varying vec2 vEdgeT; varying vec4 vTa; varying vec4 vTb; varying vec3 vWNrm;
+      uniform float uGridFall;
       ${WALL_T_GLSL}
       // transmission towards the diagonal neighbour (dx, dz) from f (position in the origin cell): the ray passes
       // the shared cell corner on the 'x boundary first' (tx) or 'z boundary first' (tz) side; blend the two over
@@ -780,7 +785,7 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
           vec3 lp = vec3((ij.x + 0.5) * uGrid.x, uGrid.y, (ij.y + 0.5) * uGrid.x);
           vec3 dl = lp - vWPos; float d = length(dl);
           float e = d / uGrid.z; e *= e;
-          float fall = max(0.0, 1.0 - e * e) / (1.0 + 0.16 * d * d);
+          float fall = max(0.0, 1.0 - e * e) / (1.0 + uGridFall * d * d);
           float emit = bkEmit((lp.y - vWPos.y) / max(d, 1e-3));
           vec3 lc = c * (uLightScale * fall);
           bkBounce += lc * (0.5 * (0.35 + 0.65 * t));

@@ -10,7 +10,7 @@ import { registerRecipe } from '../../gfx/texsynth.js';
 // p0: x strips per tile, y columns per strip, z motif rows per tile, w motif strength
 // p1: x style (0 = Level 0 stripes, 1 = manila damask), y foxing, z seam strength, w paper grain
 registerRecipe('env_wallpaper', {
-  defaults: { c0: 0xcbb46a, c1: 0xb39c55, c2: 0x6e5a2c, c3: 0xd9c77f, p0: [3, 8, 24, 1.35], p1: [0, 0.5, 1, 1], wear: 0.3, meters: 1.59, bump: 1.6, size: 1024 },
+  defaults: { c0: 0xcdb262, c1: 0xa9904a, c2: 0x6a5528, c3: 0xdcc679, p0: [3, 8, 24, 1.6], p1: [0, 0.6, 1, 1], wear: 0.3, meters: 1.59, bump: 1.9, size: 1024 },
   glsl: `S surface(vec2 uv){
     float strips = uP0.x;
     float sx = uv.x * strips; float si = mod(floor(sx), strips); float su = fract(sx);
@@ -44,8 +44,10 @@ registerRecipe('env_wallpaper', {
     float mott = fbm(uv + sh.xy * 3.0, vec2(5.0, 5.0), 5);
     float print = fbm(uv * vec2(1.0, 1.0) + 1.7, vec2(14.0, 3.0), 3);
     vec3 col = uC0 * (1.0 + (sh.z - 0.5) * 0.03);
-    col = mix(col, uC1, band * 0.32 * uP0.w * (0.8 + print * 0.4));
-    col = mix(col, uC3, motif * 0.34 * uP0.w * (0.75 + print * 0.5));
+    col = mix(col, uC1, band * 0.36 * uP0.w * (0.8 + print * 0.4));
+    col = mix(col, uC3, motif * 0.4 * uP0.w * (0.75 + print * 0.5));
+    // the print sits a little proud and is a touch glossier than the paper: it catches grazing light
+    col *= 1.0 - (1.0 - print) * 0.035;
     col *= 0.965 + (fib - 0.5) * 0.06 * uP1.w + (mott - 0.5) * 0.045;
     float sd = min(su, 1.0 - su);
     float gap = 1.0 - smoothstep(0.0008, 0.0026, sd);
@@ -55,14 +57,14 @@ registerRecipe('env_wallpaper', {
     float fox = smoothstep(0.74, 0.82, fbm(uv + 9.0, vec2(6.0), 5)) * uP1.y;
     col = mix(col, uC2, fox * 0.18);
     S s; s.albedo = col;
-    s.height = 0.5 + (fib - 0.5) * 0.22 * uP1.w + emb * 0.1 * uP0.w - gap * 0.45 + lift * 0.14;
-    s.rough = 0.86 - motif * 0.1 * uP0.w + (fib - 0.5) * 0.06; s.ao = 1.0 - gap * 0.55; s.metal = 0.0; return s; }`,
+    s.height = 0.5 + (fib - 0.5) * 0.22 * uP1.w + emb * 0.13 * uP0.w - gap * 0.45 + lift * 0.14;
+    s.rough = 0.84 - motif * 0.12 * uP0.w - band * 0.04 + (fib - 0.5) * 0.06; s.ao = 1.0 - gap * 0.55; s.metal = 0.0; return s; }`,
 });
 
 // Damp cut-pile carpet: two interleaved tuft layers, pile shading (brushed directions), flecks, matting.
 // p0: x tufts per tile, y fleck amount, z pile shading, w matting
 registerRecipe('env_carpet', {
-  defaults: { c0: 0xc4ab6c, c1: 0xa38c55, c2: 0x5e5132, c3: 0xd4c190, p0: [300, 0.6, 0.6, 0.45], wear: 0.3, meters: 1.0, bump: 1.3, size: 1024 },
+  defaults: { c0: 0xb39a5e, c1: 0x8e7843, c2: 0x4e4024, c3: 0xcab47c, p0: [300, 0.7, 0.8, 0.5], wear: 0.3, meters: 1.0, bump: 1.5, size: 1024 },
   glsl: `S surface(vec2 uv){
     vec4 v = vor(uv, vec2(uP0.x), 1.0);
     float tuft = 1.0 - smoothstep(0.0, 0.9, v.x);

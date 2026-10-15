@@ -244,7 +244,9 @@ export function decorateRoom(level, room, rec) {
 function sp(level, type, x, y, z, rotY = 0, opts = {}) {
   const hh = modelHalfHeight(type);
   _q.setFromEuler(_e.set(opts.rx || 0, rotY, opts.rz || 0));
-  return level.world.props.spawn(type, new THREE.Vector3(x, y + hh + 0.01, z), _q, { sleep: opts.sleep !== false, state: opts.state });
+  // sleeping props start exactly on their support; awake ones (piles) get a few mm to settle into
+  const lift = opts.sleep === false ? 0.012 : 0.003;
+  return level.world.props.spawn(type, new THREE.Vector3(x, y + hh + lift, z), _q, { sleep: opts.sleep !== false, state: opts.state });
 }
 
 export function populateRoom(level, room, rec, rng) {
@@ -252,13 +254,21 @@ export function populateRoom(level, room, rec, rng) {
   const r = (a) => rng.range(-a, a);
   switch (room.kind) {
     case 'chairpile': {
-      // the iconic chaotic pile of stacked chairs
-      const n = 18 + rng.int(0, 10);
-      for (let k = 0; k < n; k++) {
-        const layer = Math.floor(k / 6);
-        sp(level, 'chair_wood', b.cx + r(1.2), layer * 0.75 + 0.05, b.cz + r(1.2), rng.next() * 6.28, { rx: r(0.5), rz: r(0.5), sleep: false });
+      // the iconic chaotic pile of stacked chairs: each layer drops onto its own staggered slots (no two chairs
+      // start inside each other, so the pile collapses into a heap instead of exploding apart)
+      const layers = 3 + rng.int(0, 1);
+      for (let layer = 0; layer < layers; layer++) {
+        const slots = [6, 4, 3, 1][layer];
+        const rr = [0.95, 0.62, 0.42, 0][layer];
+        const a0 = rng.next() * 6.28;
+        for (let k = 0; k < slots; k++) {
+          const a = a0 + (k / slots) * Math.PI * 2;
+          sp(level, 'chair_wood', b.cx + Math.cos(a) * rr + r(0.08), 0.05 + layer * 0.95, b.cz + Math.sin(a) * rr + r(0.08), a + rng.range(-0.6, 0.6),
+            { rx: r(0.35), rz: r(0.35), sleep: false });
+        }
       }
-      for (let k = 0; k < 4; k++) sp(level, 'chair_wood', b.x0 + 0.7 + rng.next() * (b.x1 - b.x0 - 1.4), 0, b.z0 + 0.7 + rng.next() * 1.5, rng.next() * 6.28);
+      // a few strays left standing by the walls (south half: the north wall is kept door-free for the pile)
+      for (let k = 0; k < 3; k++) sp(level, 'chair_wood', b.x0 + 0.9 + k * ((b.x1 - b.x0 - 1.8) / 2) + r(0.2), 0, b.z1 - 0.7 - rng.next() * 0.3, rng.next() * 6.28);
       break;
     }
     case 'office_room': {
@@ -266,12 +276,12 @@ export function populateRoom(level, room, rec, rng) {
       sp(level, 'filing_cabinet', b.x0 + 0.4, 0, b.z1 - 0.5, Math.PI / 2);
       sp(level, 'desk_phone', b.cx + 0.45, 0.76, b.z0 + 0.6, r(0.4));
       sp(level, 'paper_stack', b.cx - 0.5, 0.76, b.z0 + 0.65, r(1));
-      if (rng.chance(0.6)) sp(level, rng.pick(['almond_water', 'protein_bar', 'chips', 'bandage', 'battery']), b.cx - 0.2, 0.78, b.z0 + 0.75, 0);
+      if (rng.chance(0.6)) sp(level, rng.pick(['almond_water', 'protein_bar', 'chips', 'bandage', 'battery']), b.cx + 0.5, 0.76, b.z0 + 0.88, 0);
       break;
     }
     case 'fuse_office': {
       sp(level, 'chair_office', b.cx + 0.2, 0, b.z0 + 1.4, Math.PI + r(0.5));
-      sp(level, 'fuse', b.cx - 0.3, 0.78, b.z0 + 0.6, 0.4, { state: { mission: 1 } });
+      sp(level, 'fuse', b.cx - 0.45, 0.76, b.z0 + 0.8, 0.4, { state: { mission: 1 } });
       sp(level, 'filing_cabinet', b.x1 - 0.4, 0, b.z1 - 0.5, -Math.PI / 2);
       break;
     }
@@ -296,13 +306,26 @@ export function populateRoom(level, room, rec, rng) {
       break;
     }
     case 'storage': {
-      for (let k = 0; k < 10; k++) {
-        const t = rng.pick(['box_small', 'box_medium', 'box_large', 'crate_wood', 'box_medium']);
-        sp(level, t, b.x0 + 0.6 + rng.next() * (b.x1 - b.x0 - 1.2), (k % 3) * 0.5, b.z0 + 0.6 + rng.next() * 1.0, rng.next() * 0.4, { sleep: false });
+      // stacks of boxes and crates along the back (north) wall: one stack per slot, heaviest at the bottom,
+      // each box set on the one below (no overlap, so nothing jumps when the stack wakes)
+      const width = b.x1 - b.x0;
+      const nSlots = Math.floor((width - 0.6) / 0.85);
+      for (let k = 0; k < nSlots; k++) {
+        if (rng.chance(0.15)) continue;
+        const x = b.x0 + 0.3 + 0.425 + k * ((width - 0.6 - 0.85) / Math.max(1, nSlots - 1)) + r(0.05);
+        const z = b.z0 + 0.55 + r(0.05);
+        let y = 0;
+        const tall = 1 + rng.int(0, 2);
+        for (let s2 = 0; s2 < tall; s2++) {
+          const t = s2 === 0 ? rng.pick(['crate_wood', 'box_large', 'box_large']) : s2 === 1 ? rng.pick(['box_medium', 'box_large']) : rng.pick(['box_small', 'box_medium']);
+          sp(level, t, x + r(0.03), y, z + r(0.03), r(0.12));
+          y += modelHalfHeight(t) * 2 + 0.004;
+        }
       }
       sp(level, 'pallet', b.cx, 0, b.z1 - 1.2, 0);
-      // loot on the pallet's deck (0.146 m), inside its 1.2 x 0.8 footprint
-      for (let k = 0; k < 3 + rng.int(0, 2); k++) sp(level, rng.weighted(CRATE_LOOT), b.cx + r(0.45), 0.146, b.z1 - 1.2 + r(0.25), rng.next() * 6);
+      // loot on the pallet's deck (0.146 m), inside its 1.2 x 0.8 footprint, spaced apart
+      const nl = 3 + rng.int(0, 2);
+      for (let k = 0; k < nl; k++) sp(level, rng.weighted(CRATE_LOOT), b.cx - 0.42 + (k / Math.max(1, nl - 1)) * 0.84, 0.146, b.z1 - 1.2 + r(0.2), rng.next() * 6);
       break;
     }
     case 'clipping': {
@@ -314,8 +337,13 @@ export function populateRoom(level, room, rec, rng) {
       break;
     }
     case 'sinking': {
+      // five pieces slowly going under, spread on a ring so they never sink through each other
+      const a0 = rng.next() * 6.28;
       for (let k = 0; k < 5; k++) {
-        const p = sp(level, rng.pick(['chair_wood', 'chair_office', 'table_folding', 'box_medium']), b.cx + r(1.1), -rng.range(0.1, 0.5), b.cz + r(1.1), rng.next() * 6, { rx: r(0.3) });
+        const a = a0 + (k / 5) * Math.PI * 2 + r(0.2);
+        const rr = k === 0 ? 0 : 1.6;
+        const x = k === 0 ? b.cx : b.cx + Math.cos(a) * rr, z = k === 0 ? b.cz : b.cz + Math.sin(a) * rr;
+        const p = sp(level, rng.pick(['chair_wood', 'chair_office', 'table_folding', 'box_medium']), x, -rng.range(0.1, 0.4), z, rng.next() * 6, { rx: r(0.2) });
         if (p) { level.world.props.setFrozen(p, true); p.sinking = { rate: rng.range(0.002, 0.008) }; }
       }
       break;
@@ -336,12 +364,14 @@ export function populateRoom(level, room, rec, rng) {
         if (rng.chance(0.7)) sp(level, 'crt_monitor', x, 0.76, z - 0.1, 0);
         if (rng.chance(0.3)) sp(level, rng.pick(['desk_phone', 'mug', 'binder', 'keyboard']), x + 0.4, 0.76, z, rng.next() * 6);
       }
-      if (rng.chance(0.5)) sp(level, rng.pick(['chips', 'soda_can', 'candy_bar']), b.cx, 0.78, b.cz, 0);
+      // a snack left on the first desk (not floating mid-room)
+      if (rng.chance(0.5)) sp(level, rng.pick(['chips', 'soda_can', 'candy_bar']), b.x0 + 1.2 - 0.45, 0.76, b.z0 + 1.2 + 0.15, rng.next() * 6);
       break;
     }
     case 'workshop': {
       for (const t of ['plank', 'plank', 'screws', 'metal_scrap', 'fabric_scrap', 'wire_spool']) sp(level, t, b.cx + r(1.2), 0, b.z0 + 1.4 + r(0.4), rng.next() * 6);
-      sp(level, 'toolbox', b.x0 + 0.6, 0, b.z1 - 0.6, 0.3);
+      // against the south wall between the two door slots (arches can open anywhere but the north wall)
+      sp(level, 'toolbox', b.cx - 0.2, 0, b.z1 - 0.32, 0.1);
       // on the workbench top (0.92 m)
       sp(level, 'welder', b.cx + 0.4, 0.921, b.z0 + 0.5, 0, { state: { fuel: 1 } });
       sp(level, 'sample_jar', b.cx - 0.5, 0.921, b.z0 + 0.5, 0);

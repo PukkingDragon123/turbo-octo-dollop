@@ -331,11 +331,14 @@ export class Raft extends Device {
         lp.onRaft = true;
       } else lp.onRaft = false;
     }
+    // host: loose props resting on the deck (the radio!) ride along too
+    if (net.isHost && (Math.abs(dx) + Math.abs(dz) + Math.abs(dyaw)) > 1e-5) this._carryProps(dx, dz, dyaw, Math.max(0, dy));
     this.prev.x = this.disp.x; this.prev.z = this.disp.z; this.prev.yaw = this.disp.yaw; this.prev.y = y;
-    // kinematic collider + visual (the visual rocks and bobs, the collider stays level)
-    this.body.setNextKinematicTranslation({ x: this.disp.x, y, z: this.disp.z });
+    // kinematic collider: teleported (zero platform velocity — riders are carried explicitly above,
+    // the character controller would otherwise add its own frame-rate dependent platform push)
+    this.body.setTranslation({ x: this.disp.x, y, z: this.disp.z }, true);
     _q.setFromAxisAngle(UP, this.disp.yaw);
-    this.body.setNextKinematicRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w });
+    this.body.setRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w }, true);
     this.rock = Math.max(0, this.rock - dt * 0.7);
     const sp = Math.hypot(this.s.vx, this.s.vz);
     const rr = this.rock * Math.sin(this.time * 7.3) * 0.12;
@@ -350,6 +353,31 @@ export class Raft extends Device {
       const f = Math.sign(this.s.vx || 1);
       this.level.ripple?.(this.disp.x + f * (RAFT_HL + 0.2), this.disp.z + (Math.random() - 0.5) * 2, 0.5 + sp * 0.25);
     }
+  }
+
+  _carryProps(dx, dz, dyaw, dy) {
+    const px = this.prev.x, pz = this.prev.z, c0 = Math.cos(this.prev.yaw), s0 = Math.sin(this.prev.yaw);
+    const c1 = Math.cos(this.disp.yaw), s1 = Math.sin(this.disp.yaw);
+    const deckY = this.prev.y;
+    _v.set(px, deckY, pz);
+    this.world.props.query(_v, RAFT_HL + RAFT_HW, (p) => {
+      const b = p.body;
+      if (!b || p.frozen || p.dead || p.isHeld?.()) return;
+      const t = b.translation();
+      const rx = t.x - px, rz = t.z - pz, ly = t.y - deckY;
+      const lx = rx * c0 - rz * s0, lz = rx * s0 + rz * c0;
+      if (Math.abs(lx) > RAFT_HL + 0.05 || Math.abs(lz) > RAFT_HW + 0.05 || ly < -0.05 || ly > 1.6) return;
+      if (Math.abs(b.linvel().y) > 1.5) return;
+      const nx = this.disp.x + lx * c1 + lz * s1, nz = this.disp.z - lx * s1 + lz * c1;
+      b.setTranslation({ x: nx, y: t.y + dy, z: nz }, true);
+      if (Math.abs(dyaw) > 1e-5) {
+        const r = b.rotation();
+        const q = new THREE.Quaternion(r.x, r.y, r.z, r.w).premultiply(_q.setFromAxisAngle(UP, dyaw));
+        b.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+      }
+      p.root.position.set(nx, t.y + dy, nz);
+    });
+    void dx; void dz;
   }
 
   dispose() {

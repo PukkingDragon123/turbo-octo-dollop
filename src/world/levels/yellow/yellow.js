@@ -6,11 +6,12 @@ import { net } from '../../../net/net.js';
 import { audio } from '../../../audio/audio.js';
 import { profile } from '../../../core/profile.js';
 import { hash01, RNG, hash3 } from '../../../core/rng.js';
-import { LightField } from '../../../gfx/bakedlight.js';
+import { LightField, GRID_FALL } from '../../../gfx/bakedlight.js';
 import { PlanarReflection, makeWaterMaterial } from '../../../gfx/water.js';
 import { CELL, CHUNK, CHUNK_M, HEIGHT, getLayout, cellInfo, wallN, wallW, wallPassable, missionChunks, clearLayoutCache, W } from './layout.js';
 import { buildChunk, cellLightSpec, makeOccluder, makeAO } from './chunkbuilder.js';
 import { decorateRoom, populateRoom } from './rooms.js';
+import { Placer } from './placement.js';
 import { modelHalfHeight } from '../../../entities/catalog.js';
 import { Mission } from '../../../game/mission.js';
 import { MonsterManager } from '../../../game/monsters.js';
@@ -266,10 +267,35 @@ export class YellowLevel {
     const ox = rec.cx * CHUNK_M, oz = rec.cz * CHUNK_M;
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
+    // every floor-standing spawn is checked against walls, pillars, doorways, wall vents and the props already
+    // put down (pulled towards its cell centre / turned a quarter if needed, dropped if it still doesn't fit).
+    // Items resting on a desk follow their desk: they are skipped with it.
+    const placer = new Placer(this);
+    for (const v of rec.layout.vents) {
+      const x = ox + v.li * CELL, z = oz + v.lj * CELL;
+      if (v.side === 'N') placer.reserveBox(x + CELL / 2 - 0.35, z, x + CELL / 2 + 0.35, z + 0.4);
+      else placer.reserveBox(x, z + CELL / 2 - 0.35, x + 0.4, z + CELL / 2 + 0.35);
+    }
+    let base = null; // last desk-like spawn: {from: [x, z, rot], to: [x, z, rot]} or false when it was dropped
     for (const sp of rec.layout.spawns) {
+      let x = ox + sp.x, z = oz + sp.z, rotY = sp.rotY || 0;
+      if (sp.y) {
+        // on top of the last base: follow its nudge / turn
+        if (!base) continue;
+        const [fx, fz, fr] = base.from, [tx, tz, tr] = base.to;
+        const d = tr - fr, c = Math.cos(d), s = Math.sin(d), lx = x - fx, lz = z - fz;
+        x = tx + lx * c + lz * s; z = tz - lx * s + lz * c; rotY += d;
+      } else {
+        const ci = Math.floor(sp.x / CELL), cj = Math.floor(sp.z / CELL);
+        const got = placer.place(sp.type, x, z, rotY, ox + (ci + 0.5) * CELL, oz + (cj + 0.5) * CELL);
+        if (sp.base) base = got ? { from: [x, z, rotY], to: [got.x, got.z, got.rotY] } : null;
+        if (!got) continue;
+        x = got.x; z = got.z; rotY = got.rotY;
+      }
       const hh = modelHalfHeight(sp.type);
-      q.setFromEuler(e.set(0, sp.rotY || 0, 0));
-      this.world.props.spawn(sp.type, new THREE.Vector3(ox + sp.x, (sp.y || 0) + hh + 0.02, oz + sp.z), q, { sleep: true, state: sp.state });
+      q.setFromEuler(e.set(0, rotY, 0));
+      // spawned asleep, so they must start resting exactly on their support (no hover, no overlap)
+      this.world.props.spawn(sp.type, new THREE.Vector3(x, (sp.y || 0) + hh + 0.003, z), q, { sleep: true, state: sp.state });
     }
     const rng = new RNG(hash3(rec.cx, rec.cz, 991, this.seed));
     for (const room of rec.layout.specials) populateRoom(this, room, rec, rng);
@@ -428,7 +454,7 @@ export class YellowLevel {
       const dx = l.x - pos.x, dy = l.y - pos.y, dz = l.z - pos.z;
       const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (d > l.radius) continue;
-      let w = (1 / (1 + 0.16 * d * d)) * Math.max(0, 1 - (d / l.radius) ** 4) * 0.8;
+      let w = (1 / (1 + GRID_FALL.value * d * d)) * Math.max(0, 1 - (d / l.radius) ** 4) * 0.8;
       w *= this.occluder(pos.x, pos.z, l.x, l.z);
       if (w <= 0) continue;
       const c = l.override || l.color;

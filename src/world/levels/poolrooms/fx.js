@@ -63,10 +63,82 @@ export class PoolFX {
     this.N = N;
   }
 
+  // falling water sheets of the mushroom fountains (one mesh per chunk, shared animated material)
+  curtainMesh(list) {
+    if (!list.length) return null;
+    const pos = [], uv = [], idx = [];
+    for (const c of list) {
+      const segs = 36, rows = 6;
+      const base = pos.length / 3;
+      const wl = this.level.waterLevel ?? -0.1;
+      for (let j = 0; j <= rows; j++) {
+        const v = j / rows;
+        const y = c.top + (wl - c.top) * v;
+        const r = c.r + v * v * 0.22; // the sheet flares out as it falls
+        for (let i = 0; i <= segs; i++) {
+          const a = (i / segs) * Math.PI * 2;
+          pos.push(c.x + Math.cos(a) * r, y, c.z + Math.sin(a) * r);
+          uv.push(i / segs, v);
+        }
+      }
+      for (let j = 0; j < rows; j++) for (let i = 0; i < segs; i++) {
+        const a = base + j * (segs + 1) + i, b = a + 1, cc = a + segs + 1, d = cc + 1;
+        idx.push(a, cc, b, b, cc, d);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeBoundingSphere();
+    const m = new THREE.Mesh(g, this._curtainMat());
+    m.renderOrder = 5;
+    m.frustumCulled = true;
+    this.curtains = (this.curtains || []).concat(list);
+    return m;
+  }
+
+  _curtainMat() {
+    if (this.cmat) return this.cmat;
+    this.cmat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: true,
+      uniforms: Object.assign(THREE.UniformsUtils.clone(THREE.UniformsLib.fog), { uTime: { value: 0 }, uLight: { value: 0.5 } }),
+      vertexShader: /* glsl */`
+        #include <fog_pars_vertex>
+        varying vec2 vUv;
+        void main(){
+          vUv = uv;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          #include <fog_vertex>
+        }`,
+      fragmentShader: /* glsl */`
+        #include <fog_pars_fragment>
+        uniform float uTime, uLight;
+        varying vec2 vUv;
+        float h(float n){ return fract(sin(n) * 43758.5453); }
+        void main(){
+          float u = vUv.x * 90.0;
+          float col = floor(u);
+          float sp = 1.4 + h(col) * 1.2;
+          float streak = fract(vUv.y * (3.0 + h(col + 7.0) * 3.0) - uTime * sp + h(col + 3.0));
+          float a = smoothstep(0.0, 0.25, streak) * (1.0 - smoothstep(0.55, 1.0, streak));
+          a *= 0.25 + 0.75 * smoothstep(0.2, 0.5, abs(fract(u) - 0.5) * 2.0 + h(col) * 0.6);
+          a *= (0.35 + 0.65 * vUv.y) * (1.0 - smoothstep(0.92, 1.0, vUv.y) * 0.5);
+          vec3 c = vec3(0.75, 0.86, 0.85) * (0.25 + uLight);
+          gl_FragColor = vec4(c, a * 0.42);
+          #include <fog_fragment>
+        }`,
+    });
+    return this.cmat;
+  }
+
   update(dt) {
     const lvl = this.level;
     const cam = engine.camera.position;
     const t = lvl.time;
+    if (this.cmat) { this.cmat.uniforms.uTime.value = t; this.cmat.uniforms.uLight.value = Math.min(1, 0.1 + lvl.envLum * 0.7); }
+    this._fountains(dt, cam);
     // ---- drips: drops fall from the ceiling into nearby water ----
     this.dripT -= dt;
     if (this.dripT <= 0) {
@@ -83,6 +155,12 @@ export class PoolFX {
       const d = this.drops[i];
       d.vy -= 9.8 * dt;
       d.y += d.vy * dt;
+      if (d.shower && d.y <= d.floor + 0.01) {
+        this.drops.splice(i, 1);
+        if (Math.random() < 0.4) this.world.fx.splash(_v.set(d.x, 0.02, d.z), 2, 0.0);
+        if (Math.random() < 0.25 && Math.hypot(d.x - cam.x, d.z - cam.z) < 8) audio.play('drip', { pos: _v.set(d.x, 0, d.z), volume: 0.35 });
+        continue;
+      }
       if (d.y <= lvl.waterLevel) {
         this.drops.splice(i, 1);
         lvl.ripple(d.x, d.z, 0.55);
@@ -115,6 +193,34 @@ export class PoolFX {
     }
     this.recent = this.recent.filter((e) => t - e.t < 6);
     this._updateHaze(dt, cam);
+  }
+
+  // mushroom fountains splash into their pools; shower heads drip onto the tiles
+  _fountains(dt, cam) {
+    const lvl = this.level;
+    this.fT = (this.fT || 0) - dt;
+    if (this.fT > 0) return;
+    this.fT = 0.12;
+    let nearF = 99;
+    for (const rec of lvl.chunks.values()) {
+      if (!rec.group.visible) continue;
+      for (const c of rec.curtains || []) {
+        const d = Math.hypot(c.x - cam.x, c.z - cam.z);
+        nearF = Math.min(nearF, d);
+        if (d > 22) continue;
+        const a = Math.random() * Math.PI * 2;
+        const r = c.r + 0.2;
+        lvl.ripple(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, 0.35);
+        if (d < 12 && Math.random() < 0.5) this.world.fx.splash(_v.set(c.x + Math.cos(a) * r, lvl.waterLevel + 0.02, c.z + Math.sin(a) * r), 2, lvl.waterLevel);
+      }
+      for (const h of rec.showers || []) {
+        const d = Math.hypot(h[0] - cam.x, h[2] - cam.z);
+        if (d > 14 || Math.random() > 0.18) continue;
+        this.drops.push({ x: h[0] + (Math.random() - 0.5) * 0.08, z: h[2] + (Math.random() - 0.5) * 0.08, y: h[1] - 0.04, vy: 0, floor: 0.0, shower: true });
+      }
+    }
+    if (!this.fLoop && nearF < 14) this.fLoop = audio.loop('water_flow', { bus: 'ambient', volume: 0 });
+    this.fLoop?.setVolume(Math.max(0, 1 - nearF / 14) * 0.45);
   }
 
   _updateHaze(dt, cam) {
@@ -155,6 +261,8 @@ export class PoolFX {
   }
 
   dispose() {
+    this.fLoop?.stop(0.3);
+    this.cmat?.dispose();
     this.haze.removeFromParent();
     this.haze.geometry.dispose();
     this.haze.material.dispose();

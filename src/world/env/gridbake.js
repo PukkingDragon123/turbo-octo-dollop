@@ -6,7 +6,7 @@
 // for wall faces.
 import * as THREE from 'three';
 import { CELL, CHUNK, HEIGHT, W, wallN, wallW, wallTransmission, cellInfo, getLayout, floorDiv } from '../levels/yellow/layout.js';
-import { OUT_SCALE, WALL_T, emitLobe } from '../../gfx/bakedlight.js';
+import { OUT_SCALE, WALL_T, emitLobe, GRID_FALL } from '../../gfx/bakedlight.js';
 
 const LY = HEIGHT - 0.04;   // fixture height
 const RADIUS = 9;
@@ -228,7 +228,7 @@ export class GridBaker {
           if (d2 < RADIUS * RADIUS) {
             const d = Math.sqrt(d2);
             const e2 = d2 / (RADIUS * RADIUS);
-            const fall = (1 - e2 * e2) / (1 + 0.16 * d2);
+            const fall = (1 - e2 * e2) / (1 + GRID_FALL.value * d2);
             const id = 1 / Math.max(d, 1e-3);
             const ndl = Math.max(0, (dx * nx + dy * ny + dz * nz) * id);
             const emit = emitLobe(dy * id);

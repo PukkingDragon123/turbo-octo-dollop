@@ -12,7 +12,7 @@ import { hash01 } from '../../../core/rng.js';
 import { EnvGeo, fr } from '../../env/builder.js';
 import { GridBaker } from '../../env/gridbake.js';
 import { ceilingCell, ceilingVoid } from '../../env/ceiling.js';
-import { emitWallEdge, pillar } from '../../env/walls.js';
+import { emitWallEdge, pillar, T } from '../../env/walls.js';
 import { pipeRun } from '../../env/pipes.js';
 import { fixtureMaterial } from '../../env/fixtures.js';
 import { lightVolumes } from '../../env/haze.js';
@@ -131,6 +131,9 @@ function carpetTint(k, hex) { return _carpets[k] || (_carpets[k] = Mat.make('car
 // maintenance block walls: the same synthesized set as the HQ, older paint (tinted)
 let _cmuDirty = null;
 function cmuDirty() { return _cmuDirty || (_cmuDirty = Mat.make('cmu', { color: 0xa69e88 })); }
+
+const _bb = new THREE.Box3();
+const _dp = new THREE.Vector3(), _dq = new THREE.Quaternion(), _ds = new THREE.Vector3();
 
 // per-chunk build statistics (ms, accumulated) for profiling tools
 export const buildStats = { geo: 0, bake: 0, mat: 0, decor: 0, phys: 0, water: 0, verts: 0, tris: 0, meshes: 0, n: 0 };
@@ -288,25 +291,35 @@ export function buildChunk(level, cx, cz) {
   }
   lap('water');
 
-  // --- static decor (sunk / clipped furniture) ---
+  // --- static decor: rare liminal set-pieces (furniture sunk into the carpet / shoved into a solid wall) ---
+  // They are solid (static colliders, added with the chunk's other colliders below).
+  const decorCols = [];
   for (const d of layout.decor) {
-    const x = (cx * N + d.li) * CELL + CELL / 2, z = (cz * N + d.lj) * CELL + CELL / 2;
+    if (d.kind !== 'sunk' && d.kind !== 'clip') continue;
+    const cx0 = (cx * N + d.li) * CELL, cz0 = (cz * N + d.lj) * CELL;
+    const m = buildModel(d.type, { seed: d.li * 31 + d.lj * 7 + 3 });
+    const o = m.object;
+    const hh = m.halfHeight ?? 0.4;
     if (d.kind === 'sunk') {
-      const m = buildModel(d.type, { seed: d.li * 31 + d.lj });
-      const o = m.object;
-      o.position.set(x, (m.halfHeight ?? 0.4) - d.depth, z);
+      o.position.set(cx0 + CELL / 2, hh - d.depth, cz0 + CELL / 2);
       o.rotation.set(d.tilt, d.rot, d.tilt * 0.5);
-      level.prepStatic(o);
-      group.add(o);
-    } else if (d.kind === 'clip') {
-      const m = buildModel(d.type, { seed: d.li * 17 + d.lj });
-      const o = m.object;
-      // half-way into the wall on the given side if a wall exists there
-      if (d.side === 'N') { o.position.set(x + 0.2, m.halfHeight ?? 0.4, (cz * N + d.lj) * CELL + 0.05); o.rotation.y = 0.3; }
-      else { o.position.set((cx * N + d.li) * CELL + 0.05, m.halfHeight ?? 0.4, z - 0.3); o.rotation.y = Math.PI / 2 + 0.25; }
-      level.prepStatic(o);
-      group.add(o);
+    } else {
+      // back pushed into the wall by most of the wall thickness, never out through the far face
+      _bb.setFromObject(o);
+      const hw = Math.max(-_bb.min.x, _bb.max.x), back = -_bb.min.z;
+      const yaw = d.yaw || 0;
+      const reach = back * Math.cos(yaw) + hw * Math.abs(Math.sin(yaw));
+      const along = hw * Math.cos(yaw) + back * Math.abs(Math.sin(yaw));
+      const inner = (d.side === 'N' ? cz0 : cx0) + T / 2;     // wall face on this cell's side
+      const depth = inner - (T - 0.02) + reach;                // centre so the back sits 2 cm short of the far face
+      const lo = along + 0.12, hi = CELL - along - 0.12;
+      const u = lo > hi ? CELL / 2 : Math.min(hi, Math.max(lo, CELL / 2 + (d.slide || 0)));
+      if (d.side === 'N') { o.position.set(cx0 + u, hh, depth); o.rotation.set(0, yaw, 0); }
+      else { o.position.set(depth, hh, cz0 + u); o.rotation.set(0, Math.PI / 2 + yaw, 0); }
     }
+    level.prepStatic(o);
+    group.add(o);
+    if (m.colliders?.length) decorCols.push([m.colliders, o]);
   }
   lap('decor');
 
@@ -319,6 +332,13 @@ export function buildChunk(level, cx, cz) {
   for (const b of rec.colliders) {
     cols.push(phys.addStaticBox((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2,
       (b.max.x - b.min.x) / 2, (b.max.y - b.min.y) / 2, (b.max.z - b.min.z) / 2, ud));
+  }
+  for (const [desc, o] of decorCols) {
+    o.updateMatrixWorld(true);
+    o.matrixWorld.decompose(_dp, _dq, _ds);
+    const res = phys.addStaticCollidersFromDesc(desc, _dp, _dq, { kind: 'static', surface: 'prop' });
+    cols.push(...res.colliders);
+    (rec.extraBodies = rec.extraBodies || []).push(res.body);
   }
   rec.physicsColliders = cols;
   group.updateMatrixWorld(true);

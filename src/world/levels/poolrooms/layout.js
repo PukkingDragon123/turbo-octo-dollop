@@ -436,9 +436,9 @@ function assignLight(c, seed, style) {
   } else if (c.pool && c.pool.kind === 'canal') {
     // skylights high over the water alternate with pendant lamps hanging on long rods
     const sky = c.i % 2 === 0 && (c.lj === 2 || c.lj === 3) && c.lj % 2 === (c.i / 2) % 2;
-    if (sky) { c.light = 1; c.lightKind = 'sky'; } else { c.light = h < (style === 'dark' ? 0.35 : 0.55) ? 1 : 0; c.lightKind = 'pendant'; }
+    if (sky) { c.light = style === 'dark' ? (h < 0.5 ? 1 : 0) : 1; c.lightKind = 'sky'; } else { c.light = h < (style === 'dark' ? 0.2 : 0.32) ? 1 : 0; c.lightKind = 'pendant'; }
   } else {
-    c.light = c.i % 2 === 1 || h < 0.25 ? 1 : 0;
+    c.light = (c.i % 2 === 1 && (c.lj === 0 || c.lj === 5 || c.lj === 7)) || h < 0.12 ? 1 : 0;
     c.lightKind = 'pendant';
   }
   if (style === 'dark') {

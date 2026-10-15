@@ -49,11 +49,19 @@ export function missionChunks(seed) {
 }
 
 const SPECIALS = [
-  ['chairpile', 10], ['office_room', 10], ['bedroom', 6], ['tv_room', 6], ['storage', 9], ['clipping', 7],
-  ['sinking', 6], ['manila_room', 4], ['endless_hall', 5], ['poolrooms_glimpse', 3], ['red_chair', 4],
+  ['chairpile', 10], ['office_room', 10], ['bedroom', 6], ['tv_room', 6], ['storage', 9], ['clipping', 2],
+  ['sinking', 3], ['manila_room', 4], ['endless_hall', 5], ['poolrooms_glimpse', 3], ['red_chair', 4],
   ['stairs_nowhere', 4], ['many_doors', 3], ['vent_room', 6], ['vending_lonely', 4], ['workshop', 6],
   ['cubicle_farm', 6], ['dead_clone', 6],
 ];
+
+// walls a room's furniture stands against: no door is cut there (it would open onto the back of a
+// vending machine, a desk or a stack of boxes)
+const DOOR_AVOID = {
+  fuel_store: ['W'], fuse_office: ['N'], vending_lonely: ['N'], many_doors: ['N'], stairs_nowhere: ['N'],
+  storage: ['N'], chairpile: ['N'], cubicle_farm: ['N'], vent_room: ['W', 'E'], clipping: ['W', 'E'],
+  bedroom: ['E', 'S'], office_room: ['N'], tv_room: ['N'], workshop: ['N'],
+};
 
 function specialSize(kind) {
   switch (kind) {
@@ -154,17 +162,17 @@ function generateLayout(seed, cx, cz, variant) {
   else if (gen) placeRoom(layout, rng, 'gen_' + gen.kind, 3, 3, 2, 2, { doors: 2 });
   // generator support items: fuel can / fuse are placed in a neighbouring chunk of their generator
   for (const m of mission) {
-    if (m.kind === 'diesel' && cx === m.cx + 1 && cz === m.cz) placeRoom(layout, rng, 'fuel_store', 2, 5, 1, 1, { doors: 1 });
-    if (m.kind === 'electric' && cx === m.cx && cz === m.cz + 1) placeRoom(layout, rng, 'fuse_office', 5, 2, 1, 1, { doors: 1 });
+    if (m.kind === 'diesel' && cx === m.cx + 1 && cz === m.cz) placeRoom(layout, rng, 'fuel_store', 2, 5, 1, 1, { doors: 1, avoid: DOOR_AVOID.fuel_store });
+    if (m.kind === 'electric' && cx === m.cx && cz === m.cz + 1) placeRoom(layout, rng, 'fuse_office', 5, 2, 1, 1, { doors: 1, avoid: DOOR_AVOID.fuse_office });
   }
-  if (cx === 0 && cz === 1) placeRoom(layout, rng, 'workshop', 2, 2, 2, 2, { doors: 2 });
+  if (cx === 0 && cz === 1) placeRoom(layout, rng, 'workshop', 2, 2, 2, 2, { doors: 2, avoid: DOOR_AVOID.workshop });
 
   // --- random special room ---
   if (!isSpawn && !gen && rng.chance(0.62)) {
     const kind = rng.weighted(SPECIALS);
     const [w, h] = specialSize(kind);
     const rx = rng.int(1, N - 1 - w), rz = rng.int(1, N - 1 - h);
-    if (canPlace(layout, rx, rz, w, h)) placeRoom(layout, rng, kind, rx, rz, w, h, { doors: kind === 'endless_hall' ? 0 : rng.int(1, 2) });
+    if (canPlace(layout, rx, rz, w, h)) placeRoom(layout, rng, kind, rx, rz, w, h, { doors: kind === 'endless_hall' ? 0 : rng.int(1, 2), avoid: DOOR_AVOID[kind] });
   }
 
   // --- pillars ---
@@ -205,8 +213,9 @@ function generateLayout(seed, cx, cz, variant) {
   for (let k = 0; k < 3; k++) {
     const li = rng.int(0, N - 1), lj = rng.int(0, N - 1);
     const idx = lj * N + li;
-    if (edgesN[idx] === W.FULL) layout.vents.push({ li, lj, side: 'N' });
-    else if (edgesW[idx] === W.FULL) layout.vents.push({ li, lj, side: 'W' });
+    const busy = (sd) => layout.decor.some((d) => d.kind === 'clip' && d.li === li && d.lj === lj && d.side === sd);
+    if (edgesN[idx] === W.FULL && !busy('N')) layout.vents.push({ li, lj, side: 'N' });
+    else if (edgesW[idx] === W.FULL && !busy('W')) layout.vents.push({ li, lj, side: 'W' });
   }
   return layout;
 }
@@ -261,7 +270,10 @@ function placeRoom(layout, rng, kind, rx, rz, w, h, opts = {}) {
   for (const b of boundary) (b.arr === 'N' ? edgesN : edgesW)[b.idx] = open;
   if (kind !== 'spawn') {
     const nd = opts.doors ?? 1;
-    const choices = rng.shuffle(boundary.slice());
+    const avoid = opts.avoid || null;
+    let pool = avoid ? boundary.filter((b) => !avoid.includes(b.side)) : boundary.slice();
+    if (!pool.length) pool = boundary.slice();
+    const choices = rng.shuffle(pool);
     for (let d = 0; d < Math.min(nd, choices.length); d++) {
       const b = choices[d];
       (b.arr === 'N' ? edgesN : edgesW)[b.idx] = kind.startsWith('gen_') || kind === 'workshop' ? W.ARCH : W.DOOR;
@@ -304,6 +316,24 @@ function spawnZoneProps(layout, c, rng, seed) {
   const cx = x0 + CELL / 2, cz = z0 + CELL / 2;
   const r = () => rng.range(-0.75, 0.75);
   const h = hash01(c.i, c.j, 61, seed);
+  // rare, deliberate liminal set-pieces: one piece of furniture sunk into the carpet, or shoved into a solid
+  // wall. They own their cell (nothing else spawns there) so they never tangle with other furniture.
+  const hd = hash01(c.i, c.j, 64, seed);
+  if (hd < 0.005 && !c.water) {
+    layout.decor.push({ kind: 'sunk', li: c.li, lj: c.lj, type: rng.pick(['chair_wood', 'table_folding', 'chair_office', 'filing_cabinet']), depth: rng.range(0.25, 0.5), rot: rng.next() * 6.28, tilt: rng.range(-0.22, 0.22) });
+    return;
+  }
+  if (hd < 0.01) {
+    const N = CHUNK, idx = c.lj * N + c.li;
+    const side = layout.edgesN[idx] === W.FULL ? 'N' : layout.edgesW[idx] === W.FULL ? 'W' : null;
+    // keep clear of pillars at the two corners of that wall
+    const pil = (a, b) => layout.pillars.some((p) => p.li === a && p.lj === b);
+    if (side && (pil(c.li, c.lj) || (side === 'N' ? pil(c.li + 1, c.lj) : pil(c.li, c.lj + 1)))) return;
+    if (side) {
+      layout.decor.push({ kind: 'clip', li: c.li, lj: c.lj, type: rng.pick(['desk', 'chair_wood', 'filing_cabinet', 'bookshelf', 'couch']), side, slide: rng.range(-0.5, 0.5), yaw: rng.range(-0.18, 0.18) });
+      return;
+    }
+  }
   switch (c.zone) {
     case 'halls':
     case 'dark':
@@ -317,12 +347,12 @@ function spawnZoneProps(layout, c, rng, seed) {
       if (h < 0.3) {
         // desk front (drawers, knee space) is +Z: the chair and the monitor/keyboard face that side.
         // Desk top is 0.76 m; desk items spawn just above it so they settle without a drop.
-        sp(layout, 'desk', cx, cz - 0.3, r() * 0.04);
+        sp(layout, 'desk', cx, cz - 0.3, r() * 0.04, { base: true });
         if (rng.chance(0.8)) sp(layout, 'chair_office', cx + r() * 0.3, cz + 0.6, Math.PI + r() * 0.9);
-        if (rng.chance(0.6)) sp(layout, 'crt_monitor', cx - 0.15 + r() * 0.15, cz - 0.42, r() * 0.35, { y: 0.761 });
-        if (rng.chance(0.45)) sp(layout, 'keyboard', cx - 0.15 + r() * 0.08, cz - 0.04, r() * 0.12, { y: 0.761 });
-        if (rng.chance(0.4)) sp(layout, rng.pick(['desk_phone', 'mug', 'paper_stack', 'binder', 'lamp_desk']), cx + 0.45, cz - 0.38, rng.next() * 6.28, { y: 0.761 });
-      } else if (h < 0.42) sp(layout, 'desk_cubicle_panel', cx, z0 + 0.15, 0);
+        if (rng.chance(0.6)) sp(layout, 'crt_monitor', cx - 0.15 + r() * 0.15, cz - 0.42, r() * 0.35, { y: 0.76 });
+        if (rng.chance(0.45)) sp(layout, 'keyboard', cx - 0.15 + r() * 0.08, cz - 0.04, r() * 0.12, { y: 0.76 });
+        if (rng.chance(0.4)) sp(layout, rng.pick(['desk_phone', 'mug', 'paper_stack', 'binder', 'lamp_desk']), cx + 0.45, cz - 0.38, rng.next() * 6.28, { y: 0.76 });
+      } else if (h < 0.42) sp(layout, 'desk_cubicle_panel', cx, z0 + 0.34, 0);
       else if (h < 0.5) sp(layout, 'filing_cabinet', cx + r(), cz + r(), rng.pick([0, Math.PI / 2, Math.PI]));
       else if (h < 0.56) sp(layout, rng.pick(['printer', 'plant_pot', 'whiteboard', 'trash_can', 'computer_tower', 'box_medium']), cx + r(), cz + r(), rng.next() * 6.28);
       if (hash01(c.i, c.j, 62, seed) < 0.04) sp(layout, rng.weighted(LOOT_RARE), cx + r(), cz + r(), rng.next() * 6.28);
@@ -344,10 +374,6 @@ function spawnZoneProps(layout, c, rng, seed) {
       break;
     }
   }
-  // sinking / clipping decor scattered rarely everywhere
-  const hd = hash01(c.i, c.j, 64, seed);
-  if (hd < 0.012) layout.decor.push({ kind: 'sunk', li: c.li, lj: c.lj, type: rng.pick(['chair_wood', 'table_folding', 'chair_office', 'filing_cabinet']), depth: rng.range(0.25, 0.6), rot: rng.next() * 6.28, tilt: rng.range(-0.3, 0.3) });
-  else if (hd < 0.02) layout.decor.push({ kind: 'clip', li: c.li, lj: c.lj, type: rng.pick(['desk', 'chair_wood', 'filing_cabinet', 'bookshelf', 'couch']), side: rng.pick(['N', 'W']) });
 }
 
 // Accessors in GLOBAL cell coords --------------------------------------------

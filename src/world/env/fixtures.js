@@ -26,7 +26,7 @@ function atlas() {
   if (_atlas) return _atlas;
   const c = document.createElement('canvas'); c.width = AW; c.height = AH;
   const e = document.createElement('canvas'); e.width = AW; e.height = AH;
-  const g = c.getContext('2d'), ge = e.getContext('2d');
+  const g = c.getContext('2d', { willReadFrequently: true }), ge = e.getContext('2d');
   g.fillStyle = '#d8d2c4'; g.fillRect(0, 0, AW, AH);
   ge.fillStyle = '#000'; ge.fillRect(0, 0, AW, AH);
   const rr = (ctx, x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };

@@ -10,8 +10,8 @@ import { TAU, V3, clamp, lerp, sstep, dk, noise3, curve, cached, latheGeo, ellip
 const L = 4.6;               // head tip -> tail base
 const SEG = 5;               // spine bones
 const SPINE_Z = [-0.28, -0.05, 0.12, 0.26, 0.38, 0.5].map((f) => f * L);
-const RY = curve([[0, 0], [0.04, 0.12], [0.18, 0.25], [0.4, 0.3], [0.62, 0.25], [0.84, 0.12], [1, 0.06]]);
-const RX = curve([[0, 0], [0.04, 0.1], [0.2, 0.19], [0.42, 0.21], [0.7, 0.13], [1, 0.04]]);
+const RY = curve([[0, 0], [0.04, 0.14], [0.18, 0.3], [0.4, 0.36], [0.62, 0.29], [0.84, 0.13], [1, 0.06]]);
+const RX = curve([[0, 0], [0.04, 0.11], [0.2, 0.21], [0.42, 0.24], [0.7, 0.14], [1, 0.04]]);
 // arms: [side, z along body (fraction), y (fraction of RY), length scale]
 const ARMS = [[-1, 0.27, -0.35, 1.0], [1, 0.27, -0.35, 1.05], [-1, 0.52, -0.7, 0.8], [1, 0.55, -0.68, 0.75]];
 // eyes on the head: [side, u (along), v (up, fraction of ry), radius (m), milky]
@@ -79,9 +79,9 @@ function geometry() {
       const u = (p.z + L / 2) / L;
       const v = p.y / Math.max(1e-3, RY(u) * L);
       const belly = sstep(0.1, -0.7, v), back = sstep(0.2, 0.95, v);
-      let c = [1.0, lerp(lerp(0.46, 0.8, belly), 0.32, back), lerp(lerp(0.06, 0.5, belly), 0.03, back)];
+      let c = [lerp(1.0, 0.78, back), lerp(lerp(0.62, 0.86, belly), 0.4, back), lerp(lerp(0.12, 0.55, belly), 0.04, back)];
       // gilded shimmer bands + darker scale rows
-      const band = 0.85 + 0.15 * Math.sin(u * 60 + v * 4);
+      const band = 0.93 + 0.07 * Math.sin(u * 140 + v * 9) * Math.sin(v * 23 + u * 31);
       c = c.map((x) => x * band);
       // pale bleached patches (scale loss)
       const bleach = sstep(0.55, 0.75, noise3(p.x * 1.6, p.y * 1.6, p.z * 1.6));
@@ -103,7 +103,7 @@ function geometry() {
     }, (p) => {
       const u = (p.z + L / 2) / L;
       return u < 0.2 ? S_SKIN : S_SCALE;
-    }, (u, v) => [v * 3.0, u * 4.0]);
+    }, (u, v) => [v * 16.0, u * 34.0]);
     // ---- lips + human teeth ringing the mouth
     const mz = -L / 2 + 0.05;
     const lip = tubeGeo((t, out) => { const a = t * TAU; return out.set(Math.cos(a) * 0.32, -0.02 + Math.sin(a) * 0.24, mz + 0.03 + 0.02 * Math.sin(a * 3)); }, () => 0.06, 8, 40);

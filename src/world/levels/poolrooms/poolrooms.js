@@ -20,8 +20,12 @@ import { Critters } from '../../../game/critters.js';
 import { Device } from '../../../game/devices.js';
 import {
   CELL, CHUNK, CHUNK_M, HEIGHT, TALL, W, WATER_Y, SUNK_Y, getLayout, wallN, wallW, wallPassable,
-  clearLayoutCache, poolFloorAt, poolCoords, poolStairSide,
+  clearLayoutCache, poolFloorAt, poolCoords, poolStairSide, missionChunks, BACK, CANAL_Z0, CANAL_Z1, CANAL_X0,
+  GIANT, hallOf,
 } from './layout.js';
+import { Raft, RAFT_HL, RAFT_HW } from './raft.js';
+import { PoolCreatures } from './creatures.js';
+import { WaterPlay } from './waterplay.js';
 import { buildChunk, buildChunkSteps, cellLightSpec, makeQueries } from './chunkbuilder.js';
 import { PU, initPoolTextures } from './poolmat.js';
 import { PoolReflection, makePoolWater } from './water.js';
@@ -41,9 +45,9 @@ const SLICE_MS = 7;
 
 const _v = new THREE.Vector3();
 const _c = new THREE.Color();
-const _fogLit = new THREE.Color(0.5, 0.6, 0.62);
-const _fogDark = new THREE.Color(0.018, 0.026, 0.03);
-const _fogWater = new THREE.Color(0.05, 0.27, 0.32);
+const _fogLit = new THREE.Color(0.26, 0.31, 0.31);
+const _fogDark = new THREE.Color(0.012, 0.018, 0.018);
+const _fogWater = new THREE.Color(0.012, 0.05, 0.04);
 const _fogBlood = new THREE.Color(0.08, 0.02, 0.02);
 const _c2 = new THREE.Color();
 
@@ -121,7 +125,17 @@ export class PoolroomsLevel extends YellowLevel {
     this.envLum = 1;
     this.mapT = 0;
     this.prevEnv = null;
+    this.missionChunks = missionChunks(this.seed);
+    this.starterExtra = ['water_tester'];
     registerPoolAudio();
+  }
+
+  // the arrival room sits at the head of the waterway (chunk 0, back of the south deck)
+  spawnCenter() { return new THREE.Vector3(2 * CELL, 0, (BACK + 1) * CELL); }
+
+  // generators stand against the south wall of their plant room, facing the deck and the canal
+  generatorSpot(m) {
+    return { x: (m.cx * CHUNK + 4) * CELL, z: (m.cz * CHUNK + CHUNK) * CELL - 1.55, rot: Math.PI };
   }
 
   // ---------------------------------------------------------------
@@ -143,14 +157,14 @@ export class PoolroomsLevel extends YellowLevel {
     this.field.uniforms.uAmbient.value.setRGB(0.02, 0.024, 0.026);
     this.field.uniforms.uLightScale.value = 0.36;
     const pp = engine.post.params;
-    pp.uTint.value.setRGB(0.98, 1.0, 1.02);
-    pp.uSat.value = 0.9;
+    pp.uTint.value.setRGB(0.96, 1.0, 0.99);
+    pp.uSat.value = 0.86;
     pp.uGrain.value = 0.045;
     pp.uVignette.value = 0.36;
     if (engine.post.bloom) { engine.post.bloom.strength = 0.4; this.prevEnv.thr = engine.post.bloom.threshold; engine.post.bloom.threshold = 1.05; }
     // clean, cool film grade (if the post stack offers grading controls)
     if (pp.uLift) {
-      pp.uExposure.value = 1.0;
+      pp.uExposure.value = 0.9;
       pp.uLift.value.set(0.004, 0.011, 0.015);
       pp.uGamma.value.set(1.0, 1.0, 1.02);
       pp.uGain.value.set(0.985, 1.0, 1.02);
@@ -178,7 +192,19 @@ export class PoolroomsLevel extends YellowLevel {
       await new Promise((r) => setTimeout(r, 0));
     }
     this.mission.build();
+    // the raft waits at the dock at the head of the canal
+    this.raft = new Raft(this.world, this, 'raft', CANAL_X0 + 2.4 + RAFT_HL + 0.6, CANAL_Z1 - RAFT_HW - 0.12);
+    this.world.addDevice(this.raft);
+    this.prepStatic(this.raft.root, null);
+    this.creatures = new PoolCreatures(this);
+    this.waterplay = new WaterPlay(this);
     this._applyDayLights(1, true);
+  }
+
+  hostStart(desc) {
+    super.hostStart(desc);
+    setTimeout(() => this.mission?.hq('LEVEL 37 ADVISORY: The generators are located DOWNSTREAM. The halls are sealed on foot — board the RAFT at the dock and punt it forward (hold [E] while looking at the deck). Bring the field radio.', 'HQ'), 6500);
+    setTimeout(() => this.mission?.hq('WATER SAFETY: Use your AQUA-CHECK tester (RMB) before wading or drinking. Deep water exhausts clones. Report anything large moving beneath the surface.', 'HQ'), 17000);
   }
 
   startAudio() {
@@ -283,6 +309,10 @@ export class PoolroomsLevel extends YellowLevel {
       (rec.roomDevices = rec.roomDevices || []).push(dev);
     }
     if (rec.floatMesh) this.prepStatic(rec.floatMesh, rec);
+    if (rec.curtains?.length) {
+      const cm = this.fx.curtainMesh(rec.curtains);
+      if (cm) { cm.userData.noRefl = true; rec.group.add(cm); rec.curtainMesh = cm; this.reflection.hide.add(cm); }
+    }
     for (const room of rec.layout.specials) decoratePoolRoom(this, room, rec);
     // room furniture: never mirrored, merged per material
     for (const o of rec.statics || []) if (o.parent === rec.group && o !== rec.floatMesh) o.userData.noRefl = true;
@@ -297,6 +327,7 @@ export class PoolroomsLevel extends YellowLevel {
     if (rec.waterMesh) this.reflection.meshes.delete(rec.waterMesh);
     if (rec.spillMesh) this.reflection.meshes.delete(rec.spillMesh);
     if (rec.shaftMesh) this.reflection.hide.delete(rec.shaftMesh);
+    if (rec.curtainMesh) { this.reflection.hide.delete(rec.curtainMesh); rec.curtainMesh.geometry.dispose(); }
     super._unloadChunk(key);
   }
 
@@ -445,6 +476,8 @@ export class PoolroomsLevel extends YellowLevel {
     this.monsters.update(dt);
     this.anomalies.update(dt);
     this.critters.update(dt);
+    this.creatures?.update(dt);
+    this.waterplay?.update(dt);
     this.fx.update(dt);
     this._updateLightLevel();
   }
@@ -480,12 +513,13 @@ export class PoolroomsLevel extends YellowLevel {
     const wm = this.waterMaterial;
     wm.uniforms.uLevel.value = this.waterLevel;
     wm.userData.tick(this.time);
-    wm.uniforms.uMurk.value = clamp((inst - 0.45) / 0.55, 0, 1) * 0.9 + col * 0.1;
+    wm.uniforms.uMurk.value = 0.12 + clamp((inst - 0.45) / 0.55, 0, 1) * 0.8 + col * 0.1;
     wm.uniforms.uRippleAmp.value = 1 + inst * 0.6 + col * 1.5;
     // clear turquoise -> green -> black
     const m = clamp((inst - 0.3) / 0.7, 0, 1);
-    PU.uAbsorb.value.set(0.38 + m * 0.5 + col * 1.2, 0.07 + m * 0.22 + col * 1.0, 0.045 + m * 0.42 + col * 1.1);
-    PU.uScatter.value.setRGB(0.0 + m * 0.03, 0.085 - m * 0.03, 0.11 - m * 0.07);
+    // murky green-black from the start, darker and greener as the days go on
+    PU.uAbsorb.value.set(0.95 + m * 0.5 + col * 1.2, 0.42 + m * 0.25 + col * 1.0, 0.55 + m * 0.45 + col * 1.1);
+    PU.uScatter.value.setRGB(0.006 + m * 0.012, 0.034 - m * 0.012, 0.028 - m * 0.014);
     PU.uDecay.value = inst;
     PU.uCaustStr.value = 1 - m * 0.5 - col * 0.4;
     // underwater lamps: steady, then failing
@@ -501,6 +535,8 @@ export class PoolroomsLevel extends YellowLevel {
         rec.spillMesh.position.y = lvl;
       }
       if (rec.floatMesh) rec.floatMesh.position.y = this.waterLevel - WATER_Y + Math.sin(this.time * 1.3 + rec.cx * 3 + rec.cz) * 0.004;
+      if (rec.algaeMesh) { rec.algaeMesh.position.y = this.waterLevel - WATER_Y + Math.sin(this.time * 0.9 + rec.cx) * 0.003; rec.algaeMesh.updateMatrix(); rec.algaeMesh.updateMatrixWorld(); }
+      if (rec.curtainMesh) { rec.curtainMesh.visible = rec.group.visible; }
     }
     // reflections whenever water is close
     this.reflection.needed = false;
@@ -548,13 +584,13 @@ export class PoolroomsLevel extends YellowLevel {
     fogC.copy(_fogDark).lerp(_fogLit, k * (1 - inst * 0.35));
     fogC.lerp(_c2.copy(_fogWater).multiplyScalar(0.25 + k * 0.75 + PU.uPoolGlow.value * 0.3), u);
     if (col > 0) fogC.lerp(_fogBlood, col * 0.6);
-    scene.fog.density = 0.011 + inst * 0.012 + col * 0.03 + u * 0.21;
+    scene.fog.density = 0.013 + inst * 0.012 + col * 0.03 + u * 0.48;
     scene.background.copy(fogC);
     scene.environmentIntensity = (0.05 + 0.2 * k) * (1 - col * 0.5);
     this.field.uniforms.uAmbient.value.setRGB(0.006 + 0.018 * k, 0.007 + 0.021 * k, 0.008 + 0.022 * k);
     const pp = engine.post.params;
-    pp.uTint.value.setRGB(0.98 - u * 0.35, 1.0 - u * 0.05, 1.02 + u * 0.05);
-    pp.uSat.value = 0.9 - u * 0.15;
+    pp.uTint.value.setRGB(0.96 - u * 0.4, 1.0 - u * 0.1, 0.99 - u * 0.15);
+    pp.uSat.value = 0.86 - u * 0.2;
     const muf = Math.round(u * 0.75 * 50) / 50;
     if (muf !== this._muf) { this._muf = muf; audio.setMuffle?.(muf); }
     if (this.fadeT > 0) {
@@ -681,8 +717,13 @@ export class PoolroomsLevel extends YellowLevel {
   cell(x, z) {
     // water cells are hidden from the shared systems (no critters, monster spawns or exits in pools)
     const c = this.cellAt(Math.floor(x / CELL), Math.floor(z / CELL));
-    if (!c || c.water || c.pool) return null;
+    if (!c || c.water || c.pool || c.void) return null;
     return c;
+  }
+
+  waterInfected(x, z) {
+    const c = this.cellAt(Math.floor(x / CELL), Math.floor(z / CELL));
+    return !!(c && c.infected && (c.pool || c.water || c.spill));
   }
 
   floorY(x, z) {
@@ -779,7 +820,7 @@ export class PoolroomsLevel extends YellowLevel {
     if (fromMon) return fromMon;
     if (hit.ud?.kind === 'critter') return 'rat';
     const x = hit.point.x, z = hit.point.z;
-    if (this.waterDepth(x, z) > 0.02 && hit.point.y < this.waterLevel + 0.15) return 'flood_water';
+    if (this.waterDepth(x, z) > 0.02 && hit.point.y < this.waterLevel + 0.15) return this.waterInfected(x, z) ? 'infected_water' : 'flood_water';
     if (hit.ud?.kind === 'static') {
       const h = hash01(Math.floor(x * 2), Math.floor(z * 2), Math.floor(hit.point.y * 2), this.seed);
       const nearWater = Math.abs(hit.point.y - this.waterLevel) < 0.35;
@@ -817,6 +858,7 @@ export class PoolroomsLevel extends YellowLevel {
     }
     for (const g of this.mission?.generators || []) if (g.running) consider(g.root.position.clone().setY(0.8), `${g.label} (RUNNING)`, `gen:${g.id}`, 15);
     this.fx?.photoSubjects(consider);
+    this.creatures?.photoSubjects(camera, consider);
     return out;
   }
 
@@ -825,29 +867,42 @@ export class PoolroomsLevel extends YellowLevel {
     super.playFx(m, p);
   }
 
+  serialize() {
+    const o = super.serialize();
+    if (this.raft) o.raft = this.raft.serializeState();
+    return o;
+  }
+
+  applySync(d) {
+    super.applySync(d);
+    if (d.raft) this.raft?.applyState(d.raft);
+  }
+
+  // player hooks (see waterplay.js)
+  waterMotion(pl, dt, canControl) { return this.waterplay?.waterMotion(pl, dt, canControl); }
+  toolAction(kind, item, player) { return this.waterplay?.toolAction(kind, item, player) ?? null; }
+  onItemUsed(type) { this.waterplay?.onItemUsed(type); }
+
   // ---------------------------------------------------------------
   // dev helpers (tools/poolshots.mjs)
   debugViewpoints() {
     const out = [];
     const c = this.spawnCenter();
-    out.push({ name: 'spawn', p: [c.x + 0.4, 0.02, c.z + 1.6], yaw: 0.3 });
-    out.push({ name: 'spawn_pool', p: [c.x + 4.2, 0.02, c.z - 6], yaw: Math.PI * 0.85, pitch: -0.15 });
+    out.push({ name: 'spawn', p: [c.x + 0.4, 0.02, c.z - 0.6], yaw: 0.2 });
+    out.push({ name: 'dock', p: [c.x + 1.2, 0.02, CANAL_Z1 + 2.2], yaw: -Math.PI / 2 - 0.35, pitch: -0.12 });
+    out.push({ name: 'hall0_wide', p: [CELL * 7.5, 0.02, 0.9], yaw: -Math.PI / 2 - 0.45, pitch: 0.05 });
+    if (this.raft) out.push({ name: 'raft', p: [this.raft.disp.x - 0.6, this.raft.root.position.y + 0.02, this.raft.disp.z - 0.2], yaw: -Math.PI / 2, pitch: -0.1 });
     for (const rec of this.chunks.values()) {
-      for (const p of rec.layout.pools) {
-        const ox = rec.cx * CHUNK_M, oz = rec.cz * CHUNK_M;
-        const x0 = ox + p.rx * CELL, z0 = oz + p.rz * CELL;
-        out.push({ name: `pool_${p.kind}_${rec.cx}_${rec.cz}`, p: [x0 - 1.2, 0.02, z0 - 1.2], yaw: Math.atan2(-(p.w * CELL), -(p.h * CELL)) + Math.PI, pitch: -0.2 });
+      if (rec.layout.void) continue;
+      const ox = rec.cx * CHUNK_M;
+      if (rec.layout.gate) out.push({ name: `gate_${rec.cx}`, p: [ox - 7, 0.02, CANAL_Z1 + 1.2], yaw: -Math.PI / 2 - 0.25, pitch: 0.08 });
+      for (const d of rec.layout.decor) {
+        if (d.kind === 'mushroom') out.push({ name: `mushroom_${rec.cx}`, p: [ox + d.x + 3.5, 0.02, (BACK - 0.3) * CELL], yaw: Math.PI * 0.62, pitch: -0.08 });
+        if (d.kind === 'showers') { out.push({ name: `showers_${rec.cx}`, p: [d.x + 0.2, 0.02, 2.9], yaw: 0.25, pitch: 0.05 }); }
       }
       for (const room of rec.layout.specials) {
-        const x = (rec.cx * CHUNK + room.rx) * CELL + 0.8, z = (rec.cz * CHUNK + room.rz) * CELL + 0.8;
-        out.push({ name: `room_${room.kind}`, p: [x, 0.02, z], yaw: Math.PI * 0.75 });
-      }
-      const zones = new Set();
-      for (const cl of rec.layout.cells) {
-        if (cl.zone !== 'natatorium' && cl.zone !== 'halls' && !zones.has(cl.zone) && !cl.pool) {
-          zones.add(cl.zone);
-          out.push({ name: `zone_${cl.zone}`, p: [(cl.i + 0.5) * CELL, cl.fy + 0.02, (cl.j + 0.5) * CELL], yaw: 0.7 });
-        }
+        const x = (rec.cx * CHUNK + room.rx + room.w / 2) * CELL, z = (room.rz - 0.4) * CELL;
+        out.push({ name: `room_${room.kind}`, p: [x, 0.02, z], yaw: Math.PI, pitch: -0.05 });
       }
     }
     return out;
@@ -876,6 +931,8 @@ export class PoolroomsLevel extends YellowLevel {
     this.dripLoop?.stop(0.3);
     this.waterLoop?.stop(0.3);
     this.fx?.dispose();
+    this.creatures?.dispose();
+    this.waterplay?.dispose();
     audio.setMuffle?.(0);
     super.dispose();
     const s = engine.scene;

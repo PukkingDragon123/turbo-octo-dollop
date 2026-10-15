@@ -116,7 +116,7 @@ export function makePoolWater(reflection, field) {
       uLevel: { value: -0.1 },
       uRipples: { value: ripples },
       uRippleAmp: { value: 1 },
-      uReflStr: { value: 0.92 },
+      uReflStr: { value: 0.8 },
       uMurk: { value: 0 },
       uLightTex: field.uniforms.uLightTex,
       uLightScale: field.uniforms.uLightScale,
@@ -204,7 +204,7 @@ export function makePoolWater(reflection, field) {
           vec2 c = cid + 0.2 + 0.6 * vec2(wHash(cid + 3.7), wHash(cid + 9.1));
           float dd = length(g - c);
           float rad = 0.05 + ph * 0.16;
-          float ring = exp(-pow((dd - rad) * 38.0, 2.0)) * step(0.72, h) * (1.0 - ph);
+          float ring = exp(-pow((dd - rad) * 46.0, 2.0)) * step(0.86, h) * (1.0 - ph) * (1.0 - ph);
           bub = ring * vInf;
           slope *= 1.0 - vInf * 0.45;
           slope += normalize(g - c + 1e-4) * ring * 0.25 * vInf;
@@ -239,8 +239,8 @@ export function makePoolWater(reflection, field) {
           float spark = pow(max(0.0, R.y), 900.0) * 6.0 * L;
           vec3 col = refl * F * uReflStr + body * haze + spark * vec3(1.0, 0.98, 0.95);
           col += film * vInf * (0.05 + F * 0.25) * (L + 0.15);
-          col += vec3(0.75, 0.8, 0.55) * bub * (L + 0.2) * 1.3;
-          float a = clamp(F * uReflStr + haze + bub * 0.3, 0.0, 1.0);
+          col += vec3(0.55, 0.6, 0.3) * bub * (L + 0.15) * 0.7;
+          float a = clamp(F * uReflStr + haze + bub * 0.15, 0.0, 1.0);
           // very shallow sheets of water fade out at their edge
           float thin = smoothstep(0.0, 0.035, depth);
           outc = vec4(col * thin, a * thin);
