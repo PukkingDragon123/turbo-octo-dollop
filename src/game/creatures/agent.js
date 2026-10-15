@@ -165,15 +165,16 @@ export class Agent {
       if (d > R + 1.5) continue;
       const nx = dx / d, nz = dz / d;
       const vin = -(this.vel.x * nx + this.vel.z * nz);
-      if (d < R + 0.8 && vin > 0) { this.vel.x += nx * vin; this.vel.z += nz * vin; }
+      // walking into the field: it bites back (flinch + back off) before the wall even stops it
+      if (d < R + 0.6 && (vin > 0.3 || d < R) && this.repelCool <= 0) {
+        this.repelCool = 3.5;
+        this._repel(z, nx, nz);
+      }
+      if (d < R + 0.15 && vin > 0) { this.vel.x += nx * vin; this.vel.z += nz * vin; }
       if (d < R) {
         const push = Math.min(R - d, 6 * dt);
         this.pos.x += nx * push;
         this.pos.z += nz * push;
-      }
-      if (d < R + 0.45 && (vin > 0.4 || d < R) && this.repelCool <= 0) {
-        this.repelCool = 3.5;
-        this._repel(z, nx, nz);
       }
     }
   }
@@ -259,14 +260,16 @@ export class Agent {
     this.frozen = false;
     switch (r.phase) {
       case 'approach': {
+        // (a camp under a distorter field turns this into 'blocked' at the first touch of its edge)
         const d = this.moveTo(dt, camp.pos, speed);
         this.lookAt(camp.pos, 1);
         this.raidLabel = 'investigate';
-        if (zoneAt(this.world, camp.pos)) {
-          // the camp is under a field: the first touch at its edge turns this into 'blocked'
-        }
         if (d < Math.max(2, camp.radius * 0.75)) { r.phase = 'ransack'; r.t = 0; r.prop = null; }
-        if (r.t > 60) this.endRaid();
+        // no progress for a while (boxed in, no path): try a fresh path, then give up
+        if (r.best === undefined || d < r.best - 0.5) { r.best = d; r.stall = 0; }
+        else r.stall = (r.stall || 0) + dt;
+        if (r.stall > 5 && !r.repathed) { r.repathed = true; this.path = null; this.vel.set(Math.random() - 0.5, 0, Math.random() - 0.5).multiplyScalar(4); }
+        if (r.stall > 12 || r.t > 60) this.endRaid();
         break;
       }
       case 'blocked': {

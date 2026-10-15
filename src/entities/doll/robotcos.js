@@ -65,7 +65,7 @@ function brimGeo(edge, width, droop, thick = 0.004, nu = 56) {
   const rim = ring.map((R) => R.e.clone().addScaledVector(R.r, R.w).add(V(0, -R.d - thick / 2, 0)));
   return mergeSimple([top, bot, tubeR(rim, thick * 0.7, 6)]);
 }
-const fuzz = (r, amt, seed = 1, det = 3) => { const g = new THREE.IcosahedronGeometry(r, det); displace(g, (x, y, z) => nz(x * 9 / r + z * 4 / r, y * 9 / r + seed, seed) * amt * r); return g; };
+const fuzz = (r, amt, seed = 1, det = 3) => { const g = new THREE.SphereGeometry(r, 8 + det * 5, 6 + det * 3); displace(g, (x, y, z) => nz(x * 9 / r + z * 4 / r, y * 9 / r + seed, seed) * amt * r); return g; };
 
 // ---------------------------------------------------------------------------
 // Coverall colourway extras
@@ -505,8 +505,10 @@ const ACCS = {
     B.springs.acc = { k: 90, d: 6, gain: 0.008, mode: 'hang', limit: 0.3 };
   },
   tie(B, e) {
-    const p = coverPt(0, V0Y + 0.12, 0.0, V());
-    B.setRest('accA', [0, V0Y + 0.125 - RY.chest, p.z - 0.004]);
+    // the knot sits at the collar, the blade leans out to follow the chest plate
+    const p = coverPt(0, V0Y + 0.12, 0.0, V()), q = coverPt(0, 1.2, 0.0, V());
+    const lean = Math.atan2(p.z - q.z, V0Y + 0.12 - 1.2) + 0.06;
+    B.setRest('accA', [0, V0Y + 0.125 - RY.chest, p.z - 0.008], [lean, 0, 0]);
     const knot = pillow(0.026, 0.024, 0.014);
     B.rigid('accA', 'canvas', vcol(knot, 1), e.color);
     const blade = new THREE.Shape(); blade.moveTo(-0.01, 0); blade.lineTo(0.01, 0); blade.lineTo(0.03, -0.26); blade.lineTo(0, -0.29); blade.lineTo(-0.03, -0.26); blade.closePath();

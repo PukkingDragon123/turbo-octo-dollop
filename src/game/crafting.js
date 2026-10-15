@@ -91,7 +91,13 @@ export class CraftStation {
   open(spec) {
     const self = this;
     const g = this.game;
+    // small CRTs: show the screen as a big readable panel beside the bench (like the vending machines)
+    this.o.root.updateMatrixWorld(true);
     g.terminal.open({
+      overlay: true,
+      target: this.topWorld(new THREE.Vector3()).add(_v.set(0, 0.25, 0)),
+      distance: 1.6,
+      anchorNormal: new THREE.Vector3(0, 0, 1).applyQuaternion(this.o.root.getWorldQuaternion(_q)),
       ...spec,
       view() {
         const have = self.haveCounts();
@@ -144,7 +150,7 @@ export class CraftStation {
     ctx.fillStyle = pal.dim;
     ctx.fillRect(pad, h - 48, w - pad * 2, 2);
     text(ctx, 'Parts ON/BY the bench + your pockets count.', pad, h - 44, 19, pal.dim);
-    text(ctx, it.disabled ? 'MISSING PARTS — dismantle furniture [RMB multitool]' : '[E] BUILD   [W/S] SELECT   [TAB] LEAVE', pad, h - 24, 19, it.disabled ? pal.bad : pal.fg);
+    text(ctx, it.disabled ? 'MISSING PARTS — dismantle furniture (empty hand + RMB)' : '[E] BUILD   [W/S] SELECT   [TAB] LEAVE', pad, h - 24, 19, it.disabled ? pal.bad : pal.fg);
     if (Math.floor(t * 2) % 2 === 0) { ctx.fillStyle = pal.fg; ctx.fillRect(w - pad - 10, h - 24, 9, 16); }
   }
 

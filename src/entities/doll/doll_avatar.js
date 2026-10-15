@@ -423,14 +423,14 @@ export class Avatar {
     set3(p, CH.shR, swing * c + st.crouch * 0.35, 0, splay);
     set3(p, CH.elL, 0.16 + sp * 1.25 + st.air * 0.35 + st.crouch * 0.4, 0, 0);
     set3(p, CH.elR, 0.16 + sp * 1.25 + st.air * 0.35 + st.crouch * 0.4, 0, 0);
-    this._legs(p, st, walk, half, vy, t, sitW, s);
-
     if (E.wave > 0.001) this._emoteWave(p, E.wave, t);
     if (E.dance > 0.001) this._emoteDance(p, E.dance, t);
     if (E.point > 0.001) this._emotePoint(p, E.point);
     if (E.sit > 0.001) this._emoteSit(p, E.sit, t, s);
     if (E.sleep > 0.001) this._emoteSleep(p, E.sleep, t);
     if (st.laugh > 0.001) this._laughBody(p, st.laugh, st);
+    // legs last: IK from wherever the emotes put the pelvis
+    this._legs(p, st, walk, half, vy, t, sitW, s);
     if (st.dead > 0.001) this._poseDead(p, st.dead);
 
     // ---- head: gyro-stabilised (cancels the body's sway) + pitch + where it looks
@@ -494,15 +494,20 @@ export class Avatar {
     b.chest.rotation.set(X[CH.chest], X[CH.chest + 1], X[CH.chest + 2]);
     b.neck.rotation.set(X[CH.neck], X[CH.neck + 1], X[CH.neck + 2]);
     b.head.rotation.set(X[CH.head], X[CH.head + 1], X[CH.head + 2]);
-    for (const [bone, i] of this._limbs) bone.rotation.set(X[i], X[i + 1], X[i + 2]);
+    for (let k = 0, L = this._limbs; k < L.length; k++) { const i = L[k][1]; L[k][0].rotation.set(X[i], X[i + 1], X[i + 2]); }
     // shoulders jerk up with each laugh pulse
-    if (st.laugh > 0.001) { const up = st.laughPulse * 0.022 * st.laugh; b.shL.position.y += up; b.shR.position.y += up * 0.85; }
+    if (st.laugh > 0.001) {
+      const k = st.laughPulse * st.laugh, up = k * 0.022;
+      b.shL.position.y += up; b.shR.position.y += up * 0.85;
+      b.chest.rotation.x -= k * 0.05; b.head.rotation.x += k * 0.07;   // unsprung: a hard, stuttering jerk
+    }
     // hands: relaxed curl, grip around held things, point with the index finger
     const point = E.point;
     st.grip = damp(st.grip, clamp(Math.max(st.hold, st.holdT) * (1 - point), 0, 1), 12, D);
     st.ix = damp(st.ix, point > 0.5 ? 1 : 0, 14, D);
     const relax = 0.28 + st.dead * 0.2 + (st.twitchK === 6 ? st.twitch * 0.6 : 0);
-    for (const H of this._hands) {
+    for (let hk = 0; hk < 2; hk++) {
+      const H = this._hands[hk];
       const sg = H.sg, g = H.R ? st.grip : st.hold;
       const cu = relax + g * 0.95 + (H.R ? point * 0.9 : 0);
       H.fi.rotation.z = sg * cu; H.fj.rotation.z = sg * cu * 0.9;
@@ -519,7 +524,7 @@ export class Avatar {
     if (this.flameBone) { const f = (0.35 + st.air * 0.9 + st.sprint * 0.3) * (1 - st.dead) * (0.85 + 0.15 * Math.sin(t * 47) * Math.sin(t * 31)); this.flameBone.scale.set(1, Math.max(0.001, f), 1); }
 
     this.rigRoot.updateMatrixWorld(true);
-    for (const w of this.wobbles) w.update(dt);
+    for (let k = 0; k < this.wobbles.length; k++) this.wobbles[k].update(dt);
 
     if (this.hose.mesh.visible) {
       this.hoseStart.parent.updateMatrixWorld(true);
@@ -554,7 +559,7 @@ export class Avatar {
         const a = sit / Math.max(1e-4, sit + sleep);
         fx = lerp(fx, side * (RD.hipX * 1.25 + 0.05 * (1 - a)), sitW);
         fy = lerp(fy, RD.ankleH, sitW);
-        fz = lerp(fz, lerp(-0.66, -0.47, a), sitW);
+        fz = lerp(fz, lerp(-0.66, -0.42, a), sitW);
       }
       _v1.set(fx - p[CH.pelvisPos], fy - p[CH.pelvisPos + 1], fz - p[CH.pelvisPos + 2]).applyQuaternion(inv);
       _v1.x -= side * RD.hipX;
@@ -618,13 +623,14 @@ export class Avatar {
       const A = ARM[S];
       if (table != null) {
         // hands resting on the table top in front of the chest (table = top height above the floor, m)
-        _v1.set(A.s * 0.15, table / ROBOT_SCALE + 0.035 - (seat + RD.spineY + RD.chestY), -0.31);
+        _v1.set(A.s * 0.165, table / ROBOT_SCALE + 0.03 - (seat + RD.spineY + RD.chestY), -0.5);
         this._armIK(S, _v1, w, p);
-        mix3(p, A.wr, 0.15, 0, 0, w);
+        p[A.el + 1] += (A.s * 1.45 - p[A.el + 1]) * w;   // forearms pronated: palms flat on the table
+        mix3(p, A.wr, 0.0, 0, 0, w);
       } else {
-        mix3(p, A.sh, 0.55, 0, A.s * 0.1, w);
-        mix3(p, A.el, 0.95, 0, A.s * 0.05, w);
-        mix3(p, A.wr, 0.2, 0, 0, w);
+        mix3(p, A.sh, 0.22, 0, A.s * 0.08, w);
+        mix3(p, A.el, 0.78, A.s * 1.2, A.s * 0.05, w);
+        mix3(p, A.wr, -0.15, 0, 0, w);
       }
     }
     void t;
@@ -632,14 +638,14 @@ export class Avatar {
   _emoteSleep(p, w, t) {
     // powered down on the floor: slumped, legs out, arms dropped
     const br = Math.sin(t * 0.9);
-    mix3(p, CH.pelvisPos, 0, 0.16, 0.12, w);
-    mix3(p, CH.pelvis, -0.12, 0, 0, w);
-    mix3(p, CH.spine, 0.28, 0, 0.05, w);
-    mix3(p, CH.chest, 0.22 + br * 0.004, 0, 0.04, w);
+    mix3(p, CH.pelvisPos, 0, 0.15, 0.1, w);
+    mix3(p, CH.pelvis, 0.12, 0, 0, w);
+    mix3(p, CH.spine, -0.32, 0, 0.06, w);
+    mix3(p, CH.chest, -0.2 + br * 0.004, 0, 0.05, w);
     for (const S of SIDES) {
       const A = ARM[S];
-      mix3(p, A.sh, 0.25, 0, A.s * 0.35, w);
-      mix3(p, A.el, 0.55, 0, 0, w);
+      mix3(p, A.sh, 0.35, 0, A.s * 0.12, w);
+      mix3(p, A.el, 0.35, 0, 0, w);
     }
   }
   _laughBody(p, w, st) {
@@ -656,8 +662,8 @@ export class Avatar {
     mix3(p, CH.pelvis, 0.1, 0.3, -1.52, k);
     mix3(p, CH.spine, 0.12, 0, 0.08, k);
     mix3(p, CH.chest, 0.15, 0, 0.1, k);
-    mix3(p, CH.shL, 0.5, 0, -1.6, k); mix3(p, CH.elL, 0.8, 0, -0.1, k);
-    mix3(p, CH.shR, -0.3, 0, 0.3, k); mix3(p, CH.elR, 0.5, 0, 0.1, k);
+    mix3(p, CH.shL, 1.15, 0, -0.25, k); mix3(p, CH.elL, 0.55, 0, -0.1, k); mix3(p, CH.wrL, 0.3, 0, 0, k);
+    mix3(p, CH.shR, 0.7, 0, 0.55, k); mix3(p, CH.elR, 0.4, 0, 0.1, k);
     mix3(p, CH.hipL, 0.6, 0, -0.2, k); mix3(p, CH.knL, -0.9, 0, 0, k); mix3(p, CH.anL, 0.3, 0, 0, k);
     mix3(p, CH.hipR, -0.15, 0, 0.08, k); mix3(p, CH.knR, -0.3, 0, 0, k); mix3(p, CH.anR, 0.15, 0, 0, k);
   }
@@ -790,7 +796,8 @@ export class Avatar {
     if (tr) { b.head.rotation.x += (Math.random() - 0.5) * tr * 3; b.head.rotation.z += (Math.random() - 0.5) * tr * 3; }
     // servo micro-jitter while scared / hurt (eyes hunt around their target)
     const jit = st.tremble * 0.03;
-    for (const Y of this._eyes) {
+    for (let ek = 0; ek < 2; ek++) {
+      const Y = this._eyes[ek];
       const i = Y.i;
       Y.eye.rotation.y = -st.eyeYaw + (jit ? (Math.random() - 0.5) * jit : 0);
       Y.eye.rotation.x = st.eyePitch + (jit ? (Math.random() - 0.5) * jit : 0);

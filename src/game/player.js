@@ -16,7 +16,7 @@ import { clamp, damp } from '../core/rng.js';
 import { profile } from '../core/profile.js';
 
 const STAND_HH = 0.38, CROUCH_HH = 0.12, RADIUS = 0.3;
-const EYE_STAND = 1.16, EYE_CROUCH = 0.72;
+const EYE_STAND = 1.36, EYE_CROUCH = 0.8; // matches the robot clone's eyes (doll/robotrig.js)
 const WALK = 2.9, SPRINT = 5.1, CROUCH_SPEED = 1.45;
 const GRAVITY = 15.5, JUMP_V = 4.9;
 const REACH = 2.7, GRAB_REACH = 3.4;

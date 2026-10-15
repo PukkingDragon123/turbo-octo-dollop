@@ -1214,7 +1214,7 @@ export class ReceptionistBot extends Device {
     for (const r of g.remotes?.values?.() || []) if (r.inWorld && !r.dead) list.push(r);
     if (!list.length) return true;
     for (const pl of list) {
-      let dx = p.x - pl.pos.x, dy = p.y - (pl.pos.y + 1.16), dz = p.z - pl.pos.z;
+      let dx = p.x - pl.pos.x, dy = p.y - (pl.pos.y + 1.36), dz = p.z - pl.pos.z;
       const d = Math.hypot(dx, dy, dz);
       if (d > 30 || d < 1e-3) continue;
       dx /= d; dy /= d; dz /= d;
@@ -1268,7 +1268,7 @@ export class ReceptionistBot extends Device {
     if (title) this.holo.draw(title, body, typed, this.anim.t);
     const lens = this.P.projGlow.getWorldPosition(_hl);
     const at = this.root.localToWorld(_ha.set(0.78, 1.56, 0.55));
-    const viewer = g?.local?.world ? _hv.set(g.local.pos.x, g.local.pos.y + 1.16, g.local.pos.z) : null;
+    const viewer = g?.local?.world ? _hv.set(g.local.pos.x, g.local.pos.y + 1.36, g.local.pos.z) : null;
     this.holo.update(dt, lens, at, viewer, this.anim.twitch ? 1 : this.stare ? 0.5 : 0);
     this.P.projGlow.material.color.setRGB(0.4 + this.holo.alpha * 0.6, 1.4 + this.holo.alpha * 1.4, 1.5 + this.holo.alpha * 1.4);
   }

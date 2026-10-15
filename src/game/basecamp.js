@@ -391,8 +391,9 @@ class TrolleyBehaviour {
     if (p.isHeld()) {
       const hit = this.world.physics.raycast(_v.set(t.x, t.y + 0.1, t.z), _down, 1.6, Q.world);
       if (hit) {
+        // the grab cancels gravity, so never let it rise: anything above resting height is pulled down
         const want = hit.point.y + (p.model.halfHeight ?? 0.1);
-        if (t.y > want + 0.015) vy = Math.min(vy, (want - t.y) * 14);
+        vy = Math.min(vy, (want - t.y) * 12 - 0.05);
       }
     }
     b.setLinvel({ x: vx, y: vy, z: vz }, true);

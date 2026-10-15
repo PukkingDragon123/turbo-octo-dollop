@@ -874,10 +874,11 @@ export class MonsterManager {
     for (const a of cands) { if (raiders.length >= n) break; raiders.push(a); }
     // then fresh ones from the dark around it
     const types = day >= 3 ? ['hound', 'bacteria', 'partygoer', 'hound'] : ['hound', 'partygoer'];
-    for (let i = raiders.length; i < n; i++) {
-      const p = this._spawnPoint(16, 28, camp.pos);
-      if (!p) break;
+    for (let i = raiders.length, tries = 0; i < n && tries < n * 3; tries++) {
+      const p = this._spawnPoint(14, 30, camp.pos);
+      if (!p) continue;
       raiders.push(this.debugSpawn(types[(i + this.rng.int(0, 3)) % types.length], p));
+      i++;
     }
     for (const a of raiders) a.startRaid(camp);
     if (raiders.length) {

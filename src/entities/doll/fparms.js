@@ -51,7 +51,7 @@ class FPBuilder {
 
 export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
   const cos = resolveCos(cosmetics);
-  const L = 0.34, AR = 0.064, HS = 1.22;   // forearm length, terminal cuff base radius, hand scale
+  const L = 0.34, AR = 0.064, HS = 1.1;    // forearm length, terminal cuff base radius, hand scale
   const root = new THREE.Group(); root.name = 'FPArms';
   // bones
   const bones = {}, list = [];

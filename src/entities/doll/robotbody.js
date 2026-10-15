@@ -25,10 +25,10 @@ export const RUBBER_DK = 0x1c1b1a, MECH = 0x3a3836, CHROME = 0xd0d0cc, OLIVE = 0
 // Coverall torso surface: superellipse sections, phi = 0 at the front (-Z), +PI/2 at +X
 // ============================================================================
 const COVER = [
-  { y: 0.842, hw: 0.1, hd: 0.03, zc: 0.004, p: 2.2 },
-  { y: 0.872, hw: 0.152, hd: 0.082, zc: 0.006, p: 2.4 },
-  { y: 0.92, hw: 0.166, hd: 0.106, zc: 0.01, p: 2.6 },
-  { y: 0.98, hw: 0.162, hd: 0.102, zc: 0.004, p: 2.6 },
+  { y: 0.85, hw: 0.09, hd: 0.026, zc: 0.006, p: 2.2 },
+  { y: 0.878, hw: 0.145, hd: 0.066, zc: 0.01, p: 2.4 },
+  { y: 0.925, hw: 0.163, hd: 0.09, zc: 0.012, p: 2.5 },
+  { y: 0.985, hw: 0.16, hd: 0.096, zc: 0.006, p: 2.6 },
   { y: 1.05, hw: 0.146, hd: 0.094, zc: -0.002, p: 2.5 },
   { y: 1.13, hw: 0.15, hd: 0.098, zc: -0.006, p: 2.5 },
   { y: 1.22, hw: 0.158, hd: 0.106, zc: -0.008, p: 2.6 },
@@ -82,9 +82,8 @@ export function coverPhiX(x, y, front = true) {
   return (lo + hi) / 2;
 }
 // V-neck: half opening angle (from the front) at height y
-const V0 = 1.3;
+const V0 = 1.315;
 export const VOPEN = (y) => (y < V0 ? 0 : 0.6 * Math.pow(clamp((y - V0) / 0.152, 0, 1), 0.75));
-const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 function coverFold(x, y, z, phi) {
   const front = Math.max(0, Math.cos(phi)), back = Math.max(0, -Math.cos(phi)), ax = Math.abs(x);
@@ -142,14 +141,15 @@ function buildCoverTorso(B) {
 }
 
 // rolled short sleeve (stops above the elbow)
-const SLEEVE_PROF = [[-0.022, 0.0], [-0.018, 0.02], [-0.008, 0.036], [0.01, 0.0465], [0.05, 0.048], [0.1, 0.0475], [0.14, 0.047], [0.17, 0.0468]];
+const SLEEVE_PROF = [[-0.014, 0.0], [-0.011, 0.02], [-0.003, 0.034], [0.012, 0.0435], [0.05, 0.0465], [0.1, 0.047], [0.14, 0.0468], [0.17, 0.0466]];
 export const SLEEVE_END = 0.17;
 function buildSleeve(B, side) {
   const s = side === 'L' ? -1 : 1, ax = s * RD.shX, top = RY.sh;
   const curve = new THREE.SplineCurve(SLEEVE_PROF.map(([dy, r]) => new THREE.Vector2(r, dy))).getSpacedPoints(22);
   const g = grid(26, 22, (i, j, p) => {
     const q = curve[j], a = (i / 26) * TAU;
-    p.set(ax + Math.cos(a) * q.x, top - q.y, Math.sin(a) * q.x * 0.96);
+    // raglan-ish: the cap leans in toward the neck so it melts into the shoulder line
+    p.set(ax + Math.cos(a) * q.x - s * 0.024 * ss(0.07, -0.015, q.y), top - q.y, Math.sin(a) * q.x * 0.96);
   }, { closedU: true, poleBottom: true });
   ensureOutward(g, V(ax, top - 0.08, 0));
   displace(g, (x, y, z) => {
@@ -329,7 +329,7 @@ function buildChestPlate(B) {
   B.skinned('shell', g, torsoW);
   // unit serial print on the sternum + two screws
   const p = coverPt(0, 1.355, -0.006, V()), n = coverNrm(0, 1.355, V());
-  const ser = region(new THREE.PlaneGeometry(0.062, 0.0072 * 1.6), 'serial').applyMatrix4(frameAt(p, n));
+  const ser = region(new THREE.PlaneGeometry(0.086, 0.01), 'serial').applyMatrix4(frameAt(p, n));
   B.skinned('decal', vcol(ser, 1), torsoW, 0xffffff, { uv: false });
   for (const sx of [-1, 1]) {
     const phi = coverPhiX(sx * 0.032, 1.415, true), pp = coverPt(phi, 1.415, -0.0065, V()), nn = coverNrm(phi, 1.415, V());
@@ -501,7 +501,6 @@ function buildWatch(B) {
 }
 
 // ============================================================================
-let _base = null;
 export function buildRobotBase() {
   const B = new RPartBuilder();
   buildCoverTorso(B);
@@ -517,4 +516,3 @@ export function buildRobotHead(face) {
   buildHead(B, face);
   return B;
 }
-void _base;

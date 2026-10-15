@@ -249,7 +249,7 @@ def('field_bench', () => {
   k.tube([[lx, TY + 0.06, lz], [lx + 0.02, TY + 0.3, lz + 0.04], [lx + 0.12, TY + 0.42, lz + 0.12]], 0.007, chrome, { tseg: 16, rseg: 6 });
   k.push({ p: [lx + 0.14, TY + 0.4, lz + 0.14], r: [0.9, 0.3, 0] });
   k.lathe([[0.07, -0.08], [0.055, -0.035], [0.03, 0.0], [0.016, 0.02], [0, 0.024]], mat({ name: 'fb_lampshade', color: 0x2f5a3a, rough: 0.45, det: 'powder' }), { seg: 20, r: [PI, 0, 0] });
-  k.sphere(0.026, glow({ name: 'fb_bulb', color: 0x3a3020, emissive: 0xffe2a8, ei: 2.2 }), { p: [0, 0.045, 0], ws: 12, hs: 8 });
+  k.sphere(0.026, glow({ name: 'fb_bulb', color: 0x3a3020, emissive: 0xffe2a8, ei: 1.1 }), { p: [0, 0.045, 0], ws: 12, hs: 8 });
   k.pop();
   // scattered tools: hammer, screwdriver, a few screws
   k.cyl(0.012, 0.28, mat({ name: 'fb_handle', color: 0xc89a60, rough: 0.7 }), { p: [0.05, TY + 0.012, 0.18], r: [0, 0.4, PI / 2], seg: 10 });

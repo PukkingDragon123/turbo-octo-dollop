@@ -1,5 +1,7 @@
 // R.O.O.M. — cosmetics catalogue. Ids and unlock achievement ids are stable (saved profiles
-// reference them). Every 'suit' entry is a colourway / finish of the same classic hazmat suit.
+// reference them). Every 'suit' entry is a colourway / finish of the R.O.O.M. work coverall the
+// clone androids wear (the old hazmat colourways); 'skin' is the finish of the android's ABS shell
+// and porcelain face plate; 'face' picks the painted face (and the eye hardware).
 import { RNG, hashString } from '../../core/rng.js';
 
 export const COSMETICS = {
@@ -21,11 +23,11 @@ export const COSMETICS = {
     { id: 'gold', name: 'Golden Employee', outfit: 'hazmat', color: 0xe8b43e, gloss: true, unlock: 'quota' },
   ],
   skin: [
-    { id: 'tan', name: 'Burlap', color: 0xd8b98a, unlock: null },
-    { id: 'light', name: 'Canvas', color: 0xefdcb8, unlock: null },
-    { id: 'dark', name: 'Coffee Sack', color: 0x9a7350, unlock: null },
-    { id: 'grey', name: 'Linen Grey', color: 0xb4afa4, unlock: null },
-    { id: 'rose', name: 'Dusty Rose', color: 0xe2ad9e, unlock: 'night_owl' },
+    { id: 'tan', name: 'Yellowed ABS', color: 0xe0d2b0, unlock: null },
+    { id: 'light', name: 'Factory White', color: 0xf0ebdf, unlock: null },
+    { id: 'dark', name: 'Walnut Bakelite', color: 0x7c5a40, unlock: null },
+    { id: 'grey', name: 'Primer Grey', color: 0xa3a19b, unlock: null },
+    { id: 'rose', name: 'Dusty Rose', color: 0xe6bcae, unlock: 'night_owl' },
   ],
   hat: [
     { id: 'none', name: 'No Hat', unlock: null },

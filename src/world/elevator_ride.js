@@ -26,7 +26,7 @@ import { VLRig, vlPatch } from '../entities/vlights.js';
 const PI = Math.PI, TAU = PI * 2;
 const SEG = 3.6;          // floor-to-floor height in the hoistway
 const WZ = 1.5;           // hoistway front wall (shaft side face), car space
-const EYE = 1.16;         // clone eye height (player.js EYE_STAND)
+const EYE = 1.36;         // clone eye height (player.js EYE_STAND)
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const smoother = (t) => t * t * t * (t * (t * 6 - 15) + 10);
