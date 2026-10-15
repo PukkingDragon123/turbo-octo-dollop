@@ -244,8 +244,8 @@ export function decorateRoom(level, room, rec) {
 function sp(level, type, x, y, z, rotY = 0, opts = {}) {
   const hh = modelHalfHeight(type);
   _q.setFromEuler(_e.set(opts.rx || 0, rotY, opts.rz || 0));
-  // sleeping props start exactly on their support; awake ones (piles) get a few mm to settle into
-  const lift = opts.sleep === false ? 0.012 : 0.003;
+  // resting props start on their support (they settle briefly, then sleep); piles get a little air
+  const lift = opts.sleep === false ? 0.012 : 0.001;
   return level.world.props.spawn(type, new THREE.Vector3(x, y + hh + lift, z), _q, { sleep: opts.sleep !== false, state: opts.state });
 }
 
@@ -274,9 +274,10 @@ export function populateRoom(level, room, rec, rng) {
     case 'office_room': {
       sp(level, 'chair_office', b.cx + 0.2, 0, b.z0 + 1.4, Math.PI + r(0.5));
       sp(level, 'filing_cabinet', b.x0 + 0.4, 0, b.z1 - 0.5, Math.PI / 2);
-      sp(level, 'desk_phone', b.cx + 0.45, 0.76, b.z0 + 0.6, r(0.4));
-      sp(level, 'paper_stack', b.cx - 0.5, 0.76, b.z0 + 0.65, r(1));
-      if (rng.chance(0.6)) sp(level, rng.pick(['almond_water', 'protein_bar', 'chips', 'bandage', 'battery']), b.cx + 0.5, 0.76, b.z0 + 0.88, 0);
+      // desk items around the terminal (its keyboard and mouse pad take the front middle / right)
+      sp(level, 'desk_phone', b.cx - 0.55, 0.76, b.z0 + 0.45, r(0.4));
+      sp(level, 'paper_stack', b.cx - 0.55, 0.76, b.z0 + 0.82, r(0.3));
+      if (rng.chance(0.6)) sp(level, rng.pick(['almond_water', 'protein_bar', 'chips', 'bandage', 'battery']), b.cx + 0.6, 0.76, b.z0 + 0.93, 0);
       break;
     }
     case 'fuse_office': {

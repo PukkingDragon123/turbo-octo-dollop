@@ -35,6 +35,7 @@ export class Prop {
     this.bounds = collidersBounds(model.colliders || []);
     this.radius = this.bounds.getSize(_v).length() * 0.5;
     this.frozen = false; // kinematic override (sinking, welded-to-world animation, etc.)
+    this.settleT = 0;    // host: seconds left before a spawned-'asleep' prop is put to sleep (see _create)
     this.custom = null;  // per-type behaviour object (devices)
     this.dead = false;
   }
@@ -154,7 +155,15 @@ export class PropManager {
           linearDamping: model.linearDamping,
           angularDamping: model.angularDamping,
         });
-        if (m.sl) p.body.sleep();
+        // 'spawn asleep': a body put to sleep the moment it is created never gets its first contact
+        // pairs (Rapier 0.21), so light items on tables / desks sank into or fell through their support
+        // as soon as anything woke them. Let it run a short settle window to make its contacts and come
+        // to rest, then sleep it. Impacts from that settle (props start a few mm above their support)
+        // are muted: no clatter, no noise for monsters, no breakage on level load.
+        if (m.sl) {
+          p.settleT = 0.75;
+          p.lastImpact = (this.world.time ?? 0) + 0.75;
+        }
       } else {
         p.body = this.physics.createDynamic(colliders, p.mass, p.root.position, p.root.quaternion, { kind: 'prop', prop: p }, { kinematic: true });
       }
@@ -203,9 +212,16 @@ export class PropManager {
       } else if (b.bodyType() !== RAPIER.RigidBodyType.Dynamic) {
         b.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
       }
-      if (b.isSleeping()) { p.speed = 0; continue; }
+      if (b.isSleeping()) { p.speed = 0; p.settleT = 0; continue; }
       const lv = b.linvel();
       p.speed = Math.hypot(lv.x, lv.y, lv.z);
+      if (p.settleT > 0) {
+        p.settleT -= dt;
+        if (p.settleT <= 0 && p.speed < 0.06 && !p.isHeld()) {
+          const av = b.angvel();
+          if (av.x * av.x + av.y * av.y + av.z * av.z < 0.02) b.sleep();
+        }
+      }
       const t = b.translation();
       const r = b.rotation();
       p.root.position.set(t.x, t.y, t.z);

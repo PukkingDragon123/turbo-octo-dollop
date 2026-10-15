@@ -300,8 +300,8 @@ export class YellowLevel {
       }
       const hh = modelHalfHeight(sp.type);
       q.setFromEuler(e.set(0, rotY, 0));
-      // spawned asleep, so they must start resting exactly on their support (no hover, no overlap)
-      this.world.props.spawn(sp.type, new THREE.Vector3(x, (sp.y || 0) + hh + 0.003, z), q, { sleep: true, state: sp.state });
+      // start (almost) resting on their support: they settle a moment, then sleep (props.js)
+      this.world.props.spawn(sp.type, new THREE.Vector3(x, (sp.y || 0) + hh + 0.001, z), q, { sleep: true, state: sp.state });
     }
     const rng = new RNG(hash3(rec.cx, rec.cz, 991, this.seed));
     for (const room of rec.layout.specials) populateRoom(this, room, rec, rng);
