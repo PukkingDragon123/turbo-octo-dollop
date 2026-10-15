@@ -444,10 +444,11 @@ function grimeGLSL(kind, wet) {
           float y = vWPos.y;
           float dz = smoothstep(0.4, 0.7, nzR(vec2(u * 0.05 + w * 0.3, 2.2))) * uGrime;
           float rise = (1.0 - smoothstep(0.05, 0.45 + 0.5 * nzR(vec2(u * 0.13, w)), y)) * dz;
-          float eff = smoothstep(0.62, 0.82, nzG(vec2(u * 1.9 + w, y * 2.4))) * (1.0 - smoothstep(0.1, 0.55, y)) * dz;
+          // efflorescence: soft chalky blooms low on damp block (low frequency: a fine speckle read as noise)
+          float eff = smoothstep(0.6, 0.85, nzG(vec2(u * 0.7 + w, y * 1.1))) * (1.0 - smoothstep(0.08, 0.5, y)) * dz;
           float streak = smoothstep(0.7, 0.85, nzG(vec2(u * 2.3 + w * 1.7, y * 0.12))) * smoothstep(1.2, 2.9, y) * uGrime;
           c = mix(c, c * vec3(0.7, 0.68, 0.64), rise * 0.6);
-          c = mix(c, vec3(0.82, 0.8, 0.76), eff * 0.4);
+          c = mix(c, vec3(0.8, 0.78, 0.74), eff * 0.22);
           c = mix(c, c * vec3(0.62, 0.5, 0.4), streak * 0.4);
           c *= 1.0 - (1.0 - smoothstep(0.0, 0.3, y)) * 0.15;
           bkWetness = rise * 0.4;
@@ -741,6 +742,7 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
 
   // functions that need PhysicalMaterial / ReflectedLight go after the lighting pars
   const fsFuncs = `
+      float bkSpecK = 1.0; // uSpecMul, back to full strength where the surface is wet
       void bkDirect(const in vec3 lcol, const in vec3 L, const in vec3 N, const in vec3 V, const in PhysicalMaterial mat, float dist, inout ReflectedLight rl){
         float ndl = saturate(dot(N, L));
         if (ndl <= 0.0) return;
@@ -749,7 +751,7 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
         PhysicalMaterial m2 = mat;
         float a = pow2(mat.roughness);
         m2.roughness = sqrt(clamp(a + 0.16 / max(dist, 0.5), a, 1.0));
-        rl.directSpecular += irr * BRDF_GGX(L, V, N, m2) * uSpecMul;
+        rl.directSpecular += irr * BRDF_GGX(L, V, N, m2) * bkSpecK;
       }`;
 
   const lightLoop = grid === 1 ? `
@@ -829,7 +831,8 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
       roughnessFactor = mix(roughnessFactor, 0.32, bkWetness);
       roughnessFactor = mix(roughnessFactor, 0.05, bkPuddle);
       roughnessFactor = mix(roughnessFactor, 0.9, bkPeel);
-      roughnessFactor = mix(roughnessFactor, 0.12, bkLqWet);`)
+      roughnessFactor = mix(roughnessFactor, 0.12, bkLqWet);
+      bkSpecK = mix(uSpecMul, 1.0, clamp(bkWetness * 1.5 + bkPuddle + bkLqWet, 0.0, 1.0));`)
     .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       if (bkLqWet > 0.001) normal = normalize(normal + (viewMatrix * vec4(bkLqN, 0.0)).xyz * bkLqWet);
       ${opts.macro ? `

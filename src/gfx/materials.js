@@ -64,7 +64,7 @@ const defs = {
 const synth = {
   wallpaper: { r: 'env_wallpaper', o: {}, ns: 1.0 },
   wallpaper_manila: { r: 'env_wallpaper', o: { c0: 0xb48c58, c1: 0x94703f, c2: 0x553a1c, c3: 0xc6a06a, p0: [3, 6, 18, 0.95], p1: [1, 0.7, 1, 1], size: 512 }, ns: 1.0 },
-  carpet: { r: 'env_carpet', o: {}, ns: 1.0, aniso: 16 },
+  carpet: { r: 'env_carpet', o: {}, ns: 1.0, aniso: 16, envMapIntensity: 0.3 },
   ceiling: { r: 'env_acoustic', o: {}, ns: 1.0 },
   concrete: { r: 'concrete', o: { c0: 0xa8a49a, c1: 0x86827a, c2: 0x4e4a44, c3: 0xbdb7aa, p0: [70, 0.35, 0.6, 0.45], wear: 0.35, meters: 2, size: 512 }, ns: 1.0 },
   concrete_dark: { r: 'env_slab', o: {}, color: 0x9a968e, ns: 1.0, aniso: 16 },

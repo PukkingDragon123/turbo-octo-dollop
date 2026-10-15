@@ -602,6 +602,7 @@ export class YellowLevel {
     const pp = engine.post.params;
     pp.uExposure.value = 1; pp.uLift.value.set(0, 0, 0); pp.uGamma.value.set(1, 1, 1); pp.uGain.value.set(1, 1, 1); pp.uRolloff.value = 0; pp.uContrast.value = 1.04;
     engine.renderer.toneMappingExposure = 1;
+    GRID_FALL.value = 0.16;
   }
 }
 

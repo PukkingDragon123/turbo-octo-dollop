@@ -20,6 +20,7 @@ import { LORE } from '../../game/lore.js';
 import { buildUnfinishedClone, buildReceptionist } from '../../entities/optional.js';
 import * as Critters from '../../entities/optional.js';
 import { MonsterManager } from '../../game/monsters.js';
+import { ReceptionRobot } from '../../entities/reception_robot.js';
 
 const H = 2.8;
 const T = 0.18;
@@ -208,41 +209,48 @@ export class LobbyLevel {
       this.world.group.add(this.receptionist.root);
       this.world.registerDynamic(this.receptionist.root);
     }
+    // GREET-O-TRON 9000: service robot on casters beside the counter's left end, angled towards the visitors
+    this.recRobot = new ReceptionRobot(this.world, 'reception_robot');
+    this.recRobot.root.position.set(-1.78, 0, 10.05);
+    this.recRobot.root.rotation.y = 0.3;
+    this.recRobot.build();
+    this.world.addDevice(this.recRobot);
+    this.world.registerDynamic(this.recRobot.root);
     const bellA = this.recDesk.anchors.bell;
     this._dev('service_bell', 'bell', bellA ? bellA.x : 0.6, bellA ? bellA.y : 1.05, bellA ? 10.2 + bellA.z : 10.6, 0, { onRing: () => this._receptionistSnap() });
     if (this.recDesk.model.screens?.main?.mesh) {
       this.recScreen = new CrtScreen(256, 192, 'green');
       this.recScreen.attach(this.recDesk.model.screens.main.mesh, 1.2);
     }
-    this._dev('employee_of_month', 'eotm', 6.88, 1.6, 11, -Math.PI / 2, { renderPortrait: (c, wrong) => this.game.ui.portrait?.(c, wrong) });
-    this._dev('wall_clock', 'clock_rec', -6.88, 2.15, 11, Math.PI / 2);
-    this._dev('poster', 'poster_r1', -6.88, 1.5, 8.2, Math.PI / 2, { texts: L.posters.slice(0, 3), creepy: L.creepy, color: '#3a5a8a' });
-    this._dev('poster', 'poster_r2', 6.88, 1.5, 14.2, -Math.PI / 2, { texts: L.posters.slice(3), creepy: L.creepy, color: '#8a3a3a' });
+    this._dev('employee_of_month', 'eotm', 6.909, 1.6, 11, -Math.PI / 2, { renderPortrait: (c, wrong) => this.game.ui.portrait?.(c, wrong) });
+    this._dev('wall_clock', 'clock_rec', -6.909, 2.15, 11, Math.PI / 2);
+    this._dev('poster', 'poster_r1', -6.911, 1.5, 8.2, Math.PI / 2, { texts: L.posters.slice(0, 3), creepy: L.creepy, color: '#3a5a8a' });
+    this._dev('poster', 'poster_r2', 6.911, 1.5, 14.2, -Math.PI / 2, { texts: L.posters.slice(3), creepy: L.creepy, color: '#8a3a3a' });
     this._static('plant_pot', -6.3, 0, 15.3, 0);
-    this._static('plant_pot', 6.3, 0, 7, 1);
-    this._static('exit_sign', 0, 2.55, 15.88, Math.PI, false);
+    this._static('plant_pot', 6.25, 0, 7, 1, true, { seed: 244 }); // foliage clear of the east wall
+    this._static('exit_sign', 0, 2.61, 15.909, Math.PI, false); // above the elevator header, on the wall
     // elevator doors (decorative) on the south wall
     this._elevator(0, 15.9);
     // --- Office ---
-    this._dev('crt_terminal', 'term_shift', -8.6, 0.76, -3.5, Math.PI / 2, { program: 'shift', palette: 'green' });
-    this._dev('crt_terminal', 'term_howto', 8.6, 0.76, 3.0, -Math.PI / 2, { program: 'howto', palette: 'amber' });
-    this._dev('crt_terminal', 'term_ach', -3.2, 0.76, -5.2, 0, { program: 'achievements', palette: 'green' });
+    this._dev('crt_terminal', 'term_shift', -8.52, 0.762, -3.5, Math.PI / 2, { program: 'shift', palette: 'green' });
+    this._dev('crt_terminal', 'term_howto', 8.52, 0.762, 3.0, -Math.PI / 2, { program: 'howto', palette: 'amber' });
+    this._dev('crt_terminal', 'term_ach', -3.2, 0.762, -5.16, 0, { program: 'achievements', palette: 'green' });
     this._static('desk', -8.6, 0, -3.5, Math.PI / 2);
     this._static('desk', 8.6, 0, 3.0, -Math.PI / 2);
     this._static('desk', -3.2, 0, -5.25, 0);
     this._dev('water_cooler', 'cooler_office', 11.4, 0, -4.8, -Math.PI / 2);
-    this._dev('poster', 'poster_o1', 0, 1.6, -5.88, 0, { texts: [L.posters[1], L.posters[4]], creepy: L.creepy, color: '#2a6a4a' });
-    this._dev('wall_clock', 'clock_off', 4, 2.2, -5.88, 0);
+    this._dev('poster', 'poster_o1', 0, 1.6, -5.911, 0, { texts: [L.posters[1], L.posters[4]], creepy: L.creepy, color: '#2a6a4a' });
+    this._dev('wall_clock', 'clock_off', 4, 2.2, -5.909, 0);
     this._dev('server_rack', 'rack1', -11.4, 0, 4.6, Math.PI / 2);
     // --- Locker room ---
     this._dev('locker_bank', 'lockers', -21.65, 0, 0, Math.PI / 2, { count: 8 });
-    this._dev('mirror', 'mirror', -17, 1.45, -5.88, 0, { width: 1.2, height: 1.6 });
-    this._dev('poster', 'poster_l1', -12.12, 1.5, 3.8, -Math.PI / 2, { texts: [L.posters[2]], creepy: L.creepy, color: '#5a3a7a' });
+    this._dev('mirror', 'mirror', -17, 1.45, -5.909, 0, { width: 1.2, height: 1.6 });
+    this._dev('poster', 'poster_l1', -12.089, 1.5, 3.8, -Math.PI / 2, { texts: [L.posters[2]], creepy: L.creepy, color: '#5a3a7a' });
     // --- Break room ---
     this._dev('vending_snack', 'vend_snack', 15.2, 0, -5.45, 0);
     this._dev('vending_drink', 'vend_drink', 16.5, 0, -5.45, 0);
     this._dev('water_cooler', 'cooler_break', 18.2, 0, -5.6, 0);
-    this._dev('coffee_machine', 'coffee', 21.3, 0.76, -5.55, 0);
+    this._dev('coffee_machine', 'coffee', 21.3, 0.762, -5.55, 0);
     this._static('table_folding', 21.3, 0, -5.5, 0);
     this._dev('fridge', 'fridge', 23.45, 0, -4.2, -Math.PI / 2);
     this._dev('aquarium', 'aquarium', 23.55, 0, 1.8, -Math.PI / 2, { critterModels: Critters });
@@ -250,7 +258,7 @@ export class LobbyLevel {
       scoreboard: { redraw: (st) => this._drawScoreboard(st) },
     });
     this._scoreboard(15.6, 5.9);
-    this.tv = this._dev('creepy_tv', 'tv_break', 13.0, 0, 0.5, Math.PI / 2, { mode: 'training' });
+    this.tv = this._dev('creepy_tv', 'tv_break', 13.0, modelHalfHeight('tv_crt'), 0.5, Math.PI / 2, { mode: 'training' }); // console TV: centred model, stands on its feet
     // --- Cloning lab ---
     this.tubes = [];
     for (let k = 0; k < 4; k++) {
@@ -269,7 +277,7 @@ export class LobbyLevel {
     this._dev('clone_pad', 'demo_pad', -13, 0, -10, 0, { collide: true });
     this._dev('server_rack', 'rack2', -21.4, 0, -9, Math.PI / 2);
     this._dev('server_rack', 'rack3', -21.4, 0, -10.2, Math.PI / 2);
-    this._dev('crt_terminal', 'term_records', -5, 0.76, -9.5, -Math.PI / 2, { program: 'records', palette: 'cyan', lore: 0 });
+    this._dev('crt_terminal', 'term_records', -5.08, 0.762, -9.5, -Math.PI / 2, { program: 'records', palette: 'cyan', lore: 0 });
     this._static('desk', -5, 0, -9.5, -Math.PI / 2);
     // --- Dispatch bay ---
     this.dispatchDoor = this._dev('dispatch_door', 'dispatch_door', 13, 0, -17.9, 0, { collide: false });
@@ -279,9 +287,9 @@ export class LobbyLevel {
     this.dispatchLever.build();
     this.world.addDevice(this.dispatchLever);
     this.world.registerDynamic(this.dispatchLever.root);
-    this._static('hazard_sign', 9.5, 1.4, -17.88, 0, false);
-    this._static('fuse_box', 21.88, 1.3, -10, -Math.PI / 2, false);
-    this._static('fire_alarm', 4.12, 1.5, -12, Math.PI / 2, false);
+    this._static('hazard_sign', 9.5, 1.4, -17.909, 0, false);
+    this._static('fuse_box', 21.909, 1.3, -10, -Math.PI / 2, false);
+    this._static('fire_alarm', 4.091, 1.5, -12, Math.PI / 2, false);
     this.dispatchZone = new THREE.Box3(new THREE.Vector3(10, -0.5, -17.2), new THREE.Vector3(16, 3, -12.1));
     // collision for dispatch door halves (closed)
     this.doorCols = [
@@ -428,36 +436,39 @@ export class LobbyLevel {
     const S = (type, x, y, z, rotY = 0, opts = {}) => {
       const hh = modelHalfHeight(type);
       _q.setFromEuler(_e.set(opts.rx || 0, rotY, 0));
-      return this.world.props.spawn(type, new THREE.Vector3(x, y + hh + 0.01, z), _q, { sleep: true, state: opts.state });
+      // not pre-slept: a body put to sleep the moment it is created skips contact generation for its first
+      // steps, plunges ~5 cm into whatever it rests on and pops back up, which knocked keyboards, darts and
+      // the lab clipboard through their tables. Awake, everything settles from the 1 cm drop in ~0.7 s.
+      return this.world.props.spawn(type, new THREE.Vector3(x, y + hh + 0.01, z), _q, { sleep: false, state: opts.state });
     };
     // reception waiting area (one of these chairs likes to sink)
     for (let k = 0; k < 4; k++) S('chair_wood', -6.2, 0, 8.4 + k * 0.9, Math.PI / 2);
     this.uncanny.chairId = S('chair_wood', -5.2, 0, 14.2, 2.4)?.id;
     S('table_round', -5.4, 0, 12.2, 0);
     S('paper_stack', -5.4, 0.73, 12.2, 0.4);
-    S('chair_office', 0.2, 0, 9.0, Math.PI);
+    S('chair_office', 0, 0, 9.36, 0); // under the receptionist, backrest behind her (not through her)
     S('trash_can', 2.4, 0, 9.5, 0);
     S('wet_floor_sign', 3.2, 0, 13.5, 0.6);
     // office cubicles
     for (let k = 0; k < 4; k++) {
       const x = -5.5 + (k % 2) * 6, z = -1.8 + Math.floor(k / 2) * 4;
-      S('desk_cubicle_panel', x, 0, z - 0.85, 0);
+      S('desk_cubicle_panel', x, 0, z - 0.62, 0); // against the desk's back edge
       S('desk', x, 0, z, 0);  // workstation faces the chair on +Z
       S('chair_office', x + 0.1, 0, z + 0.85, Math.PI + 0.3 * (k - 1.5));
       S('crt_monitor', x - 0.15, 0.76, z - 0.15, 0);
-      S('keyboard', x - 0.15, 0.76, z + 0.2, 0);
+      S('keyboard', x - 0.15, 0.76, z + 0.22, 0);
       S(['mug', 'desk_phone', 'binder', 'lamp_desk'][k], x + 0.55, 0.76, z - 0.1, k);
     }
     S('filing_cabinet', -11.5, 0, -5.4, Math.PI / 2);
     S('filing_cabinet', -11.5, 0, -4.7, Math.PI / 2);
     S('printer', 10.8, 0, 1.5, -Math.PI / 2);
     S('whiteboard', 4, 0, 4.9, Math.PI);
-    S('plant_pot', -11.3, 0, 5.3, 0);
-    S('office_divider_plant', 1, 0, 1, 0.5);
+    S('plant_pot', -11.3, 0, 5.42, 0); // clear of the server rack
+    S('office_divider_plant', 2.35, 0, 1.58, 0); // continues the cubicle partition line
     S('box_medium', 9.8, 0, -5.2, 0.2);
     S('box_small', 9.9, 0.326, -5.2, -0.3); // stacked on the medium box (0.326 m)
     S('traffic_cone', 5.5, 0, -4.8, 0);
-    S('rubber_duck', -3.2, 0.78, -5.0, 0.4);
+    S('rubber_duck', -3.8, 0.76, -5.05, 0.4); // free desk corner, not on the keyboard
     // locker room
     S('stool', -18, 0, 0, 0);
     S('stool', -16.5, 0, 0.8, 0);
@@ -487,7 +498,7 @@ export class LobbyLevel {
     S('pallet', 6.5, 0, -16.5, 0);
     S('barrel', 21.2, 0, -7, 0);
     S('hand_truck', 7, 0, -8, 0.6);
-    S('toolbox', 18.5, 0.6, -16.5, 0.3);
+    S('toolbox', 18.5, 0.5, -16.5, 0.3); // on the crate lid
     S('fire_extinguisher', 4.4, 0, -6.6, 0);
   }
 

@@ -254,9 +254,10 @@ export function buildChunk(level, cx, cz) {
   add(G.rubber, Mat.get('rubber_base'), 0, { quant: 0.2 });
   add(G.metal, Mat.get('galvanized'), 0, { quant: 0.25 });
   add(G.fixture, fixtureMaterial(), 0, { quant: 0.3 });
-  add(G.carpet, Mat.get('carpet'), 1, { ao: 'floor' });
-  add(G.carpetOffice, carpetTint('office', 0xa4a49c), 1, { ao: 'floor' });
-  add(G.carpetManila, carpetTint('manila', 0xc89c74), 1, { ao: 'floor' });
+  // cut pile scatters light instead of mirroring it: little specular, so the floor keeps its colour at grazing angles
+  add(G.carpet, Mat.get('carpet'), 1, { ao: 'floor', spec: 0.3 });
+  add(G.carpetOffice, carpetTint('office', 0xa4a49c), 1, { ao: 'floor', spec: 0.3 });
+  add(G.carpetManila, carpetTint('manila', 0xc89c74), 1, { ao: 'floor', spec: 0.3 });
   add(G.slab, Mat.get('concrete_dark'), 4, { ao: 'floor' });
   add(G.tile, Mat.get('tile_pool'), 0, { ao: 'floor' });
   add(G.ceil, Mat.get('ceiling'), 3, { ao: 'ceil', tiles: true, mix: [0.22, 0.42] });

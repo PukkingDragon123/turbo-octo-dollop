@@ -64,7 +64,7 @@ registerRecipe('env_wallpaper', {
 // Damp cut-pile carpet: two interleaved tuft layers, pile shading (brushed directions), flecks, matting.
 // p0: x tufts per tile, y fleck amount, z pile shading, w matting
 registerRecipe('env_carpet', {
-  defaults: { c0: 0xb39a5e, c1: 0x8e7843, c2: 0x4e4024, c3: 0xcab47c, p0: [300, 0.7, 0.8, 0.5], wear: 0.3, meters: 1.0, bump: 1.5, size: 1024 },
+  defaults: { c0: 0xb0924f, c1: 0x8a6f38, c2: 0x4c3b1c, c3: 0xc8ab6a, p0: [300, 0.7, 0.8, 0.5], wear: 0.3, meters: 1.0, bump: 1.5, size: 1024 },
   glsl: `S surface(vec2 uv){
     vec4 v = vor(uv, vec2(uP0.x), 1.0);
     float tuft = 1.0 - smoothstep(0.0, 0.9, v.x);
