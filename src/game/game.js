@@ -524,8 +524,10 @@ export class Game {
     this.hostLoadWorld({ type: next, seed: (Math.random() * 1e9) | 0, depth: this.run.depth, arrival: true, carry });
   }
 
-  hostDispatch(carry, type = 'yellow') {
-    // from lobby into the first dimension (fresh run); `type` lets test hooks start in a later dimension
+  hostDispatch(carry, type) {
+    // from lobby into the first dimension (fresh run); `type` lets test hooks start in a later dimension,
+    // otherwise the dimension picked on the main menu (Level 0 by default)
+    if (!type) type = LEVELS[profile.settings.destination]?.ready ? profile.settings.destination : 'yellow';
     this.run = this._newRun();
     const depth = Math.max(1, LEVELS.order.indexOf(type) + 1);
     this.run.depth = depth;

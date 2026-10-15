@@ -300,3 +300,5 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
 .flyitem.go { transform: translate(-32vw, 34vh) scale(0.25) rotate(-25deg); opacity: 0; }
 #prompt:not(:empty) { animation: promptin 0.18s ease-out; }
 @keyframes promptin { from { opacity: 0; transform: translate(-50%, 4px); } }
+#in-dest { width: 100%; font-size: 24px; padding: 3px 6px; }
+@media (max-height: 520px) and (orientation: landscape) { #in-dest { font-size: 20px; } }

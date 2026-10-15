@@ -50,6 +50,12 @@ export class UI {
         <div class="logo-sub">RESEARCH OFFICE FOR OTHERWORLDLY MATTERS</div>
         <label>EMPLOYEE DESIGNATION</label>
         <input type="text" id="in-name" maxlength="16" spellcheck="false"/>
+        <label>FIRST DIMENSION</label>
+        <select class="interactive" data-set="destination" id="in-dest">
+          <option value="yellow">LEVEL 0 · THE YELLOW ROOMS</option>
+          <option value="poolrooms">LEVEL 37 · THE POOLROOMS</option>
+          <option value="grasslands">LEVEL 1.1 · THE GRASSLANDS</option>
+        </select>
         <div class="menu" style="margin-top:18px">
           <button class="btn interactive" data-act="solo">SOLO SHIFT</button>
           <button class="btn interactive" data-act="host">HOST SHIFT (1-4 CLONES)</button>
@@ -164,7 +170,7 @@ export class UI {
     $('#in-code', this.root).addEventListener('keydown', (e) => { if (e.key === 'Enter') this._act('dojoin'); });
     for (const inp of this.root.querySelectorAll('[data-set]')) {
       const k = inp.dataset.set;
-      const v = k === 'quality' ? engine.qualityName : k === 'healthityVoice' ? profile.settings[k] !== false : profile.settings[k];
+      const v = k === 'quality' ? engine.qualityName : k === 'healthityVoice' ? profile.settings[k] !== false : k === 'destination' ? (profile.settings[k] || 'yellow') : profile.settings[k];
       inp.value = String(v);
       inp.addEventListener('input', () => this._setting(k, inp.value));
       inp.addEventListener('change', () => this._setting(k, inp.value));
