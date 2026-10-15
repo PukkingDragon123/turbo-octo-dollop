@@ -82,6 +82,10 @@ export class LobbyPanel {
   update(dt) {
     const g = this.ui.game;
     if (!this.visible || !g) return;
+    // touch: never run under the top-right button column
+    const t = g.touch;
+    const w = t?.sysLeft ? Math.max(200, Math.min(268, t.sysLeft - 18)) : 0;
+    if (w !== this._w) { this._w = w; this.root.style.width = w ? `${w}px` : ''; }
     if (this.requested > 0) this.requested += dt;
     const host = net.mode !== 'client';
     const mode = net.mode === 'host' ? 'HOST' : net.mode === 'client' ? 'CLIENT' : 'SOLO';

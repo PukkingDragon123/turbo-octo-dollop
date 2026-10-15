@@ -18,8 +18,9 @@ import { audio } from '../../../audio/audio.js';
 import { net } from '../../../net/net.js';
 import { CELL } from './layout.js';
 import { LightField } from '../../../gfx/bakedlight.js';
+import { Q } from '../../../physics/physics.js';
 
-const _v = new THREE.Vector3(), _f = new THREE.Vector3();
+const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
 const rand = (a, b) => a + Math.random() * (b - a);
 
 // --- figures (shared geometry / materials, built once) ---------------------------------------------------------
@@ -152,6 +153,14 @@ export class Scares {
   _cam() { return engine.camera.position; }
   _fwd() { engine.camera.getWorldDirection(_f); _f.y = 0; return _f.normalize(); }
   _los(x0, z0, x1, z1, min = 0.3) { return this.level.occluder(x0, z0, x1, z1) >= min; }
+  // a real (physics) sight line at head height: the grid occluder treats a doorway edge as see-through even
+  // when the line actually hits the wall beside the door; static geometry and furniture both block
+  _sees(x0, z0, x1, z1, y = 1.5) {
+    const ph = this.world.physics;
+    if (!ph?.lineOfSight) return true;
+    _a.set(x0, y, z0); _b.set(x1, y, z1);
+    return ph.lineOfSight(_a, _b, Q.solid);
+  }
   _hit(strength = 1) {
     this.punch = Math.max(this.punch, strength);
     const l = this.game.local;
@@ -203,6 +212,7 @@ export class Scares {
       if (!this._los(ax, az, bx, bz, 0.35)) continue;
       const c = this.level.cell(px, pz);
       if (!c || c.ceil < 2.2 || c.special?.pit) continue;
+      if (!this._sees(cam.x, cam.z, px, pz, Math.min(cam.y, 1.3))) continue;
       const fig = this._addFigure(silhouette('run'));
       const dir = Math.random() < 0.5 ? 1 : -1;
       const A = new THREE.Vector3(dir > 0 ? ax : bx, 0, dir > 0 ? az : bz), B = new THREE.Vector3(dir > 0 ? bx : ax, 0, dir > 0 ? bz : az);
@@ -397,11 +407,14 @@ export class Scares {
 
   _ev_figure() {
     const cam = this._cam(), f = this._fwd();
-    for (const d of [26, 22, 18, 15]) {
-      const px = cam.x + f.x * d, pz = cam.z + f.z * d;
+    // somewhere far down the view (a little off-centre is fine), with a clear line of sight
+    for (const da of [0, 0.12, -0.12, 0.24, -0.24]) for (const d of [26, 22, 18, 15, 13]) {
+      const ca = Math.cos(da), sa = Math.sin(da), fx = f.x * ca - f.z * sa, fz = f.x * sa + f.z * ca;
+      const px = cam.x + fx * d, pz = cam.z + fz * d;
       if (!this._los(cam.x, cam.z, px, pz, 0.25)) continue;
       const c = this.level.cell(px, pz);
       if (!c || c.ceil < 2.2 || c.special || c.landmark || !this.level.isChunkLoaded(px, pz)) continue;
+      if (!this._sees(cam.x, cam.z, px, pz, Math.min(cam.y, 1.5))) continue;
       const fig = this._addFigure(silhouette('stand'));
       fig.position.set(px, 0, pz);
       fig.rotation.y = Math.atan2(cam.x - px, cam.z - pz);

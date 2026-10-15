@@ -32,6 +32,7 @@ const BUTTONS = [
   { id: 'item', label: 'ITEM', icon: 'item', d: 28, mouse: 2 },
   { id: 'duck', label: 'DUCK', icon: 'crouch', d: 24, act: 'duck', led: true },
   { id: 'rot', label: 'ROT', icon: 'rotate', d: 22, key: 'KeyR' },
+  { id: 'mode', label: 'MODE', icon: 'swap', d: 22, act: 'mode' },
 ];
 const SYS_ORDER = ['menu', 'watch', 'light', 'next', 'drop', 'ask']; // right to left along the top
 const PLATE_W = 30, PLATE_H = 24;
@@ -186,6 +187,7 @@ export class TouchControls {
     put('item', bx - 45 * P, by - 45 * P);
     put('duck', bx - 80 * P, by - 13 * P);
     put('rot', bx - 76 * P, by - 41 * P);
+    put('mode', bx - 76 * P, by - 41 * P); // shares ROT's spot: ROT while carrying, MODE with a free hand
     this.cluster = { left: bx - 92 * P, top: by - 64 * P, right: bx, bottom: by };
     // system plates along the top right (two columns in portrait)
     const pw = PLATE_W * P, ph = (PLATE_H + 2) * P, gap = 2 * P;
@@ -197,12 +199,14 @@ export class TouchControls {
       put(id, vw - ins.r - m - pw / 2 - c * (pw + gap), ins.t + m + ph / 2 + r * (ph + gap));
     });
     this.sysBottom = ins.t + m + Math.ceil(SYS_ORDER.length / cols) * (ph + gap);
+    this.sysLeft = vw - ins.r - m - Math.min(cols, SYS_ORDER.length) * (pw + gap) + gap;
     for (const [id, p] of Object.entries(L)) {
       const b = this.btn[id];
       b.el.style.left = `${Math.round(p.cx)}px`;
       b.el.style.top = `${Math.round(p.cy)}px`;
     }
     this.layoutPos = L;
+    this._placeUse();
     // stick rest position (bottom-left)
     this.stickRest = { x: ins.l + m + 28 * P, y: vh - ins.b - m - 28 * P };
     if (!this.stick) { this.stickEl.style.left = `${this.stickRest.x}px`; this.stickEl.style.top = `${this.stickRest.y}px`; }
@@ -227,6 +231,15 @@ export class TouchControls {
     this.tabsEl.style.left = `${Math.round(pos.cx)}px`;
     this.tabsEl.style.bottom = `${Math.round(pos.bottom)}px`;
     this._placeCtx();
+  }
+
+  // terminals: USE becomes a big OK key in JUMP's corner
+  _placeUse() {
+    const L = this.layoutPos;
+    if (!L) return;
+    const p = this.root.classList.contains('term') ? L.jump : L.use;
+    this.btn.use.el.style.left = `${Math.round(p.cx)}px`;
+    this.btn.use.el.style.top = `${Math.round(p.cy)}px`;
   }
 
   _placeCtx() {
@@ -388,6 +401,7 @@ export class TouchControls {
       this.crouchOn = !this.crouchOn;
       if (this.crouchOn) input.virtualDown('KeyC'); else input.virtualUp('KeyC');
     }
+    if (d.act === 'mode') this.game.local?.toggleMultitoolMode?.();
     if (d.act === 'menu') {
       if (this.game.local?.terminal || this.game.terminal?.active) this._tap('Escape');
       else input.exitLock();
@@ -417,7 +431,10 @@ export class TouchControls {
     const dead = !!l.dead;
     const grab = !!l.grab;
     const watch = !!l.watchOpen;
-    const state = `${term}|${dead}|${grab}|${watch}`;
+    // a hand without an RMB item use belongs to the built-in multitool (attach / dismantle)
+    const cur = l.inv?.current;
+    const mt = typeof l.toggleMultitoolMode === 'function' && !(cur && l._handItemUse?.());
+    const state = `${term}|${dead}|${grab}|${watch}|${mt}`;
     if (state !== this.state) {
       this.state = state;
       const vis = (id, on) => this.btn[id].el.classList.toggle('gone', !on);
@@ -427,6 +444,7 @@ export class TouchControls {
       vis('grab', !term);
       vis('item', !term);
       vis('rot', full && grab);
+      vis('mode', full && !grab && mt);
       this.tabsEl.classList.toggle('show', full && watch);
       const set = (id, label, icon) => { const b = this.btn[id]; b.label = label; b.icon = icon; };
       set('grab', dead ? 'NEXT' : 'GRAB', dead ? 'arrowR' : 'fist');
@@ -434,14 +452,21 @@ export class TouchControls {
       set('use', term ? 'OK' : 'USE', term ? 'ok' : 'hand');
       this.btn.use.big = term;
       this.root.classList.toggle('term', term);
+      this._placeUse();
       this.root.classList.toggle('watching', watch);
     }
     // ITEM button shows what it will use: the held item's sprite, THROW while carrying, PREV when spectating
     const it = this.btn.item;
-    const cur = l.inv?.current;
     if (dead) { it.label = 'PREV'; it.icon = 'arrowL'; it.iconPix = null; }
+    else if (grab && l._mtOwnsRmb?.()) { it.label = 'ATTACH'; it.icon = 'item'; it.iconKey = 'multitool|'; it.iconPix = ui.iconPix?.('multitool') || null; }
     else if (grab) { it.label = 'THROW'; it.icon = 'throw'; it.iconPix = null; }
-    else if (cur) {
+    else if (mt) {
+      // built-in multitool: show the tool and its current mode
+      it.iconKey = 'multitool|';
+      it.iconPix = ui.iconPix?.('multitool') || null;
+      it.label = l.mtMode === 'dismantle' ? 'SCRAP' : 'ATTACH';
+      it.icon = 'item';
+    } else if (cur) {
       const variant = cur.type === 'sample_jar' && cur.state?.kind ? 'full' : undefined;
       it.iconKey = `${cur.type}|${variant || ''}`;
       it.iconPix = ui.iconPix?.(cur.type, variant) || null;

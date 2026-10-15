@@ -303,7 +303,7 @@ export class MenuScene {
     this.hemi = new THREE.HemisphereLight(0x8c8472, 0x1d1610, 0.32);
     S.add(this.hemi);
     const key = (this.key = new THREE.SpotLight(0xfff0d2, 16, 7.5, 1.05, 0.75, 2));
-    key.position.set(0.1, 2.66, -0.12);
+    key.position.set(0.1, 2.42, -0.12);
     key.target.position.set(0.1, 0.4, -0.15);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
@@ -332,7 +332,7 @@ export class MenuScene {
     this.scene.add(this.booth.root);
     this.booth.root.updateMatrixWorld(true);
     this.booth.onDoorHit = (kind, s) => this._doorHit(kind, s);
-    this.redLight.position.copy(this.booth.root.localToWorld(new THREE.Vector3(0, 1.6, -0.3)));
+    this.redLight.position.copy(this.booth.root.localToWorld(new THREE.Vector3(0, 2.0, -0.52)));
     // outfitting bay, far away in the same scene
     this.chamber = new WardrobeChamber();
     this.chamber.root.position.copy(CHAMBER_POS);
@@ -371,14 +371,22 @@ export class MenuScene {
       this.scene.add(av.root);
       // sit pose, measure how far the body reaches below the root so the clone sits ON the chair
       av.root.position.set(0, 0, 0); av.root.rotation.set(0, 0, 0);
+      c.minY = 0; c.height = 1.1; c.headY = 0.95; c.chairSit = false;
       try {
-        av.update(0, { emote: 'sit', grounded: true, speed: 0 });
+        av.update(0, { emote: 'sit', grounded: true, speed: 0, table: 0.76 });
         av.root.updateMatrixWorld(true);
-        const box = new THREE.Box3().setFromObject(av.root, true);
-        c.minY = Number.isFinite(box.min.y) ? box.min.y : 0;
-        c.height = Number.isFinite(box.max.y) ? box.max.y - box.min.y : 1;
-      } catch (e) { c.minY = 0; c.height = 1; }
-      c.seatY = SEAT_TOP - c.minY - 0.005;
+        const b = av.bones || {};
+        const pel = b.pelvis ? b.pelvis.getWorldPosition(new THREE.Vector3()).y : 0;
+        if (b.head) c.headY = b.head.getWorldPosition(new THREE.Vector3()).y + 0.12;
+        // the android rig sits on a 0.45 m chair seat above its root; the old sack doll sat on the floor
+        c.chairSit = pel > 0.3;
+        if (c.chairSit) { c.minY = pel - 0.12; c.height = c.headY + 0.25 - c.minY; } else {
+          const box = new THREE.Box3().setFromObject(av.root, true);
+          c.minY = Number.isFinite(box.min.y) ? box.min.y : 0;
+          c.height = Number.isFinite(box.max.y) ? box.max.y - box.min.y : 1;
+        }
+      } catch (e) { console.warn('[menu] clone pose', e); }
+      c.seatY = c.chairSit ? SEAT_TOP - 0.45 : SEAT_TOP - c.minY - 0.005;
       this._placeAtSeat(c);
       this.clones.push(c);
       if (c.you) this.you = c;
@@ -386,9 +394,9 @@ export class MenuScene {
     if (!this.you) return;
     // picking proxy (invisible; raycasts ignore visibility)
     const h = clamp(this.you.height || 1, 0.6, 2.2);
-    const proxy = new THREE.Mesh(new THREE.BoxGeometry(0.62, h * 1.05, 0.6), new THREE.MeshBasicMaterial());
+    const proxy = new THREE.Mesh(new THREE.BoxGeometry(0.6, h, 0.55), new THREE.MeshBasicMaterial());
     proxy.visible = false;
-    proxy.position.set(0, this.you.minY + h * 0.52, 0);
+    proxy.position.set(0, this.you.minY + h * 0.5, 0.02);
     this.you.root.add(proxy);
     this.proxy = proxy;
     this.raycaster = new THREE.Raycaster();
@@ -436,7 +444,7 @@ export class MenuScene {
   // ================================================================== camera rig & framing
   _initCamera() {
     this.shots = {
-      table: { p: new THREE.Vector3(0.35, 1.58, 3.05), l: new THREE.Vector3(0.22, 0.98, -0.5), hw: 1.55, hh: 0.78 },
+      table: { p: new THREE.Vector3(0.45, 1.72, 3.5), l: new THREE.Vector3(0.3, 1.02, -0.62), hw: 1.75, hh: 0.92 },
       booth: null, inside: null,
     };
     const bw = this.booth.root;
@@ -642,6 +650,16 @@ export class MenuScene {
     for (const c of this.clones) { c.laughH?.stop?.(0.1); c.laughH = null; }
   }
 
+  // compile every material of the set up front (KHR_parallel_shader_compile where available) so the first
+  // menu frame does not stall on dozens of synchronous shader compiles
+  async warm(timeoutMs = 9000) {
+    try {
+      const r = engine.renderer;
+      const p = r.compileAsync ? r.compileAsync(this.scene, this.camera) : Promise.resolve(r.compile(this.scene, this.camera));
+      await Promise.race([p, new Promise((res) => setTimeout(res, timeoutMs))]);
+    } catch (e) { /* warm-up only */ }
+  }
+
   // ================================================================== activation
   activate() {
     if (this.active) return;
@@ -765,98 +783,114 @@ export class MenuScene {
 
   _updateClone(c, dt, t, busy) {
     const av = c.av, b = av.bones || {};
-    let talking = 0, expr = LAUGH ? 'laugh' : 'happy', look = null;
+    // the android rig laughs by itself (stuttering bursts, jaw clacks); we only sync sound and add head snaps
+    const native = LAUGH && av.st && 'laughBurst' in av.st;
+    let talking = 0, expr = LAUGH ? 'laugh' : 'happy', look = null, lookAt = null;
     if (busy) {
       // the wardrobe has YOUR clone: everybody stops and watches
       c.mode = 'watch';
-      look = this._youHead(_v4);
+      look = lookAt = this._youHead(_v4);
       expr = 'neutral';
       c.laughH?.stop?.(0.05); c.laughH = null;
     } else if (c.mode === 'watch') {
       c.mode = 'laugh'; c.burst = false; c.burstT = rnd(0, 0.15);
     }
     if (c.mode === 'laugh') {
-      c.burstT -= dt;
-      if (c.burstT <= 0) {
-        c.burst = !c.burst;
-        c.burstT = c.burst ? rnd(0.7, 2.3) : rnd(0.15, 1.3);
-        if (c.burst) {
-          c.rate = rnd(5, 8.5);
-          if (audio.ready && this.active && (this._laughCD ?? 0) <= 0) {
-            this._laughCD = 0.18;
-            const hp = this._headOf(c, _v3);
-            c.laughH = this._sfx('menu_laugh', { pos: hp, volume: 0.42, pitch: c.voice * rnd(0.94, 1.06) });
-          }
-        } else { if (Math.random() < 0.5) { c.laughH?.stop?.(0.03); c.laughH = null; } }
+      // who am I laughing with? glance at another clone (or the cake) every few seconds
+      c.gazeT = (c.gazeT ?? 0) - dt;
+      if (c.gazeT <= 0 || !c.gaze) {
+        c.gazeT = rnd(1.5, 4.5);
+        const o = this.clones[Math.floor(Math.random() * this.clones.length)];
+        c.gaze = o && o !== c ? this._headOf(o, new THREE.Vector3()) : new THREE.Vector3(rnd(-0.3, 0.3), 0.8, rnd(-0.2, 0.2));
+      }
+      lookAt = c.gaze;
+      if (!native) {
+        c.burstT -= dt;
+        if (c.burstT <= 0) {
+          c.burst = !c.burst;
+          c.burstT = c.burst ? rnd(0.7, 2.3) : rnd(0.15, 1.3);
+          if (c.burst) { c.rate = rnd(5, 8.5); this._laughSound(c); } else if (Math.random() < 0.5) { c.laughH?.stop?.(0.03); c.laughH = null; }
+        }
       }
       if (c.burst) {
-        const syl = Math.abs(Math.sin(t * c.rate * PI * 0.5));
-        talking = 0.45 + 0.55 * syl;
+        if (!native) talking = 0.45 + 0.55 * Math.abs(Math.sin(t * c.rate * PI * 0.5));
         // head snaps to a new laughing angle a few times per second (stop-motion)
         c.snapT -= dt;
         if (c.snapT <= 0) {
-          c.snapT = rnd(0.09, 0.28);
-          c.headT.set(rnd(0.12, 0.42), rnd(-0.28, 0.28), rnd(-0.22, 0.22));
-          if (Math.random() < 0.12) c.headT.set(rnd(0.5, 0.75), rnd(-0.6, 0.6), rnd(-0.4, 0.4)); // violent snap
+          c.snapT = rnd(0.09, 0.3);
+          const s = native ? 0.55 : 1;
+          c.headT.set(rnd(0.0, 0.3) * s + (native ? 0 : 0.12), rnd(-0.28, 0.28) * s, rnd(-0.22, 0.22) * s);
+          if (Math.random() < 0.12) c.headT.set(rnd(0.3, 0.6) * s, rnd(-0.6, 0.6), rnd(-0.4, 0.4)); // violent snap
         }
       } else {
-        c.headT.set(0.05, c.headT.y * 0.5, c.headT.z * 0.5);
+        c.headT.set(c.headT.x * 0.5, c.headT.y * 0.5, c.headT.z * 0.5);
         if (Math.random() < dt * 0.8) c.headT.set(rnd(-0.1, 0.1), rnd(-0.4, 0.4), rnd(-0.15, 0.15));
       }
     } else if (c.mode === 'stare') {
       c.stareT -= dt;
       expr = 'neutral';
-      look = this.camera.position;
+      look = lookAt = this.camera.position;
       if (c.stareT <= 0) { c.mode = 'laugh'; c.burst = false; c.burstT = 0; }
     } else if (c.mode === 'freeze') {
-      // synchronized silence: hold the pose exactly, mouth shut, grin stays
-      talking = 0;
-      expr = LAUGH ? 'laugh' : 'happy';
+      // synchronized silence: hold the pose exactly
       c.headT.copy(c.head);
     }
     this._laughCD = (this._laughCD ?? 0) - dt / Math.max(1, this.clones.length);
-    // look-at: stepped like stop motion
+    // turning to look: stepped like stop motion (the rig's own head only follows a little)
     if (look) {
       c.root.updateWorldMatrix(true, false);
       const loc = c.root.worldToLocal(_v1.copy(look));
-      const hy = (c.minY ?? 0) + (c.height ?? 1) * 0.82;
-      let yaw = Math.atan2(-loc.x, -loc.z);
-      const pitch = Math.atan2(loc.y - hy, Math.hypot(loc.x, loc.z));
-      yaw = clamp(yaw, -2.5, 2.5);
+      const yaw = clamp(Math.atan2(-loc.x, -loc.z), -2.6, 2.6);
+      const pitch = Math.atan2(loc.y - (c.headY ?? 1), Math.hypot(loc.x, loc.z));
       c.tick -= dt;
-      if (c.tick <= 0) { c.tick = 1 / c.fps; c.headT.set(clamp(pitch, -0.6, 0.6), yaw, 0); }
+      if (c.tick <= 0) { c.tick = 1 / c.fps; c.headT.set(clamp(pitch, -0.5, 0.5), Math.abs(yaw) < 0.25 ? 0 : yaw * (native ? 0.8 : 1), 0); }
     }
     const k = c.mode === 'freeze' ? 0 : look ? 9 : 26;
     c.head.x = damp(c.head.x, c.headT.x, k, dt); c.head.y = damp(c.head.y, c.headT.y, k, dt); c.head.z = damp(c.head.z, c.headT.z, k, dt);
+    const wasBurst = !!av.st?.laughBurst;
     try {
-      av.update(c.mode === 'freeze' ? 0 : dt, { emote: 'sit', grounded: true, speed: 0, expression: expr, talking, pitch: 0 });
-    } catch (e) { /* robot avatar mid-refactor */ }
-    // additive overrides on top of the sit pose (only if the rig exposes these bones)
-    const bounce = c.mode === 'laugh' && c.burst ? Math.abs(Math.sin(t * c.rate * PI * 0.5)) : 0;
-    if (b.head) {
-      const big = Math.abs(c.head.y) > 1.2;
-      b.head.rotation.x += c.head.x * (big ? 0.6 : 1);
-      b.head.rotation.y += big ? Math.sign(c.head.y) * Math.min(Math.abs(c.head.y), 1.0) : c.head.y;
-      b.head.rotation.z += c.head.z;
-      if (big && b.chest) b.chest.rotation.y += Math.sign(c.head.y) * (Math.abs(c.head.y) - 1.0) * 0.9;
+      av.update(c.mode === 'freeze' ? 0 : dt, { emote: 'sit', grounded: true, speed: 0, expression: expr, talking, pitch: 0, table: 0.76 - c.seatY, lookAt: lookAt || undefined });
+    } catch (e) { if (!this._warned) { this._warned = true; console.warn('[menu] clone update', e); } }
+    if (native && c.mode === 'laugh') {
+      const now = !!av.st.laughBurst;
+      if (now && !wasBurst) this._laughSound(c);
+      if (!now && wasBurst && Math.random() < 0.6) { c.laughH?.stop?.(0.03); c.laughH = null; }
+      c.burst = now;
     }
-    if (b.chest) b.chest.rotation.x += -0.05 * bounce + (c.mode === 'laugh' && c.burst ? 0.04 : 0);
-    if (b.shL && b.shR) { b.shL.rotation.z -= 0.12 * bounce; b.shR.rotation.z += 0.12 * bounce; }
+    // additive overrides on top of the sit pose (only if the rig exposes these bones)
+    if (b.head) {
+      const big = Math.abs(c.head.y) > 1.1;
+      b.head.rotation.x += c.head.x * (big ? 0.6 : 1);
+      b.head.rotation.y += big ? Math.sign(c.head.y) * 1.1 : c.head.y;
+      b.head.rotation.z += c.head.z;
+      // owl turn: the rest of the way comes from the neck / chest
+      const rest = big ? Math.sign(c.head.y) * (Math.abs(c.head.y) - 1.1) : 0;
+      if (rest) { if (b.neck) { b.neck.rotation.y += rest * 0.6; if (b.chest) b.chest.rotation.y += rest * 0.4; } else if (b.chest) b.chest.rotation.y += rest; }
+    }
+    if (!native) {
+      const bounce = c.mode === 'laugh' && c.burst ? Math.abs(Math.sin(t * c.rate * PI * 0.5)) : 0;
+      if (b.chest) b.chest.rotation.x += -0.05 * bounce + (c.mode === 'laugh' && c.burst ? 0.04 : 0);
+      if (b.shL && b.shR) { b.shL.rotation.z -= 0.12 * bounce; b.shR.rotation.z += 0.12 * bounce; }
+    }
     // one of them pounds the table while laughing
     if (c.pounder && b.shR && b.elR && c.mode === 'laugh' && c.burst) {
-      const ph = (t * c.rate * 0.5) % 1;
+      const ph = (t * 3.4) % 1;
       const up = ph < 0.6 ? ph / 0.6 : 1 - (ph - 0.6) / 0.4;
-      b.shR.rotation.x += 0.5 + up * 1.0;
-      b.elR.rotation.x += 0.2;
+      b.shR.rotation.x += up * 0.9;
       if (c._lastPh !== undefined && c._lastPh > ph) this._sfx('thunk', { pos: c.root.position, volume: 0.22, pitch: rnd(0.8, 1.0) });
       c._lastPh = ph;
     }
     c.root.updateMatrixWorld(true);
   }
+  _laughSound(c) {
+    if (!audio.ready || !this.active || (this._laughCD ?? 0) > 0) return;
+    this._laughCD = 0.18;
+    c.laughH = this._sfx('menu_laugh', { pos: this._headOf(c, _v3), volume: 0.42, pitch: c.voice * rnd(0.94, 1.06) });
+  }
   _headOf(c, out) {
     const b = c.av.bones?.head;
     if (b) { b.getWorldPosition(out); out.y += 0.12; return out; }
-    return out.copy(c.root.position).add(_v2.set(0, (c.height ?? 1) * 0.85, 0));
+    return c.root.localToWorld(out.set(0, c.headY ?? 1, 0));
   }
   _youHead(out) { return this.you ? this._headOf(this.you, out) : out.set(0, 1, 0); }
 
@@ -1132,7 +1166,7 @@ export class MenuScene {
     // key light becomes the bay spotlight
     this.keyInside = true;
     const k = this.key;
-    k.position.copy(CHAMBER_POS).add(_v1.set(0, 3.6, 0.35));
+    k.position.copy(CHAMBER_POS).add(_v1.set(0, 3.32, 0.35));
     k.target.position.copy(CHAMBER_POS).add(_v1.set(0, 0.6, 0));
     k.angle = 0.5; k.penumbra = 0.45; k.intensity = 34; k.distance = 9;
     this.redLight.position.copy(CHAMBER_POS).add(_v1.set(0.2, 2.1, -1.9));
@@ -1172,10 +1206,10 @@ export class MenuScene {
   _restoreRoomLights() {
     this.keyInside = false;
     const k = this.key;
-    k.position.set(0.1, 2.66, -0.12);
+    k.position.set(0.1, 2.42, -0.12);
     k.target.position.set(0.1, 0.4, -0.15);
     k.angle = 1.05; k.penumbra = 0.75; k.distance = 7.5;
-    this.redLight.position.copy(this.booth.root.localToWorld(new THREE.Vector3(0, 1.6, -0.3)));
+    this.redLight.position.copy(this.booth.root.localToWorld(new THREE.Vector3(0, 2.0, -0.52)));
     this.vendLight.position.set(-2.6, 1.25, -2.35);
     this.hemi.intensity = 0.32;
     this.scene.fog.density = 0.075;

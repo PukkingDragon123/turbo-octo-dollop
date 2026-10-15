@@ -42,7 +42,7 @@ export class UI {
         <div id="ach"><div>ACHIEVEMENT UNLOCKED</div><div class="t"></div><div class="d" style="color:var(--fg-dim)"></div></div>
         <div id="voiceind"><i></i>TRANSMITTING</div>
         <div id="netinfo"></div>
-        <div id="death"><canvas class="skull"></canvas><div class="t">CLONE TERMINATED</div><canvas class="flat"></canvas><div class="c"></div><div class="s"></div></div>
+        <div id="death"><canvas class="skull"></canvas><div class="t">CLONE TERMINATED</div><canvas class="flat"></canvas><div class="c"></div><div class="rc"><div class="eta"></div><div class="fee"></div></div><div class="s"></div></div>
       </div>
       <div id="clickstart">CLICK TO CONTINUE</div>
       <div id="menu-main" class="screen"><div class="crt">
@@ -456,7 +456,7 @@ export class UI {
   popTopPx() {
     let y = this._popBase();
     const wp = this.watchPanelEl;
-    if (wp && wp.classList.contains('show') && !wp.classList.contains('glance')) y = Math.max(y, wp.getBoundingClientRect().bottom);
+    if (wp && wp.classList.contains('show')) y = Math.max(y, wp.getBoundingClientRect().bottom);
     return y;
   }
 
@@ -484,8 +484,8 @@ export class UI {
       if (width * 0.75 + border > avail) width = Math.max(180, (avail - border) / 0.75);
       st.top = `${Math.round(top)}px`; st.bottom = ''; st.width = `${Math.round(width)}px`;
     } else {
-      // glance: a small pager just above the pockets, clear of the crosshair and Healthity
-      st.top = ''; st.bottom = `${Math.round(window.innerHeight - rowTop + 10)}px`; st.width = `${Math.round(Math.min(window.innerWidth * 0.62, 250))}px`;
+      // glance: a small pager under the top HUD, clear of the crosshair (Healthity steps below it)
+      st.top = `${Math.round(this._popBase() + 6)}px`; st.bottom = ''; st.width = `${Math.round(Math.min(window.innerWidth * 0.62, 250))}px`;
     }
   }
 
@@ -736,9 +736,24 @@ export class UI {
     death.classList.toggle('show', l.dead);
     if (l.dead) {
       $('.c', death).textContent = `Cause: ${s.deathCause || 'unknown'}`;
+      // auto re-cloning (Level 0): a new clone is printed at camp after a countdown, for half the team's money
+      const mission = g.world.level?.mission;
+      let eta = null;
+      try { eta = mission?.reviveEta?.(net.selfId) ?? null; } catch (e) { eta = null; }
+      const auto = !!g.autoClone || eta != null;
+      const rc = $('.rc', death);
+      rc.style.display = auto ? '' : 'none';
+      if (auto) {
+        const etaTxt = eta != null ? (eta > 0.5 ? `RE-CLONING IN ${Math.ceil(eta)}s` : 'PRINTING NEW CLONE...') : 'RE-CLONING AT CAMP...';
+        const fee = g.cloneCost?.() ?? 0;
+        const feeTxt = fee > 0 ? `CLONING FEE: -$${fee}` : 'CLONING FEE: $0 (TEAM IS BROKE)';
+        if ($('.eta', rc).textContent !== etaTxt) $('.eta', rc).textContent = etaTxt;
+        if ($('.fee', rc).textContent !== feeTxt) $('.fee', rc).textContent = feeTxt;
+      }
       const sp = l.spectating;
-      const html = sp ? `SPECTATING ${sp.name.toUpperCase()} — ${input.touch ? '<span class="kbd">PREV</span>/<span class="kbd">NEXT</span>' : '<span class="kbd">LMB</span>/<span class="kbd">RMB</span>'} switch<br/>Teammates can re-clone you at the CLONING PAD for ${g.cloneCost()} CR` : 'No living employees remain...';
-      if (this._deathHtml !== html) { this._deathHtml = html; $('.s', death).innerHTML = html; }
+      const sw = `${input.touch ? '<span class="kbd">PREV</span>/<span class="kbd">NEXT</span>' : '<span class="kbd">LMB</span>/<span class="kbd">RMB</span>'} switch`;
+      const html = sp ? `SPECTATING ${sp.name.toUpperCase()} — ${sw}${auto ? '' : `<br/>Teammates can re-clone you at the CLONING PAD for ${g.cloneCost()} CR`}` : auto ? '' : 'No living employees remain...';
+      if (this._deathHtml !== html) { this._deathHtml = html; $('.s', death).innerHTML = html; $('.s', death).style.display = html ? '' : 'none'; }
       this._flatline(dt);
     }
     // voice indicator

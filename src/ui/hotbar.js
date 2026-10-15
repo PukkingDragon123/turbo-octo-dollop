@@ -87,6 +87,8 @@ export class Hotbar {
     document.body.appendChild(this.root);
     this.row = this.root.querySelector('.inv-row');
     this.nameCv = this.root.querySelector('.inv-name');
+    this.nameCv.width = 1; this.nameCv.height = 1; // no 300x150 default box before the first name is drawn
+    this.nameCv.style.width = '0px'; this.nameCv.style.height = '0px';
     this.slots = [];
     this.keys = [];
     this.lastSel = -1;
@@ -244,18 +246,26 @@ export class Hotbar {
       this.slots[i].el.classList.toggle('sel', i === sel);
       this.slots[i].el.classList.toggle('empty', !it);
     });
-    // selection changed: bounce + name plate
+    // selection changed: bounce + name plate (a free hand shows the built-in multitool's mode)
     const cur = inv.current;
-    const curKey = `${sel}|${cur ? cur.type : ''}`;
+    const mtFree = typeof l.toggleMultitoolMode === 'function' && !(cur && itemDef(cur.type).use);
+    const curKey = `${sel}|${cur ? cur.type : ''}|${mtFree ? l.mtMode : ''}`;
     if (curKey !== this.lastSel) {
       const first = this.lastSel === -1;
       this.lastSel = curKey;
       const el = this.slots[sel]?.el;
       if (el && !first) { el.classList.remove('bounce'); void el.offsetWidth; el.classList.add('bounce'); }
-      if (cur) {
+      if (mtFree && !cur) {
+        const mode = l.mtMode === 'dismantle' ? 'DISMANTLE' : 'ATTACH';
+        const np = namePix(`MULTITOOL: ${mode}`, input.touch ? 'ITEM: USE · MODE: SWITCH' : 'RMB: USE · R: SWITCH MODE');
+        np.toCanvas(this.nameCv);
+        this._nameWH = [np.w, np.h];
+        this._sizeName();
+        this.nameT = first ? 0 : 2.4;
+      } else if (cur) {
         const use = itemDef(cur.type).use;
         const verb = VERB[use] || (use ? 'USE' : '');
-        const hint = verb ? (input.touch ? `ITEM: ${verb}` : `RMB: ${verb}`) : '';
+        const hint = verb ? (input.touch ? `ITEM: ${verb}` : `RMB: ${verb}`) : mtFree ? (input.touch ? 'ITEM: MULTITOOL' : 'RMB: MULTITOOL') : '';
         const np = namePix(itemLabel(cur), hint);
         np.toCanvas(this.nameCv);
         this._nameWH = [np.w, np.h];

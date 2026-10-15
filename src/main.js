@@ -89,7 +89,7 @@ async function boot() {
     engine.post.params.uFade.value = 0;
   } catch (e) { /* warm-up only */ }
   let menuScene = null;
-  try { menuScene = new MenuScene(game); window.__menu = menuScene; } catch (e) { console.error('[menu] set', e); }
+  try { menuScene = new MenuScene(game); window.__menu = menuScene; await menuScene.warm(); } catch (e) { console.error('[menu] set', e); }
   ui.showMainMenu();
 
   // test hooks: ?auto=solo|host & ?level=yellow|poolrooms|grasslands

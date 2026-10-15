@@ -593,23 +593,28 @@ export class YellowLevel {
         if (L2 < 1e-6) continue;
         const L = Math.sqrt(L2);
         const t = ((p.x - s.ax) * dx + (p.z - s.az) * dz) / L2;
-        // the last segment keeps pushing ~0.9 m past the chute's end so clones launch off it
+        // the last segment keeps pushing a little past the chute's end (s.runout, 0.9 m) so clones launch off it
         const over = t > 1;
-        if (t < -0.05 || t > (s.last ? 1 + 0.9 / L : 1.05)) continue;
+        if (t < -0.05 || t > (s.last ? 1 + (s.runout ?? 0.9) / L : 1.05)) continue;
         const qx = s.ax + dx * t, qz = s.az + dz * t;
         if ((p.x - qx) ** 2 + (p.z - qz) ** 2 > (s.hw + 0.12) ** 2) continue;
         const tc = Math.max(0, Math.min(1, t));
         const sy = s.ay + (s.by - s.ay) * tc;
         if (p.y < sy - (over && s.last ? 1.2 : 0.3) || p.y > sy + 0.4) continue;
         // on the chute: drive the velocity along it towards `speed` (the yank is added after the player's own
-        // acceleration, so aim for the target from the damped velocity); little steering while sliding
-        const ux = dx / L, uz = dz / L;
+        // acceleration, so aim for the target from the damped velocity) and pull towards the centre line (so the
+        // spiral's curve does not fling clones up and over its outer wall); little steering while sliding
+        const ux = dx / L, uz = dz / L, sx = -uz, sz = ux;
         const k = 1 - Math.exp(-16 * dt);
         const along = player.vel.x * ux + player.vel.z * uz;
+        const lat = player.vel.x * sx + player.vel.z * sz;
+        const off = (p.x - qx) * sx + (p.z - qz) * sz;
         const want = s.speed ?? 6;
-        const add = Math.max(0, want - along * (1 - k));
-        player.yank.x += ux * add;
-        player.yank.z += uz * add;
+        // (the run-out segment may also brake towards its speed)
+        const add = s.last ? want - along * (1 - k) : Math.max(0, want - along * (1 - k));
+        const addLat = -off * 7 - lat * (1 - k);
+        player.yank.x += ux * add + sx * addLat;
+        player.yank.z += uz * add + sz * addLat;
         if (!this._slideSnd || this.time - this._slideSnd > 0.9) { this._slideSnd = this.time; audio.play('scrape_short', { volume: 0.35 }); }
         return 0.25;
       }

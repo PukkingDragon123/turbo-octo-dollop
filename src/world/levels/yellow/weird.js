@@ -121,24 +121,26 @@ function slidePit(level, rec, room, b, rng) {
     const p = pts[Math.round(t * 18)];
     gSteel.tube('y', -D, p[1] - 0.08, p[0], p[2], 0.035, 8);
   }
-  // spiral flume in the south-east corner: lead-in from the east walkway, 1.25 turns down into the balls
+  // spiral flume in the south-east corner: lead-in from the east walkway, one full turn down into the balls
+  // (the turn ends right under the lead-in, low enough that a standing clone clears it)
   const R = 0.95, C = [r.x1 - 1.6, r.z1 - 1.65];
-  const yTop = 0.03, yLow = yBall - 0.3;
-  const lead = 1.75, nH = 30, turns = 1.25;
+  const yTop = 0.03, yLow = yBall - 0.35;
+  const yAt = (t) => yTop + (yLow - yTop) * Math.pow(t, 0.9); // a little steeper early: ~1.5 m headroom under the lead-in
+  const lead = 1.75, nH = 26, turns = 1.0;
   const spts = [];
   for (let k = 0; k <= 4; k++) spts.push([C[0] + lead - (lead * k) / 4, yTop, C[1] + R]);
   for (let k = 1; k <= nH; k++) {
     const t = k / nH, th = Math.PI / 2 + t * turns * Math.PI * 2;
-    spts.push([C[0] + R * Math.cos(th), yTop + (yLow - yTop) * t, C[1] + R * Math.sin(th)]);
+    spts.push([C[0] + R * Math.cos(th), yAt(t), C[1] + R * Math.sin(th)]);
   }
-  const s2 = slide(gBlue, gBlue, spts, { w: 0.82, wall: 0.38 });
+  const s2 = slide(gBlue, gBlue, spts, { w: 0.82, wall: 0.52 });
   cols.push(...s2.cols);
   rec.slides.push(...s2.segs.map((s) => ({ ...s, speed: 5.5 })));
   // central pole + arms
   gSteel.tube('y', -D, 0.9, C[0], C[1], 0.07, 12);
   cols.push(aabbCol(C[0] - 0.08, -D, C[1] - 0.08, C[0] + 0.08, 0.9, C[1] + 0.08));
   for (let k = 0; k < 5; k++) {
-    const t = (k + 0.5) / 5, th = Math.PI / 2 + t * turns * Math.PI * 2, y = yTop + (yLow - yTop) * t - 0.1;
+    const t = (k + 0.5) / 5, th = Math.PI / 2 + t * turns * Math.PI * 2, y = yAt(t) - 0.1;
     gSteel.tubePath([[C[0], y, C[1]], [C[0] + (R - 0.2) * Math.cos(th), y, C[1] + (R - 0.2) * Math.sin(th)]], 0.025, 6);
   }
   // steel stair up the west pit wall
@@ -173,12 +175,12 @@ function ballPit(level, rec, room, b, rng) {
   gDeck.box(dx0, dy - 0.06, dz0, dx1, dy, dz1, {}, 0.6);
   cols.push(aabbCol(dx0, dy - 0.06, dz0, dx1, dy, dz1));
   for (const [x, z] of [[dx0 + 0.05, dz0 + 0.05], [dx1 - 0.05, dz0 + 0.05], [dx0 + 0.05, dz1 - 0.05], [dx1 - 0.05, dz1 - 0.05]]) {
-    gPost.box(x - 0.05, 0, z - 0.05, x + 0.05, dy + 1.42, z + 0.05, { ny: true }, 0.6);
-    cols.push(aabbCol(x - 0.05, 0, z - 0.05, x + 0.05, dy + 1.42, z + 0.05));
+    gPost.box(x - 0.05, 0, z - 0.05, x + 0.05, dy + 1.5, z + 0.05, { ny: true }, 0.6);
+    cols.push(aabbCol(x - 0.05, 0, z - 0.05, x + 0.05, dy + 1.5, z + 0.05));
   }
   // roof canopy just under the 2.9 m ceiling (clones on the deck stand 2.66 m tall)
-  gSh.box(dx0 - 0.08, dy + 1.42, dz0 - 0.02, dx1 + 0.08, dy + 1.48, dz1 + 0.08, {}, 0.6);
-  cols.push(aabbCol(dx0 - 0.08, dy + 1.42, dz0 - 0.02, dx1 + 0.08, dy + 1.48, dz1 + 0.08));
+  gSh.box(dx0 - 0.08, dy + 1.5, dz0 - 0.02, dx1 + 0.08, dy + 1.55, dz1 + 0.08, {}, 0.6);
+  cols.push(aabbCol(dx0 - 0.08, dy + 1.5, dz0 - 0.02, dx1 + 0.08, dy + 1.55, dz1 + 0.08));
   // stairs from the west walkway up to the deck (5 x 0.26)
   cols.push(...stair(gDeck, gPost, dx0 - 1.5, dz0 + 0.1, 0, dy, 5, [1, 0], 0.8, 0.3));
   // rails on the east side and the back
@@ -195,11 +197,15 @@ function ballPit(level, rec, room, b, rng) {
   }, 14);
   const s = slide(gSl, gSh, pts, { w: 0.82, wall: 0.3 });
   cols.push(...s.cols);
-  rec.slides.push(...s.segs.map((q) => ({ ...q, speed: 5.5 })));
-  // rail around the pit, open where the slide passes (north)
-  cols.push(...rimRailing(gRail, r, 0.12, [{ side: 'N', a: cx - 0.52, b: cx + 0.52 }, { side: 'S', a: cx - 0.5, b: cx + 0.5 }]));
-  // steps out of the pit on the south side
-  cols.push(...stair(gDeck, gPost, cx + 0.45, r.z1 - 1.25, yCol, -yCol, 3, [0, 1], 0.9, 0.38));
+  // the pit is short: brake on the run-out and only nudge clones off the end, so they drop into the balls
+  // instead of flying across and over the far wall
+  const segs = s.segs.map((q) => ({ ...q, speed: 5.5 }));
+  Object.assign(segs[segs.length - 1], { speed: 2.6, runout: 0.3 });
+  rec.slides.push(...segs);
+  // rail around the pit, open where the slide passes (north) and at the steps out (south-east corner)
+  cols.push(...rimRailing(gRail, r, 0.12, [{ side: 'N', a: cx - 0.52, b: cx + 0.52 }, { side: 'S', a: r.x1 - 1.05, b: r.x1 - 0.05 }]));
+  // steps out of the pit in the south-east corner (clear of where the slide drops you)
+  cols.push(...stair(gDeck, gPost, r.x1 - 0.1, r.z1 - 1.25, yCol, -yCol, 3, [0, 1], 0.9, 0.38));
   ballFill(level, rec, r, yBall, 120, rng);
   bakeInto(level, rec, gWall, plastic(0xd04a5a));
   bakeInto(level, rec, gRim, plastic(0x2f78c8), { quant: 0.3 });

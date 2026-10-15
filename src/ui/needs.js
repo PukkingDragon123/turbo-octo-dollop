@@ -1,46 +1,14 @@
 // Top-left survival patch: a stitched hazmat-fabric badge sewn onto the clone's sleeve, drawn in pixel art.
-// A little stomach (with a face) and a water drop sit beside chunky segmented gauges: nutrient paste that
+// A roast drumstick and a water drop sit beside chunky segmented gauges: nutrient paste that
 // wobbles and water that sloshes and bubbles. Health is a subtle heart + pip strip along the bottom, and a
 // paper price tag with the shift's credits vs. quota hangs off the patch once selling starts.
 // Low values pulse and shake; the stomach growls when hunger crosses a threshold. The first time needs
 // switch on, the patch slides in, gets sewn on stitch by stitch, its gauges fill and the stomach growls.
-import { Pix, C, RAMP, mix, text, textWidth, FONT3, heart, coin, bayer, bitmap } from './pixelart.js';
+import { Pix, C, RAMP, mix, text, textWidth, FONT3, heart, coin, bayer } from './pixelart.js';
 
 import { audio } from '../audio/audio.js';
 import { damp } from '../core/rng.js';
 
-const STOMACH = [
-  '.....+#.......',
-  '.....+#.......',
-  '.....+#-......',
-  '.....+##-.....',
-  '...+++###--...',
-  '..++o######-..',
-  '.++o########-.',
-  '.+##########-.',
-  '.+##########=.',
-  '.+#########-=.',
-  '..+-######-=..',
-  '..+=.-----=...',
-  '.+-...====....',
-  '.+=...........',
-];
-const STOMACH_SQ = [
-  '.....+#.......',
-  '.....+#.......',
-  '.....+#-......',
-  '....++##-.....',
-  '..++++###--...',
-  '.++o#######-..',
-  '+#o#########-.',
-  '+###########=.',
-  '+###########=.',
-  '.+-########-=.',
-  '..+=-------=..',
-  '..+==.====....',
-  '.+-...........',
-  '.+=...........',
-];
 const W = 94, H = 60;          // canvas (art px)
 const PX = 3, PY = 2;          // patch origin
 const PW = 86, PH = 40;        // patch size
@@ -328,6 +296,7 @@ export class NeedsWidget {
     }
   }
 
+  // hunger icon: a roast drumstick (a bite goes missing when hungry, it wobbles when the stomach growls)
   _stomach(p, x, y, k) {
     const t = this.t;
     const g = this.growlT > 0;
@@ -336,15 +305,21 @@ export class NeedsWidget {
     const sq = g && Math.floor(t * 12) % 2 ? 1 : 0;
     const pop = k < 1 ? Math.round((1 - k) * 4) : 0;
     const s = new Pix(14, 14);
-    // hand-drawn organ: esophagus on top, big lobe, duodenum curling out at the bottom left
-    bitmap(sq ? STOMACH_SQ : STOMACH, { '+': C.pk4, '#': C.pk3, '-': C.pk2, '=': C.pk1, 'o': C.pk5 }, s, 0, 0);
-    // face on the big lobe
-    const ey = 7 + sq;
-    if (g) { s.set(6, ey, C.ink); s.set(10, ey, C.ink); s.rect(7, ey + 2, 3, 2, C.ink); s.set(8, ey + 2, C.pk1); }
-    else if (hungry) { s.set(6, ey, C.ink); s.set(10, ey, C.ink); s.hline(7, 9, ey + 2, C.ink); s.set(6, ey + 3, C.ink); s.set(10, ey + 3, C.ink); }
-    else { s.set(6, ey, C.ink); s.set(10, ey, C.ink); s.set(7, ey + 2, C.ink); s.set(8, ey + 3, C.ink); s.set(9, ey + 2, C.ink); s.set(5, ey + 1, C.pk4); s.set(11, ey + 1, C.pk4); }
+    // bone first (the meat overlaps its shaft)
+    s.rod(7.5, 7.5, 11.2, 11.2, 1.05, RAMP.paper, { lo: 0.45, hi: 1, dither: false, spec: false });
+    s.disc(12.2, 10.6, 1.35, C.paper); s.disc(10.6, 12.2, 1.35, C.paper2);
+    s.set(12, 10, C.white);
+    // meat
+    s.ellipse(5.6, 5.4 + sq * 0.3, 5.2 + sq * 0.3, 4.8 - sq * 0.3, (u, v) => (u + v < -0.75 ? C.br5 : u + v < -0.1 ? C.br4 : u + v < 0.65 ? C.br3 : C.br2));
+    s.rod(6.5, 6.5, 8.6, 8.6, 1.6, RAMP.brown, { lo: 0.3, hi: 0.75, dither: false, spec: false });
+    // grill marks + glossy highlight
+    s.line(3, 6, 6, 3, C.br2); s.line(5, 8, 8, 5, C.br2);
+    s.set(3, 3, C.white); s.set(4, 2, C.br5); s.set(2, 4, C.br5);
+    // hungry: a bite is missing; growling: crumbs fly
+    if (hungry || g) for (let yy = 0; yy < 14; yy++) for (let xx = 0; xx < 14; xx++) if (Math.hypot(xx + 0.5 - 10, yy + 0.5 - 1.5) < 2.6) s.erase(xx, yy);
     s.outline(C.ink).shadow(0.4);
     p.blit(s, x + wob, y - pop);
+    if (g && Math.floor(t * 8) % 2) { p.set(x + 13, y + 1, C.br4); p.set(x + 12, y - 1, C.br3); }
   }
 
   _drop(p, x, y, k) {

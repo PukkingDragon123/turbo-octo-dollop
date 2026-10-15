@@ -99,7 +99,7 @@ canvas.px, #ui canvas { image-rendering: pixelated; image-rendering: crisp-edges
 #pxlobby .lp-list li { display: flex; align-items: center; gap: 5px; padding: 1px 0; white-space: nowrap; }
 #pxlobby .lp-list li i { width: 6px; height: 6px; flex: none; background: #4dff7a; box-shadow: 0 0 0 2px #0d0906; }
 #pxlobby .lp-list li.wait i { background: #ffb43a; animation: blink 0.6s steps(2) infinite; }
-#pxlobby .lp-list .nm { overflow: hidden; text-overflow: ellipsis; max-width: 112px; color: var(--fg-hi); }
+#pxlobby .lp-list .nm { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; color: var(--fg-hi); }
 #pxlobby .lp-list em { font-style: normal; font-size: 13px; padding: 0 3px; color: #1b130c; background: #a8701c; }
 #pxlobby .lp-list em.h { background: #4dff7a; }
 #pxlobby .lp-list .st { margin-left: auto; font-size: 14px; color: var(--fg-dim); }
@@ -114,7 +114,6 @@ canvas.px, #ui canvas { image-rendering: pixelated; image-rendering: crisp-edges
 #pxlobby .lp-status { font-size: 17px; color: #a8ffbe; margin-top: 5px; text-align: center; text-shadow: 2px 2px 0 #021006; }
 #pxlobby .lp-status:empty { display: none; }
 #pxlobby .lp-status.blink { animation: blink 1s steps(2) infinite; }
-.touch #pxlobby { width: 236px; }
 @media (max-height: 420px) { #pxlobby .lp-list { font-size: 16px; } #pxlobby .lp-code b { font-size: 22px; } #pxlobby { padding: 2px 6px 4px; } }
 
 /* small in-world screens shown as a readable panel beside the device (terminal.js) */
@@ -219,7 +218,7 @@ canvas.px, #ui canvas { image-rendering: pixelated; image-rendering: crisp-edges
   background: radial-gradient(ellipse at center, #120a03 0%, #000 70%); }
 #loading.show { display: flex; }
 #loading::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0,0,0,0.3) 0 1px, transparent 1px 3px); pointer-events: none; }
-#loading canvas.sprite { width: calc(var(--px) * 48); height: calc(var(--px) * 56); image-rendering: pixelated; margin-bottom: 10px; animation: tumble 1.6s steps(8) infinite; }
+#loading canvas.sprite { width: calc(var(--px) * 72); height: calc(var(--px) * 84); image-rendering: pixelated; margin-bottom: 10px; animation: tumble 1.6s steps(8) infinite; }
 @keyframes tumble { 0% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } 100% { transform: rotate(-12deg); } }
 #loading .t { font-size: 44px; line-height: 1; color: var(--fg-hi); letter-spacing: 4px; text-shadow: 3px 3px 0 #4a2a06; text-align: center; }
 #loading .l { font-size: 22px; color: var(--fg-dim); margin-top: 8px; text-align: center; max-width: 92vw; }
@@ -233,9 +232,12 @@ canvas.px, #ui canvas { image-rendering: pixelated; image-rendering: crisp-edges
 #death .t { font-size: 60px; line-height: 1; color: #ff5a3a; text-shadow: 4px 4px 0 #3a0806, 0 0 18px rgba(255,60,40,0.5); letter-spacing: 6px; margin-top: 6px; text-align: center; }
 #death canvas.flat { width: min(384px, 80vw); height: auto; aspect-ratio: 6 / 1; image-rendering: pixelated; margin: 8px 0 2px; }
 #death .c { font-size: 24px; color: #ffd4c4; text-shadow: 2px 2px 0 #000; text-align: center; }
+#death .rc { margin-top: 12px; padding: 4px 14px 6px; text-align: center; border: calc(var(--px) * 3) solid transparent; border-image: var(--pa-plate) 3 fill / calc(var(--px) * 3); image-rendering: pixelated; }
+#death .rc .eta { font-size: 34px; line-height: 1.05; color: #fff0c0; letter-spacing: 2px; text-shadow: 3px 3px 0 #4a2a06; animation: blink 1s steps(2) infinite; }
+#death .rc .fee { font-size: 22px; color: #ff9c80; text-shadow: 2px 2px 0 #000; }
 #death .s { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); font-size: 22px; color: var(--fg-hi); text-align: center; white-space: nowrap; padding: 4px 12px;
   border: calc(var(--px) * 3) solid transparent; border-image: var(--pa-plate) 3 fill / calc(var(--px) * 3); image-rendering: pixelated; text-shadow: 2px 2px 0 #000; }
-.touch #death .s { bottom: auto; top: calc(9vh + 190px); white-space: normal; width: max-content; max-width: min(90vw, 560px); }
+.touch #death .s { position: static; transform: none; margin-top: 10px; white-space: normal; width: max-content; max-width: min(90vw, 560px); }
 
 #runover .crt, #pause .crt, #custom .crt, #settings .crt { min-width: 520px; }
 #runover .stats { font-size: 27px; line-height: 1.35; margin: 10px 0; color: var(--fg-hi); text-shadow: 2px 2px 0 #000; }
@@ -281,11 +283,12 @@ canvas.px, #ui canvas { image-rendering: pixelated; image-rendering: crisp-edges
   #death .t { font-size: 40px; letter-spacing: 3px; }
   #death .c { font-size: 20px; }
   #death .s { font-size: 19px; }
+  #death .rc .eta { font-size: 26px; }
+  #death .rc .fee { font-size: 19px; }
 }
 @media (max-height: 520px) {
   #menu-main .boot { display: none; }
   #death { padding-top: 4vh; }
-  .touch #death .s { top: auto; bottom: 10px; }
 }
 @media (max-height: 520px) and (orientation: landscape) {
   .crt { padding: 8px 14px 10px; }

@@ -326,7 +326,10 @@ export class Watch {
         const [x, y] = toMap(radio.root.position);
         hl(x - 2, x + 2, y - 2, P.cyan); hl(x - 2, x + 2, y + 2, P.cyan); vl(x - 2, y - 2, y + 2, P.cyan); vl(x + 2, y - 2, y + 2, P.cyan);
       }
-      if (m.state?.exit) {
+      let marks = [];
+      try { marks = m.markers?.() || []; } catch (e) { marks = []; }
+      for (const mk of marks) this._marker(a, t, mk, toMap(mk.pos), mx, my, top, bot);
+      if (m.state?.exit && !marks.some((mk) => mk.kind === 'exit')) {
         const [x, y] = toMap(new THREE.Vector3(m.state.exit.x, 0, m.state.exit.z));
         if (Math.floor(t * 3) % 2) for (let yy = -3; yy <= 3; yy++) for (let xx = -3; xx <= 3; xx++) if (xx * xx + yy * yy <= 9) put(x + xx, y + yy, P.warn);
         if (inside(x + 5, y - 3)) text(a, 'EXIT', x + 5, y - 3, P.warn, { font: FONT3 });
@@ -346,6 +349,36 @@ export class Watch {
     a.frame(1, top - 1, AW - 2, bot - top + 2, P.dim);
     a.rect(AW - 12, top + 1, 9, 9, P.bg);
     text(a, 'N', AW - 10, top + 2, P.hi);
+  }
+
+  // a mission marker (camp / pads / exit): an icon + label on the map, or an arrow on the frame edge
+  _marker(a, t, mk, [x, y], mx, my, top, bot) {
+    const col = mk.kind === 'exit' ? P.warn : mk.kind === 'pads' ? P.cyan : P.hi;
+    const label = String(mk.label || mk.kind).toUpperCase();
+    const L = 4, R = AW - 5, T = top + 2, B = bot - 3;
+    if (x >= L + 3 && x <= R - 3 && y >= T + 3 && y <= B - 3) {
+      if (mk.kind === 'camp') a.poly([[x - 4, y + 3], [x, y - 4], [x + 4, y + 3]], col);
+      else if (mk.kind === 'pads') { a.frame(x - 3, y - 3, 7, 7, col); a.rect(x - 1, y - 1, 3, 3, col); }
+      else if (Math.floor(t * 3) % 2) a.disc(x + 0.5, y + 0.5, 3.2, col);
+      else a.ring(x + 0.5, y + 0.5, 3.6, col);
+      const lw = textWidth(label, FONT3);
+      const lx = x + 5 + lw < R ? x + 5 : x - 5 - lw;
+      a.rect(lx - 1, y - 7, lw + 2, 7, P.bg);
+      text(a, label, lx, y - 6, col, { font: FONT3 });
+      return;
+    }
+    // off the map: pin an arrow to the frame, pointing toward it
+    const dx = x - mx, dy = y - my;
+    const k = Math.min((dx > 0 ? R - mx : L - mx) / (dx || 1e-6), (dy > 0 ? B - my : T - my) / (dy || 1e-6));
+    const ex = Math.round(mx + dx * k), ey = Math.round(my + dy * k);
+    const ang = Math.atan2(dy, dx);
+    const pt = (r, o) => [ex + Math.cos(ang + o) * r, ey + Math.sin(ang + o) * r];
+    a.poly([pt(3, 0), pt(4, 2.5), pt(4, -2.5)], col);
+    const lw = textWidth(label, FONT3);
+    const lx = Math.max(L, Math.min(R - lw, ex - lw / 2 - Math.cos(ang) * (lw / 2 + 5)));
+    const ly = Math.max(T, Math.min(B - 5, ey - 2 - Math.sin(ang) * 7));
+    a.rect(lx - 1, ly - 1, lw + 2, 7, P.bg);
+    text(a, label, lx, ly, col, { font: FONT3 });
   }
 
   _task(a, t, y0) {
