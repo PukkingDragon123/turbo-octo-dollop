@@ -276,3 +276,27 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
 .touch-only { display: none; }
 .touch .touch-only { display: block; }
 .touch .desk-only { display: none; }
+
+/* ---------- Healthity pop-up: speech bubble beside the bot in the screen corner ---------- */
+#hbubble { position: fixed; left: 0; top: 0; z-index: 11; max-width: min(380px, 46vw); padding: 8px 12px 9px; pointer-events: auto; touch-action: none;
+  font-family: var(--font); color: #d8ffe8; background: linear-gradient(180deg, rgba(6,26,18,0.9), rgba(3,14,9,0.92));
+  border: 2px solid #5fe6a6; border-radius: 4px 14px 14px 14px; box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 0 18px rgba(95,230,166,0.28), inset 0 0 18px rgba(95,230,166,0.12);
+  opacity: 0; visibility: hidden; transition: opacity 0.18s, visibility 0.18s; margin-top: -4px; }
+#hbubble::before { content: ''; position: absolute; left: -10px; top: 10px; border: 8px solid transparent; border-right: 10px solid #5fe6a6; border-left: 0; }
+#hbubble::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,0,0,0.22) 0 1px, transparent 1px 3px); }
+#hbubble.show { opacity: 1; visibility: visible; }
+#hbubble.alarm { border-color: #ff6a4a; color: #ffe0d8; box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 0 20px rgba(255,90,60,0.4); animation: hb-shake 0.4s steps(3) 2; }
+#hbubble.alarm::before { border-right-color: #ff6a4a; }
+#hbubble .hb-name { font-size: 15px; letter-spacing: 2px; color: #5fe6a6; display: flex; align-items: center; gap: 6px; }
+#hbubble.alarm .hb-name { color: #ff8a6a; }
+#hbubble .hb-led { width: 7px; height: 7px; border-radius: 50%; background: #5fe6a6; box-shadow: 0 0 6px #5fe6a6; animation: blink 0.5s steps(2) infinite; }
+#hbubble .hb-text { font-size: 21px; line-height: 1.12; text-shadow: 0 0 6px rgba(95,230,166,0.45); min-height: 1.1em; }
+#hbubble .hb-hint { font-size: 13px; letter-spacing: 1px; opacity: 0.55; margin-top: 3px; text-align: right; }
+@keyframes hb-shake { 33% { margin-left: -3px; } 66% { margin-left: 3px; } }
+@media (max-height: 520px) { #hbubble .hb-text { font-size: 18px; } #hbubble { max-width: 44vw; } }
+#touch [data-b="ask"] { left: calc(var(--sl) + var(--u) * 19.5); top: calc(var(--st) + var(--u) * 3); }
+.flyitem { position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; margin: -36px 0 0 -36px; pointer-events: none; z-index: 5;
+  filter: drop-shadow(0 0 8px rgba(255,200,90,0.7)); transition: transform 0.75s cubic-bezier(0.5, -0.3, 0.7, 1), opacity 0.75s ease-in; }
+.flyitem.go { transform: translate(-32vw, 34vh) scale(0.25) rotate(-25deg); opacity: 0; }
+#prompt:not(:empty) { animation: promptin 0.18s ease-out; }
+@keyframes promptin { from { opacity: 0; transform: translate(-50%, 4px); } }

@@ -163,7 +163,7 @@ export class Anomalies {
     this.halluT -= dt * (0.2 + insanity * 2.5);
     if (this.halluT <= 0) {
       this.halluT = 10 + Math.random() * 14;
-      if (s.sanity < 55) this._hallucinate(insanity);
+      if (s.sanity < 55 && this.game.day.day > 1) this._hallucinate(insanity);
     }
     if (this.shadow) {
       this.shadow.t += dt;

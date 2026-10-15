@@ -57,6 +57,12 @@ export class Survival {
 
   damage(amount, kind = 'blunt', opts = {}) {
     if (this.dead) return false;
+    // Day 1 probation: bumps and scrapes only, never fatal on their own
+    if (this.safeDay) {
+      amount *= 0.3;
+      opts = { ...opts, heavy: false, fractureChance: 0, fracture: false };
+      if (this.health - amount < 15) amount = Math.max(0, this.health - 15);
+    }
     this.health -= amount;
     this.pain = clamp(this.pain + amount / 60, 0, 1);
     this.lastDamage = this.time;
@@ -71,7 +77,7 @@ export class Survival {
       this.infection = clamp(this.infection + 14, 0, 100);
     } else if (kind === 'fall') {
       if (opts.fracture) this.fracture = true;
-    } else if (kind === 'blunt' && amount > 25 && Math.random() < 0.3) {
+    } else if (kind === 'blunt' && amount > 25 && !this.safeDay && Math.random() < 0.3) {
       this.bleed = Math.max(this.bleed, 1);
     }
     if (this.health <= 0) this.die(opts.cause || kind);
@@ -91,6 +97,7 @@ export class Survival {
     if (this.dead) return;
     this.time += dt;
     const lobby = !!ctx.lobby;
+    this.safeDay = !!ctx.safeDay;
     const sleepMul = this.sleeping ? 0.5 : 1;
     const fever = this.infection > 50;
     // hunger & thirst
@@ -170,6 +177,7 @@ export class Survival {
       if (ctx.safeRoom) ds += 0.6;
       if (this.infection > 60) ds -= 0.1;
       ds -= (ctx.dayPressure || 0) * 0.08;
+      if (ctx.safeDay) ds = Math.max(ds, 0.05);
       this.sanity = clamp(this.sanity + ds * dt, 0, 100);
     } else {
       this.sanity = Math.min(100, this.sanity + dt * 2);

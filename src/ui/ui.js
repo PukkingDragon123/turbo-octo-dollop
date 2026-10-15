@@ -87,6 +87,7 @@ export class UI {
           <span>MOUSE SENSITIVITY</span><input class="interactive" type="range" min="0.2" max="3" step="0.05" data-set="sensitivity"/>
           <span>INVERT Y</span><select class="interactive" data-set="invertY"><option value="false">OFF</option><option value="true">ON</option></select>
           <span>GRAPHICS</span><select class="interactive" data-set="quality"><option value="low">LOW</option><option value="medium">MEDIUM</option><option value="high">HIGH</option></select>
+          <span>HEALTHITY VOICE</span><select class="interactive" data-set="healthityVoice"><option value="true">ON</option><option value="false">OFF</option></select>
           <span>MICROPHONE</span><select class="interactive" data-set="voiceMode"><option value="open">OPEN MIC</option><option value="ptt">PUSH-TO-TALK [V]</option><option value="off">OFF</option></select>
         </div>
         <div class="menu" style="margin-top:16px"><button class="btn interactive" data-act="back">BACK</button></div>
@@ -100,7 +101,8 @@ export class UI {
           <span class="kbd">GRAB</span> hold to carry physics objects · <span class="kbd">THROW</span> while carrying · <span class="kbd">ROT</span> hold + drag to rotate<br/>
           <span class="kbd">ITEM</span> use the held item · <span class="kbd">NEXT</span> switch item · <span class="kbd">DROP</span><br/>
           <span class="kbd">WATCH</span> raise the wrist terminal · <span class="kbd">◀ ▶</span> tabs · <span class="kbd">SNAP</span> photo in CAM<br/>
-          <span class="kbd">LIGHT</span> flashlight · <span class="kbd">VIEW</span> third person · <span class="kbd">MENU</span> pause
+          <span class="kbd">LIGHT</span> flashlight · <span class="kbd">VIEW</span> third person · <span class="kbd">MENU</span> pause<br/>
+          <span class="kbd">HLTH</span> or tap Healthity's bubble: check-up and what to do next
         </div>
         <div class="desk-only" style="font-size:24px;line-height:1.35">
           <span class="kbd">WASD</span> move · <span class="kbd">SHIFT</span> sprint · <span class="kbd">CTRL</span>/<span class="kbd">C</span> crouch · <span class="kbd">SPACE</span> jump<br/>
@@ -110,7 +112,7 @@ export class UI {
           <span class="kbd">RMB</span> use held item (eat, drink, heal, weld, dismantle, sample)<br/>
           <span class="kbd">F</span> flashlight · <span class="kbd">TAB</span> wristwatch (<span class="kbd">Q</span>/<span class="kbd">E</span> tabs, <span class="kbd">LMB</span> photo in CAMERA)<br/>
           <span class="kbd">V</span> push-to-talk · <span class="kbd">H</span> wave · <span class="kbd">J</span> dance · <span class="kbd">B</span> point · <span class="kbd">T</span> 3rd person<br/>
-          <span class="kbd">ESC</span> pause<br/>
+          <span class="kbd">X</span> ask Healthity for a check-up · <span class="kbd">ESC</span> pause<br/>
           There is no HUD: vitals, items, tasks and messages are on your wristwatch. It beeps and you glance at it when something happens.
         </div>
         <div class="menu" style="margin-top:16px"><button class="btn interactive" data-act="back">BACK</button></div>
@@ -162,7 +164,7 @@ export class UI {
     $('#in-code', this.root).addEventListener('keydown', (e) => { if (e.key === 'Enter') this._act('dojoin'); });
     for (const inp of this.root.querySelectorAll('[data-set]')) {
       const k = inp.dataset.set;
-      const v = k === 'quality' ? engine.qualityName : profile.settings[k];
+      const v = k === 'quality' ? engine.qualityName : k === 'healthityVoice' ? profile.settings[k] !== false : profile.settings[k];
       inp.value = String(v);
       inp.addEventListener('input', () => this._setting(k, inp.value));
       inp.addEventListener('change', () => this._setting(k, inp.value));
@@ -190,7 +192,7 @@ export class UI {
   _setting(k, raw) {
     let v = raw;
     if (['master', 'sfx', 'music', 'ambient', 'voice', 'sensitivity'].includes(k)) v = parseFloat(raw);
-    if (k === 'invertY') v = raw === 'true';
+    if (k === 'invertY' || k === 'healthityVoice') v = raw === 'true';
     if (k === 'quality') profile.settings.qualityPicked = true;
     profile.settings[k] = v;
     profile.save();
@@ -386,6 +388,17 @@ export class UI {
     z.style.left = `${a * 100}%`;
     z.style.width = `${(b - a) * 100}%`;
     $('.needle', t).style.left = `${Math.min(1, frac) * 100}%`;
+  }
+
+  // pickup feedback: the item's icon flies from the crosshair into the wrist terminal
+  flyToWrist(type) {
+    const src = this.icon(type);
+    if (!src) return;
+    const im = el('<img class="flyitem" alt=""/>');
+    im.src = src;
+    this.root.appendChild(im);
+    requestAnimationFrame(() => requestAnimationFrame(() => im.classList.add('go')));
+    setTimeout(() => im.remove(), 900);
   }
 
   shortItem(it) {
@@ -644,7 +657,7 @@ export class UI {
       ws.getWorldPosition(this._wsPos);
       engine.vmFocus = this._wsPos;
       const small = Math.min(window.innerWidth, window.innerHeight) < 600 ? 1 : 0.7;
-      engine.vmFocusW = raise * raise * (3 - 2 * raise) * small * (l.watchOpen ? 1 : 0.8);
+      engine.vmFocusW = raise * raise * (3 - 2 * raise) * small * (l.watchOpen ? 1 : 0.4);
     } else engine.vmFocusW = 0;
     // post fx from survival state
     const P = engine.post.params;

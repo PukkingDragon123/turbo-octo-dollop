@@ -21,8 +21,9 @@ const _frustum = new THREE.Frustum();
 const _m4 = new THREE.Matrix4();
 const UP = new THREE.Vector3(0, 1, 0);
 
-const BACTERIA_BY_DAY = [0, 1, 1, 2, 2, 3, 3, 4];
-const STILL_BY_DAY = [0, 1, 1, 2, 3, 4, 5, 6];
+// Day 1 is the probation day: nothing hunts you yet
+const BACTERIA_BY_DAY = [0, 0, 1, 2, 2, 3, 3, 4];
+const STILL_BY_DAY = [0, 0, 1, 2, 3, 4, 5, 6];
 
 function angleLerp(a, b, t) {
   let d = b - a;

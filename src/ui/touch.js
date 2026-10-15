@@ -23,6 +23,7 @@ const BUTTONS = [
   { id: 'next', label: 'NEXT', cls: 'sys', act: 'next' },
   { id: 'drop', label: 'DROP', cls: 'sys', key: 'KeyG' },
   { id: 'view', label: 'VIEW', cls: 'sys', key: 'KeyT' },
+  { id: 'ask', label: 'HLTH', cls: 'sys', key: 'KeyX' },
   { id: 'jump', label: 'JUMP', cls: 'big', key: 'Space' },
   { id: 'use', label: 'USE', cls: 'mid', key: 'KeyE' },
   { id: 'grab', label: 'GRAB', cls: 'mid', mouse: 0 },
@@ -214,7 +215,7 @@ export class TouchControls {
       this.state = state;
       const vis = (id, on) => this.btn[id].el.classList.toggle('gone', !on);
       const full = !term && !dead;
-      for (const id of ['watch', 'light', 'next', 'drop', 'view', 'jump', 'duck']) vis(id, full);
+      for (const id of ['watch', 'light', 'next', 'drop', 'view', 'ask', 'jump', 'duck']) vis(id, full);
       vis('use', !dead);
       vis('grab', !term);
       vis('item', !term);

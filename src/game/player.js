@@ -547,6 +547,8 @@ export class LocalPlayer {
     }
     audio.play('grab', { volume: 0.5 });
     this.game.ui.toast(`+ ${itemName(item.type)}`);
+    this.game.healthity?.onPickup(item.type, itemName(item.type));
+    this.game.ui.flyToWrist?.(item.type);
     this.game.onItemPicked?.(item);
   }
 
@@ -1017,6 +1019,7 @@ export class LocalPlayer {
       inWater: (this.waterDepth || 0) > 0.05,
       lobby,
       dayPressure: lobby ? 0 : this.game.day?.instability?.() || 0,
+      safeDay: !lobby && this.game.day?.active && this.game.day.day <= 1,
     });
     if (s.dead && !this.dead) this.onDeath(s.deathCause || 'injuries');
   }
