@@ -125,8 +125,8 @@ export class PoolFX {
           float a = smoothstep(0.0, 0.25, streak) * (1.0 - smoothstep(0.55, 1.0, streak));
           a *= 0.25 + 0.75 * smoothstep(0.2, 0.5, abs(fract(u) - 0.5) * 2.0 + h(col) * 0.6);
           a *= (0.35 + 0.65 * vUv.y) * (1.0 - smoothstep(0.92, 1.0, vUv.y) * 0.5);
-          vec3 c = vec3(0.75, 0.86, 0.85) * (0.25 + uLight);
-          gl_FragColor = vec4(c, a * 0.42);
+          vec3 c = vec3(0.62, 0.74, 0.72) * (0.2 + uLight * 0.8);
+          gl_FragColor = vec4(c, a * 0.26);
           #include <fog_fragment>
         }`,
     });

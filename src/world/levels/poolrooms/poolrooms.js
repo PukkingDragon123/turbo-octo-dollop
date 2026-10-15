@@ -898,7 +898,7 @@ export class PoolroomsLevel extends YellowLevel {
       if (rec.layout.gate) out.push({ name: `gate_${rec.cx}`, p: [ox - 7, 0.02, CANAL_Z1 + 1.2], yaw: -Math.PI / 2 - 0.25, pitch: 0.08 });
       for (const d of rec.layout.decor) {
         if (d.kind === 'mushroom') out.push({ name: `mushroom_${rec.cx}`, p: [ox + d.x + 3.5, 0.02, (BACK - 0.3) * CELL], yaw: Math.PI * 0.62, pitch: -0.08 });
-        if (d.kind === 'showers') { out.push({ name: `showers_${rec.cx}`, p: [d.x + 0.2, 0.02, 2.9], yaw: 0.25, pitch: 0.05 }); }
+        if (d.kind === 'showers') { out.push({ name: `showers_${rec.cx}`, p: [d.x + 0.2, 0.02, 1.9], yaw: 0.35, pitch: 0.12 }); }
       }
       for (const room of rec.layout.specials) {
         const x = (rec.cx * CHUNK + room.rx + room.w / 2) * CELL, z = (room.rz - 0.4) * CELL;
