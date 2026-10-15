@@ -450,7 +450,7 @@ export class MenuScene {
     const bw = this.booth.root;
     const mid = new THREE.Vector3(SEATS[0].x, 1.15, SEATS[0].z).lerp(bw.localToWorld(new THREE.Vector3(0, 1.2, 0.4)), 0.5);
     this.shots.booth = { p: new THREE.Vector3(-1.05, 1.72, 1.85), l: mid, hw: 1.45, hh: 1.25 };
-    this.shots.inside = { p: CHAMBER_POS.clone().add(new THREE.Vector3(0.4, 1.5, 2.75)), l: CHAMBER_POS.clone().add(new THREE.Vector3(0, 1.42, 0)), hw: 0.85, hh: 1.18 };
+    this.shots.inside = { p: CHAMBER_POS.clone().add(new THREE.Vector3(-0.45, 1.5, 2.75)), l: CHAMBER_POS.clone().add(new THREE.Vector3(0, 1.42, 0)), hw: 0.85, hh: 1.18 };
     this.rig = { from: null, to: 'table', t: 1, dur: 1, p: new THREE.Vector3(), l: new THREE.Vector3(), hw: 1, hh: 1, shake: 0, drift: true };
     this._snapShot('table');
     this.view = { cx: window.innerWidth / 2, cy: window.innerHeight / 2, fr: null, frT: 0 };

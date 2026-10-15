@@ -609,7 +609,7 @@ export class WardrobeBooth {
 export class WardrobeChamber {
   constructor() {
     const M = wardrobeMats();
-    const R = 2.7, H = 3.9;
+    const R = 3.5, H = 3.9;
     this.R = R; this.H = H;
     this.root = new THREE.Group();
     this.root.name = 'WardrobeChamber';
@@ -627,7 +627,7 @@ export class WardrobeChamber {
       g.fillStyle = '#e8b414'; g.font = '34px VT323, monospace';
       for (let i = 0; i < 4; i++) g.fillText('BAY 07 · KEEP ARMS INSIDE THE HARNESS', i * w / 4 + 20, h * 0.32);
       grime(g, w, h, 0.8, 5);
-    }, { repeat: [2, 1] });
+    }, { repeat: [3, 1] });
     const wall = mesh(new THREE.CylinderGeometry(R, R, H, 48, 1, true), new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.5, metalness: 0.55, side: THREE.BackSide }), this.root, 0, H / 2, 0);
     wall.castShadow = false;
     const floorTex = canvasTex(256, 256, (g, w, h) => {
@@ -659,7 +659,7 @@ export class WardrobeChamber {
     const coneGeo = new THREE.ConeGeometry(1.15, coneH, 40, 1, true).translate(0, -coneH / 2, 0);
     this.coneMat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-      uniforms: { uI: { value: 0.12 }, uCol: { value: new THREE.Color(1.0, 0.92, 0.75) } },
+      uniforms: { uI: { value: 0.07 }, uCol: { value: new THREE.Color(1.0, 0.92, 0.75) } },
       vertexShader: 'varying float vY; varying vec3 vN; varying vec3 vV; void main(){ vY = position.y; vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix*mv; }',
       fragmentShader: `uniform float uI; uniform vec3 uCol; varying float vY; varying vec3 vN; varying vec3 vV;
         void main(){ float h = clamp(-vY / ${coneH.toFixed(3)}, 0.0, 1.0); float edge = pow(abs(dot(normalize(vN), normalize(vV))), 1.6);
@@ -712,7 +712,7 @@ export class WardrobeChamber {
     };
     this.armL = mk(-PI * 0.58, 1.36, { L1: 1.05, L2: 1.0 });
     this.armR = mk(PI * 0.58, 1.36, { L1: 1.05, L2: 1.0 });
-    this.armB = mk(PI, 1.25, { L1: 1.2, L2: 1.1, color: 0xd8d2c0 });
+    this.armB = mk(PI * 0.8, 1.25, { L1: 1.2, L2: 1.1, color: 0xd8d2c0 });
     for (const a of this.arms) { a.rest = { yaw: 0, e1: 1.75, bend: 2.75, wrist: -1.2 }; a.toRest(true); }
     this.t = 0;
   }
