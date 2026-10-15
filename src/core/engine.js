@@ -99,6 +99,7 @@ class Engine {
     const oldParams = this.post?.params;
     this.post = new PostFX(this.renderer, this.scene, this.camera, this.vmScene, this.vmCamera, this.quality);
     if (oldParams) for (const k in oldParams) if (k !== 'tDiffuse' && k !== 'uRes') this.post.params[k].value = oldParams[k].value;
+    this._applyView();
     this.scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
   }
 
@@ -116,6 +117,25 @@ class Engine {
     crt.dispose();
     this.scene.environment = prevEnv;
     return env;
+  }
+
+  // Render a different scene/camera through the full post stack (main-menu set, elevator ride, ...).
+  // The viewmodel overlay is skipped while a view is active. resetView() returns to the game scene.
+  setView(scene, camera) {
+    this.view = { scene, camera };
+    this._applyView();
+  }
+  resetView() {
+    this.view = null;
+    this._applyView();
+  }
+  _applyView() {
+    const sc = this.view?.scene || this.scene, cam = this.view?.camera || this.camera;
+    const p = this.post;
+    p.renderPass.scene = sc;
+    p.renderPass.camera = cam;
+    if (p.gtao) { p.gtao.scene = sc; p.gtao.camera = cam; }
+    if (p.vmPass) p.vmPass.enabled = !this.view;
   }
 
   _targetDpr() {
@@ -142,6 +162,7 @@ class Engine {
 
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
+    if (this.view?.camera?.isPerspectiveCamera && this.view.camera !== this.camera) { this.view.camera.aspect = w / h; this.view.camera.updateProjectionMatrix(); }
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
