@@ -14,7 +14,7 @@ export class Distortion {
     this.episode = 0;      // current episode strength 0..1
     this.epT = 0;          // time left in the current episode
     this.epDur = 0;
-    this.nextEp = 25 + Math.random() * 25;
+    this.nextEp = 60 + Math.random() * 60;
     this.forced = null;    // debug / test override: ?liquid=0..1
     const q = new URLSearchParams(location.search).get('liquid');
     if (q !== null) this.forced = Math.max(0, Math.min(1.5, +q || 0));
@@ -27,15 +27,15 @@ export class Distortion {
     const playing = g.state === 'playing' && !!g.world;
     const sanity = playing ? (g.local?.survival?.sanity ?? 100) / 100 : 1;
     const instab = playing && !lobby ? (g.day?.instability?.() || 0) : 0;
-    let base = lobby ? 0.06 : 0.16 + instab * 0.5;
-    base += (1 - sanity) * 0.5;
+    let base = lobby ? 0.02 : 0.04 + instab * 0.3;
+    base += (1 - sanity) * 0.25;
 
     // episodes (not at HQ, not while dead)
-    if (playing && !lobby && !g.local?.dead) {
+    if (playing && !lobby && !g.local?.dead && (g.day?.day ?? 1) > 1) {
       this.nextEp -= dt * (1 + instab * 1.5);
       if (this.nextEp <= 0 && this.epT <= 0) {
         this.epDur = this.epT = 7 + Math.random() * 6;
-        this.nextEp = 45 + Math.random() * 50;
+        this.nextEp = 90 + Math.random() * 90;
         if (audio.ready) {
           audio.play('collapse_rumble', { volume: 0.35 });
           audio.play('whisper', { volume: 0.25 });
@@ -49,11 +49,11 @@ export class Distortion {
       this.episode = k * k * (3 - 2 * k);
     } else this.episode = 0;
 
-    const target = this.forced ?? Math.min(1.3, base + this.episode * 0.95);
+    const target = this.forced ?? Math.min(1.0, base + this.episode * 0.6);
     this.level = damp(this.level, target, 1.5, dt);
     LIQUID.value = this.level;
     P.uLiquid.value = this.level * (lobby ? 0.5 : 1);
     // the footage looks a little more damaged while reality is melting
-    P.uVHS.value = 0.5 + this.episode * 0.5;
+    P.uVHS.value = 0.22 + this.episode * 0.35;
   }
 }

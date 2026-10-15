@@ -39,12 +39,12 @@ const FinalShader = {
     uGain: { value: new THREE.Vector3(1, 1, 1) },
     uRolloff: { value: 0.0 },
     // old-footage look
-    uBarrel: { value: 0.12 },   // camcorder lens barrel distortion
-    uWeave: { value: 1.0 },     // film-gate weave
-    uVHS: { value: 0.55 },      // line jitter, chroma bleed, rolling tracking band
-    uHalation: { value: 0.35 }, // red-orange glow bleeding around bright lights
-    uDust: { value: 1.0 },      // dust specks and scratches
-    uFilm: { value: 1.0 },      // faded warm grade, lifted blacks, projector flicker
+    uBarrel: { value: 0.05 },   // camcorder lens barrel distortion
+    uWeave: { value: 0.45 },     // film-gate weave
+    uVHS: { value: 0.22 },      // line jitter, chroma bleed, rolling tracking band
+    uHalation: { value: 0.25 }, // red-orange glow bleeding around bright lights
+    uDust: { value: 0.45 },      // dust specks and scratches
+    uFilm: { value: 0.8 },      // faded warm grade, lifted blacks, projector flicker
     uLiquid: { value: 0.0 },    // reality liquefaction: the picture flows, ripples and melts
   },
   vertexShader: /* glsl */`
@@ -88,7 +88,7 @@ const FinalShader = {
       // sanity: slow breathing warp
       uv += insanity * 0.006 * vec2(sin(uv.y*9.0 + t*1.3), cos(uv.x*7.0 + t*1.1));
       // liquefaction: domain-warped flow (stronger towards the edges), ripple rings and columns melting down
-      float L = uLiquid + insanity * 0.35;
+      float L = uLiquid + insanity * 0.15;
       if (L > 0.001) {
         vec2 p = vec2(uv.x * aspect, uv.y) * 2.4;
         vec2 q = vec2(fbm(p + vec2(0.0, t * 0.13)), fbm(p + vec2(5.2, 1.3) - t * 0.11));

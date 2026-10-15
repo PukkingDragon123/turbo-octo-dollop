@@ -36,6 +36,7 @@ async function boot() {
   const q = params.get('q') || (input.touch && !profile.settings.qualityPicked ? 'low' : profile.settings.quality);
   engine.init(document.body, q);
   input.attach(engine.renderer.domElement);
+  if (params.get('res') === 'fixed') engine.fixedRes = true;
   setL('LOADING PHYSICS...');
   await initPhysics();
   setL('LOADING FONTS...');

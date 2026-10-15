@@ -5,10 +5,12 @@ import { PostFX } from '../gfx/post.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _o = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 
+// maxDpr caps the device pixel ratio; the adaptive resolution scaler (see render()) then trims the render
+// scale between minScale and 1 to hold the frame rate, so the target resolution can stay high.
 export const QUALITY = {
-  low: { pixelRatio: 0.75, shadows: false, shadowSize: 512, bloom: false, ao: false, msaa: false, maxDpr: 1 },
-  medium: { pixelRatio: 1.0, shadows: true, shadowSize: 1024, bloom: true, ao: false, msaa: false, maxDpr: 1.25 },
-  high: { pixelRatio: 1.0, shadows: true, shadowSize: 2048, bloom: true, ao: true, msaa: false, maxDpr: 2 },
+  low: { pixelRatio: 1.0, shadows: false, shadowSize: 512, bloom: false, ao: false, msaa: false, maxDpr: 1.5, minScale: 0.6 },
+  medium: { pixelRatio: 1.0, shadows: true, shadowSize: 1024, bloom: true, ao: false, msaa: false, maxDpr: 2, minScale: 0.6 },
+  high: { pixelRatio: 1.0, shadows: true, shadowSize: 2048, bloom: true, ao: true, msaa: false, maxDpr: 2.5, minScale: 0.7 },
 };
 
 // Image-based-lighting scene: a drop-ceiling office with a grid of fluorescent panels. Average radiance is
@@ -46,7 +48,9 @@ class Engine {
     this.qualityName = qualityName;
     this.quality = QUALITY[qualityName] || QUALITY.medium;
     const r = (this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false }));
-    r.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.maxDpr) * this.quality.pixelRatio);
+    this.resScale = 1;
+    this._ftAcc = 0; this._ftN = 0; this._ftT = 0;
+    r.setPixelRatio(this._targetDpr());
     r.setSize(window.innerWidth, window.innerHeight);
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping;
@@ -90,7 +94,8 @@ class Engine {
     this.qualityName = name;
     this.quality = QUALITY[name] || QUALITY.medium;
     this.renderer.shadowMap.enabled = this.quality.shadows;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.maxDpr) * this.quality.pixelRatio);
+    this.resScale = 1;
+    this.renderer.setPixelRatio(this._targetDpr());
     const oldParams = this.post?.params;
     this.post = new PostFX(this.renderer, this.scene, this.camera, this.vmScene, this.vmCamera, this.quality);
     if (oldParams) for (const k in oldParams) if (k !== 'tDiffuse' && k !== 'uRes') this.post.params[k].value = oldParams[k].value;
@@ -113,6 +118,28 @@ class Engine {
     return env;
   }
 
+  _targetDpr() {
+    return Math.min(window.devicePixelRatio || 1, this.quality.maxDpr) * this.quality.pixelRatio * (this.resScale ?? 1);
+  }
+
+  // Adaptive resolution: average the frame time over ~2.5 s windows; drop the render scale in 10 % steps
+  // while frames are slower than ~42 fps, raise it again when there is headroom (> ~57 fps).
+  _adaptResolution(dt) {
+    if (this.fixedRes) return;
+    this._ftAcc += dt; this._ftN++; this._ftT += dt;
+    if (this._ftT < 2.5) return;
+    const avg = this._ftAcc / this._ftN;
+    this._ftAcc = 0; this._ftN = 0; this._ftT = 0;
+    const min = this.quality.minScale ?? 0.6;
+    let s = this.resScale;
+    if (avg > 1 / 42 && s > min) s = Math.max(min, s - 0.1);
+    else if (avg < 1 / 57 && s < 1) s = Math.min(1, s + 0.05);
+    if (s === this.resScale) return;
+    this.resScale = s;
+    this.renderer.setPixelRatio(this._targetDpr());
+    this.post.setSize(window.innerWidth, window.innerHeight, this.renderer.getPixelRatio());
+  }
+
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h);
@@ -126,6 +153,8 @@ class Engine {
   render(dt) {
     this.time += dt;
     this.frame++;
+    // real frame time (dt is capped at 0.1 s by the main loop, which is fine here)
+    if (this.frame > 120) this._adaptResolution(dt);
     this.vmCamera.position.set(0, 0, 0);
     this.vmCamera.quaternion.identity();
     // look-at-the-watch: the viewmodel camera turns towards the raised wrist terminal and zooms in so the
