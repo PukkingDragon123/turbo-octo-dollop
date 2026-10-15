@@ -27,11 +27,11 @@ async function main() {
     kb.position.set(0.1, 0.765, 0.33); scene.add(kb);
     const lights = [{ pos: new THREE.Vector3(0.8, 2.76, 0.7), color: new THREE.Color(0xfff0d8), intensity: 2.7 }, { pos: new THREE.Vector3(-1.6, 2.76, 2.2), color: new THREE.Color(0xfff0d8), intensity: 2.7 }];
     const r = new ReceptionistBot(fakeWorld, 'rx', { lights, ambient: new THREE.Color(0.1, 0.095, 0.09) });
-    scene.add(r.root);
+    scene.add(r.root, r.holo.panel, r.holo.beam);
     window.__rec = r;
     const lookT = v3(P.get('lookat'), null);
     upd = (dt) => {
-      if (P.get('talk')) r.say = r.say || { id: 'intro1', text: 'x', vfd: ['GOOD MORNING', 'TESTER'], t: 0, dur: 99 };
+      if (P.get('talk')) r.say = r.say || { id: 'intro1', title: 'GOOD MORNING, TESTER', text: 'Good morning, TESTER. Welcome to R.O.O.M. I am Gloria, your receptionist.', t: 0, dur: 99 };
       if (P.get('stare')) { r._obs = false; r.unwatchedT = 5; }
       r.update(dt);
       if (lookT) r.anim.update(0, { look: lookT, snap: true, attend: 1, talking: 0 });
@@ -46,14 +46,12 @@ async function main() {
   } else if (what === 'ride') {
     const { prepareRide, ElevatorRide } = await import('../world/elevator_ride.js');
     const S = prepareRide();
-    S.root.position.set(0, 0, 0);
-    scene.add(S.root);
     window.__S = S;
     const game = { local: { yaw: Math.PI, pitch: 0, pos: new THREE.Vector3(), world: null }, remotes: new Map(), world: null, loading: true, state: 'playing' };
     const ride = new ElevatorRide(game, { riders: [], me: { x: 0, z: 0.3, yaw: 0 }, car: null });
     ride.switched = true; ride.yaw = +(P.get('yaw') || 0); ride.pitch = +(P.get('pitch') || 0);
     ride.rel.set(+(P.get('rx') || 0), 0, +(P.get('rz') || 0.3));
-    scene.add(S.root);
+    engine.setView(S.scene, S.cam);
     ride.t = +(P.get('t') || 3);
     ride.worldKey = 'x';
     window.__ride = ride;

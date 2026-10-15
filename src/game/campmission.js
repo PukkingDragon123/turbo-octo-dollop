@@ -22,7 +22,6 @@
 import * as THREE from 'three';
 import { net } from '../net/net.js';
 import { audio } from '../audio/audio.js';
-import { profile } from '../core/profile.js';
 import { Mission, BoxBehaviour } from './mission.js';
 import { CELL, HEIGHT } from '../world/levels/yellow/layout.js';
 import { LightField } from '../gfx/bakedlight.js';
@@ -314,15 +313,18 @@ export class CampMission extends Mission {
       this._stageSeen = s.stage;
       this._enterStage(s.stage, was);
     }
+    // build-progress hints (not on the first sync: a late joiner doesn't need the play-by-play)
+    const first = !this._synced;
+    this._synced = true;
     if (s.kit && !this._kitSeen) {
       this._kitSeen = 1;
-      if (this._stageSeen === 'camp') this._say('kit_open');
+      if (!first && this._stageSeen === 'camp') this._say('kit_open');
     }
     const n = this._filledCount();
     if (n !== this._slotsSeen) {
       const was = this._slotsSeen;
       this._slotsSeen = n;
-      if (n > was && !s.built) {
+      if (!first && n > was && !s.built) {
         if (n === 2) this._say('poles_done');
         else if (n === 3) this._say('canvas_done');
       }
@@ -447,7 +449,6 @@ export class CampMission extends Mission {
     w.noise.emit(to, 8, 'camp');
     this.pushState();
     if (this._filledCount() >= CAMP_MARKERS.length) this.popAt = w.time + 0.9;
-    if (from === net.selfId) profile.unlock('welder'); else net.toPeer(from, 'ach', 'welder');
   }
 
   _hostPop() {
@@ -575,7 +576,7 @@ export class CampMission extends Mission {
     const [x, z] = REVIVE_SPOTS[i % REVIVE_SPOTS.length];
     const p = campToWorld(this.camp, x, 0.05, z);
     const t = campToWorld(this.camp, 0, 0, TENT_Z);
-    return { pos: p, yaw: Math.atan2(-(t.x - p.x), -(t.z - p.z)) };
+    return { pos: p, yaw: Math.atan2(-(p.x - t.x), -(p.z - t.z)) }; // back to the tent, looking out over the camp
   }
 
   _hostClones() {

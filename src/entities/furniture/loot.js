@@ -2,9 +2,9 @@
 // plus party decor for the frozen office party (cake, balloon, party hat). Containers expose an animated part
 // ('drawer0' / 'door') that the loot-container behaviour (entities/lootables.js) slides or swings open.
 import * as THREE from 'three';
-import { def, boxGeo, cylGeo, CB, CC, CS, V, PI, HP } from './core.js';
+import { def, CB, CC, CS, PI, HP } from './core.js';
 import { matFor, tint } from './mats.js';
-import { region, txt, logo, grunge, rrect } from './atlas.js';
+import { region, txt, grunge } from './atlas.js';
 import { glide, barPull, hinge } from './parts.js';
 
 // --- printed artwork -------------------------------------------------------------------------------------------
@@ -55,7 +55,6 @@ region('cake_top', 128, 128, (ctx, w, h) => {
   txt(ctx, '10', w / 2, h / 2 - 8, 30, '#3a8ad8', { fam: 'serif' });
   txt(ctx, 'YEARS', w / 2, h / 2 + 20, 14, '#d86aa0', { fam: 'serif' });
 });
-void logo; void rrect;
 
 // ===========================================================================
 // Four-drawer bedroom dresser: veneered carcass, overhanging top, plinth, brass bar pulls.
@@ -296,8 +295,6 @@ def('balloon', {
   mats: (o, v) => ({ shell: tint('plastic_red', [0xd83a3a, 0x3a8ad8, 0xf2c13a, 0x5ac85a][v]) }),
   ao: false,
   build(b) {
-    const g = boxGeo(0.01, 0.01, 0.01);
-    void g;
     b.sphere('shell', 0.15, 0, 1.4, 0, { ws: 16, hs: 12, scale: [1, 1.18, 1] });
     b.cyl('shell', 0.012, 0.025, 0, 1.4 - 0.18, 0, { rt: 0.004, rb: 0.012, seg: 8 });
     b.tube('#e8e2d2', [[0, 1.2, 0], [0.03, 0.9, 0.01], [-0.02, 0.6, -0.02], [0.02, 0.3, 0.0], [0, 0.002, 0]], 0.0015, { radial: 3 });
@@ -325,4 +322,3 @@ def('party_banner', {
     return { colliders: [CB(2.7, 0.5, 0.03, 0, 0, 0.012)], mass: 0.2, material: 'cardboard', floatOK: true };
   },
 });
-void V; void cylGeo;

@@ -31,11 +31,12 @@ export class Terminal {
     if (spec.overlay && spec.screen) {
       if (!this.panel) {
         this.panel = document.createElement('div');
-        this.panel.style.cssText = 'position:fixed;right:4vw;top:50%;transform:translateY(-50%);width:min(46vw,620px);aspect-ratio:4/3;z-index:12;border-radius:18px;overflow:hidden;box-shadow:0 0 0 6px #1a1209,0 0 0 9px #3a2a14,0 0 40px rgba(0,0,0,0.8);pointer-events:none;';
+        this.panel.id = 'pxterm';
+        this.panel.style.cssText = 'position:fixed;right:4vw;top:50%;transform:translateY(-50%);width:min(46vw,620px);z-index:12;pointer-events:none;line-height:0;';
         document.body.appendChild(this.panel);
       }
       this.panel.innerHTML = '';
-      spec.screen.canvas.style.cssText = 'width:100%;height:100%;display:block;image-rendering:auto;';
+      spec.screen.canvas.style.cssText = 'width:100%;height:auto;display:block;image-rendering:auto;';
       this.panel.appendChild(spec.screen.canvas);
       this.panel.style.display = 'block';
     }

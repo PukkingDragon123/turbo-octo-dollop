@@ -273,6 +273,23 @@ export function populateRoom(level, room, rec, rng) {
       put('chair_office', b.cx + 0.2, b.cz + 0.75, Math.PI + r(0.5));
       break;
     }
+    case 'mirror_room': {
+      // subtly wrong: the room is an exact mirror image of itself across its centre line, down to the mugs
+      const L = [['desk', 1.45, b.z0 + 0.62, 0, 'base'], ['crt_monitor', 1.3, b.z0 + 0.5, 0, 0.76], ['lamp_desk', 1.85, b.z0 + 0.5, 0.3, 0.76],
+        ['chair_office', 1.45, b.z0 + 1.4, Math.PI], ['armchair', 2.25, b.cz + 1.0, -Math.PI / 2], ['lamp_floor', 2.55, b.z1 - 0.4, 0],
+        ['plant_pot', 0.55, b.z0 + 0.4, 0.4], ['filing_cabinet', 2.6, b.z0 + 0.45, 0], ['chair_wood', 0.6, b.cz + 0.4, 1.1]];
+      for (const s of [1, -1]) {
+        let base = null;
+        for (const [t, dx, z, rot, y] of L) {
+          if (typeof y === 'number') { if (base) sp(level, t, b.cx + s * dx, y, z, s > 0 ? rot : -rot); continue; }
+          const pr = put(t, b.cx + s * dx, z, s > 0 ? rot : -rot);
+          if (y === 'base') base = pr;
+        }
+      }
+      const tb = put('table_round', b.cx, b.cz + 0.4, 0);
+      if (tb) for (const s of [1, -1]) sp(level, 'mug', b.cx + s * 0.16, 0.72, b.cz + 0.4, s > 0 ? 0.6 : -0.6);
+      break;
+    }
     case 'locker_room': {
       for (let k = 0; k < 6; k++) {
         put('locker', b.x0 + 1.4 + k * 0.5, b.z0 + 0.3, 0);

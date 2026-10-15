@@ -20,6 +20,7 @@ import { Healthity } from './game/healthity.js';
 import { Voice } from './net/voice.js';
 import { preloadItems } from './entities/models_items.js';
 import { warmFurniture } from './entities/models_furniture.js';
+import { MenuScene } from './world/menu_scene.js';
 
 const params = new URLSearchParams(location.search);
 
@@ -78,6 +79,17 @@ async function boot() {
   game.state = 'menu';
   game.menuBackdrop = true;
   await game.loadWorld({ type: 'lobby', seed: 1234 }, false);
+  // the lobby is not shown behind the menu any more: render it once (faded out) so its shaders are warm,
+  // then the break-room set (world/menu_scene.js) takes over the screen while the menu is up
+  try {
+    engine.camera.position.set(0, 1.5, 12.5);
+    engine.camera.lookAt(0, 1.1, 9.6);
+    engine.post.params.uFade.value = 1;
+    engine.render(1 / 60);
+    engine.post.params.uFade.value = 0;
+  } catch (e) { /* warm-up only */ }
+  let menuScene = null;
+  try { menuScene = new MenuScene(game); window.__menu = menuScene; } catch (e) { console.error('[menu] set', e); }
   ui.showMainMenu();
 
   // test hooks: ?auto=solo|host & ?level=yellow|poolrooms|grasslands
@@ -99,7 +111,10 @@ async function boot() {
     if (!(dt > 0)) dt = 1 / 60;
     dt = Math.min(dt, 0.1);
     try {
-      if (game.menuBackdrop && game.state === 'menu') menuCamera(game, dt);
+      // main menu: the break-room set renders through the post stack (engine.setView) and handles the wardrobe
+      if (menuScene && (game.state === 'menu' || game.state === 'joining')) menuScene.update(dt);
+      else menuScene?.deactivate();
+      if (game.menuBackdrop && game.state === 'menu') { if (!menuScene) menuCamera(game, dt); }
       else game.update(dt);
       if (game.state !== 'menu' || !game.menuBackdrop) {
         game.terminal.update(dt);

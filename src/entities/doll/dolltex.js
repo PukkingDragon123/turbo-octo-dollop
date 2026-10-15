@@ -265,6 +265,14 @@ export const ATLAS = {
   bio: [540, 840, 120, 120],           // biohazard mark (thigh)
   suitno: [670, 850, 340, 70],         // "SUIT No." thigh print
   bezel: [670, 930, 90, 90],           // knurled knob / dial face (wrist terminal)
+  // clone android
+  led: [716, 456, 64, 64],             // glowing LED pupil (cyan), emissive
+  ledr: [716, 528, 64, 64],            // red replacement LED, emissive
+  serial: [8, 974, 400, 46],           // "CLONE UNIT RC-7 · DO NOT OPEN" print
+  barcode: [416, 974, 240, 46],        // barcode + lot number
+  warn: [772, 932, 240, 86],           // yellow HIGH VOLTAGE label
+  grille: [870, 712, 64, 64],          // speaker grille dots (ears)
+  amber: [944, 712, 64, 64],           // amber status lamp, emissive
 };
 // UV for region r at (u, v) in 0..1 (v = 0 bottom of the region)
 export function atlasUV(r, u, v) {
@@ -314,6 +322,9 @@ function drawAtlas(ctx, emissive = false) {
     { const [x, y, w, h] = R('flame'); const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, '#fff8d0'); g.addColorStop(0.25, '#ffd040'); g.addColorStop(0.6, '#ff6a10'); g.addColorStop(1, '#300800'); ctx.fillStyle = g; ctx.fillRect(x, y, w, h); }
     { const [x, y, w, h] = R('glow'); ctx.fillStyle = '#ffe08a'; ctx.fillRect(x, y, w, h); }
     { const [x, y, w, h] = R('gauge'); ctx.fillStyle = '#000'; ctx.fillRect(x, y, w, h); }
+    ledFace(ctx, R('led'), [[0, '#ffffff'], [0.35, '#d8fbff'], [0.62, '#46c8ec'], [0.85, '#0a4a66'], [1, '#000000']]);
+    ledFace(ctx, R('ledr'), [[0, '#fff2ea'], [0.35, '#ffb09a'], [0.62, '#f03020'], [0.85, '#4a0806'], [1, '#000000']]);
+    ledFace(ctx, R('amber'), [[0, '#fffbe8'], [0.4, '#ffd27a'], [0.75, '#e08a10'], [1, '#2a1400']]);
     return;
   }
   // --- tank label: hazard bands + text
@@ -431,8 +442,50 @@ function drawAtlas(ctx, emissive = false) {
   }
   // --- "SUIT No." print
   { const [x, y, w, h] = R('suitno'); ctx.fillStyle = '#18181a'; ctx.font = `bold 30px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('SUIT No.0451-B', x + w / 2, y + h * 0.36); ctx.font = `bold 17px ${MONO}`; ctx.fillText('SIZE: CLONE / ONE-SIZE', x + w / 2, y + h * 0.82); }
+  // --- clone android prints
+  ledFace(ctx, R('led'), [[0, '#f4ffff'], [0.35, '#bff4ff'], [0.62, '#2a9cc4'], [0.85, '#08283a'], [1, '#05080a']]);
+  ledFace(ctx, R('ledr'), [[0, '#fff0e8'], [0.35, '#ff9a86'], [0.62, '#c02818'], [0.85, '#2a0604'], [1, '#080404']]);
+  ledFace(ctx, R('amber'), [[0, '#fff8e0'], [0.4, '#ffcc66'], [0.75, '#c87810'], [1, '#2a1400']]);
+  {
+    const [x, y, w, h] = R('serial');
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.fillStyle = '#1e1c1a'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.font = `bold 21px ${MONO}`; ctx.fillText('CLONE UNIT RC-7  \u00b7  R.O.O.M.', x + 6, y + h * 0.32);
+    ctx.font = `bold 13px ${MONO}`; ctx.fillText('DO NOT OPEN \u00b7 NO USER SERVICEABLE PARTS INSIDE', x + 6, y + h * 0.76);
+    ctx.restore();
+  }
+  {
+    const [x, y, w, h] = R('barcode');
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.fillStyle = '#1e1c1a';
+    for (let i = 0, bx = x + 6; bx < x + w - 70; i++) { const bw = 1 + ((i * 5 + 2) % 4); ctx.fillRect(bx, y + 4, bw, h - 18); bx += bw + 1.5 + (i % 3); }
+    ctx.font = `bold 11px ${MONO}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText('LOT 0451-C', x + 6, y + h - 1);
+    ctx.font = `bold 15px ${MONO}`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText('QC', x + w - 8, y + h * 0.35); ctx.fillText('\u2713 07', x + w - 8, y + h * 0.75);
+    ctx.restore();
+  }
+  {
+    const [x, y, w, h] = R('warn');
+    ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, 6); ctx.clip();
+    ctx.fillStyle = '#f2c418'; ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#17171a'; ctx.lineWidth = 4; ctx.strokeRect(x + 4, y + 4, w - 8, h - 8);
+    ctx.fillStyle = '#17171a'; ctx.beginPath(); ctx.moveTo(x + 46, y + 14); ctx.lineTo(x + 80, y + h - 14); ctx.lineTo(x + 12, y + h - 14); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#f2c418'; ctx.font = `bold 34px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', x + 46, y + h * 0.62);
+    ctx.fillStyle = '#17171a'; ctx.font = `bold 22px ${MONO}`; ctx.textAlign = 'left'; ctx.fillText('HIGH', x + 94, y + h * 0.34); ctx.fillText('VOLTAGE', x + 94, y + h * 0.66);
+    ctx.restore();
+  }
+  {
+    const [x, y, w, h] = R('grille');
+    ctx.fillStyle = '#2a2826'; ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, w / 2, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#060606';
+    for (let j = -3; j <= 3; j++) for (let i = -3; i <= 3; i++) { if (i * i + j * j > 10) continue; ctx.beginPath(); ctx.arc(x + w / 2 + i * 7.5, y + h / 2 + j * 7.5, 2.4, 0, TAU); ctx.fill(); }
+  }
   // --- knurled dial face (radial ticks)
   { const [x, y, w, h] = R('bezel'); const cx = x + w / 2, cy = y + h / 2; ctx.fillStyle = '#2a2b2e'; ctx.beginPath(); ctx.arc(cx, cy, w / 2, 0, TAU); ctx.fill(); ctx.strokeStyle = '#d8d4c4'; ctx.lineWidth = 3; for (let i = 0; i < 12; i++) { const a = i / 12 * TAU; ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * w * 0.3, cy + Math.sin(a) * w * 0.3); ctx.lineTo(cx + Math.cos(a) * w * 0.44, cy + Math.sin(a) * w * 0.44); ctx.stroke(); } ctx.fillStyle = '#e04030'; ctx.fillRect(cx - 3, y + 6, 6, w * 0.32); }
+}
+function ledFace(ctx, [x, y, w, h], stops) {
+  const g = ctx.createRadialGradient(x + w / 2, y + h / 2, 0, x + w / 2, y + h / 2, w / 2);
+  for (const [k, c] of stops) g.addColorStop(k, c);
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
 }
 function lcdFace(ctx, x, y, w, h, glow) {
   ctx.save();

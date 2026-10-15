@@ -423,7 +423,7 @@ export class MechGenerator extends GeneratorBase {
     const k = input.keyName('interact');
     if (this.running) return `${this.label} — running${this.state.linked ? ' (uplinked)' : ' — bring the radio here'}`;
     if (!this.sealed) return `${this.label} — pressure pipe cracked (${this.state.cracks.filter((c) => c >= 1).length}/3 sealed). WELD the glowing cracks`;
-    if (!this.bolted) return `${this.label} — flange bolts loose (${this.state.bolts.filter((b) => b >= 1).length}/4). Tighten with a MULTITOOL [hold RMB]`;
+    if (!this.bolted) return `${this.label} — flange bolts loose (${this.state.bolts.filter((b) => b >= 1).length}/4). Tighten them with your multitool (empty hand, hold RMB)`;
     return `[Hold ${k}] Crank it up (${Math.round(this.state.crank * 100)}%) — more hands, faster`;
   }
 

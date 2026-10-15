@@ -8,7 +8,7 @@ import * as G from './geo.js';
 import { PAL, lin, RNG, clamp, lerp, PI, TAU, noise3 } from './core.js';
 
 const V3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
-export const THREAD_PBR = [0.95, 0, 0, 0.1];
+export const THREAD_PBR = [0.42, 0.85, 0, 0];   // steel staples / wire stitches (robot repairs)
 export const BEAD_PBR = [0.08, 0.0, 1.0, 0];
 
 // ---------------------------------------------------------------------------
@@ -38,10 +38,13 @@ const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 export { add3, sub3, len3, norm3, cross3, dot3 };
 
 // ---------------------------------------------------------------------------
-// SACK HEAD (local: origin = bottom centre, +Y up, -Z = face). Returns dims for face placement.
+// HEAD SHELL (local: origin = bottom centre, +Y up, -Z = face). Was a sack; the clones are robots now:
+// an ivory plastic skull with a separate PORCELAIN FACE PLATE that never sits quite right: rotated and
+// slid off true (o.misalign / o.slide, seeded per head), a black gap all round it, often a crack across.
+// o.plate === false: bare skull. Returns dims for face placement (+ plate frame).
 export function sackHead(S, F, o = {}) {
   const w = o.w ?? 0.2, h = o.h ?? 0.5, d = o.d ?? 0.18;
-  S.push({ mat: MAT.SKIN, col: o.col ?? PAL.burlap, bone: o.bone, k: 0.05, dirt: o.dirt ?? 0.25, thin: o.thin ?? 0, noise: o.noise ?? [0.003, 22] });
+  S.push({ mat: MAT.SKIN, col: o.col ?? PAL.burlap, bone: o.bone, k: 0.05, dirt: o.dirt ?? 0.25, thin: o.thin ?? 0, noise: o.noise ?? [0.0015, 22] });
   S.ell(F.p(0, h * 0.5, 0), [w, h * 0.5, d], F.q);
   const ck = o.cheek ?? 1;
   S.sphere(F.p(-w * 0.44, h * 0.31, -d * 0.4), w * 0.5 * ck, { k: 0.09 });
@@ -49,7 +52,37 @@ export function sackHead(S, F, o = {}) {
   S.ell(F.p(0, h * 0.79, d * 0.05), [w * 0.86, h * 0.23, d * 0.92], F.q, { k: 0.07 });
   if (o.neck !== false) S.cone(F.p(0, h * 0.16, d * 0.08), F.p(0, -(o.neckLen ?? 0.1), d * 0.12), w * 0.52, o.neckR ?? w * 0.36, { k: 0.06, bone: o.neckBone ?? o.bone });
   S.pop();
-  return { w, h, d, F };
+  let PF = null;
+  if (o.plate !== false) {
+    const pr = new RNG(Math.floor(Math.abs(F.o.x * 7919 + F.o.y * 3301 + F.o.z * 1013)) + 17);
+    const mis = o.misalign ?? pr.range(0.06, 0.26) * pr.sign();
+    const slide = o.slide ?? pr.range(-0.014, 0.014);
+    PF = F.child([slide, -Math.abs(mis) * 0.05 * h, 0], [0, 0, mis]);
+    const pc = [0, h * 0.37, -d * 0.62];
+    S.push({ mat: MAT.SKIN, col: o.plateCol ?? PAL.porcelain, bone: o.bone, k: 0.006, dirt: 0.08, thin: 0, wet: 0.15, noise: [0.0006, 30] });
+    S.ell(PF.p(...pc), [w * 0.84, h * 0.34, d * 0.5], PF.q);
+    S.pop();
+    S.prepare();
+    // the gap round the plate: a dark seam
+    const rim = [];
+    for (let i = 0; i <= 28; i++) {
+      const a = (i / 28) * TAU;
+      rim.push(projectSurface(S, PF.p(Math.cos(a) * w * 0.83, h * 0.37 + Math.sin(a) * h * 0.33, -d * 0.98), 8).p);
+    }
+    S.groove(rim, 0.0042, 0.006, { rim: 0.0012, col: 0x0c0806, colOnly: true, dirt: 0.8, wet: 0.3 });
+    // a crack across the plate (most heads)
+    if (o.crack ?? pr.chance(0.75)) {
+      const pts = [];
+      let x = pr.range(-0.8, 0.8) * w * 0.8, y = h * (pr.chance(0.5) ? 0.68 : 0.08);
+      const dy = y > h * 0.4 ? -1 : 1;
+      for (let i = 0; i < 7; i++) {
+        pts.push(projectSurface(S, PF.p(x, y, -d * 1.05), 8).p);
+        x += pr.range(-0.03, 0.03); y += dy * h * pr.range(0.035, 0.07);
+      }
+      S.groove(pts, 0.0028, 0.005, { rim: 0.0008, wobble: 0.6, col: 0x0a0806, colOnly: true, dirt: 0.9 });
+    }
+  }
+  return { w, h, d, F, PF };
 }
 
 // side seams of the sack (groove + running stitches), traced on the head surface
@@ -114,16 +147,19 @@ export function face(S, parts, H, o = {}) {
   for (const e of o.eyes || []) {
     const r = front(e.x, e.y);
     if (!r) continue;
-    bead(S, parts, r.p, r.n, e.r, { bone: o.bone, socket: e.socket ?? 1, ws: S, col: e.col });
-    if (o.grime !== false) S.paint({ sphere: [r.p, e.r * 2.3, { noise: [e.r * 0.5, 0.8 / e.r] }] }, { col: 0x2c2014, w: 0.45, soft: e.r * 0.8, dirt: 0.8 });
+    bead(S, parts, r.p, r.n, e.r, { bone: o.bone, socket: e.socket ?? 1, ws: S, col: e.col, lens: true });
+    if (o.grime !== false) S.paint({ sphere: [r.p, e.r * 2.3, { noise: [e.r * 0.5, 0.8 / e.r] }] }, { col: 0x2c2014, w: 0.35, soft: e.r * 0.8, dirt: 0.8 });
     out.eyes.push({ ...r, r: e.r });
   }
   for (const n of o.noses || []) {
     const r = front(n.x, n.y);
     if (!r) continue;
-    const c = add3(r.p, r.n, n.r * (n.out ?? 0.55));
-    S.sphere(c, n.r, { mat: MAT.FLUFF, col: n.col ?? PAL.nose, bone: n.bone ?? o.bone, k: n.k ?? 0.012, noise: [n.r * 0.06, 9 / n.r * 0.05], dirt: n.dirt ?? 0.2, ms: 3 });
-    if (n.drip) S.cone(c, add3(c, F.d(0, -1, -0.2), n.drip), n.r * 0.6, n.r * 0.25, { mat: MAT.FLUFF, col: n.col ?? PAL.nose, bone: n.bone ?? o.bone, k: 0.02, ms: 3 });
+    // robot "nose": a small black sensor dome (felt only where a caller insists on o.felt)
+    const felt = !!n.felt;
+    const nr = felt ? n.r : n.r * 0.55;
+    const c = add3(r.p, r.n, nr * (n.out ?? (felt ? 0.55 : 0.2)));
+    S.sphere(c, nr, { mat: felt ? MAT.FLUFF : MAT.RUBBER, col: felt ? (n.col ?? PAL.nose) : (n.col ?? 0x141416), bone: n.bone ?? o.bone, k: n.k ?? 0.008, noise: felt ? [n.r * 0.06, 9 / n.r * 0.05] : null, dirt: n.dirt ?? 0.1, wet: felt ? 0 : 0.6, ms: 3 });
+    if (n.drip) S.cone(c, add3(c, F.d(0, -1, -0.2), n.drip), nr * 0.6, nr * 0.25, { mat: MAT.INNER, col: 0x1a0c08, bone: n.bone ?? o.bone, k: 0.02, wet: 0.9, ms: 3 });
     out.noses.push({ ...r, c, r: n.r });
   }
   if (o.brows !== false) {
@@ -135,7 +171,8 @@ export function face(S, parts, H, o = {}) {
         const r = front(e.x + s * (u - 0.5) * (e.browW ?? 0.05) + s * 0.004, e.y + (e.browY ?? 0.07) + Math.sin(u * PI) * 0.008 + (e.browTilt ?? 0) * (u - 0.5) * s);
         if (r) pts.push(add3(r.p, r.n, 0.0025));
       }
-      if (pts.length > 2) parts.add(G.tube(pts, 0.0042, 5, {}), { color: PAL.thread, pbr: THREAD_PBR, uv: 'thread', ws: S, bone: o.bone });
+      // painted-on brows (a factory decal, smeared)
+      if (pts.length > 2) for (let i = 0; i < pts.length - 1; i++) S.paint({ cone: [pts[i], pts[i + 1], 0.0045, 0.0045] }, { col: 0x1a1612, w: 0.85, soft: 0.002, dirt: 0.2 });
     }
   }
   if (o.mouth) {
@@ -160,8 +197,45 @@ export function bead(S, parts, p, n, r, o = {}) {
   const c = add3(p, n, r * 0.3);
   parts.add(G.sphere(r, 12, 8).translate(c[0], c[1], c[2]), { color: o.col ?? PAL.eye, pbr: BEAD_PBR, bone: o.bone, ws: o.ws });
   if (o.socket) S.bulge(p, [r * 1.7, r * 1.7, r * 1.7], -0.0035 * o.socket, null, { sharp: 2 });
-  const ring = G.torus(r * 1.0, 0.0018, 3, 12);
-  parts.add(G.placeAt(ring, add3(p, n, 0.0005), n), { color: PAL.thread, pbr: THREAD_PBR, bone: o.bone, ws: o.ws });
+  // camera-lens eyes: a chrome bezel; plain beads keep a stitched ring
+  const ring = o.lens ? G.torus(r * 1.08, r * 0.2, 5, 16) : G.torus(r * 1.0, 0.0018, 3, 12);
+  parts.add(G.placeAt(ring, add3(p, n, o.lens ? r * 0.12 : 0.0005), n), { color: o.lens ? 0xb8b6ae : PAL.thread, pbr: o.lens ? [0.18, 1, 0.3, 0] : THREAD_PBR, bone: o.bone, ws: o.ws });
+  if (o.lens) parts.add(G.placeAt(G.disc(r * 0.32, 10), add3(c, n, r * 0.97), n), { color: 0xd8f0ff, pbr: [0.05, 0, 1, 0], bone: o.bone, ws: o.ws });
+}
+
+// robot limb segment a->b: the plastic shell is split into too many segments; each split is a dark gap
+// ring with a grey ball joint showing through. n = joints between a and b, r = limb radius there.
+export function servoJoints(S, a, b, r, n = 2, o = {}) {
+  const dir = norm3(sub3(b, a));
+  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(...dir));
+  for (let i = 1; i <= n; i++) {
+    const t = (i / (n + 1)) + (o.jitter ?? 0) * (((i * 7919) % 13) / 13 - 0.5);
+    const c = add3(a, sub3(b, a), t);
+    S.torus(c, r * 1.02, r * 0.3, q, { sub: true, k: 0.004, mat: null, bone: o.bone });
+    S.sphere(c, r * 0.82, { mat: MAT.RUBBER, col: o.col ?? 0x3c3b3a, k: 0.003, bone: o.bone, dirt: 0.3, thin: 0, wet: 0.2 });
+  }
+}
+
+// bundle of loose coloured wires spilling out of a hole at p (normal n): droop under gravity, bare copper tips
+export function wires(parts, p, n, o = {}) {
+  const rng = new RNG(o.seed ?? 3);
+  const N = norm3(n);
+  const cols = [PAL.wireR, PAL.wireB, PAL.wireY, PAL.wireG, 0x1c1c1c];
+  for (let i = 0, k = o.n ?? 4; i < k; i++) {
+    const L = (o.len ?? 0.1) * rng.range(0.5, 1.2);
+    let q = add3(add3(p, [rng.range(-1, 1), rng.range(-1, 1), rng.range(-1, 1)], (o.spread ?? 0.012)), N, -0.01);
+    const pts = [q];
+    let dir = norm3(add3(N, [rng.range(-0.5, 0.5), rng.range(-0.3, 0.6), rng.range(-0.5, 0.5)]));
+    for (let s2 = 1; s2 <= 5; s2++) {
+      dir = norm3(add3(dir, [rng.range(-0.25, 0.25), -0.35 * (o.droop ?? 1), rng.range(-0.25, 0.25)]));
+      q = add3(q, dir, L / 5);
+      pts.push(q);
+    }
+    const r = (o.r ?? 0.0022) * rng.range(0.8, 1.2);
+    parts.add(G.tube(pts, r, 5), { color: cols[(i + (o.seed ?? 0)) % cols.length], pbr: [0.45, 0, 0.6, 0], bone: o.bone, ws: o.ws });
+    const e = pts[pts.length - 1], e2 = add3(e, dir, 0.008);
+    parts.add(G.tube([e, e2], r * 0.55, 4), { color: PAL.copper, pbr: [0.3, 1, 0, 0], bone: o.bone, ws: o.ws });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -471,6 +545,8 @@ export function tear(S, parts, cloth, p, n, size, o = {}) {
     const base = rim[Math.floor(rim.length * 0.75)];
     flap(cloth, S, base.p, base.n, ta, size * 1.1, size * (o.flapLen ?? 1.1), { color: o.flapCol ?? PAL.suit, seed: rng.int(1, 999), bone: o.bone });
   }
+  // robot innards: wiring spills out between the stuffing
+  if (o.wires !== false) wires(parts, add3(p, N, -size * 0.1), N, { n: o.wires ?? rng.int(2, 4), len: size * 1.6, seed: rng.int(0, 99), bone: o.bone, ws: S });
   return rim;
 }
 

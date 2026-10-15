@@ -21,6 +21,7 @@ const MT_COLORS = { attach: 0x6fe0ff, camp: 0x8dffa6, detach: 0xffa040, dismantl
 
 const _f = new THREE.Vector3();
 const _v = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
 const _q = new THREE.Quaternion();
 
 export class Tools {
@@ -256,6 +257,11 @@ export class Tools {
             return;
           }
           if (hit?.ud?.kind === 'prop') { prop = hit.ud.prop; point = hit.point; normal = hit.normal; }
+          else {
+            // aim assist for camp parts: thin poles are easy to miss (the ray slips between the legs)
+            const near = this._campPartNearRay(hit ? hit.dist : MT_RANGE);
+            if (near) { prop = near; point = near.root.position.clone(); }
+          }
         }
         const v = prop ? this.mtVerdict(prop, player) : null;
         if (!v || v.blocked) {
@@ -293,6 +299,22 @@ export class Tools {
     };
   }
 
+  // a loose camp part within ~0.45 m of the view ray (closer than maxDist), or null
+  _campPartNearRay(maxDist) {
+    const cam = engine.camera;
+    _f.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    let best = null, bd = 0.45;
+    for (const p of this.world.props.props.values()) {
+      if (!p.def.camp || p.frozen || p.dead) continue;
+      _v.subVectors(p.root.position, cam.position);
+      const along = _v.dot(_f);
+      if (along < 0.3 || along > maxDist + 0.4) continue;
+      const off = Math.sqrt(Math.max(0, _v.lengthSq() - along * along));
+      if (off < bd) { bd = off; best = p; }
+    }
+    return best;
+  }
+
   // jagged zap beam from the wrist emitter to the target point (local visual)
   _beamTo(point, act, dt) {
     if (!point) return;
@@ -303,16 +325,20 @@ export class Tools {
       const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x6fe0ff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
       line.frustumCulled = false;
       const glow = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), new THREE.MeshBasicMaterial({ color: 0xbff4ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
-      engine.scene.add(line, glow);
-      this.beam = { line, glow, n, t: 0 };
+      // soft glowing tube around the zap so it reads at any distance (a GL line is only one pixel wide)
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 8, 1, true), new THREE.MeshBasicMaterial({ color: 0x6fe0ff, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      line.frustumCulled = tube.frustumCulled = false;
+      engine.scene.add(line, glow, tube);
+      this.beam = { line, glow, tube, n, t: 0 };
     }
     const b = this.beam;
     b.t += dt || 0.016;
     const col = MT_COLORS[act] ?? MT_COLORS.attach;
     b.line.material.color.setHex(col);
     b.glow.material.color.setHex(col);
+    b.tube.material.color.setHex(col);
     const cam = engine.camera;
-    const start = _v.set(0.16, -0.24, -0.38).applyQuaternion(cam.quaternion).add(cam.position);
+    const start = _v.set(0.2, -0.22, -0.45).applyQuaternion(cam.quaternion).add(cam.position);
     const arr = b.line.geometry.attributes.position.array;
     const len = start.distanceTo(point);
     for (let i = 0; i < b.n; i++) {
@@ -323,8 +349,14 @@ export class Tools {
       arr[i * 3 + 2] = start.z + (point.z - start.z) * k + (Math.random() - 0.5) * jit;
     }
     b.line.geometry.attributes.position.needsUpdate = true;
+    const r = 0.012 + Math.random() * 0.01;
+    b.tube.position.copy(start).add(point).multiplyScalar(0.5);
+    b.tube.quaternion.setFromUnitVectors(_up, _f.subVectors(point, start).normalize());
+    b.tube.scale.set(r, len, r);
+    b.tube.material.opacity = 0.3 + Math.random() * 0.25;
     b.line.visible = true;
     b.glow.visible = true;
+    b.tube.visible = true;
     b.glow.position.copy(point);
     b.glow.scale.setScalar(0.7 + Math.random() * 0.6);
   }
@@ -333,6 +365,7 @@ export class Tools {
     if (!this.beam) return;
     this.beam.line.visible = false;
     this.beam.glow.visible = false;
+    this.beam.tube.visible = false;
   }
 
   // host: carry out a finished multitool action

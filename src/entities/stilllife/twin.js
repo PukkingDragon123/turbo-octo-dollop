@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { Sculpt, MAT } from './sdf.js';
 import { PartSet, ClothSet } from './parts.js';
 import { BoneSpec, assembleBody } from './rig.js';
-import { Frame, sackHead, headSeams, hood, face, glove, boot, tape, tapeStrip, badge, airTank, hose, tear, scar, surfPath, onSurf, hit, rag, crossStitch, runningStitch, ringAround, add3, sub3, norm3, gloveJoints, limbFolds, torsoFolds, drip, handprint } from './details.js';
+import { Frame, sackHead, headSeams, hood, face, glove, boot, tape, tapeStrip, badge, airTank, hose, tear, scar, surfPath, onSurf, hit, rag, crossStitch, runningStitch, ringAround, add3, sub3, norm3, gloveJoints, limbFolds, torsoFolds, drip, handprint, servoJoints, wires } from './details.js';
 import * as G from './geo.js';
 import { PAL, RNG, PI, TAU, clamp, lerp } from './core.js';
 import { Spring, Hold, Saccade, tremor, rot, addRot, rotAxis, ik2, Planter, setWorldQuat, parentLocal } from './anim.js';
@@ -94,6 +94,8 @@ export function template() {
   body.cone(J.shM, [lerp(J.shM[0], J.elM[0], 0.4), lerp(J.shM[1], J.elM[1], 0.4), lerp(J.shM[2], J.elM[2], 0.4)], 0.05, 0.042, { bone: 'shoulderM', k: 0.04, noise: [0.004, 18] });
   body.chain([J.shM, J.elM, [J.wrM[0], J.wrM[1] + 0.05, J.wrM[2] - 0.02]], [0.034, 0.028, 0.026], { bones: ['shoulderM', 'elbowM'], mat: MAT.SKIN, col: PAL.burlapDark, k: 0.02, thin: 0.6, dirt: 0.55 });
   body.sphere(J.elM, 0.031, { bone: 'elbowM', mat: MAT.SKIN, col: PAL.burlapDark, k: 0.015, thin: 0.5 });
+  servoJoints(body, J.shM, J.elM, 0.032, 2, { bone: 'shoulderM' });
+  servoJoints(body, J.elM, J.wrM, 0.027, 2, { bone: 'elbowM' });
   // legs: A normal, B too long, middle stunted and turned backwards
   const leg = (S, r, col) => {
     body.chain([J['hip' + S], J['kn' + S], [J['an' + S][0], 0.16, J['an' + S][2]]], [r, r * 0.88, r * 0.85], { bones: ['hip' + S, 'knee' + S], k: 0.04, col });
@@ -116,7 +118,8 @@ export function template() {
   // ------------------------------------------------------------------ heads
   const HAd = sackHead(head, HA, { ...DA, bone: 'headA', neckLen: 0.06, neckBone: 'neckA', dirt: 0.3 });
   head.ell(HA.p(0, 0.11, -0.1), [0.08, 0.075, 0.07], HA.q, { bone: 'jawA', mat: MAT.SKIN, col: PAL.burlap, k: 0.05 });
-  const HBd = sackHead(head, HB, { ...DB, bone: 'headB', neckLen: 0.05, neckBone: 'neckB', col: PAL.burlapDark, dirt: 0.5, thin: 0.15, cheekR: 1.25 });
+  // B's face plate is gone: bare grimy skull, the lenses screwed straight into it
+  const HBd = sackHead(head, HB, { ...DB, bone: 'headB', neckLen: 0.05, neckBone: 'neckB', col: PAL.burlapDark, dirt: 0.5, thin: 0.35, cheekR: 1.25, plate: false });
   // ------------------------------------------------------------------ hands / feet
   const gl = (S, side) => glove(hands, GLV[S].F, side, {
     bone: 'wrist' + S, cuffBone: 'elbow' + S, scale: GLV[S].sc,

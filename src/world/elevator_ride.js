@@ -1,7 +1,8 @@
 // The elevator ride between dimensions (~15 s, first person, look around freely).
 //
-// When the HQ gate closes on the riders, each rider's view moves from the HQ car into an identical car far
-// below the world (RIDE_ORIGIN) while the next dimension loads in the background (no loading screen).
+// When the HQ gate closes on the riders, each rider's view moves from the HQ car into an identical car in a
+// scene of its own (rendered through engine.setView, so its lights, fog and shaders never depend on the
+// level) while the next dimension loads in the background (no loading screen).
 // The car shudders and drops down a block-walled hoistway; floors, cage lamps and painted numbers rush
 // past the brass gate; the floor dial spins through impossible numbers. Five times the car slams to a
 // stop and the landing doors open on another dimension (the Yellow Rooms, the Poolrooms, a moonlit
@@ -23,7 +24,6 @@ import { ElevatorCar, LandingDoors, GBin, T, CAR, carMaterials } from '../entiti
 import { VLRig, vlPatch } from '../entities/vlights.js';
 
 const PI = Math.PI, TAU = PI * 2;
-export const RIDE_ORIGIN = new THREE.Vector3(0, -320, 0);
 const SEG = 3.6;          // floor-to-floor height in the hoistway
 const WZ = 1.5;           // hoistway front wall (shaft side face), car space
 const EYE = 1.16;         // clone eye height (player.js EYE_STAND)
@@ -149,9 +149,17 @@ let PREPARING = null;
 
 class RideScene {
   constructor() {
+    this.scene = new THREE.Scene();
+    this.scene.name = 'ElevatorRideScene';
+    this.scene.background = new THREE.Color(0x000000);
+    this.scene.fog = new THREE.FogExp2(0x000000, 0.06);
+    this.scene.environment = engine.defaultEnv || null;
+    this.scene.environmentIntensity = 0.3;
+    this.cam = new THREE.PerspectiveCamera(72, innerWidth / Math.max(1, innerHeight), 0.03, 260);
+    this.cam.rotation.order = 'YXZ';
     this.root = new THREE.Group();
     this.root.name = 'ElevatorRide';
-    this.root.position.copy(RIDE_ORIGIN);
+    this.scene.add(this.root);
     this.car = new ElevatorCar();
     this.root.add(this.car.root);
     this.envRig = new VLRig();
@@ -261,7 +269,6 @@ class RideScene {
     wp.span(-4, 0, 13.9, 4, H, 14, 0xffffff, { metric: 1 });
     wp.span(-4, 0, 6, 1.2, H, 6.12, 0xffffff, { metric: 1 }); wp.span(2.4, 0, 6, 4, H, 6.12, 0xffffff, { metric: 1 }); wp.span(1.2, 2.2, 6, 2.4, H, 6.12, 0xffffff, { metric: 1 });
     wp.span(-2.4, 0, 9.5, -2.28, H, 13.9, 0xffffff, { metric: 1 });
-    wp.span(-4, 0, -0.02, 4, H, 0.0, 0xffffff, { metric: 1 }); // landing-side wall face
     cp.span(-4, -0.02, 0, 4, 0, 14, 0xffffff, { metric: 1 });
     ce.span(-4, H, 0, 4, H + 0.02, 14, 0xffffff, { metric: 1 });
     for (const z of [2.6, 8.6, 12.2]) for (const x of [-1.5, 1.5]) glow.span(x - 0.6, H - 0.01, z - 0.3, x + 0.6, H, z + 0.3, 0xfff2c8);
@@ -279,7 +286,7 @@ class RideScene {
     tile.span(-3.02, -1.2, 2.5, -3, 0, 12, 0xd8f0f0, { metric: 2 }); tile.span(3, -1.2, 2.5, 3.02, 0, 12, 0xd8f0f0, { metric: 2 });
     tile.span(-5, -0.02, 12, 5, 0, 16, 0xffffff, { metric: 2 });
     tile.span(-5.1, 0, 0, -5, H, 16, 0xffffff, { metric: 2 }); tile.span(5, 0, 0, 5.1, H, 16, 0xffffff, { metric: 2 });
-    tile.span(-5, 0, 15.9, 5, H, 16, 0xffffff, { metric: 2 }); tile.span(-5, 0, -0.02, 5, H, 0, 0xffffff, { metric: 2 });
+    tile.span(-5, 0, 15.9, 5, H, 16, 0xffffff, { metric: 2 });
     tile.span(-5, H, 0, 5, H + 0.05, 16, 0xf0f8f8, { metric: 2 });
     for (const [x, z] of [[-3.9, 5], [3.9, 5], [-3.9, 10], [3.9, 10]]) tile.span(x - 0.3, 0, z - 0.3, x + 0.3, H, z + 0.3, 0xffffff, { metric: 2 });
     water.span(-3, -0.32, 2.5, 3, -0.3, 12, 0xffffff);
@@ -351,7 +358,6 @@ class RideScene {
     carpet.span(-W2, -0.02, 0, W2, 0, L, 0xffffff, { metric: 0.7 });
     paint.span(-W2, H, 0, W2, H + 0.03, L, 0xd8ccb0);
     paint.span(-W2 - 0.1, 0, L, W2 + 0.1, H, L + 0.05, 0x1a0604);
-    paint.span(-2, 0, -0.02, 2, H, 0, 0x2a0a08);
     // the figure at the far end: tall, thin, too still
     paint.cyl(0.11, 0.08, 1.4, 0x050303, T(0.15, 1.05, L - 3), { seg: 8 });
     paint.sphere(0.12, 0x050303, T(0.15, 1.9, L - 3, 0, 0, 0.3, 0.9, 1.3, 0.9));
@@ -378,7 +384,7 @@ class RideScene {
     // ceiling doors (upside down) for good measure
     for (let i = 0; i < 10; i++) { const m = T((r() - 0.5) * 8, 7.5, 4 + i * 5, PI, r() * PI, 0); paint.box(0.9, 2.0, 0.05, cols[i % cols.length], m); }
     floor.mesh(M.checker, g); wood.mesh(M.wood, g); paint.mesh(M.paint, g); glow.mesh(M.glow, g);
-    return { group: g, lights: [[new THREE.Vector3(0, 5.5, 4), 0xc8d0ff, 9], [new THREE.Vector3(-1.6, 1.4, 6.5), 0xffe8c0, 1.8]], amb: [0.025, 0.022, 0.035] };
+    return { group: g, lights: [[new THREE.Vector3(0, 4.5, 5), 0xc8d0ff, 34, 30], [new THREE.Vector3(-1.6, 1.4, 6.5), 0xffe8c0, 2.4]], amb: [0.07, 0.065, 0.09] };
   }
   _void() {
     const g = new THREE.Group(), M = this.M;
@@ -390,6 +396,16 @@ class RideScene {
     wood.box(0.98, 2.18, 0.05, 0x6a5a48, T(-0.5, 1.09, 0.0, 0, -0.32, 0).multiply(T(0.49, 0, 0)));
     glow.span(-0.5, 0, 0.0, 0.5, 2.2, 0.01, 0xfff6e8);
     wood.mesh(M.paint, door); glow.mesh(M.glow, door);
+    // soft light halo around the doorway + a shaft of light falling out of the crack
+    const hc = canvas(128, 128), hx = hc.getContext('2d'), hg = hx.createRadialGradient(64, 64, 4, 64, 64, 64);
+    hg.addColorStop(0, 'rgba(255,240,215,0.9)'); hg.addColorStop(0.35, 'rgba(255,220,180,0.25)'); hg.addColorStop(1, 'rgba(255,220,180,0)');
+    hx.fillStyle = hg; hx.fillRect(0, 0, 128, 128);
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshBasicMaterial({ map: ctex(hc), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    halo.position.set(0, 1.1, -0.15);
+    door.add(halo);
+    const shaft = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 7), new THREE.MeshBasicMaterial({ map: ctex(hc), color: 0xffe8c8, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+    shaft.position.set(0.3, 1.1, 2.4); shaft.rotation.set(-PI / 2, 0, 0.3);
+    door.add(shaft);
     door.position.set(1.2, -3, 26);
     door.rotation.y = PI + 0.4;
     g.add(door);
@@ -418,14 +434,10 @@ export function prepareRide() {
   } catch (e) { console.error('[ride] build failed', e); SCENE = null; }
   return SCENE;
 }
-// compile every material of the ride (compile() walks invisible objects too) against the current scene's
-// lights, detached so nothing renders it half-compiled
+// compile every material of the ride scene (compile() walks invisible objects too); the scene has no
+// lights of its own, so these programs never change afterwards
 function compileRide(S) {
-  const wasParent = S.root.parent;
-  if (wasParent) S.root.removeFromParent();
-  let p;
-  try { p = engine.renderer.compileAsync(S.root, engine.camera, engine.scene); } catch (e) { p = Promise.resolve(); }
-  return Promise.resolve(p).catch(() => {}).finally(() => { if (wasParent && !S.root.parent) wasParent.add(S.root); });
+  try { return Promise.resolve(engine.renderer.compileAsync(S.scene, S.cam)).catch(() => {}); } catch (e) { return Promise.resolve(); }
 }
 
 // ------------------------------------------------------------------------------------------ the ride
@@ -442,7 +454,7 @@ export class ElevatorRide {
     this.switched = false;
     this.world0 = game.world;
     this.worldSeen = game.world;
-    this.blackout = 0; this.compiling = 0;
+    this.blackout = 0;
     this.yaw = 0; this.pitch = game.local.pitch || 0;
     this.srcCar = o.car;
     this.yaw = (game.local.yaw || 0) - this._srcYaw();
@@ -451,7 +463,7 @@ export class ElevatorRide {
     this.fired = new Set();
     this.loops = {};
     this.proxies = [];
-    this.fog = new THREE.FogExp2(0x000000, 0.02);
+    this.fog = this.S?.scene.fog;
     this.saved = null;
     this.ended = false;
     this.lastD = 0;
@@ -499,7 +511,7 @@ export class ElevatorRide {
       this.yaw = l.yaw - cy;
       this.pitch = l.pitch;
     } else if (this.me) this.yaw = this.me.yaw;
-    engine.scene.add(this.S.root);
+    engine.setView(this.S.scene, this.S.cam);
     this.flicker = 0.18;
   }
 
@@ -526,7 +538,7 @@ export class ElevatorRide {
     this._camera(dt);
     this._proxies(dt);
     this._env(dt);
-    if (t >= T_HANDOFF && this.handoffReady && this.compiling <= 0 && !this.ended) this._handoff();
+    if (t >= T_HANDOFF && this.handoffReady && !this.ended) this._handoff();
   }
 
   _srcYaw() {
@@ -534,25 +546,14 @@ export class ElevatorRide {
     return this._srcYawV || 0;
   }
 
-  // the world changed under us (HQ disposed, next level loading / loaded): recompile off-screen in a blackout
+  // the next level's world exists: duck its ambience while we are still between dimensions
   _worldWatch() {
     const g = this.game;
-    const key = `${g.world ? g.world.desc?.seed : 'none'}|${g.loading ? 1 : 0}`;
-    if (key !== this.worldKey) {
-      const first = this.worldKey === undefined;
-      this.worldKey = key;
-      if (!first && this.S) {
-        this.compiling++;
-        this.blackout = Math.max(this.blackout, 0.3);
-        this.S.root.removeFromParent();
-        compileRide(this.S).finally(() => { this.compiling--; if (this.active && !this.ended && this.switched) engine.scene.add(this.S.root); });
-      }
-      if (g.world && g.world !== this.world0 && !this.saved) {
-        // duck the next level's ambience while we are still between dimensions
-        this.saved = { amb: audio.vol?.ambient ?? 1, mus: audio.vol?.music ?? 1 };
-        audio.setBusVolume?.('ambient', this.saved.amb * 0.12);
-        audio.setBusVolume?.('music', this.saved.mus * 0.1);
-      }
+    if (g.world && g.world !== this.world0 && !this.saved) {
+      this.saved = { amb: audio.vol?.ambient ?? 1, mus: audio.vol?.music ?? 1 };
+      audio.setBusVolume?.('ambient', this.saved.amb * 0.12);
+      audio.setBusVolume?.('music', this.saved.mus * 0.1);
+      this.flicker = 0.25; // the lights stutter as the far end connects
     }
   }
 
@@ -609,7 +610,7 @@ export class ElevatorRide {
     S.dust.material.opacity = inVoid ? 0.9 : 0.15 + speed * 0.5;
     S.dust.material.size = 0.008 + speed * 0.02;
     S.voidGroup.visible = inVoid && t < T_SLAM;
-    if (inVoid) S.voidDoor.position.y = -3 + (t - T_VOID) * 4.5 - 6;
+    if (inVoid) S.voidDoor.position.y = -4.2 + (t - T_VOID) * 2.2;
     // ---- floor dial: spins through impossible numbers while moving, shows the dimension at stops
     const stop = STOPS.find((s) => t >= s.arrive && t < s.depart);
     let led = 'B4', col = '#ffae3a';
@@ -662,7 +663,7 @@ export class ElevatorRide {
       this.fog.color.set(s.fog[0]); this.fog.density = s.fog[1];
       if (s.dim === 'yellow') { this._loop('hum', true, 0.9); this._snd('_amb_buzz', { volume: 0.6 }); }
       if (s.dim === 'pool') { this._loop('drips', true, 0.8); this._loop('water_flow', true, 0.5); }
-      if (s.dim === 'field') { this._snd('crickets', { volume: 0.8 }); this._loop('wind_fall', true, 0.3); }
+      if (s.dim === 'field') { this._snd('crickets', { volume: 0.8 }); this._snd('crickets', { volume: 0.5, delay: 0.7, pitch: 0.94 }); }
       if (s.dim === 'hotel') this._snd('music_box', { volume: 0.9 });
       if (s.dim === 'doors') { this._snd('_amb_door', { volume: 0.9, delay: 0.2 }); this._snd('_amb_knock', { volume: 0.8, delay: 0.55 }); }
     } else {
@@ -673,7 +674,9 @@ export class ElevatorRide {
   }
 
   _camera(dt) {
-    const S = this.S, cam = engine.camera, t = this.t;
+    const S = this.S, cam = S.cam, t = this.t;
+    const asp = innerWidth / Math.max(1, innerHeight);
+    if (Math.abs(cam.aspect - asp) > 1e-3) { cam.aspect = asp; cam.updateProjectionMatrix(); }
     this.jolt = Math.max(0, this.jolt - dt * 4);
     const sh = this.shake * 0.012 + this.jolt * 0.02;
     const bob = -Math.sin(Math.min(1, this.jolt) * PI) * 0.05 * Math.min(1, this.jolt);
@@ -688,18 +691,14 @@ export class ElevatorRide {
     if (audio.ready) audio.setListener(cam.position, cam.quaternion);
     // post: glitch at stops / void / slam, fade during blackouts
     const pp = engine.post.params;
-    let gl = this.jolt * 0.25 + (this.dim ? 0.12 : 0);
-    if (t > T_VOID && t < T_SLAM) gl += 0.25 + 0.2 * Math.sin(t * 7);
-    if (this.compiling > 0) gl += 0.3;
+    let gl = this.jolt * 0.2 + (this.dim ? 0.03 : 0);
+    if (t > T_VOID && t < T_SLAM) gl += 0.14 + 0.1 * Math.sin(t * 7);
     pp.uGlitch.value = clamp(gl, 0, 0.9);
-    const fade = this.blackout > 0 || this.compiling > 0 ? 1 : 0;
+    const fade = this.blackout > 0 ? 1 : 0;
     pp.uFade.value += (fade - pp.uFade.value) * Math.min(1, dt * (fade ? 30 : 8));
   }
 
   _env() {
-    const sc = engine.scene;
-    if (sc.fog !== this.fog) { this.levelFog = sc.fog; sc.fog = this.fog; }
-    if (sc.background !== this._bg) { this.levelBg = sc.background; this._bg = new THREE.Color(0, 0, 0); sc.background = this._bg; }
     if (!this.dim) { this.fog.color.setRGB(0, 0, 0); this.fog.density = this.t > T_VOID ? 0.02 : 0.08; }
   }
 
@@ -757,18 +756,14 @@ export class ElevatorRide {
     for (const k of Object.keys(this.loops)) this._loop(k, false, 0, { fade: 0.4 });
     this._restoreProxies();
     if (this.S) {
-      this.S.root.removeFromParent();
       for (const v of Object.values(this.S.vignettes)) v.group.visible = false;
+      if (engine.view?.scene === this.S.scene) engine.resetView();
     }
-    const sc = engine.scene;
-    if (sc.fog === this.fog) sc.fog = this.levelFog ?? null;
-    if (sc.background === this._bg) sc.background = this.levelBg ?? new THREE.Color(0, 0, 0);
     if (this.saved) { audio.setBusVolume?.('ambient', this.saved.amb); audio.setBusVolume?.('music', this.saved.mus); }
     const pp = engine.post.params;
     pp.uGlitch.value = 0;
     if (!(g.cutscene && g.cutscene.kind === 'arrival')) pp.uFade.value = 0;
     if (g.cutscene?.kind === 'ride') g.cutscene = null;
-    engine.camera.fov = 72; engine.camera.updateProjectionMatrix();
     if (g.ride === this) g.ride = null;
   }
 }

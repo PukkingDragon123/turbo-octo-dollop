@@ -207,8 +207,11 @@ class DistorterBehaviour {
     if (vis) {
       const r = this.zone.r * (0.55 + 0.45 * Math.min(1, this.vis * 1.3));
       const fy = p.root.position.y - (p.model.halfHeight ?? 0.2);
+      // squashed under the ceiling where there is one
+      const ceil = this.sys.level.ceilingY?.(p.root.position.x, p.root.position.z);
+      const hmax = Number.isFinite(ceil) ? Math.max(1.6, ceil - fy - 0.08) : r * 0.62;
       D.dome.position.set(p.root.position.x, fy, p.root.position.z);
-      D.dome.scale.set(r, r * 0.62, r);
+      D.dome.scale.set(r, Math.min(r * 0.62, hmax), r);
       D.ring.position.set(p.root.position.x, fy + 0.012, p.root.position.z);
       D.ring.scale.setScalar(r);
     }

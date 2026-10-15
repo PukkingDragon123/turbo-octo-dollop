@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { Sculpt, MAT } from './sdf.js';
 import { PartSet, ClothSet } from './parts.js';
 import { BoneSpec, assembleBody } from './rig.js';
-import { Frame, sackHead, headSeams, hood, face, glove, boot, tape, tapeStrip, badge, airTank, hose, tear, scar, surfPath, onSurf, hit, rag, bead, crossStitch, ringAround, add3, sub3, norm3, cross3, gloveJoints, cuffCenter, limbFolds, torsoFolds, drip, handprint } from './details.js';
+import { Frame, sackHead, headSeams, hood, face, glove, boot, tape, tapeStrip, badge, airTank, hose, tear, scar, surfPath, onSurf, hit, rag, bead, crossStitch, ringAround, add3, sub3, norm3, cross3, gloveJoints, cuffCenter, limbFolds, torsoFolds, drip, handprint, servoJoints } from './details.js';
 import * as G from './geo.js';
 import { PAL, RNG, PI, TAU, clamp, lerp } from './core.js';
 import { Spring, Hold, Saccade, tremor, rot, addRot, rotAxis, ik2, Planter, setWorldQuat, parentLocal } from './anim.js';
@@ -92,6 +92,8 @@ export function template() {
       body.fold(m, 0.08, sub3(m, a), 140, 0.0045, { warp: 0.8 });
     } else if (kind === 'bare') {
       body.chain([a, m, [e[0], e[1] + 0.05, e[2]]], [0.05, 0.036, 0.03], { bones: ['u' + k, 'l' + k], mat: MAT.SKIN, col: PAL.burlapDark, thin: 0.6, dirt: 0.6, k: 0.05 });
+      servoJoints(body, a, m, 0.045, 2, { bone: 'u' + k });
+      servoJoints(body, m, e, 0.034, 2, { bone: 'l' + k, jitter: 0.3 });
     } else {
       const end = [lerp(m[0], e[0], 0.8), lerp(m[1], e[1], 0.8), lerp(m[2], e[2], 0.8)];
       body.chain([a, m, end], [0.085, 0.068, 0.062], { bones: ['u' + k, 'l' + k], mat: MAT.SUIT, col: PAL.suit, dirt: 0.5, k: 0.07 });

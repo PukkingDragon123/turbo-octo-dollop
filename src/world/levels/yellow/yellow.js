@@ -13,6 +13,7 @@ import { buildChunk, cellLightSpec, makeOccluder, makeAO } from './chunkbuilder.
 import { decorateRoom, populateRoom } from './rooms.js';
 import { Placer } from './placement.js';
 import { weirdPhotoSubject } from './weird.js';
+import { Scares } from './scares.js';
 import { registerLootables } from '../../../entities/lootables.js';
 import { modelHalfHeight } from '../../../entities/catalog.js';
 import { CampMission } from '../../../game/campmission.js';
@@ -105,6 +106,8 @@ export class YellowLevel {
     this.mission = new CampMission(this);
     this.anomalies = new Anomalies(this);
     this.critters = new Critters(this);
+    // jumpscares and unsettling events (local to each clone)
+    this.scares = new Scares(this);
     // initial chunks around spawn (blocking)
     const centers = [this.spawnCenter()];
     this._registerLights(centers);
@@ -464,6 +467,7 @@ export class YellowLevel {
     this.monsters.update(dt);
     this.anomalies.update(dt);
     this.critters.update(dt);
+    this.scares?.update(dt);
     this._updateLightLevel();
   }
 
@@ -626,6 +630,16 @@ export class YellowLevel {
     return out.sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
   }
 
+  // debug / test helper: layout decor of a kind ('rack', 'pipes', 'sunk', 'clip') -> world positions of their cells
+  findDecor(kind, R = 6) {
+    const out = [];
+    for (let cz = -R; cz <= R; cz++) for (let cx = -R; cx <= R; cx++) {
+      const L = getLayout(this.seed, cx, cz, this.variantFn(cx, cz));
+      for (const d of L.decor) if (d.kind === kind) out.push({ ...d, x: (cx * CHUNK + d.li + 0.5) * CELL, z: (cz * CHUNK + d.lj) * CELL, i: cx * CHUNK + d.li, j: cz * CHUNK + d.lj, cx, cz });
+    }
+    return out.sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
+  }
+
   // nav: pits and crawlspaces cost extra (monsters prefer to walk around)
   cellCost(i, j) {
     const c = cellInfo(this.seed, i, j, this.variantFn);
@@ -763,6 +777,7 @@ export class YellowLevel {
     this.monsters?.dispose();
     this.anomalies?.dispose?.();
     this.critters?.dispose();
+    this.scares?.dispose();
     for (const k of [...this.chunks.keys()]) this._unloadChunk(k);
     this.reflection.dispose();
     engine.scene.fog = null;

@@ -17,7 +17,7 @@ const lightsNear = (x, z) => {
   }
   return out;
 };
-const level = { seed, variantFn, field: { uniforms: {} }, world: { physics: { addStaticBox: () => ({}) } }, lightsNear, occluder: CB.makeOccluder(seed, variantFn), ao: CB.makeAO(seed, variantFn), waterMaterial: new THREE.MeshBasicMaterial(), reflection: { meshes: new Set() }, prepStatic() {}, hazeOn: true };
+const level = { seed, variantFn, field: { uniforms: {} }, world: { physics: { addStaticBox: () => ({}), addStaticCollidersFromDesc: () => ({ colliders: [], body: {} }) } }, lightsNear, occluder: CB.makeOccluder(seed, variantFn), ao: CB.makeAO(seed, variantFn), waterMaterial: new THREE.MeshBasicMaterial(), reflection: { meshes: new Set() }, prepStatic() {}, hazeOn: true };
 for (let k = 0; k < 6; k++) CB.buildChunk(level, 50 + k, 50);
 const N = +(process.argv[4] || 24);
 const cpu0 = process.cpuUsage();

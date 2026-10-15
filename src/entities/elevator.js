@@ -25,7 +25,7 @@ export function T(x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, s
 // Collects primitives (position/normal/uv/colour), optional metric UVs (box projection, metres * k) and a
 // baked AO function, then merges them into one mesh.
 export class GBin {
-  constructor(opts = {}) { this.geos = []; this.ao = opts.ao || null; this.uvk = opts.uvk ?? 1; }
+  constructor(opts = {}) { this.geos = []; this.ao = opts.ao || null; this.uvk = opts.uvk ?? 1; this.metricAll = opts.metricAll || 0; }
   add(geo, color = 0xffffff, m = null, o = {}) {
     let g = geo.index ? geo.toNonIndexed() : geo.clone();
     geo.dispose?.();
@@ -33,7 +33,7 @@ export class GBin {
     if (!g.attributes.normal) g.computeVertexNormals();
     if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
     if (m) g.applyMatrix4(m);
-    if (o.metric) metricUV(g, o.metric === true ? this.uvk : o.metric, o.uvOff);
+    if (o.metric || this.metricAll) metricUV(g, o.metric === true ? this.uvk : (o.metric || this.metricAll), o.uvOff);
     const n = g.attributes.position.count, pos = g.attributes.position.array, col = new Float32Array(n * 3);
     const c = new THREE.Color(color);
     for (let i = 0; i < n; i++) {
@@ -219,7 +219,7 @@ export function carMaterials(rig) {
   const wood = new THREE.MeshStandardMaterial({ map: tx.veneer, color: 0xffffff, roughness: 0.38, metalness: 0, vertexColors: true, envMapIntensity: 0.9 });
   const steel = Mat.make('stainless');
   steel.vertexColors = true; steel.roughness = 0.42; steel.envMapIntensity = 1.2;
-  const brass = new THREE.MeshStandardMaterial({ color: 0xd2ad62, roughness: 0.26, metalness: 1, vertexColors: true, envMapIntensity: 1.25 });
+  const brass = new THREE.MeshStandardMaterial({ color: 0xb8954f, roughness: 0.36, metalness: 1, vertexColors: true, envMapIntensity: 1.1 });
   const floor = new THREE.MeshStandardMaterial({ map: tx.floor, normalMap: tx.floorN, normalScale: new THREE.Vector2(0.8, 0.8), roughness: 0.72, vertexColors: true });
   const paint = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0, vertexColors: true });
   const label = new THREE.MeshStandardMaterial({ map: tx.atlas, roughness: 0.45, metalness: 0.2, polygonOffset: true, polygonOffsetFactor: -2 });
@@ -317,7 +317,7 @@ export class Dial {
 // ------------------------------------------------------------------------------------------ scissor gate
 // Brass lazy-tong gate across the car front: 9 channel posts and crossed links in 3 tiers, collapsing to
 // the left jamb. Two InstancedMeshes (bars, rivets).
-const GATE_POSTS = 9, GATE_TIERS = 3;
+const GATE_POSTS = 9, GATE_TIERS = 4;
 export class ScissorGate {
   constructor(mats, w = CAR.GW, h = CAR.GH - 0.06) {
     this.w = w; this.h = h;
@@ -350,17 +350,17 @@ export class ScissorGate {
     const tierH = h / GATE_TIERS;
     for (let i = 0; i < GATE_POSTS; i++) {
       const x = x0 + i * sp;
-      put(this.bars, bi++, x, y0 + h / 2, 0, 0, i === GATE_POSTS - 1 ? 0.04 : 0.024, h, 0.022);
-      for (let k = 0; k <= GATE_TIERS; k++) put(this.rivets, ri++, x, y0 + k * tierH, 0.017, 0, 0.011, 0.011, 0.012);
+      put(this.bars, bi++, x, y0 + h / 2, 0, 0, i === GATE_POSTS - 1 ? 0.03 : 0.016, h, 0.02);
+      for (let k = 0; k <= GATE_TIERS; k++) put(this.rivets, ri++, x, y0 + k * tierH, 0.014, 0, 0.008, 0.008, 0.01);
     }
     const len = Math.hypot(sp, tierH), ang = Math.atan2(tierH, sp);
     for (let i = 0; i < GATE_POSTS - 1; i++) {
       const cx = x0 + (i + 0.5) * sp;
       for (let k = 0; k < GATE_TIERS; k++) {
         const cy = y0 + (k + 0.5) * tierH;
-        put(this.bars, bi++, cx, cy, 0.011, ang, len, 0.02, 0.005);
-        put(this.bars, bi++, cx, cy, -0.011, -ang, len, 0.02, 0.005);
-        put(this.rivets, ri++, cx, cy, 0, 0, 0.009, 0.009, 0.034);
+        put(this.bars, bi++, cx, cy, 0.01, ang, len, 0.012, 0.004);
+        put(this.bars, bi++, cx, cy, -0.01, -ang, len, 0.012, 0.004);
+        put(this.rivets, ri++, cx, cy, 0, 0, 0.007, 0.007, 0.03);
       }
     }
     // handle on the leading post + a top rail stub that rides in the track

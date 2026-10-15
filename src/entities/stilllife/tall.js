@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { Sculpt, MAT } from './sdf.js';
 import { PartSet, ClothSet } from './parts.js';
 import { BoneSpec, assembleBody } from './rig.js';
-import { Frame, sackHead, headSeams, face, glove, boot, tape, tapeStrip, badge, airTank, hose, tear, scar, surfPath, onSurf, hit, rag, crossStitch, runningStitch, ringAround, add3, sub3, norm3, gloveJoints, limbFolds, torsoFolds, drip, handprint } from './details.js';
+import { Frame, sackHead, headSeams, face, glove, boot, tape, tapeStrip, badge, airTank, hose, tear, scar, surfPath, onSurf, hit, rag, crossStitch, runningStitch, ringAround, add3, sub3, norm3, gloveJoints, limbFolds, torsoFolds, drip, handprint, servoJoints } from './details.js';
 import * as G from './geo.js';
 import { PAL, RNG, PI, TAU, clamp, lerp } from './core.js';
 import { Spring, SpringV, Hold, Saccade, tremor, rot, addRot, rotAxis, ik2, Planter, setWorldQuat, parentLocal } from './anim.js';
@@ -74,7 +74,8 @@ export function template() {
     const kneeIn = [lerp(HIP[S][0], KN[S][0], 0.86), lerp(HIP[S][1], KN[S][1], 0.86), lerp(HIP[S][2], KN[S][2], 0.86)];
     body.cone(HIP[S], kneeIn, 0.078, 0.06, { bone: 'hip' + S, k: 0.05, noise: [0.003, 12] });
     body.torus(kneeIn, 0.055, 0.008, [0.4, 0, 0], { bone: 'hip' + S, k: 0.008, dirt: 0.7, noise: [0.006, 25] });
-    body.cone(KN[S], [AN[S][0], 0.19, AN[S][2]], 0.042, 0.034, { bone: 'knee' + S, mat: MAT.SKIN, col: PAL.burlapPale, k: 0.02, thin: 0.75, dirt: 0.5, noise: [0.002, 25] });
+    body.cone(KN[S], [AN[S][0], 0.19, AN[S][2]], 0.042, 0.034, { bone: 'knee' + S, mat: MAT.SKIN, col: PAL.burlapPale, k: 0.02, thin: 0.75, dirt: 0.5, noise: [0.001, 25] });
+    servoJoints(body, KN[S], [AN[S][0], 0.22, AN[S][2]], 0.04, 4, { bone: 'knee' + S, jitter: 0.3 });
     body.sphere(KN[S], 0.05, { bone: 'knee' + S, mat: MAT.SKIN, col: PAL.burlap, k: 0.03, thin: 0.5, dirt: 0.5 });
     body.fold([HIP[S][0] * 1.1, 1.05, -0.02], 0.12, [0, 1, -0.2], 140, 0.004, { warp: 0.7 });
     // upper arm in suit (torn at the elbow), forearm bare
@@ -82,7 +83,8 @@ export function template() {
     body.cone(SH[S], elIn, 0.064, 0.05, { bone: 'shoulder' + S, k: 0.045, noise: [0.003, 12] });
     body.torus(elIn, 0.046, 0.007, [0.25, 0, s * 0.1], { bone: 'shoulder' + S, k: 0.008, dirt: 0.7, noise: [0.006, 25] });
     body.sphere(EL[S], 0.038, { bone: 'elbow' + S, mat: MAT.SKIN, col: PAL.burlap, k: 0.03, thin: 0.55, dirt: 0.5 });
-    body.cone(EL[S], [WR[S][0], WR[S][1] + 0.04, WR[S][2]], 0.034, 0.028, { bone: 'elbow' + S, mat: MAT.SKIN, col: PAL.burlapPale, k: 0.02, thin: 0.8, dirt: 0.45, noise: [0.002, 25] });
+    body.cone(EL[S], [WR[S][0], WR[S][1] + 0.04, WR[S][2]], 0.034, 0.028, { bone: 'elbow' + S, mat: MAT.SKIN, col: PAL.burlapPale, k: 0.02, thin: 0.8, dirt: 0.45, noise: [0.001, 25] });
+    servoJoints(body, EL[S], [WR[S][0], WR[S][1] + 0.06, WR[S][2]], 0.032, 3, { bone: 'elbow' + S, jitter: 0.25 });
     body.fold([SH[S][0] * 1.1, 1.55, -0.02], 0.12, [0, 1, 0], 150, 0.0035, { warp: 0.6 });
   }
   for (const S of ['L', 'R']) {

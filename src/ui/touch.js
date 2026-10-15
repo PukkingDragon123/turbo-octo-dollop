@@ -212,7 +212,8 @@ export class TouchControls {
     const n = this.game.local?.inv?.slots?.length || 5;
     const hw = n * 28 * P + (n - 1) * P;
     let pos;
-    if (portrait) pos = { cx: vw / 2, bottom: ins.b + m + 68 * P };
+    // portrait: above the cluster, leaving a lane for the USE context tag
+    if (portrait) pos = { cx: vw / 2, bottom: ins.b + m + 86 * P };
     else {
       const left = ins.l + m + 56 * P + m, right = this.cluster.left - m;
       if (right - left >= hw) pos = { cx: (left + right) / 2, bottom: ins.b + m };

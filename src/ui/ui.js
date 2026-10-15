@@ -16,6 +16,7 @@ import { installPixelCSS, logoPix, Pix, C, glyph } from './pixelart.js';
 import { itemSprite, pixelizeCanvas } from './itemsprites.js';
 import { NeedsWidget } from './needs.js';
 import { Hotbar } from './hotbar.js';
+import { LobbyPanel } from './lobbypanel.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -58,7 +59,7 @@ export class UI {
         </select>
         <div class="menu" style="margin-top:14px">
           <button class="btn interactive" data-act="solo" data-icon="solo">SOLO SHIFT</button>
-          <button class="btn interactive" data-act="host" data-icon="host">HOST SHIFT (1-4 CLONES)</button>
+          <button class="btn interactive" data-act="host" data-icon="host">HOST SHIFT</button>
           <button class="btn interactive" data-act="join" data-icon="join">JOIN SHIFT</button>
           <button class="btn interactive" data-act="settings" data-icon="gear">SETTINGS</button>
           <button class="btn interactive" data-act="controls" data-icon="pad">CONTROLS</button>
@@ -68,7 +69,8 @@ export class UI {
           <div class="row"><input type="text" id="in-code" maxlength="6" spellcheck="false"/><button class="btn interactive" data-act="dojoin" data-icon="ok" style="white-space:nowrap">CONNECT</button></div>
         </div>
         <div class="err" id="menu-err"></div>
-        <div class="hint">Online co-op uses peer-to-peer WebRTC. Proximity voice chat needs a microphone (optional).</div>
+        <div class="note" id="menu-note"></div>
+        <div class="hint">Host a shift for up to 4 clones (peer-to-peer). Proximity voice chat needs a microphone (optional).</div>
         <div class="tag">v1.0 · SUBLEVEL B4 · (C) 1994 R.O.O.M. CORP</div>
       </div></div>
       <div id="pause" class="screen"><div class="crt">
@@ -129,10 +131,13 @@ export class UI {
       <div id="alert" class="screen"><div class="crt"><h2>NOTICE</h2><div id="alert-text"></div><div class="menu" style="margin-top:14px"><button class="btn interactive" data-act="alert-ok" data-icon="ok">OK</button></div></div></div>
       <div id="loading"><canvas class="sprite"></canvas><div class="t">DISPATCHING</div><div class="l">...</div><div class="bar"><div></div></div></div>
     `;
-    // the artifact build runs in a sandboxed frame without WebRTC: solo only
+    // the artifact build runs in a sandboxed frame without WebRTC: HOST / JOIN stay visible but locked
     if (import.meta.env.VITE_SOLO_ONLY) {
-      for (const a of ['host', 'join']) $(`[data-act="${a}"]`, this.root)?.remove();
-      $('#menu-main .hint', this.root).textContent = 'Solo build: online co-op needs the full version.';
+      for (const a of ['host', 'join']) {
+        const b = $(`[data-act="${a}"]`, this.root);
+        if (b) { b.disabled = true; b.title = 'Online co-op needs the full version'; }
+      }
+      $('#menu-note', this.root).textContent = 'HOST / JOIN need the full version: this sandboxed build has no online play.';
     }
     this.hud = $('#hud', this.root);
     this.menuOpen = true;
@@ -149,6 +154,7 @@ export class UI {
     this.customAngle = 0;
     this.needs = new NeedsWidget(document.body);
     this.hotbar = new Hotbar(this);
+    this.lobby = new LobbyPanel(this);
     this.hotbarHiddenByTouch = false;
     this._pixelArt();
     this._bind();
@@ -267,6 +273,7 @@ export class UI {
       }
       case 'join':
         $('#join-row', this.root).style.display = 'block';
+        this.screens['menu-main'].classList.add('joining');
         $('#in-code', this.root).focus();
         break;
       case 'dojoin': {
@@ -357,7 +364,7 @@ export class UI {
     if (this.screens.runover.classList.contains('show')) this._show(null);
     this.hud.classList.remove('hidden');
     if (desc.type !== 'lobby') this.feed(`${desc.depth > 1 ? 'SECTOR ' + desc.depth + ' — ' : ''}${this.game?.world?.level?.feedName || 'LEVEL 0: THE YELLOW ROOMS'}. DAY 1/7.`, 'hq', 'HQ');
-    else this.feed('Welcome back to Sublevel B4. Pull the dispatch lever when your team is ready.', 'hq', 'HQ');
+    else this.feed(net.mode === 'client' ? 'Welcome back to Sublevel B4. Walk around while the host starts the shift.' : 'Welcome back to Sublevel B4. START SHIFT (or talk to GLORIA) when your team is ready.', 'hq', 'HQ');
   }
 
   // ------------------------------------------------------------------
@@ -440,7 +447,7 @@ export class UI {
   // where the Healthity pop-up may start (px from the top): below the sleeve patch, the touch button column
   // (portrait) and an open portrait watch panel
   _popBase() {
-    let y = this.needs.bottomPx || 0;
+    let y = Math.max(this.needs.bottomPx || 0, this.lobby.bottomPx || 0);
     const t = this.game?.touch;
     if (t && window.innerHeight > window.innerWidth && t.sysBottom) y = Math.max(y, t.sysBottom);
     return y;
@@ -688,7 +695,7 @@ export class UI {
   update(dt) {
     const g = this.game;
     this._loadingAnim(dt);
-    if (!g || g.state !== 'playing' || !g.world) { this.needs.setVisible(false); this.hotbar.setVisible(false); return; }
+    if (!g || g.state !== 'playing' || !g.world) { this.needs.setVisible(false); this.hotbar.setVisible(false); this.lobby.setVisible(false); return; }
     const l = g.local;
     const s = l.survival;
     // ---- pixel HUD: sleeve patch (hunger / thirst / health / money) and the inventory bar
@@ -696,7 +703,12 @@ export class UI {
     const view = !this.menuOpen && !this.customizing && !g.terminal?.active && !loading && !this.hud.classList.contains('hidden');
     const sc = this._hudScale();
     const na = s.needsActive;
-    const needsOn = view && !l.dead && (na === undefined ? !g.isLobby : !!na);
+    // needs never drain at HQ, so the patch (and its first reveal) waits for the first dimension
+    const needsOn = view && !l.dead && !g.isLobby && na !== false;
+    // HQ: the shift roster with START SHIFT (host) while everyone walks around
+    const ph = g.world.level?.elevator?.state?.ph;
+    this.lobby.setVisible(view && g.isLobby && !g.menuBackdrop && ph !== 'depart');
+    this.lobby.update(dt);
     this.needs.setScale(sc);
     this.needs.setVisible(needsOn);
     if (needsOn) {

@@ -2,6 +2,26 @@
 // at low resolution into plain RGBA buffers with a curated palette, 1 px ink outlines, rim light, ramp
 // shading and ordered dithering, then shown scaled up with `image-rendering: pixelated`.
 // No image files: sprites are procedural or tiny string bitmaps.
+//
+// Public API (stable; other modules such as ui/wardrobe.js import these):
+//   C, RAMP, PALETTE          named palette colours ('#rrggbb'), 6-step shading ramps, flat palette list
+//   rgba(c) mix(a,b,t) alpha(c,a) hex(c) css(c)   colour helpers (accept '#hex' or [r,g,b,a])
+//   bayer(x,y)                4x4 ordered-dither threshold in 0..1
+//   new Pix(w,h)              RGBA buffer: set/get/rect/frame/hline/vline/rbox/line/ellipse/disc/ring/poly,
+//                             rod (shaded capsule), cyl (upright cylinder), vgrad, bevel, dither, tint, blit,
+//                             post passes rim()/outline()/shadow()/finish(), output toCanvas(cv)/url()/scaled(k)
+//   bitmap(rows, map, pix?, x?, y?)               draw a string bitmap ('.' = transparent)
+//   FONT5 (5x7) / FONT3 (3x5) bitmap fonts: text(pix, str, x, y, colour, {font, align, shadow, outline, scale}),
+//                             textWidth(str, font), wrapText(str, maxW, font)
+//   GLYPH + glyph(name, colour, {pix,x,y}) / glyphURL(name, colour)   11x11 UI icons
+//   heart(pix,x,y,full,beat)  coin(pix,x,y,t)     tiny HUD sprites
+//   capPix({...})  stickBasePix(d)  stickKnobPix(d, sprint)          touch keycaps and the analog stick
+//   logoPix(str, scale)       extruded R.O.O.M. logo
+//   installPixelCSS()         registers --pa-* frames (panel, btn, btn-hot, btn-down, btn-off, inset, inset-hot,
+//                             bubble, bubble-alarm, plate, plate-green, plate-red, track, wpanel) and icon URLs
+//                             (--pa-g-<glyph>, dark variant --pa-g-<glyph>-k) as CSS custom properties. Use a frame as
+//                             `border: calc(var(--px)*S) solid transparent; border-image: var(--pa-panel) S fill /
+//                             calc(var(--px)*S)` where S is var(--pa-panel-s) (panel 8, btn 3, inset 3, bubble 4, plate 3).
 
 // ------------------------------------------------------------------ palette
 export const C = {

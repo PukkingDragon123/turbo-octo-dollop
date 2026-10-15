@@ -162,6 +162,7 @@ export class PropManager {
         // are muted: no clatter, no noise for monsters, no breakage on level load.
         if (m.sl) {
           p.settleT = 0.75;
+          p.settling = true;
           p.lastImpact = (this.world.time ?? 0) + 0.75;
         }
       } else {
@@ -212,15 +213,18 @@ export class PropManager {
       } else if (b.bodyType() !== RAPIER.RigidBodyType.Dynamic) {
         b.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
       }
-      if (b.isSleeping()) { p.speed = 0; p.settleT = 0; continue; }
+      if (b.isSleeping()) { p.speed = 0; p.settleT = 0; p.settling = false; continue; }
       const lv = b.linvel();
       p.speed = Math.hypot(lv.x, lv.y, lv.z);
-      if (p.settleT > 0) {
+      if (p.settling) {
+        // spawned 'asleep': after the settle window, put it to sleep as soon as it is at rest (keep trying for a
+        // few seconds: at low frame rates the first check can land on a frame where it is still rocking)
         p.settleT -= dt;
         if (p.settleT <= 0 && p.speed < 0.06 && !p.isHeld()) {
           const av = b.angvel();
-          if (av.x * av.x + av.y * av.y + av.z * av.z < 0.02) b.sleep();
+          if (av.x * av.x + av.y * av.y + av.z * av.z < 0.02) { b.sleep(); p.settling = false; }
         }
+        if (p.settleT < -4 || p.isHeld()) p.settling = false;
       }
       const t = b.translation();
       const r = b.rotation();

@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { Sculpt, MAT } from './sdf.js';
 import { PartSet, ClothSet } from './parts.js';
 import { BoneSpec, assembleBody } from './rig.js';
-import { Frame, sackHead, headSeams, hood, face, glove, boot, tape, tapeStrip, badge, airTank, hose, zipper, tear, scar, surfPath, onSurf, hit, rag, crossStitch, ringAround, add3, sub3, norm3, gloveJoints, cuffCenter, limbFolds, torsoFolds, drip, handprint } from './details.js';
+import { Frame, sackHead, headSeams, hood, face, glove, boot, tape, tapeStrip, badge, airTank, hose, zipper, tear, scar, surfPath, onSurf, hit, rag, crossStitch, ringAround, add3, sub3, norm3, gloveJoints, cuffCenter, limbFolds, torsoFolds, drip, handprint, servoJoints, wires } from './details.js';
 import * as G from './geo.js';
 import { PAL, RNG, PI, TAU, clamp, lerp } from './core.js';
 import { Spring, SpringV, Hold, Saccade, tremor, rot, addRot, rotAxis, ik2, Planter, setWorldQuat, parentLocal } from './anim.js';
@@ -82,6 +82,8 @@ export function template() {
       // bare, too-thin burlap arms grown out of the ribs (split the suit on the way out)
       body.chain([a, m, [e[0], e[1] + 0.05, e[2]]], [0.04, 0.033, 0.028], { bones: ['u' + k, 'l' + k], mat: MAT.SKIN, col: PAL.burlapDark, k: 0.03, thin: 0.6, dirt: 0.6, noise: [0.002, 25] });
       body.sphere(m, 0.036, { bone: 'l' + k, mat: MAT.SKIN, col: PAL.burlapDark, k: 0.02, thin: 0.5, dirt: 0.6 });
+      servoJoints(body, a, m, 0.036, 2, { bone: 'u' + k, jitter: 0.3 });
+      servoJoints(body, m, e, 0.03, 3, { bone: 'l' + k, jitter: 0.3 });
       body.paint({ sphere: [a, 0.07, { noise: [0.02, 20] }] }, { mat: MAT.SKIN, col: PAL.burlapDark, soft: 0.006, thin: 0.4, dirt: 0.7, wet: 0.35 });
     }
   }
@@ -166,6 +168,7 @@ export function template() {
     const a = LIMB[k][0];
     const rim = ringAround(body, a, sub3(LIMB[k][1], a), 10, 0.1);
     for (let i = 0; i < 3; i++) { const q = rim[i * 3]; rag(cloth, body, q.p, q.n, 0.03, 0.06, { seed: 90 + i + (k === 'ML' ? 0 : 5), out: 0.6, bone: 'waist', taper: 0.7 }); }
+    wires(parts, rim[6].p, rim[6].n, { n: 4, len: 0.1, seed: k === 'ML' ? 11 : 12, bone: 'waist', ws: body });
   }
   for (const k of ['FL', 'FR']) { const d = sub3(LIMB[k][1], LIMB[k][2]); tape(parts, hands, cuffCenter(GF(k), d), d, { wraps: 2, width: 0.03, seed: k.length + 3, reach: 0.09 }); }
   for (const k of ['RL', 'RR']) tape(parts, feet, [LIMB[k][2][0], 0.19, LIMB[k][2][2]], [0, 1, 0], { wraps: 2, width: 0.035, seed: 4, reach: 0.13 });

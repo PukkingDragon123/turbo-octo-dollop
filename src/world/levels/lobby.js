@@ -566,6 +566,14 @@ export class LobbyLevel {
   floorY() { return 0; }
   sampleKindAt() { return null; }
 
+  // START / dispatch request from UI (lobby waiting panel): exactly like confirming with the receptionist.
+  // Host: opens the elevator gate and starts the countdown; client: asks the host. Returns false if busy.
+  requestDispatch(name) {
+    const ph = this.elevator?.state.ph;
+    if (!this.receptionist || ph === 'board' || ph === 'depart') return false;
+    return this.receptionist.requestDispatch(name);
+  }
+
   serialize() { return null; }
   applySync() {}
 

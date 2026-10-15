@@ -14,7 +14,7 @@ const lightsNear = (x, z) => {
   }
   return out;
 };
-const level = { seed, variantFn, field: { uniforms: {} }, world: { physics: { addStaticBox: () => ({}) } }, lightsNear, occluder: makeOccluder(seed, variantFn), ao: makeAO(seed, variantFn), waterMaterial: new THREE.MeshBasicMaterial(), reflection: { meshes: new Set() }, prepStatic() {}, hazeOn: true };
+const level = { seed, variantFn, field: { uniforms: {} }, world: { physics: { addStaticBox: () => ({}), addStaticCollidersFromDesc: () => ({ colliders: [], body: {} }) } }, lightsNear, occluder: makeOccluder(seed, variantFn), ao: makeAO(seed, variantFn), waterMaterial: new THREE.MeshBasicMaterial(), reflection: { meshes: new Set() }, prepStatic() {}, hazeOn: true };
 // warm-up (JIT)
 for (let k = 0; k < 6; k++) buildChunk(level, 50 + k, 50);
 for (const k in buildStats) buildStats[k] = 0;

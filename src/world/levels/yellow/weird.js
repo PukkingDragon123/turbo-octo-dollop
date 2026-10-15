@@ -7,11 +7,12 @@ import * as Mat from '../../../gfx/materials.js';
 import { CELL, CHUNK, HEIGHT } from './layout.js';
 import { EnvGeo } from '../../env/builder.js';
 import { troffer } from '../../env/ceiling.js';
-import { slide, samplePath, pit, stair, railing, ballTexture, aabbCol, boxCol } from '../../env/playground.js';
+import { slide, samplePath, pit, stair, railing, ballTexture, aabbCol } from '../../env/playground.js';
 import { bakeInto, roomBounds, placeStatic, staticBody, instancedFurniture, sp, spPlaced } from './roomkit.js';
 import { modelHalfHeight } from '../../../entities/catalog.js';
 import { RNG, hash3 } from '../../../core/rng.js';
 import { Placer } from './placement.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export const WEIRD = new Set(['slide_pit', 'ball_pit', 'carpet_pit', 'chair_tower', 'ceiling_room', 'giant_room', 'door_corridor', 'frozen_party', 'tilted_room']);
 
@@ -102,7 +103,7 @@ function slidePit(level, rec, room, b, rng) {
   const gWall = new EnvGeo(), gRim = new EnvGeo(), gYel = new EnvGeo(), gRed = new EnvGeo(), gBlue = new EnvGeo(), gSteel = new EnvGeo(), gRail = new EnvGeo();
   const cols = pit(gWall, null, gRim, r, D, yCol);
   // straight chute from the north walkway
-  const sx = (r.x0 + r.x1) / 2 - 0.9;
+  const sx = (r.x0 + r.x1) / 2 - 1.1;
   const zs = r.z0 - 0.75, ze = r.z0 + 3.3, yEnd = yBall + 0.22;
   const pts = samplePath((t) => {
     const z = zs + (ze - zs) * t;
@@ -112,7 +113,7 @@ function slidePit(level, rec, room, b, rng) {
     else { const u = (t - 0.12) / 0.78; y = 0.03 + (yEnd - 0.03) * (u * u * (3 - 2 * u)); }
     return [sx, y, z];
   }, 18);
-  const s1 = slide(gYel, gRed, pts, { w: 0.64, wall: 0.3 });
+  const s1 = slide(gYel, gRed, pts, { w: 0.84, wall: 0.32 });
   cols.push(...s1.cols);
   rec.slides.push(...s1.segs.map((s) => ({ ...s, speed: 6.5 })));
   // legs under the chute
@@ -121,7 +122,7 @@ function slidePit(level, rec, room, b, rng) {
     gSteel.tube('y', -D, p[1] - 0.08, p[0], p[2], 0.035, 8);
   }
   // spiral flume in the south-east corner: lead-in from the east walkway, 1.25 turns down into the balls
-  const R = 0.95, C = [r.x1 - 1.4, r.z1 - 1.5];
+  const R = 0.95, C = [r.x1 - 1.6, r.z1 - 1.65];
   const yTop = 0.03, yLow = yBall - 0.3;
   const lead = 1.75, nH = 30, turns = 1.25;
   const spts = [];
@@ -130,7 +131,7 @@ function slidePit(level, rec, room, b, rng) {
     const t = k / nH, th = Math.PI / 2 + t * turns * Math.PI * 2;
     spts.push([C[0] + R * Math.cos(th), yTop + (yLow - yTop) * t, C[1] + R * Math.sin(th)]);
   }
-  const s2 = slide(gBlue, gBlue, spts, { w: 0.6, wall: 0.36 });
+  const s2 = slide(gBlue, gBlue, spts, { w: 0.82, wall: 0.38 });
   cols.push(...s2.cols);
   rec.slides.push(...s2.segs.map((s) => ({ ...s, speed: 5.5 })));
   // central pole + arms
@@ -145,8 +146,8 @@ function slidePit(level, rec, room, b, rng) {
   // railing with gaps at the chute, the flume lead-in and the stair top
   const sz2 = C[1] + R;
   cols.push(...rimRailing(gRail, r, 0.14, [
-    { side: 'N', a: sx - 0.42, b: sx + 0.42 },
-    { side: 'E', a: sz2 - 0.42, b: sz2 + 0.42 },
+    { side: 'N', a: sx - 0.52, b: sx + 0.52 },
+    { side: 'E', a: sz2 - 0.52, b: sz2 + 0.52 },
     { side: 'W', a: r.z0 + 0.25 + 2.1, b: r.z0 + 0.25 + 2.5 },
   ]));
   ballFill(level, rec, r, yBall, 220, rng);
@@ -192,11 +193,11 @@ function ballPit(level, rec, room, b, rng) {
     else { const u = (t - 0.08) / 0.8; y = dy + 0.02 + (yEnd - dy - 0.02) * (u * u * (3 - 2 * u)); }
     return [cx, y, zs + (ze - zs) * t];
   }, 14);
-  const s = slide(gSl, gSh, pts, { w: 0.58, wall: 0.28 });
+  const s = slide(gSl, gSh, pts, { w: 0.82, wall: 0.3 });
   cols.push(...s.cols);
   rec.slides.push(...s.segs.map((q) => ({ ...q, speed: 5.5 })));
   // rail around the pit, open where the slide passes (north)
-  cols.push(...rimRailing(gRail, r, 0.12, [{ side: 'N', a: cx - 0.45, b: cx + 0.45 }, { side: 'S', a: cx - 0.5, b: cx + 0.5 }]));
+  cols.push(...rimRailing(gRail, r, 0.12, [{ side: 'N', a: cx - 0.52, b: cx + 0.52 }, { side: 'S', a: cx - 0.5, b: cx + 0.5 }]));
   // steps out of the pit on the south side
   cols.push(...stair(gDeck, gPost, cx + 0.45, r.z1 - 1.25, yCol, -yCol, 3, [0, 1], 0.9, 0.38));
   ballFill(level, rec, r, yBall, 120, rng);
@@ -263,10 +264,52 @@ function chairTower(level, rec, room, b, rng) {
     }
     cols.push(aabbCol(tx - 0.32, 0, tz - 0.32, tx + 0.32, H, tz + 0.32));
   }
-  instancedFurniture(level, rec, 'chair_wood', M, new THREE.Vector3(b.cx, 1.5, b.cz));
+  // detailed chairs where you can see them up close, a low-poly stacking chair for the stacks above (tens of
+  // chairs vanishing into the dark would otherwise cost ~7k triangles each)
+  const near = M.filter((m) => m.elements[13] < 2.3), far = M.filter((m) => m.elements[13] >= 2.3);
+  instancedFurniture(level, rec, 'chair_wood', near, new THREE.Vector3(b.cx, 1.5, b.cz));
+  if (far.length) {
+    const im = new THREE.InstancedMesh(lowChair(hh), lowChairMat(), far.length);
+    far.forEach((m, k) => im.setMatrixAt(k, m));
+    im.instanceMatrix.needsUpdate = true;
+    im.computeBoundingSphere();
+    im.userData.sharedGeo = true;
+    const holder = new THREE.Group();
+    holder.position.set(b.cx, 3.2, b.cz);
+    im.position.copy(holder.position).negate();
+    holder.add(im);
+    rec.group.add(holder);
+    level.prepStatic(holder, rec);
+  }
   staticBody(level, rec, cols, 'wood');
   room.towers = towers;
 }
+
+// low-poly stacking chair (frame + green seat and back, vertex coloured), origin at its bounding-box centre
+let _lowChair = null;
+function lowChair(hh) {
+  if (_lowChair) return _lowChair;
+  const parts = [];
+  const wood = new THREE.Color(0xd2b48a), seat = new THREE.Color(0x24493c);
+  const piece = (w, h, d, x, y, z, col) => {
+    const g = new THREE.BoxGeometry(w, h, d);
+    g.translate(x, y - hh, z);
+    const n = g.attributes.position.count, c = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    parts.push(g);
+  };
+  for (const sx of [-0.2, 0.2]) for (const sz of [-0.19, 0.19]) piece(0.032, 0.45, 0.032, sx, 0.225, sz, wood);
+  for (const sx of [-0.2, 0.2]) piece(0.035, 0.42, 0.035, sx, 0.66, -0.2, wood);
+  piece(0.46, 0.035, 0.44, 0, 0.46, 0, wood);
+  piece(0.42, 0.05, 0.4, 0, 0.5, 0.01, seat);
+  piece(0.42, 0.24, 0.04, 0, 0.74, -0.2, seat);
+  _lowChair = mergeGeometries(parts);
+  _lowChair.userData.shared = true;
+  return _lowChair;
+}
+let _lowChairMat = null;
+function lowChairMat() { return _lowChairMat || (_lowChairMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 })); }
 
 // --- furniture stuck to the ceiling, upside down ---
 function ceilingRoom(level, rec, room, b, rng) {
@@ -525,6 +568,6 @@ export function weirdPhotoSubject(kind) {
     slide_pit: ['THE PIT OF FUN', 80], ball_pit: ['ABANDONED PLAYROOM', 50], carpet_pit: ['SUNKEN LOUNGE', 40],
     chair_tower: ['ENDLESS STACKED CHAIRS', 85], ceiling_room: ['GRAVITY ANOMALY', 90], giant_room: ['GIANT FURNITURE', 75],
     door_corridor: ['CORRIDOR OF IDENTICAL DOORS', 60], frozen_party: ['FROZEN CELEBRATION', 85], tilted_room: ['TILTED ROOM', 80],
+    mirror_room: ['MIRRORED ROOM', 55],
   }[kind] || null;
 }
-void boxCol;

@@ -21,7 +21,13 @@ function skinFor(chunk, x, y, z, nb, out, attrOut) {
     let q = 3; while (q > 0 && tw[q - 1] < w) { tw[q] = tw[q - 1]; top[q] = top[q - 1]; q--; }
     tw[q] = w; top[q] = b;
   }
-  const s = tw[0] + tw[1] + tw[2] + tw[3] || 1;
+  const s = tw[0] + tw[1] + tw[2] + tw[3];
+  if (!(s > 1e-6)) {
+    // no sculpt weight reaches this point (a part hanging off in space): ride rigidly on the chunk's bone
+    // or the root. Zero weights would collapse the vertex and NaN its normal (black frame via bloom).
+    out[0] = chunk.bone ?? 0; out[4] = 1; out[1] = out[2] = out[3] = 0; out[5] = out[6] = out[7] = 0;
+    return;
+  }
   for (let q = 0; q < 4; q++) { out[q] = top[q]; out[4 + q] = tw[q] / s; }
 }
 

@@ -80,6 +80,24 @@ export function ceilingCell(G, baker, c, seed, cut = null) {
   }
 }
 
+// Water-logged (sagging) and missing tiles of a cell's suspended ceiling, by the same hashes ceilingCell uses:
+// [{ x, z, sag }] tile centres in world metres (the floor puddles drip from these)
+export function leakSpots(c, seed) {
+  const out = [];
+  if (!(c.ceil <= H + 0.01)) return out; // tall halls have an open deck, no tiles
+  const trof = new Set();
+  if (c.light) { if (c.lightRot) { trof.add(11); trof.add(12); } else { trof.add(7); trof.add(12); } }
+  const dmg = DAMAGE[c.zone] || DAMAGE.halls;
+  const k = c.special ? 0.4 : 1;
+  for (let b = 0; b < 5; b++) for (let a = 0; a < 5; a++) {
+    if (trof.has(b * 5 + a)) continue;
+    const h = hash01(c.i * 5 + a, c.j * 5 + b, 71, seed);
+    const missing = h < dmg[0] * k, sag = !missing && h >= (dmg[0] + dmg[1]) * k && h < (dmg[0] + dmg[1] + dmg[2]) * k;
+    if (missing || sag) out.push({ x: c.i * CELL + (a + 0.5) * TILE, z: c.j * CELL + (b + 0.5) * TILE, sag });
+  }
+  return out;
+}
+
 // recessed 2x4 troffer: enamel door frame + inner return, prismatic lens set back into the housing
 export function troffer(G, X0, Z0, X1, Z1, alongX, h, H = HEIGHT) {
   const en = G.enamel, ln = G.lens;

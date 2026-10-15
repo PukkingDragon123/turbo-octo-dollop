@@ -50,14 +50,16 @@ function sheenTint(m, k = 1.0) {
 //    and ankles, with cavity darkening in the fold valleys. Static meshes (ragdoll) get none.
 //  * a soft rim (Fresnel) lift of the clearcoat so the PVC reads as a glossy rubberised film.
 const CREASE_TEX = { value: null };
-function suitShader(m, amt = 1, rep = 1) {
+// torsoK: [a, kx, b] maps a body's rest heights / widths onto the doll's torso bands
+// (ay = y * a + b, ax = |x| * kx); the android coverall uses its own mapping
+function suitShader(m, amt = 1, rep = 1, torsoK = [1, 1, 0]) {
   CREASE_TEX.value = creaseTexture();
-  const u = { uCrease: CREASE_TEX, uCreaseRep: { value: rep }, uCreaseAmt: { value: amt } };
+  const u = { uCrease: CREASE_TEX, uCreaseRep: { value: rep }, uCreaseAmt: { value: amt }, uTorsoK: { value: new THREE.Vector3(...torsoK) } };
   m.userData.crease = u.uCreaseAmt;
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying float vJoint;')
+      .replace('#include <common>', '#include <common>\nvarying float vJoint;\nuniform vec3 uTorsoK;')
       .replace('#include <skinning_vertex>', `#include <skinning_vertex>
         #ifdef USE_SKINNING
           float jmx = max(max(skinWeight.x, skinWeight.y), max(skinWeight.z, skinWeight.w));
@@ -66,7 +68,7 @@ function suitShader(m, amt = 1, rep = 1) {
           // torso (pelvis / body / chest dominant): its weights blend over the whole belly, so use a
           // waist band, the armpits and the crotch instead (rest-space position)
           if (jdom < 2.5) {
-            float ay = position.y, ax = abs(position.x);
+            float ay = position.y * uTorsoK.x + uTorsoK.z, ax = abs(position.x) * uTorsoK.y;
             vJoint = 0.55 * exp(-pow((ay - 0.482) / 0.016, 2.0)) + 0.35 * exp(-pow((ay - 0.413) / 0.013, 2.0))
               + 0.6 * smoothstep(0.17, 0.23, ax) * smoothstep(0.58, 0.64, ay) * (1.0 - smoothstep(0.69, 0.75, ay)) * (1.0 - smoothstep(0.08, 0.16, abs(position.z)));
           } else if (jdom < 4.5) {
@@ -111,8 +113,9 @@ function fresnelGlass(m, base = 0.06, rim = 0.75) {
 }
 
 export const DM = {
-  suit(id, entry) {
-    return cached('dm_suit_' + id, () => {
+  // opts.torsoK: torso band mapping for other bodies (android coverall)
+  suit(id, entry, opts = {}) {
+    return cached('dm_suit_' + id + (opts.torsoK ? '_' + opts.torsoK.join(',') : ''), () => {
       const st = suitStyle(id, entry);
       const pvc = synth(st.tyvek ? 'doll_tyvek' : 'doll_pvc');
       const nrm = st.normal ? synth(st.normal) : pvc;
@@ -127,7 +130,7 @@ export const DM = {
         sheen: st.tyvek || st.fleeceRim ? 0.6 : 0.0, sheenRoughness: 0.7, sheenColor: new THREE.Color(0xffffff).multiplyScalar(0.35),
         envMapIntensity: 1.15,
       });
-      return suitShader(m, st.tyvek ? 0.7 : 1.0, pvc.meters / CREASE_METERS);
+      return suitShader(m, st.tyvek ? 0.7 : 1.0, pvc.meters / CREASE_METERS, opts.torsoK);
     });
   },
   burlap(hex) {

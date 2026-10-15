@@ -16,12 +16,12 @@ export default async function (ctx) {
   }
   window.__cam = (p, t) => { camera.position.set(...p); controls.target.set(...t); controls.update(); };
   const v = q.get('v') || 'all';
-  const list = v === 'all' ? ['hound', 'partygoer', 'smiler'] : [v];
+  const list = v === 'all' ? ['hound', 'partygoer', 'smiler'] : v === 'still' ? ['watcher', 'crawler', 'twin', 'mass', 'tall'] : v.split(',');
   const mons = [];
   const target = new THREE.Object3D(); target.position.set(0, 1.4, 4); scene.add(target);
   list.forEach((name, i) => {
     const m = name === 'smiler' ? buildSmiler(1 + i) : buildStillLife(name, 1 + i);
-    const x = (i - (list.length - 1) / 2) * 1.8;
+    const x = (i - (list.length - 1) / 2) * +(q.get('gap') ?? 1.8);
     m.root.position.set(x, 0, 0);
     m.root.rotation.y = Math.PI * (q.get('turn') ? +q.get('turn') : 1);
     scene.add(m.root);

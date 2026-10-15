@@ -75,7 +75,7 @@ export class EnvGeo {
     C.a[C.n++] = this._ci; C.a[C.n++] = this._cj;
     A.a[A.n++] = this.ao;
     if (this.E) { this.E.grow(2); this.E.a[this.E.n++] = this.edge0; this.E.a[this.E.n++] = this.edge1; }
-    if (this.Wt) { this.Wt.grow(1); this.Wt.a[this.Wt.n++] = this.wetFn ? this.wetFn(x, y, z) : this.wet; }
+    if (this.Wt) { this.Wt.grow(1); this.Wt.a[this.Wt.n++] = this.wetFn ? Math.max(this.wet, this.wetFn(x, y, z)) : this.wet; }
     if (this.Col) { this.Col.grow(3); this.Col.a[this.Col.n++] = this.cr; this.Col.a[this.Col.n++] = this.cg; this.Col.a[this.Col.n++] = this.cb; }
     if (this.R) { this.R.grow(1); this.R.a[this.R.n++] = this.room; }
     return this.vc++;

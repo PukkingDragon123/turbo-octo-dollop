@@ -109,13 +109,14 @@ export class NeedsWidget {
     this.cv.style.height = `${H * s}px`;
   }
 
-  // show/hide; `first` plays the long reveal the first time needs become active
+  // show/hide
   setVisible(on) {
     if (on === this.shown) return;
     this.shown = on;
     this.cv.classList.toggle('show', on);
     if (on) {
-      if (!this.revealed) { this.revealed = true; this.reveal = 0; this.revealLen = 2.8; } else { this.reveal = 0.55; this.revealLen = 1.2; }
+      // the long sew-on reveal plays once; later it simply fades back in (pause, terminals, respawn)
+      if (!this.revealed) { this.revealed = true; this.reveal = 0; this.revealLen = 2.8; } else this.reveal = 1;
     }
   }
 

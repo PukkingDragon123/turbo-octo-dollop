@@ -184,6 +184,7 @@ function balloonParts() {
   const mat = new THREE.MeshPhysicalMaterial({ color: 0xc0161a, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08, sheen: 0.3, sheenColor: new THREE.Color(1, 0.5, 0.5) });
   const sg = new THREE.CylinderGeometry(0.0015, 0.0015, 1, 4, 1, true).translate(0, 0.5, 0);
   const smat = new THREE.MeshStandardMaterial({ color: 0xe8e4dc, roughness: 0.8 });
+  merged.userData.shared = sg.userData.shared = true; // cached across worlds (World.dispose skips shared geometry)
   _bal = { geo: merged, mat, sgeo: sg, smat };
   return _bal;
 }

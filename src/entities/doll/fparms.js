@@ -1,5 +1,6 @@
-// R.O.O.M. — first-person viewmodel arms: crinkled hazmat sleeves, duct-taped black rubber
-// mittens and the chunky corporate wrist terminal on the left wrist (its 4:3 'watchScreen' plane
+// R.O.O.M. — first-person viewmodel arms: the clone android's bare ABS forearms (clamshell seams,
+// screws, a part number), rubber wrist bellows and articulated plastic hands with rubber palm pads,
+// plus the chunky corporate wrist terminal strapped to the left forearm (its 4:3 'watchScreen' plane
 // receives the watch UI canvas). Camera space: forearms point along -Z.
 //
 // buildFirstPersonArms(cosmetics, opts) -> { root, rightHand, leftHand, watchScreen, update(dt, st), dispose }
@@ -8,8 +9,9 @@ import { clamp, lerp, smooth, damp, Spring } from './kit.js';
 import { labelTexture } from '../../gfx/textures.js';
 import { valueNoise2 } from '../../core/rng.js';
 import { resolveCos, DEFAULT_COSMETICS } from './dollcos.js';
-import { dollMaterial, DM } from './dollmat.js';
-import { gloveGeo, thumbGeo, tapeWrap, GLOVE_DIM, GLOVE, TAPE } from './suit.js';
+import { robotMaterial } from './robotmat.js';
+import { handParts, HAND } from './robotbody.js';
+import { vcol, region, frameAt, screwGeo } from './robothead.js';
 import { grid, displace, tint, ensureOutward, gridArcUV, pillow, gauss, ss } from './geom.js';
 import { decalQuad, toRegion as toRegionFP } from './gear.js';
 
@@ -49,7 +51,7 @@ class FPBuilder {
 
 export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
   const cos = resolveCos(cosmetics);
-  const L = 0.34, AR = 0.064;
+  const L = 0.34, AR = 0.064, HS = 1.22;   // forearm length, terminal cuff base radius, hand scale
   const root = new THREE.Group(); root.name = 'FPArms';
   // bones
   const bones = {}, list = [];
@@ -57,8 +59,10 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
   for (const [S, s] of [['L', -1], ['R', 1]]) {
     mk('fore' + S, null, [s * 0.3, -0.4, -0.1]);
     mk('wr' + S, 'fore' + S, [0, 0, -L]);
-    mk('fing' + S, 'wr' + S, [0, 0, -0.05]);
-    mk('thumb' + S, 'wr' + S, [-s * 0.028, -0.013, -0.03]);
+    mk('fing' + S, 'wr' + S, [0, 0, -HAND.fi[1] * -HS]);
+    mk('fingT' + S, 'fing' + S, [0, 0, HAND.fj[1] * HS]);
+    mk('ix' + S, 'wr' + S, [s * HAND.ix[2] * HS, 0, HAND.ix[1] * HS]);
+    mk('thumb' + S, 'wr' + S, [-s * 0.03 * HS, -0.012 * HS, -0.03 * HS]);
     root.add(bones['fore' + S]);
   }
   root.updateMatrixWorld(true);
@@ -67,39 +71,51 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
 
   for (const [S, s] of [['L', -1], ['R', 1]]) {
     const fore = 'fore' + S, wr = 'wr' + S, fing = 'fing' + S;
-    const Mf = restMs[bones[fore].userData.i], inv = Mf.clone().invert();
-    const fw = (x, y, z) => { _v1.set(x, y, z).applyMatrix4(inv); return _v1.z; };
-    // sleeve: crinkled PVC tube along -Z, gathered at the cuff
-    const prof = (z) => { const t = clamp((0.12 - z) / (0.12 + L - 0.035), 0, 1); return AR * (1.04 - 0.1 * ss(0.75, 1, t)) ; };
-    const sl = grid(36, 40, (i, j, p) => {
-      const z = lerp(0.12, -L + 0.034, j / 40), a = (i / 36) * TAU, r = prof(z);
-      p.set(Math.cos(a) * r, Math.sin(a) * r, z).applyMatrix4(Mf);
-    }, { closedU: true });
-    ensureOutward(sl, V().setFromMatrixPosition(Mf).add(V(0, 0, -0.1).transformDirection(Mf)));
-    displace(sl, (x, y, z) => {
-      const lz = fw(x, y, z); _v2.set(x, y, z).applyMatrix4(inv); const a = Math.atan2(_v2.y, _v2.x);
-      let d = Math.sin(((lz + 0.02 * Math.sin(a * 2 + s)) / 0.055) * TAU) * 0.0035 * ss(0.05, -0.1, lz);
-      d += Math.sin((lz * 7 + a / TAU) * TAU) * 0.0025;
-      d += Math.sin(a * 13 + s) * 0.0022 * ss(-L + 0.1, -L + 0.05, lz);
-      d += nz(a * 2 + s * 5, lz * 16, 3) * 0.006;
-      return d;
-    }, { aoK: 0.18, aoAmp: 0.005 });
-    gridArcUV(sl, 1, 1);
-    B.add('suit', sl, () => [[fore, 1]]);
-    // glove: the 3P mitten remapped (hand along -Z, thumb medial, palm down)
-    const Mg = new THREE.Matrix4().set(0, 0, s, 0, s, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1);
-    const Mw = restMs[bones[wr].userData.i];
-    const gl = gloveGeo(S).applyMatrix4(Mg).applyMatrix4(Mw);
-    const winv = Mw.clone().invert();
-    B.add('rubber', gl, (x, y, z) => { const lz = _v3.set(x, y, z).applyMatrix4(winv).z; const f = ss(-0.044, -0.058, lz); const c = ss(0.004, 0.03, lz); return [[wr, (1 - f) * (1 - c) + 1e-4], [fing, f * (1 - c)], [fore, c]]; }, GLOVE);
-    const Mt = restMs[bones['thumb' + S].userData.i];
-    B.add('rubber', thumbGeo(S).applyMatrix4(Mg).applyMatrix4(Mt), () => [['thumb' + S, 1]], GLOVE);
-    // duct tape over the cuff top
-    const tw = tapeWrap(0.0728, GLOVE_DIM.cuffTop - 0.031, 0.031, { seed: s > 0 ? 4 : 1 });
-    tw.applyMatrix4(Mg).applyMatrix4(Mw);
-    B.add('tape', tw, () => [[fore, 1]], TAPE);
+    const Mf = restMs[bones[fore].userData.i];
+    // ABS forearm: elliptical clamshell along -Z, seams on both sides, tapering to the wrist
+    const prof = (z) => { const t = clamp((0.12 - z) / (0.12 + L - 0.03), 0, 1); return lerp(0.058, 0.045, ss(0.1, 0.95, t)) * (z < -L + 0.05 ? 1 - 0.35 * ss(-L + 0.05, -L + 0.022, z) : 1); };
+    const zs = (j) => lerp(0.12, -L + 0.024, j / 40);
+    const fa = grid(36, 41, (i, j, p) => {
+      const a = (i / 36) * TAU, z = j > 40 ? -L + 0.018 : zs(j), r = j > 40 ? 0 : prof(z);
+      p.set(Math.cos(a) * r, Math.sin(a) * r * 0.88, z);
+    }, { closedU: true, poleTop: true });
+    ensureOutward(fa, V(0, 0, -0.1));
+    vcol(fa, (x, y, z) => {
+      const seam = gauss(y, 0, 0.0016) * ss(0.03, 0.04, Math.abs(x));
+      const scuff = Math.max(0, nz(x * 70 + z * 40, y * 70 + s, 4) * 2 - 0.6) * 0.18;
+      return (1 - 0.55 * seam - scuff) * (0.95 + nz(x * 50, z * 50 + 3, 2) * 0.06);
+    });
+    fa.applyMatrix4(Mf);
+    B.add('shell', fa, () => [[fore, 1]]);
+    // screws + part number on the inner (medial) side, a panel line near the elbow
+    for (const z of [-0.06, -0.27]) {
+      const r = prof(z), pp = V(-s * r * 0.98, 0, z), nn = V(-s, 0, 0);
+      for (const g of screwGeo(pp, nn, 0.0032)) B.add('metal', g.applyMatrix4(Mf), () => [[fore, 1]], 0xb4b0a6);
+    }
+    {
+      const lab = region(new THREE.PlaneGeometry(0.075, 0.0095), 'serial').rotateY(-s * PI / 2).translate(-s * prof(-0.17) * 0.99, -0.012, -0.17);
+      B.add('decal', vcol(lab, 1).applyMatrix4(Mf), () => [[fore, 1]]);
+    }
+    // wrist: steel collar + rubber bellows (bends with the hand)
+    const Mw = restMs[bones[wr].userData.i], winv = Mw.clone().invert();
+    B.add('metal', vcol(new THREE.CylinderGeometry(0.036, 0.04, 0.012, 22).rotateX(PI / 2).translate(0, 0, -L + 0.026), 0.35).applyMatrix4(Mf), () => [[fore, 1]]);
+    {
+      const N = 6, pr = [];
+      for (let i = 0; i <= N; i++) pr.push(new THREE.Vector2(i % 2 ? 0.032 : 0.028, 0.02 - (i / N) * 0.036));
+      const bel = new THREE.LatheGeometry(pr, 22).rotateX(-PI / 2);
+      bel.applyMatrix4(Mw);
+      B.add('rubber', vcol(bel, 0.14), (x, y, z) => { const lz = _v3.set(x, y, z).applyMatrix4(winv).z; const k = ss(0.012, -0.012, lz); return [[fore, 1 - k + 1e-4], [wr, k]]; });
+    }
+    // articulated hand: the third-person android hand remapped (fingers along -Z, palm down, thumb medial)
+    const Mg = new THREE.Matrix4().set(0, 0, s, 0, s, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1).multiply(new THREE.Matrix4().makeScale(HS, HS, HS));
+    const boneOf = { wr: wr, fi: 'fing' + S, fj: 'fingT' + S, ix: 'ix' + S, th: 'thumb' + S };
+    for (const part of handParts(S)) {
+      const bn = boneOf[part.bone];
+      const g = part.geo.applyMatrix4(Mg).applyMatrix4(restMs[bones[bn].userData.i]);
+      B.add(part.mat, g, () => [[bn, 1]]);
+    }
   }
-  // wrist terminal on the left forearm (top, +Y), above the tape: a chunky retro Pip-Boy-style
+  // wrist terminal on the left forearm (top, +Y): a chunky retro Pip-Boy-style
   // unit. Olive-drab housing clamped round the sleeve by a ribbed cuff, a thick rounded bezel
   // around the recessed CRT (watchScreen) under a domed glass, a knurled tuning dial + selector
   // knob and status lamp on the wrist side, push buttons and the name plate on the elbow side.
@@ -116,6 +132,13 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
   tint(cuff, (x, y, z) => 0.92 + 0.08 * Math.cos((z - WZ) * 160));
   addL('plastic', cuff, OLIVE_D);
   for (const e of [-1, 1]) addL('metal', new THREE.TorusGeometry(AR + 0.0175, 0.0022, 6, 40).translate(0, 0, WZ + e * 0.061), 0x8a8e84);
+  // the unit is made for a fatter wrist: rubber packing rings wedge it onto the android's forearm
+  for (const e of [-1, 1]) {
+    const ring = new THREE.RingGeometry(0.044, AR + 0.0145, 36, 1).translate(0, 0, WZ + e * 0.0605);
+    if (e > 0) ring.rotateY(PI).translate(0, 0, 2 * (WZ + 0.0605));
+    addL('rubber', vcol(ring, 0.1), 0xffffff);
+    addL('rubber', vcol(new THREE.TorusGeometry(0.047, 0.004, 6, 30).translate(0, 0, WZ + e * 0.058), 0.12), 0xffffff);
+  }
   // main housing on top + side cheeks
   const body = pillow(0.096, 0.036, 0.138); body.translate(0, WY - 0.007, WZ);
   addL('plastic', body, OLIVE);
@@ -168,7 +191,7 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
   const meshes = [];
   for (const [key, glist] of B.lists) {
     const geo = glist.length === 1 ? glist[0] : mergeSimpleSkinned(glist);
-    const mesh = new THREE.SkinnedMesh(geo, dollMaterial(key, cos));
+    const mesh = new THREE.SkinnedMesh(geo, robotMaterial(key, cos));
     mesh.bind(skeleton, new THREE.Matrix4());
     mesh.frustumCulled = false; mesh.castShadow = false; mesh.receiveShadow = false;
     mesh.name = 'fp_' + key;
@@ -291,9 +314,9 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
     placeArm('L', stepSpring(st.sL, tmp.h, dt, lerp(140, 260, w.watch), lerp(0.45, 0.8, w.watch)), tmp.d, tmp.u);
     const curl = clamp(w.hold * 0.9 + w.use * 0.5 - w.grab * 0.6 + w.thr * 0.6, -0.5, 1);
     st.curl = damp(st.curl, curl, 12, dt);
-    bones.fingR.rotation.x = -st.curl * 1.3;
+    bones.fingR.rotation.x = -0.15 - st.curl * 1.1; bones.fingTR.rotation.x = -0.12 - st.curl * 1.0; bones.ixR.rotation.x = -0.1 - st.curl * 1.15;
     bones.thumbR.rotation.z = (w.grab * 0.5) - st.curl * 0.2;
-    bones.fingL.rotation.x = -0.25 - w.watch * 0.1;
+    bones.fingL.rotation.x = -0.3 - w.watch * 0.1; bones.fingTL.rotation.x = -0.28; bones.ixL.rotation.x = -0.22 - w.watch * 0.08;
     bones.wrR.rotation.set(-0.15 * w.grab + 0.1 * w.hold, 0, 0);
     bones.wrL.rotation.set(-0.1 * w.watch, 0, 0);
   }

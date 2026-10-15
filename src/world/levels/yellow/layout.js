@@ -194,7 +194,7 @@ const SPECIALS = [
   ['break_room', 7], ['living_room', 7], ['library', 4], ['server_room', 3], ['locker_room', 4],
   // weird rooms (rare)
   ['slide_pit', 2.6], ['ball_pit', 2.6], ['chair_tower', 1.6], ['carpet_pit', 2.2], ['tilted_room', 1.6], ['ceiling_room', 1.8],
-  ['giant_room', 1.6], ['door_corridor', 1.6], ['frozen_party', 1.8],
+  ['giant_room', 1.6], ['door_corridor', 1.6], ['frozen_party', 1.8], ['mirror_room', 2.4],
 ];
 
 // walls a room's furniture stands against: no door is cut there (it would open onto the back of a
@@ -204,7 +204,7 @@ const DOOR_AVOID = {
   storage: ['N'], chairpile: ['N'], cubicle_farm: ['N'], vent_room: ['W', 'E'], clipping: ['W', 'E'],
   bedroom: ['E', 'S'], office_room: ['N'], tv_room: ['N', 'S'], workshop: ['N'],
   break_room: ['N'], living_room: ['N', 'S'], library: ['N', 'S'], server_room: ['N', 'S'], locker_room: ['N', 'S'],
-  tilted_room: ['N', 'E', 'W'], giant_room: ['N'], ceiling_room: [], frozen_party: ['N'],
+  tilted_room: ['N', 'E', 'W'], giant_room: ['N'], ceiling_room: [], frozen_party: ['N'], mirror_room: ['N', 'S'],
 };
 
 function specialSize(kind) {
@@ -223,6 +223,7 @@ function specialSize(kind) {
     case 'ball_pit': case 'chair_tower': case 'ceiling_room': return [2, 2];
     case 'tilted_room': return [2, 3];
     case 'frozen_party': return [3, 2];
+    case 'mirror_room': return [2, 2];
     default: return [1 + (kind.length % 2), 1 + ((kind.length >> 1) % 2)];
   }
 }
@@ -416,6 +417,19 @@ function generateLayout(seed, cx, cz, variant) {
     }
   }
 
+  // --- doors that open onto the wall behind them (a cased door, ajar, on a solid wall face) ---
+  for (const c of cells) {
+    if (c.reserved || c.landmark || c.crawl || c.ceil < HEIGHT - 0.01) continue;
+    const hdw = hash01(c.i, c.j, 46, seed);
+    if (hdw > 0.022 || !['halls', 'office', 'manila', 'dark', 'lounge', 'corridors'].includes(c.zone)) continue;
+    const idx = c.lj * N + c.li;
+    const side = edgesN[idx] === W.FULL ? 'N' : edgesW[idx] === W.FULL ? 'W' : null;
+    if (!side) continue;
+    const pil = (a, b2) => layout.pillars.some((p) => p.li === a && p.lj === b2);
+    if (pil(c.li, c.lj) || (side === 'N' ? pil(c.li + 1, c.lj) : pil(c.li, c.lj + 1))) continue;
+    layout.decor.push({ kind: 'walldoor', li: c.li, lj: c.lj, side, hinge: hash01(c.i, c.j, 47, seed) < 0.5 ? -1 : 1 });
+  }
+
   // --- generic prop spawns per cell ---
   for (const c of cells) {
     if (c.reserved || c.landmark) continue;
@@ -429,7 +443,7 @@ function generateLayout(seed, cx, cz, variant) {
     const c = cell(li, lj);
     if (c.landmark || c.crawl || c.special?.pit) continue;
     if (planCell(c.i, c.j - 1) || planCell(c.i - 1, c.j)) continue;
-    const busy = (sd) => layout.decor.some((d) => d.kind === 'clip' && d.li === li && d.lj === lj && d.side === sd);
+    const busy = (sd) => layout.decor.some((d) => (d.kind === 'clip' || d.kind === 'walldoor') && d.li === li && d.lj === lj && d.side === sd);
     if (edgesN[idx] === W.FULL && !busy('N')) layout.vents.push({ li, lj, side: 'N' });
     else if (edgesW[idx] === W.FULL && !busy('W')) layout.vents.push({ li, lj, side: 'W' });
   }
@@ -478,7 +492,6 @@ function pickWall(h, h2, p) {
 
 // arrival complex: cell styling + edges
 function applyPlan(layout, seed) {
-  const N = CHUNK;
   for (const c of layout.cells) {
     const p = planCell(c.i, c.j);
     if (!p) continue;
@@ -495,7 +508,6 @@ function applyPlan(layout, seed) {
     else if (p.kind === 'apron') { c.lightMode = hash01(c.i, c.j, 32, seed) < 0.08 ? 'flicker' : 'on'; c.floor = 'carpet'; }
   }
   applyPlanEdges(layout);
-  void N;
 }
 
 function applyPlanEdges(layout) {
@@ -637,14 +649,17 @@ const VIGNETTES = {
   fridge_corner: [['fridge', -0.7, -1.0, 0], ['water_cooler', 0.2, -1.1, 0], ['trash_can', 0.9, -1.05, 0]],
   copier: [['photocopier', 0, -0.95, 0], ['box_small', 0.8, -0.9, 0.3]],
   server: [['server_rack', -0.45, -0.9, 0], ['server_rack', 0.45, -0.9, 0]],
+  // subtly wrong: rows of chairs set out facing whoever walks in; an armchair staring into the corner
+  audience: [['chair_wood', -0.7, -0.6, 0], ['chair_wood', 0, -0.6, 0], ['chair_wood', 0.7, -0.6, 0], ['chair_wood', -0.7, 0.35, 0], ['chair_wood', 0, 0.35, 0], ['chair_wood', 0.7, 0.35, 0]],
+  corner_stare: [['armchair', -0.85, -0.85, Math.PI * 0.75], ['lamp_floor', 0.9, -1.05, 0]],
 };
 
 // Which vignettes a zone uses: [vignette, weight]; null = loose clutter only
 const ZONE_VIGNETTES = {
-  halls: [['lounge_set', 1], ['armchair_pair', 1.2], ['break_nook', 1.2], ['storage_stack', 1.5], ['shelf_wall', 1], ['desk_pod', 0.8], ['vending_pair', 0.6], ['cabinet_row', 1], ['dresser_set', 0.5], ['tv_corner', 0.6], ['arcade', 0.25], ['piano_corner', 0.2], ['lockers', 0.4], ['fridge_corner', 0.3]],
-  manila: [['lounge_set', 1.4], ['armchair_pair', 1.4], ['shelf_wall', 1.2], ['dresser_set', 1], ['bedroom_set', 0.6], ['piano_corner', 0.4], ['cabinet_row', 1]],
-  dark: [['storage_stack', 1.5], ['break_nook', 1], ['bedroom_set', 0.6], ['lockers', 0.7], ['armchair_pair', 0.7], ['vending_pair', 0.4]],
-  office: [['desk_pod', 3], ['office_machines', 1.5], ['copier', 0.6], ['cabinet_row', 1], ['break_nook', 0.7], ['shelf_wall', 0.6], ['server', 0.25], ['vending_pair', 0.3]],
+  halls: [['lounge_set', 1], ['armchair_pair', 1.2], ['break_nook', 1.2], ['storage_stack', 1.5], ['shelf_wall', 1], ['desk_pod', 0.8], ['vending_pair', 0.6], ['cabinet_row', 1], ['dresser_set', 0.5], ['tv_corner', 0.6], ['arcade', 0.25], ['piano_corner', 0.2], ['lockers', 0.4], ['fridge_corner', 0.3], ['audience', 0.25], ['corner_stare', 0.25]],
+  manila: [['lounge_set', 1.4], ['armchair_pair', 1.4], ['shelf_wall', 1.2], ['dresser_set', 1], ['bedroom_set', 0.6], ['piano_corner', 0.4], ['cabinet_row', 1], ['corner_stare', 0.5], ['audience', 0.3]],
+  dark: [['storage_stack', 1.5], ['break_nook', 1], ['bedroom_set', 0.6], ['lockers', 0.7], ['armchair_pair', 0.7], ['vending_pair', 0.4], ['audience', 0.6], ['corner_stare', 0.6]],
+  office: [['desk_pod', 3], ['office_machines', 1.5], ['copier', 0.6], ['cabinet_row', 1], ['break_nook', 0.7], ['shelf_wall', 0.6], ['server', 0.25], ['vending_pair', 0.3], ['audience', 0.35]],
   lounge: [['lounge_set', 2.5], ['armchair_pair', 2], ['tv_corner', 1.5], ['dresser_set', 1], ['bedroom_set', 0.6], ['piano_corner', 0.5], ['arcade', 0.4], ['shelf_wall', 1], ['fridge_corner', 0.5]],
   pillars: [['break_nook', 1], ['armchair_pair', 1], ['storage_stack', 1]],
   atrium: [['lounge_set', 1.2], ['armchair_pair', 1.2], ['vending_pair', 0.8], ['arcade', 0.4], ['break_nook', 1], ['piano_corner', 0.4]],
@@ -667,7 +682,7 @@ function addVignette(layout, c, name, rng, seed) {
     const s = sides[Math.floor(hash01(c.i, c.j, 65, seed) * sides.length)];
     rot = s === 'N' ? 0 : s === 'S' ? Math.PI : s === 'W' ? Math.PI / 2 : -Math.PI / 2;
   } else {
-    if (name === 'vending_pair' || name === 'lockers' || name === 'shelf_wall' || name === 'piano_corner' || name === 'fridge_corner' || name === 'copier' || name === 'server' || name === 'cabinet_row' || name === 'dresser_set') return false;
+    if (name === 'vending_pair' || name === 'lockers' || name === 'shelf_wall' || name === 'piano_corner' || name === 'fridge_corner' || name === 'copier' || name === 'server' || name === 'cabinet_row' || name === 'dresser_set' || name === 'corner_stare') return false;
     rot = Math.floor(hash01(c.i, c.j, 66, seed) * 4) * Math.PI / 2;
   }
   const ccx = c.li * CELL + CELL / 2, ccz = c.lj * CELL + CELL / 2;
@@ -702,7 +717,7 @@ function spawnZoneProps(layout, c, rng, seed) {
     layout.decor.push({ kind: 'sunk', li: c.li, lj: c.lj, type: rng.pick(['chair_wood', 'table_folding', 'chair_office', 'filing_cabinet']), depth: rng.range(0.25, 0.5), rot: rng.next() * 6.28, tilt: rng.range(-0.22, 0.22) });
     return;
   }
-  if (hd < 0.01 && c.ceil >= HEIGHT) {
+  if (hd < 0.01 && c.ceil >= HEIGHT && !layout.decor.some((d) => d.kind === 'walldoor' && d.li === c.li && d.lj === c.lj)) {
     const N = CHUNK, idx = c.lj * N + c.li;
     const side = layout.edgesN[idx] === W.FULL ? 'N' : layout.edgesW[idx] === W.FULL ? 'W' : null;
     // keep clear of pillars at the two corners of that wall

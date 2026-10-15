@@ -101,6 +101,14 @@ export class Hotbar {
     if (this._scale === s) return;
     this._scale = s;
     this.root.style.setProperty('--hs', `${s}px`);
+    this._sizeName();
+  }
+
+  _sizeName() {
+    if (!this._nameWH) return;
+    const s = this._scale || 2;
+    this.nameCv.style.width = `${this._nameWH[0] * s}px`;
+    this.nameCv.style.height = `${this._nameWH[1] * s}px`;
   }
 
   // touch layout hook: centre x and bottom offset (px)
@@ -248,7 +256,10 @@ export class Hotbar {
         const use = itemDef(cur.type).use;
         const verb = VERB[use] || (use ? 'USE' : '');
         const hint = verb ? (input.touch ? `ITEM: ${verb}` : `RMB: ${verb}`) : '';
-        namePix(itemLabel(cur), hint).toCanvas(this.nameCv);
+        const np = namePix(itemLabel(cur), hint);
+        np.toCanvas(this.nameCv);
+        this._nameWH = [np.w, np.h];
+        this._sizeName();
         this.nameT = first ? 0 : 2.4;
       } else this.nameT = 0;
     }

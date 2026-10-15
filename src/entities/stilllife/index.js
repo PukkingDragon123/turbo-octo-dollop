@@ -46,12 +46,66 @@ const DIMS = { watcher: [1.58, 0.32], tall: [2.38, 0.35], twin: [1.36, 0.36], cr
 const waiters = new Map();
 let workerBusy = false;
 
+// Broken-robot motion layered over every animator: poses advance in stop-motion steps (10-14 fps,
+// jittered) with the odd stutter-hold, servos twitch violently, and humanoid heads sometimes snap
+// round 180 degrees while nobody watches (and creak back later). Fewer animator updates = cheaper too.
+const TWITCH_RE = /^(head|neck|shoulder|elbow|wrist|jaw|knee|u[FMR]|l[FMR]|chest|spine)/;
+const _tq = new THREE.Quaternion(), _te = new THREE.Euler();
+function brokenMotion(key, inst, anim, seed) {
+  let s = (seed * 2654435761) >>> 0;
+  const rnd = () => { s = (s + 0x6d2b79f5) >>> 0; let t = Math.imul(s ^ (s >>> 15), s | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const twitchable = inst.bones.filter((b) => TWITCH_RE.test(b.name));
+  const heads = key === 'hound' ? [] : inst.bones.filter((b) => /^head[A-Z0-9]?$/.test(b.name));
+  const st = { acc: 0, step: 1 / 12, hold: 0, tw: null, twT: 0, twAx: [0, 0, 0], twNext: 1 + rnd() * 3, flip: 0, flipT: 0, flipBone: heads[0] || null, flipNext: 8 + rnd() * 14, first: true };
+  return (dt, state) => {
+    dt = Math.min(dt || 0, 0.1);
+    const frozen = !!state.frozen;
+    // timers run in real time
+    st.twNext -= frozen ? 0 : dt;
+    if (st.twNext <= 0 && twitchable.length) {
+      st.twNext = 0.6 + rnd() * (state.alert > 0.6 ? 1.5 : 3.5);
+      st.tw = twitchable[Math.floor(rnd() * twitchable.length)];
+      st.twT = 0.08 + rnd() * 0.22;
+      const a = 0.25 + rnd() * 0.5;
+      st.twAx = [(rnd() - 0.5) * 2 * a, (rnd() - 0.5) * 2 * a, (rnd() - 0.5) * 2 * a];
+    }
+    if (st.flipBone) {
+      st.flipNext -= frozen ? 0 : dt;
+      if (st.flipNext <= 0 && !frozen) {
+        st.flipNext = 10 + rnd() * 18;
+        st.flipT = st.flip > 0.5 ? 0 : 2.5 + rnd() * 5;   // snap round, hold, creak back
+      }
+      if (st.flipT > 0) st.flipT -= frozen ? 0 : dt;
+    }
+    // stop-motion stepping (always step on the first call so the pose exists)
+    st.acc += dt;
+    if (st.hold > 0) { st.hold -= dt; if (!st.first) return; }
+    if (!st.first && st.acc < st.step) return;
+    st.first = false;
+    anim.update(st.acc, state || {});
+    st.acc = 0;
+    st.step = 1 / (10 + rnd() * 4);
+    if (!frozen && rnd() < 0.015) st.hold = 0.25 + rnd() * 0.5;   // stutter: the film catches
+    if (st.tw && st.twT > 0) {
+      st.twT -= st.step;
+      st.tw.quaternion.multiply(_tq.setFromEuler(_te.set(st.twAx[0], st.twAx[1], st.twAx[2])));
+    }
+    if (st.flipBone) {
+      const want = st.flipT > 0 ? 1 : 0;
+      // snaps round in one or two frames; returns slowly in ratcheting steps
+      st.flip = want > st.flip ? Math.min(1, st.flip + 0.6) : Math.max(0, st.flip - 0.12 * (rnd() < 0.5 ? 1 : 0));
+      if (st.flip > 0.001) st.flipBone.quaternion.premultiply(_tq.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, st.flip * Math.PI));
+    }
+  };
+}
+
 function liveInstance(key, tpl, seed, into = null) {
   const inst = instantiate(tpl, into);
   const anim = BUILDERS[key].animator(inst, tpl, (seed | 0) || 1);
   inst.root.name = 'StillLife_' + key;
   inst.root.userData.stillLife = key;
-  const update = (dt, state) => anim.update(dt, state || {});
+  const step = brokenMotion(key, inst, anim, (seed | 0) || 1);
+  const update = (dt, state) => step(dt, state || {});
   update(0, {});
   return { root: inst.root, update, height: tpl.height, radius: tpl.radius };
 }

@@ -96,6 +96,13 @@ export function obstacles(level, x0, z0, x1, z1, out = []) {
       out.push(aabbRect(ox + h.x0 - 0.15, oz + h.z0 - 0.15, ox + h.x1 + 0.15, oz + h.z1 + 0.15));
     }
     for (const d of L.decor) {
+      if (d.kind === 'walldoor') {
+        // keep the floor in front of a wall door (and its swung leaf) clear
+        const wx = ox + d.li * CELL, wz = oz + d.lj * CELL;
+        if (d.side === 'N') out.push(aabbRect(wx + 0.0, wz, wx + 2.1, wz + 1.15));
+        else out.push(aabbRect(wx, wz + 0.9, wx + 1.15, wz + CELL));
+        continue;
+      }
       if (d.kind !== 'rack') continue;
       const rx = ox + d.li * CELL, rz = oz + d.lj * CELL;
       if (rx + CELL < x0 - 1 || rx > x1 + 1 || rz + 0.6 < z0 - 1 || rz - 0.6 > z1 + 1) continue;

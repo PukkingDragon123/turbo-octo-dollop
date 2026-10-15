@@ -285,7 +285,7 @@ export class Watch {
     if (!lvl?.visited) {
       text(a, 'HQ FLOORPLAN', 4, y0 + 2, P.hi);
       text(a, 'SUBLEVEL B4 - NO MAPPING', 4, y0 + 14, P.fg);
-      const rooms = ['RECEPTION', 'OFFICE', 'LOCKERS', 'BREAK ROOM', 'CLONING LAB', 'DISPATCH BAY'];
+      const rooms = ['RECEPTION + ELEVATOR', 'OFFICE', 'LOCKERS', 'BREAK ROOM', 'CLONING LAB', 'LOADING BAY'];
       rooms.forEach((r, i) => { a.rect(6, y0 + 28 + i * 10, 3, 3, P.dim); text(a, r, 13, y0 + 26 + i * 10, P.dim); });
       return;
     }
@@ -357,7 +357,7 @@ export class Watch {
     if (!m) {
       text(a, 'HQ ORIENTATION', 4, y, P.hi);
       y += 11;
-      for (const s of ['VISIT YOUR LOCKER', 'GRAB SNACKS: BREAK ROOM', 'READ THE ORIENTATION', 'GATHER IN DISPATCH BAY', 'PULL THE LEVER']) {
+      for (const s of ['VISIT YOUR LOCKER', 'GRAB SNACKS: BREAK ROOM', 'READ THE ORIENTATION', 'HOST: START SHIFT', 'STEP INTO THE ELEVATOR']) {
         a.frame(4, y + 1, 5, 5, P.dim);
         text(a, s, 12, y, P.fg);
         y += 10;

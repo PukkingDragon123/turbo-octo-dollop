@@ -180,7 +180,9 @@ export class HQElevator extends Device {
       this._set({ ph: 'depart', dur: DEPART_DISPATCH, riders });
     } else if (ph === 'depart' && this.phT >= this.state.dur && !this.dispatched) {
       this.dispatched = true;
-      this.world.game.hostDispatch(this.departCarry || [], undefined, { elevator: { riders: this.state.riders || [] } });
+      // outside the world update: dispatching disposes this world
+      const g = this.world.game, carry = this.departCarry || [], riders = this.state.riders || [];
+      setTimeout(() => { if (g.world === this.world) g.hostDispatch(carry, undefined, { elevator: { riders } }); }, 0);
     }
   }
 
@@ -223,15 +225,26 @@ export class HQElevator extends Device {
   }
 
   update(dt) {
+    if (this.disposed) return;
     dt = Math.min(dt, 0.1);
     this.phT += dt;
     const ph = this.state.ph, t = this.phT;
+    if (!this.started) {
+      // clones arrive at HQ in this car: ding, doors, gate
+      this.started = true;
+      if (ph === 'arrive' && t < 1) {
+        const head = this.root.localToWorld(_v.set(0, 2.2, 0.3)).clone();
+        audio.play('elevator_ding', { pos: head, volume: 0.9, delay: 0.1 });
+        audio.play('elev_doors', { pos: head, volume: 0.8, delay: 0.25 });
+        audio.play('elev_gate', { pos: head, volume: 0.9, delay: 0.8 });
+      }
+    }
     if (net.isHost) this._hostUpdate();
     // open fractions: doors first, then the gate; closing in reverse
     let door = 0, gate = 0;
     if (ph === 'board' || ph === 'arrive') {
-      door = clamp01((t - 0.15) / 0.75);
-      gate = clamp01((t - 0.75) / 0.55);
+      door = Math.max(this.doorF, clamp01((t - 0.15) / 0.75));
+      gate = Math.max(this.gateF, clamp01((t - 0.75) / 0.55));
     } else if (ph === 'depart') {
       gate = 1 - clamp01(t / 0.4);
       door = 1 - clamp01((t - 0.4) / 0.65);
@@ -279,6 +292,7 @@ export class HQElevator extends Device {
   }
 
   dispose() {
+    this.disposed = true;
     super.dispose();
     this.car.dispose();
     this.dial.dispose();

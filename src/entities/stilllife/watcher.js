@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { Sculpt, MAT } from './sdf.js';
 import { PartSet, ClothSet } from './parts.js';
 import { BoneSpec, assembleBody } from './rig.js';
-import { Frame, sackHead, headSeams, hood, face, glove, boot, tape, tapeStrip, badge, airTank, hose, zipper, tear, scar, surfPath, onSurf, hit, bead, rag, crossStitch, add3, sub3, norm3, cross3, gloveJoints, limbFolds, torsoFolds, drip, handprint } from './details.js';
+import { Frame, sackHead, headSeams, hood, face, glove, boot, tape, tapeStrip, badge, airTank, hose, zipper, tear, scar, surfPath, onSurf, hit, bead, rag, crossStitch, add3, sub3, norm3, cross3, gloveJoints, limbFolds, torsoFolds, drip, handprint, servoJoints, wires } from './details.js';
 import * as G from './geo.js';
 import { PAL, RNG, PI, TAU, clamp, lerp, smoothstep, wrapAngle } from './core.js';
 import { Spring, Hold, Saccade, tremor, rot, addRot, preRot, ik2, Planter, setWorldQuat, parentLocal } from './anim.js';
@@ -80,8 +80,9 @@ export function template() {
     body.torus(sleeveEnd, 0.05, 0.009, [0.05 * s, 0, 0.1], { bone: 'elbow' + S, k: 0.01, dirt: 0.6, noise: [0.005, 30] });
     body.fold(EL[S], 0.1, [0, 1, 0], 140, 0.005, { warp: 0.8 });
     body.fold([SH[S][0] * 0.8, 0.94, -0.12], 0.13, [s * 0.5, 1, 0], 150, 0.003, { warp: 0.5 });
-    // exposed, stretched burlap forearm
-    body.cone(sleeveEnd, [WR[S][0], WR[S][1] + 0.03, WR[S][2]], 0.034, 0.029, { bone: 'elbow' + S, mat: MAT.SKIN, col: PAL.burlapPale, k: 0.008, thin: 0.68, dirt: 0.4, ms: 4, noise: [0.002, 25] });
+    // exposed, over-stretched plastic forearm, split into too many servo segments
+    body.cone(sleeveEnd, [WR[S][0], WR[S][1] + 0.03, WR[S][2]], 0.034, 0.029, { bone: 'elbow' + S, mat: MAT.SKIN, col: PAL.burlapPale, k: 0.008, thin: 0.68, dirt: 0.4, ms: 4, noise: [0.001, 25] });
+    servoJoints(body, sleeveEnd, [WR[S][0], WR[S][1] + 0.05, WR[S][2]], 0.032, 3, { bone: 'elbow' + S, jitter: 0.2 });
   }
   for (const S of ['L', 'R']) {
     limbFolds(body, HIP[S], KN[S], 0.085, { seed: S === 'L' ? 3 : 4 });
@@ -98,6 +99,8 @@ export function template() {
   hood(body, HH, { bone: 'head', drapeBone: 'neck1', thick: 0.02, openY: 0.47, openW: 0.86, openH: 0.4, gathers: 15 });
   body.sphere(HEAD_F.p(0.0, 0.56, 0.07), 0.115, { sub: true, k: 0.015, mat: null, bone: 'head', noise: [0.025, 16] });
   body.ell(HEAD_F.p(-0.19, 0.34, -0.06), [0.07, 0.085, 0.09], HEAD_F.q, { sub: true, k: 0.012, mat: null, bone: 'head', noise: [0.022, 18] });
+  // ...and out of the back, where its second face is
+  body.ell(HEAD_F.p(0.0, 0.32, 0.2), [0.12, 0.11, 0.1], HEAD_F.q, { sub: true, k: 0.012, mat: null, bone: 'head', noise: [0.02, 18] });
   // ------------------------------------------------------------------ HEAD (stretched sack on a long neck)
   const H = sackHead(head, HEAD_F, { ...HD, bone: 'head', thin: 0.22, neckLen: 0.08, neckBone: 'neck2', col: PAL.burlap, dirt: 0.3 });
   head.ell(HEAD_F.p(0, 0.5, 0.0), [HD.w * 0.8, 0.12, HD.d * 0.85], HEAD_F.q, { bone: 'crown', mat: MAT.SKIN, col: PAL.burlap, k: 0.07, thin: 0.5 });
@@ -148,6 +151,12 @@ export function template() {
   drip(head, HEAD_F.p(-0.08, 0.31, -0.17), { n: 2, len: 0.1, w: 0.006, col: 0x2a1a10, wet: 0.5, seed: 4 });
   drip(head, [0.07, 1.16, -0.03], { n: 3, len: 0.06, w: 0.008, col: 0x4a2414, wet: 0.4, seed: 5 });
   headSeams(head, parts, H, { bone: 'head', sides: [1] });
+  // a face on the wrong side: the back of the skull stares too (two lenses and a sensor)
+  face(head, parts, { ...H, F: HEAD_F.child([0, 0, 0], [0, PI, 0]) }, {
+    bone: 'head', brows: false, grime: false,
+    eyes: [{ x: -0.06, y: 0.33, r: 0.016, socket: 0.5 }, { x: 0.065, y: 0.35, r: 0.014, socket: 0.5 }],
+    noses: [{ x: 0.0, y: 0.27, r: 0.03 }],
+  });
   // second face: one bead eye has torn through the burlap, the other is a lump under it
   head.sphere(e2a.p, 0.015, { sub: true, k: 0.004, mat: MAT.INNER, col: PAL.inner, bone: 'face2', noise: [0.003, 60] });
   bead(head, parts, add3(e2a.p, e2a.n, -0.006), e2a.n, 0.014, { bone: 'face2', ws: head, socket: 0 });
@@ -163,6 +172,7 @@ export function template() {
     const ring = [];
     for (let i = 0; i <= 16; i++) { const a = (i / 16) * TAU; ring.push(onSurf(head, [0.045 + Math.cos(a) * 0.06, 1.175 + Math.sin(a) * 0.015 + Math.cos(a) * 0.03, 0.02 + Math.sin(a) * 0.06])); }
     scar(head, parts, ring, { bone: 'neck2', size: 0.013, width: 0.005 });
+    wires(parts, ring[3].p, ring[3].n, { n: 4, len: 0.12, seed: 5, bone: 'neck2', ws: head });
   }
   // tears where the suit split
   const T = (p, o) => { const q = onSurf(body, p); return tear(body, parts, cloth, q.p, q.n, o.size, o); };
@@ -289,7 +299,8 @@ export function animator(inst, tpl, seed) {
       const l = L[i];
       tgt.copy(l.cur); tgt.y += 0.1;
       parentLocal(b['hip' + S], tgt, v);
-      ik2(b['hip' + S], b['knee' + S], b['ankle' + S], v, pole.set(0, 0, -1), bend);
+      // the right knee bends the wrong way
+      ik2(b['hip' + S], b['knee' + S], b['ankle' + S], v, pole.set(0, 0, S === 'R' ? 1 : -1), bend);
       // keep the boot level with the floor, toe follows the root's facing
       inst.root.getWorldQuaternion(fwdQ);
       setWorldQuat(b['ankle' + S], fwdQ.multiply(q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, l.t < 1 ? Math.sin(l.t * PI) * -0.2 : 0)));
@@ -323,7 +334,8 @@ export function animator(inst, tpl, seed) {
       const swing = st.arm[i].step(tdt, (s.moving ? Math.sin(st.t * 9 + i * PI) * 0.06 : 0) - lean * 0.6 + st.armRaise[i] * 0.9);
       const up = swing + strike * 1.75;
       rot(b['shoulder' + S], up, 0, sg * (0.03 + strike * 0.1));
-      rot(b['elbow' + S], -strike * 0.1 - st.armRaise[i] * 0.15, 0, 0);
+      // the left elbow is hyper-extended backwards
+      rot(b['elbow' + S], -strike * 0.1 - st.armRaise[i] * 0.15 - (i ? 0 : 0.55), 0, 0);
       rot(b['wrist' + S], strike * 0.5, 0, 0);
     }
     // ---------------- fingers: ripple one after another; splay on the strike

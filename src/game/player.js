@@ -498,7 +498,13 @@ export class LocalPlayer {
       if (tca > 0 && tca < 2.2 && oc.lengthSq() - tca * tca < 0.05) focus = { kind: 'healthity', target: bot, prompt: `[${input.keyName('interact')}] Pat Healthity`, hit: null };
     }
     // empty hand: furniture shows its name, pad value and what the built-in multitool would do
-    if (focus && focus.kind === 'propinfo' && !this._handItemUse()) focus.prompt = this.game.tools.mtPrompt(focus.target, this);
+    if (!this._handItemUse()) {
+      if (focus && focus.kind === 'propinfo') focus.prompt = this.game.tools.mtPrompt(focus.target, this);
+      else if (!focus || !focus.prompt) {
+        const part = this.game.tools._campPartNearRay(hit ? hit.dist : REACH); // thin tent parts are easy to miss
+        if (part) focus = { kind: 'propinfo', target: part, prompt: this.game.tools.mtPrompt(part, this), hit: null };
+      }
+    }
     this.focus = focus;
     this.lookHit = hit;
 
@@ -591,6 +597,14 @@ export class LocalPlayer {
         } else if (hit.ud.kind === 'remote' && hit.ud.remote && !hit.ud.remote.dead) {
           this.grab = { remote: hit.ud.remote.id, dist: clamp(hit.dist, 1.0, 2.5), sendT: 0, t: 0 };
           audio.play('grab', { volume: 0.4, pos: hit.point });
+        }
+      }
+      if (!this.grab) {
+        // thin tent parts are easy to miss: grab one the ray passes close to by its centre
+        const part = this.game.tools._campPartNearRay(hit ? hit.dist : GRAB_REACH);
+        if (part?.body) {
+          this.grab = { id: part.id, lp: new THREE.Vector3(), dist: clamp(part.root.position.distanceTo(cam.position), 0.9, GRAB_REACH), sendT: 0, t: 0 };
+          audio.play('grab', { volume: 0.4, pos: part.root.position });
         }
       }
     }

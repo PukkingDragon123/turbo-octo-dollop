@@ -1,10 +1,10 @@
 // Still Lifes — materials. The body is one skinned mesh whose per-vertex material weights blend
-// burlap skin, hazmat fabric, black rubber, felt/stuffing and wet interior in a single draw call,
+// cracked ivory plastic shell (the clones are robots; channel still called 'skin'), hazmat fabric, black rubber, felt/stuffing and wet interior in a single draw call,
 // textured triplanar in bind-pose space (so detail sticks to the skin while it bends and stretches).
 // Parts (beads, thread, badges, tanks, tape…) share one atlas material with per-vertex PBR values.
 // Both stay MeshPhysicalMaterial so the level's probe lighting patch (bakedlight.applyProbe) works.
 import * as THREE from 'three';
-import { burlapTex, hazmatTex, fluffTex, grimeTex } from './textures.js';
+import { shellTex, hazmatTex, fluffTex, grimeTex } from './textures.js';
 import { atlasTextures } from './atlas.js';
 
 const cache = new Map();
@@ -53,7 +53,7 @@ float slSheen;
 float slSheenTint;
 `;
 // scales: tiles per metre
-const SC = { B: 1 / 0.1, H: 1 / 0.34, F: 1 / 0.07, G: 1 / 0.9, R: 1 / 0.6 };
+const SC = { B: 1 / 0.3, H: 1 / 0.34, F: 1 / 0.07, G: 1 / 0.9, R: 1 / 0.6 };
 const BODY_FRAG_MAP = /* glsl */`
   vec3 slN0 = normalize( vTN );
   vec3 slW = pow( abs( slN0 ), vec3( 4.0 ) ); slW /= ( slW.x + slW.y + slW.z );
@@ -73,11 +73,11 @@ const BODY_FRAG_MAP = /* glsl */`
   float wSk = max( 0.0, 1.0 - wSuit - wRub - wFl - wIn );
   float slThin = vMisc.y, slWet = vMisc.z, slDirt = vMisc.w;
   vec3 slBase = vColor.rgb;
-  // burlap: threads + gaps that open up where the sack is stretched thin
-  float slGap = 1.0 - smoothstep( 0.03 + slThin * 0.45, 0.16 + slThin * 0.5, sB.g );
-  vec3 cSk = slBase * ( 0.32 + sB.r * 0.72 );
-  vec3 slGapC = mix( slBase * 0.35, vec3( 0.02, 0.014, 0.01 ), slThin );
-  cSk = mix( cSk, slGapC, slGap * ( 0.3 + 0.65 * slThin ) );
+  // ivory plastic shell: moulded, scuffed, crazed with hairline cracks that open up where it is stressed
+  // (thin), deep cracks everywhere; the cracks are black inside
+  float slGap = 1.0 - smoothstep( 0.04 + slThin * 0.5, 0.12 + slThin * 0.55, sB.g );
+  vec3 cSk = slBase * ( 0.86 + ( sB.r - 0.9 ) * 0.9 );
+  cSk = mix( cSk, vec3( 0.018, 0.014, 0.011 ), slGap * ( 0.7 + 0.3 * slThin ) );
   // hazmat: mottled coating, grime packed into creases
   vec3 cSu = slBase * ( 0.92 + ( sH.r - 0.92 ) * 1.2 ) * ( 1.0 - sH.g * ( 0.06 + slDirt * 0.18 ) ) * ( 0.8 + sG.r * 0.4 );
   vec3 cRu = slBase * ( 0.85 + ( sR.r - 0.9 ) * 0.8 + sG.b * 0.25 );
@@ -88,15 +88,15 @@ const BODY_FRAG_MAP = /* glsl */`
   float slGm = smoothstep( 0.4, 0.8, sG.a * 0.7 + sG.r * 0.55 - 0.1 + slDirt * 0.4 ) * ( 0.3 + slDirt * 0.6 ) * ( 1.0 - wIn );
   slC *= mix( vec3( 1.0 ), vec3( 0.5, 0.41, 0.3 ), slGm );
   diffuseColor.rgb *= slC;
-  slRough = ( 0.93 - sB.g * 0.08 ) * wSk + ( 0.66 + sH.g * 0.15 + slGm * 0.2 + ( sG.r - 0.5 ) * 0.2 ) * wSuit + ( 0.42 + sG.b * 0.3 ) * wRub + 1.0 * wFl + 0.5 * wIn;
+  slRough = ( 0.34 + ( 0.92 - sB.r ) * 1.2 + slGap * 0.5 + slDirt * 0.25 ) * wSk + ( 0.66 + sH.g * 0.15 + slGm * 0.2 + ( sG.r - 0.5 ) * 0.2 ) * wSuit + ( 0.42 + sG.b * 0.3 ) * wRub + 1.0 * wFl + 0.5 * wIn;
   slRough = mix( slRough, 0.14, clamp( slWet, 0.0, 1.0 ) );
-  slCoat = clamp( slWet * 0.95 * ( 1.0 - wIn * 0.75 ) + wRub * 0.18 + wIn * 0.12, 0.0, 1.0 );
-  slSheen = ( wSk * 0.3 + wFl * 0.45 + wSuit * 0.1 ) * ( 1.0 - slWet );
+  slCoat = clamp( slWet * 0.95 * ( 1.0 - wIn * 0.75 ) + wRub * 0.18 + wIn * 0.12 + wSk * 0.45 * ( 1.0 - slGap ) * ( 1.0 - slDirt * 0.6 ), 0.0, 1.0 );
+  slSheen = ( wFl * 0.45 + wSuit * 0.1 ) * ( 1.0 - slWet );
   slSheenTint = clamp( 0.55 + wFl * 0.4, 0.0, 1.0 );
 `;
 const BODY_FRAG_NORMAL = /* glsl */`
   {
-    float nB = 0.9 * wSk * ( 1.0 - slWet * 0.5 ), nH = 0.32 * wSuit, nR = 0.15 * wRub, nF = 1.1 * wFl;
+    float nB = 0.7 * wSk * ( 1.0 - slWet * 0.5 ), nH = 0.32 * wSuit, nR = 0.15 * wRub, nF = 1.1 * wFl;
     vec2 tX = ( bX.ba * 2.0 - 1.0 ) * nB + ( hX.ba * 2.0 - 1.0 ) * nH + ( rX.ba * 2.0 - 1.0 ) * nR + ( fX.ba * 2.0 - 1.0 ) * nF;
     vec2 tY = ( bY.ba * 2.0 - 1.0 ) * nB + ( hY.ba * 2.0 - 1.0 ) * nH + ( rY.ba * 2.0 - 1.0 ) * nR + ( fY.ba * 2.0 - 1.0 ) * nF;
     vec2 tZ = ( bZ.ba * 2.0 - 1.0 ) * nB + ( hZ.ba * 2.0 - 1.0 ) * nH + ( rZ.ba * 2.0 - 1.0 ) * nR + ( fZ.ba * 2.0 - 1.0 ) * nF;
@@ -131,7 +131,7 @@ const BODY_FRAG_AO = /* glsl */`
 
 export function bodyUniforms() {
   return once('uni', () => ({
-    tBurlap: { value: burlapTex() }, tHazmat: { value: hazmatTex() }, tFluff: { value: fluffTex() }, tGrime: { value: grimeTex() },
+    tBurlap: { value: shellTex() }, tHazmat: { value: hazmatTex() }, tFluff: { value: fluffTex() }, tGrime: { value: grimeTex() },
   }));
 }
 
@@ -163,15 +163,15 @@ function makeBody(doubleSided) {
           material.sheenColor = sheenColor * slSheen * mix( vec3( 1.0 ), clamp( diffuseColor.rgb * 2.5, 0.0, 1.0 ), slSheenTint );
         #endif
         {
-          // fibrous burlap / felt / stuffing scatter instead of reflecting: kill most specular
-          float slSpec = mix( 1.0, 0.18, clamp( wSk + wFl, 0.0, 1.0 ) * ( 1.0 - slWet ) ) * mix( 1.0, 0.7, wSuit ) * mix( 1.0, 0.25, wIn );
+          // felt / stuffing scatter instead of reflecting: kill most specular (the plastic shell keeps it)
+          float slSpec = mix( 1.0, 0.18, clamp( wFl, 0.0, 1.0 ) * ( 1.0 - slWet ) ) * mix( 1.0, 0.7, wSuit ) * mix( 1.0, 0.25, wIn );
           material.specularColor *= slSpec;
           material.specularColorBlended *= slSpec;
           material.specularF90 *= slSpec;
         }`)
       .replace('#include <aomap_fragment>', '#include <aomap_fragment>\n' + BODY_FRAG_AO);
   };
-  mat.customProgramCacheKey = () => 'stilllife_body_v1' + (doubleSided ? '_ds' : '');
+  mat.customProgramCacheKey = () => 'stilllife_body_v2' + (doubleSided ? '_ds' : '');
   return mat;
 }
 export const bodyMaterial = () => once('body', () => makeBody(false));

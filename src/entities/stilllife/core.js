@@ -88,13 +88,15 @@ export function lin(hex) {
 }
 export const mix3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 
-// Palette (sRGB hex), consistent with the player dolls but filthier
+// Palette (sRGB hex), consistent with the player clones but filthier. The clones are cheap robots now:
+// the old burlap* names are their ivory plastic shell (aged / pale / scorched); thread is steel staple wire.
 export const PAL = {
-  burlap: 0x977a52, burlapDark: 0x6e573c, burlapPale: 0xaa8f64, burlapRot: 0x55432c,
+  burlap: 0xcfc09a, burlapDark: 0xab9a76, burlapPale: 0xe2dac6, burlapRot: 0x7a6646, porcelain: 0xefe9dc,
   suit: 0xcf9f14, suitFaded: 0xbda55c, suitDirty: 0x8f7a2c, suitStain: 0x6a4a1c,
   rubber: 0x1b1a19, rubberWorn: 0x3a3733,
   tape: 0x8d8d88, tapeDirty: 0x6c6a62,
   nose: 0xd2302b, noseDirty: 0xa3271f,
   stuffing: 0xe4dccb, stuffingOld: 0xc9b98f, stuffingStain: 0x8a6440,
-  inner: 0x150d09, rust: 0x6b3518, grime: 0x3a2d20, thread: 0x2e1c12, eye: 0x09090b,
+  inner: 0x150d09, rust: 0x6b3518, grime: 0x3a2d20, thread: 0x55534e, eye: 0x09090b,
+  wireR: 0xb3221a, wireB: 0x2a5fc0, wireY: 0xe0b41c, wireG: 0x3a8a4a, copper: 0xb87333,
 };

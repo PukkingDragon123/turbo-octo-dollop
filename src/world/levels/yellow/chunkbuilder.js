@@ -20,6 +20,7 @@ import { floatingDebris } from '../../env/debris.js';
 import { tallCeiling, pendantTroffer, lowCeiling, ceilingStep } from '../../env/tall.js';
 import { rackBay } from '../../env/racks.js';
 import { signMaterial, wallSign, floorPaint } from '../../env/signs.js';
+import { WetField } from '../../env/wetness.js';
 
 export const LIGHT_TONES = [
   new THREE.Color(1.0, 0.92, 0.72),  // 0 warm fluorescent
@@ -108,11 +109,6 @@ export function makeAO(seed, variantFn) {
 function styleOfCell(c) {
   return c.roomStyle || (c.zone === 'maintenance' ? 'concrete' : c.zone === 'manila' ? 'manila' : 'wall');
 }
-function wetOfCell(c) {
-  if (c.roomStyle === 'pool') return 0;
-  if (c.zone === 'flooded') return c.water ? 1 : 0.65;
-  return c.wet * 0.6;
-}
 
 // square cast floor drain: frame, slotted grate over a dark sump, a rust bloom around it
 function floorDrain(G, x, z) {
@@ -195,20 +191,16 @@ export function buildChunk(level, cx, cz) {
     carpetCamp: new EnvGeo({ edge: true, wet: true }), carpetLounge: new EnvGeo({ edge: true, wet: true }), vct: new EnvGeo({ edge: true, wet: true }),
     ceil: new EnvGeo({ edge: true, wet: true, cap: 4096 }), enamel: new EnvGeo({ cap: 2048 }), lens: new EnvGeo(), plenum: new EnvGeo(), debris: new EnvGeo(),
     pipe: new EnvGeo(), insul: new EnvGeo(), paper: new EnvGeo(), deck: new EnvGeo({ wet: true }), rackUp: new EnvGeo(), rackBeam: new EnvGeo(), sign: new EnvGeo(),
+    door: new EnvGeo(),
   };
 
   // floor pits of special rooms (world rects)
   const holes = layout.holes.map((h) => [ox + h.x0, oz + h.z0, ox + h.x1, oz + h.z1]);
   // --- floors & ceilings ---
-  const wetAt = (x, z) => {
-    // average wetness of the cells touching a floor vertex: soft transitions instead of cell squares
-    const i0 = Math.floor((x - 0.01) / CELL), i1 = Math.floor((x + 0.01) / CELL);
-    const j0 = Math.floor((z - 0.01) / CELL), j1 = Math.floor((z + 0.01) / CELL);
-    let s = 0, n = 0;
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { s += wetOfCell(info(i, j)); n++; }
-    return s / n;
-  };
-  const F3 = fr(3);
+  // organic wetness potential (puddles under leaks, low spots, wall seeps, flooded shores): see env/wetness.js
+  const wf = new WetField(seed, info, (i, j) => baker.edgeN(i, j), (i, j) => baker.edgeW(i, j));
+  const wetAt = (x, z) => wf.at(x, z);
+  const F3 = fr(3), F6 = fr(6);
   for (const c of layout.cells) {
     const x0 = c.i * CELL, z0 = c.j * CELL;
     const g = c.floor === 'concrete' ? G.slab : c.floor === 'tile' ? G.tile : c.floor === 'vct' ? G.vct
@@ -220,7 +212,9 @@ export function buildChunk(level, cx, cz) {
     g.wetFn = g.Wt ? (x, y, z) => wetAt(x, z) : null;
     // cells over a pit: subdivide at the pit edges and leave the pit open
     const hs = holes.filter((h) => h[0] < x0 + CELL && h[2] > x0 && h[1] < z0 + CELL && h[3] > z0);
-    if (!hs.length) g.grid([x0, 0, z0 + CELL], [CELL, 0, 0], [0, 0, -CELL], [0, 1, 0], F3, F3, (x, y, z) => [x, z]);
+    // damp cells get a finer grid so the baked wetness potential follows the puddle shapes
+    const FW = g.Wt && wf.detail(c.i, c.j) ? F6 : F3;
+    if (!hs.length) g.grid([x0, 0, z0 + CELL], [CELL, 0, 0], [0, 0, -CELL], [0, 1, 0], FW, FW, (x, y, z) => [x, z]);
     else {
       const us = new Set(F3), vs = new Set(F3);
       for (const h of hs) {
@@ -238,8 +232,13 @@ export function buildChunk(level, cx, cz) {
     if (c.ceil > HEIGHT + 0.01) {
       tallCeiling(G, c, seed, (di, dj) => info(c.i + di, c.j + dj));
       if (!c.noPendant) pendantTroffer(G, c, seed, c.ceil);
-    } else if (c.ceil < HEIGHT - 0.01) lowCeiling(G, baker, c, seed);
-    else ceilingCell(G, baker, c, seed, null);
+    } else {
+      // stains on the ceiling over the puddles (the tile shader stains more tiles where it is wet)
+      G.ceil.wetFn = wf.touches(c.i, c.j) ? (x, y, z) => wetAt(x, z) * 0.9 : null;
+      if (c.ceil < HEIGHT - 0.01) lowCeiling(G, baker, c, seed);
+      else ceilingCell(G, baker, c, seed, null);
+      G.ceil.wetFn = null;
+    }
     if (c.water) rec.waterCells.push(c);
   }
 
@@ -247,8 +246,11 @@ export function buildChunk(level, cx, cz) {
   const ctx = {
     G, seed, colliders: rec.colliders, fixtures: true,
     styleOf: (i, j) => styleOfCell(info(i, j)),
-    wetOf: (i, j) => wetOfCell(info(i, j)),
+    // rising damp follows the smooth wetness field at the wall's foot (not the cell squares)
+    wetOf: () => 0,
   };
+  const wallWet = (x, y, z) => wetAt(x, z) * 0.85;
+  for (const k of ['wall', 'manila', 'concrete']) G[k].wetFn = wallWet;
   const gWall = (style) => G[style] || G.wall;
   for (const c of layout.cells) {
     const tN = layout.edgesN[c.lj * N + c.li];
@@ -260,6 +262,7 @@ export function buildChunk(level, cx, cz) {
     if (cN.ceil !== c.ceil) ceilingStep(gWall, rec.colliders, c.i, c.j, 'x', tN, cN, c, styleOfCell);
     if (cW.ceil !== c.ceil) ceilingStep(gWall, rec.colliders, c.i, c.j, 'z', tW, cW, c, styleOfCell);
   }
+  for (const k of ['wall', 'manila', 'concrete']) G[k].wetFn = null;
   for (const p of layout.pillars) {
     const i = cx * N + p.li, j = cz * N + p.lj;
     let h = HEIGHT;
@@ -274,6 +277,8 @@ export function buildChunk(level, cx, cz) {
     if (d.kind === 'pipes') {
       const i = cx * N + d.li, j = cz * N + d.lj;
       pipeRun(G, i, j, hash01(i, j, 81, seed), solidW(i, j), solidW(i + 1, j), 'x');
+    } else if (d.kind === 'walldoor') {
+      wallDoor(G, rec, cx * N + d.li, cz * N + d.lj, d.side, d.hinge);
     } else if (d.kind === 'rack') {
       // warehouse racking on the cell's N edge line; posts shared with the bay to the west
       const i = cx * N + d.li, j = cz * N + d.lj;
@@ -290,7 +295,8 @@ export function buildChunk(level, cx, cz) {
       if (hd < 0.22) floorDrain(G, c.i * CELL + 0.6 + hd * 7.5, c.j * CELL + 0.6 + hash01(c.i, c.j, 84, seed) * 1.8);
     }
   }
-  if (rec.waterCells.length) floatingDebris(G, rec.waterCells, seed);
+  // debris floats only where the water reaches all around (the shore cells' water sinks under the carpet)
+  if (rec.waterCells.length) floatingDebris(G, rec.waterCells.filter((c) => [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]].every(([di, dj]) => info(c.i + di, c.j + dj).water)), seed);
   wayfinding(G.sign, layout, info, seed);
   lap('geo');
 
@@ -345,6 +351,7 @@ export function buildChunk(level, cx, cz) {
   add(G.rackUp, rackUpMat(), 0, { quant: 0.3, cast: true });
   add(G.rackBeam, rackBeamMat(), 0, { quant: 0.3, cast: true });
   add(G.sign, signMaterial(), 0, { quant: 0.3 });
+  add(G.door, doorLeafMat(), 0, { quant: 0.2, cast: true });
   // faint light shafts in the humid air under each fixture
   if (level.hazeOn !== false) {
     const haze = lightVolumes(layout, level);
@@ -356,8 +363,13 @@ export function buildChunk(level, cx, cz) {
   if (rec.waterCells.length) {
     const wg = new EnvGeo({ cap: 512 });
     for (const c of rec.waterCells) {
-      wg.grid([c.i * CELL, 0.09, (c.j + 1) * CELL], [CELL, 0, 0], [0, 0, -CELL], [0, 1, 0], fr(2), fr(2), (x, y, z) => [x, z]);
+      // next to dry cells the surface dips under the floor along a noisy contour: an organic shoreline
+      const shore = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]].some(([di, dj]) => !info(c.i + di, c.j + dj).water);
+      const v0 = wg.vc;
+      wg.grid([c.i * CELL, 0.09, (c.j + 1) * CELL], [CELL, 0, 0], [0, 0, -CELL], [0, 1, 0], shore ? fr(8) : fr(2), shore ? fr(8) : fr(2), (x, y, z) => [x, z]);
+      if (shore) for (let v = v0; v < wg.vc; v++) wg.P.a[v * 3 + 1] = wf.waterY(wg.P.a[v * 3], wg.P.a[v * 3 + 2], c);
     }
+    wg.bmin[1] = -0.1;
     const geo = wg.build();
     bakeGeometry(geo, new THREE.Matrix4(), level.lightsNear, level.occluder, level.ao, { bounce: 0.5 });
     const mesh = new THREE.Mesh(geo, level.waterMaterial);
@@ -424,6 +436,11 @@ export function buildChunk(level, cx, cz) {
     cols.push(phys.addStaticBox((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2,
       (b.max.x - b.min.x) / 2, (b.max.y - b.min.y) / 2, (b.max.z - b.min.z) / 2, ud));
   }
+  if (rec.descCols?.length) {
+    const res = phys.addStaticCollidersFromDesc(rec.descCols, _dp.set(0, 0, 0), _dq.identity(), { kind: 'static', surface: 'wood' });
+    cols.push(...res.colliders);
+    (rec.extraBodies = rec.extraBodies || []).push(res.body);
+  }
   for (const [desc, o] of decorCols) {
     o.updateMatrixWorld(true);
     o.matrixWorld.decompose(_dp, _dq, _ds);
@@ -439,12 +456,56 @@ export function buildChunk(level, cx, cz) {
 }
 
 // ---------------------------------------------------------------------------
+// A door that opens onto the wall behind it: cased frame on a solid wall face, the six-panel leaf standing ajar
+// into the room; inside the frame there is nothing but more wallpaper.
+let _doorLeaf = null;
+function doorLeafMat() { return _doorLeaf || (_doorLeaf = Mat.make('trim', { color: 0xd8c4a8 })); }
+const _wm = new THREE.Matrix4(), _wl = new THREE.Matrix4();
+function wallDoor(G, rec, i, j, side, hinge) {
+  const uc = 1.0, dw = 0.46, dh = 2.04, cw = 0.065;
+  // local frame: wall face at w = 0 (room at +w), u along the wall, y up
+  if (side === 'N') _wm.makeTranslation(i * CELL, 0, j * CELL + T / 2);
+  else _wm.makeTranslation(i * CELL + T / 2, 0, (j + 1) * CELL).multiply(_wl.makeRotationY(Math.PI / 2));
+  const tr = G.trim, dr = G.door, mt = G.metal;
+  const t0 = tr.vc;
+  tr.ao = 1;
+  // casing + jamb liners (the reveal is only 4 cm deep: there is wall right behind)
+  tr.chamferBox(uc - dw - cw, 0, 0, uc - dw, dh + cw, 0.03, 0.005, 'pz', { nz: true, ny: true });
+  tr.chamferBox(uc + dw, 0, 0, uc + dw + cw, dh + cw, 0.03, 0.005, 'pz', { nz: true, ny: true });
+  tr.chamferBox(uc - dw - cw, dh, 0, uc + dw + cw, dh + cw, 0.03, 0.005, 'pz', { nz: true });
+  tr.box(uc - dw, 0, 0, uc - dw + 0.012, dh, 0.04, { nz: true, ny: true });
+  tr.box(uc + dw - 0.012, 0, 0, uc + dw, dh, 0.04, { nz: true, ny: true });
+  tr.box(uc - dw, dh - 0.012, 0, uc + dw, dh, 0.04, { nz: true });
+  tr.transformRange(t0, _wm);
+  // the leaf, built closed in the frame, then swung open about its hinge
+  const d0 = dr.vc, k0 = mt.vc;
+  const hu = uc + hinge * dw, ang = hinge * 1.25;
+  dr.ao = 1;
+  dr.chamferBox(uc - dw + 0.004, 0.012, 0.0, uc + dw - 0.004, dh - 0.006, 0.04, 0.006, 'pz', {});
+  for (const [u0, u1] of [[-0.36, -0.04], [0.04, 0.36]]) for (const [v0, v1] of [[0.14, 0.86], [0.98, 1.56], [1.68, 1.92]]) {
+    dr.chamferBox(uc + u0, v0, 0.038, uc + u1, v1, 0.046, 0.005, 'pz', { nz: true });
+  }
+  const kx = uc - hinge * (dw - 0.07);
+  mt.tube('z', 0.04, 0.09, kx, 1.0, 0.009, 8);
+  mt.tube('z', 0.085, 0.11, kx, 1.0, 0.027, 10, [true, true]);
+  const swing = new THREE.Matrix4().makeTranslation(hu, 0, 0.02).multiply(new THREE.Matrix4().makeRotationY(ang)).multiply(new THREE.Matrix4().makeTranslation(-hu, 0, -0.02));
+  const M = _wm.clone().multiply(swing);
+  dr.transformRange(d0, M);
+  mt.transformRange(k0, M);
+  // the leaf's collider (rotated box)
+  const c = new THREE.Vector3(uc, dh / 2, 0.02).applyMatrix4(M);
+  const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().extractRotation(M));
+  const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
+  (rec.descCols = rec.descCols || []).push({ type: 'box', size: [dw * 2, dh, 0.05], pos: c.toArray(), rot: [e.x, e.y, e.z] });
+}
+
+// ---------------------------------------------------------------------------
 // Wayfinding: signs and floor markings of the arrival complex, plus blue TELEPORT PADS plates on maze walls in the
 // chunks around it (the arrow points the way to the pad hall as the crow flies)
 const SIGN_RANGE = 96; // metres from the pad hall
 function wayfinding(g, layout, info, seed) {
   const N = CHUNK;
-  const pad = LANDMARKS.padHall, camp = LANDMARKS.camp, el = LANDMARKS.elevator;
+  const pad = LANDMARKS.padHall;
   const T2 = T / 2;
   // --- arrival complex: fixed set (each placed by the chunk that owns that wall) ---
   const own = (i, j) => i >= layout.cx * N && i < layout.cx * N + N && j >= layout.cz * N && j < layout.cz * N + N;
@@ -492,7 +553,6 @@ function wayfinding(g, layout, info, seed) {
   if (inChunk(LANDMARKS.passage.x, LANDMARKS.passage.z)) {
     for (let k = 0; k < 3; k++) floorPaint(g, LANDMARKS.passage.x - 2.2 + k * 2.2, LANDMARKS.passage.z, 1, 0, 0.55, 0.55, 'arrow');
   }
-  void camp; void el;
   // --- maze plates (seeded) ---
   for (const c of layout.cells) {
     if (c.landmark || c.special) continue;
@@ -506,6 +566,7 @@ function wayfinding(g, layout, info, seed) {
         const cellOn = side > 0 ? c : nb; // the cell this face looks into
         if (!cellOn || cellOn.landmark || cellOn.special || cellOn.ceil < 1.9) continue;
         if (hash01(c.i * 2 + (axis === 'x' ? 0 : 1), c.j, side > 0 ? 171 : 172, seed) > 0.045) continue;
+        if (side > 0 && layout.decor.some((d) => d.kind === 'walldoor' && d.li === c.li && d.lj === c.lj && d.side === (axis === 'x' ? 'N' : 'W'))) continue;
         const plane = (axis === 'x' ? c.j : c.i) * CELL + side * T2;
         const along = (axis === 'x' ? c.i : c.j) * CELL + CELL / 2;
         const sx = axis === 'x' ? along : plane, sz = axis === 'x' ? plane : along;

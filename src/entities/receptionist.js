@@ -1,15 +1,17 @@
-// GLORIA, R.O.O.M. reception unit RX-07: a 1990s corporate android receptionist seated behind the HQ
-// reception desk. Ivory plastic shell with seams and screws, a porcelain face plate with a calm painted
-// smile and a hinged ventriloquist jaw, glowing LED eyes under articulated eyelid shutters, a molded
-// auburn bob, a headset, a navy blazer with shoulder pads over the robot torso, a silk scarf and
-// articulated fingers. She types, breathes, blinks, tracks the nearest clone, twitches now and then and
-// turns to stare at you whenever nobody is looking.
+// GLORIA, R.O.O.M. reception unit RX-07: a cheap, mass-produced 1990s corporate android receptionist
+// seated behind the HQ reception desk. Yellowed injection-moulded ABS with mould lines, scuffs and zinc
+// Phillips screws, mismatched replacement parts (a whiter left hand and jaw, a grey knee, one grey
+// finger), a pad-printed face plate with off-register make-up and a hinged ventriloquist jaw, LED eyes
+// under eyelid shutters (one LED older and dimmer), a crooked synthetic wig, a headset, a polyester
+// blazer over the plastic torso, a silk scarf and a printed paper name badge. She types, breathes,
+// blinks, tracks the nearest clone, twitches now and then and turns to stare at you whenever nobody is
+// looking. Her lines are projected as a flickering cyan scanline hologram from a shoulder projector.
 //
 // Talking to her ([E]) replaces the old dispatch lever: she greets you by name, explains the job the
 // first time, offers "Dispatch now?" and, on a second [E], presses the gate button that opens the HQ
-// elevator (host-authoritative through the lobby's elevator).
+// elevator (host-authoritative through the lobby's elevator; level.requestDispatch() does the same).
 //
-// Root origin: on the floor under her seat, facing +Z (towards the visitors). ~24 draw calls: geometry
+// Root origin: on the floor under her seat, facing +Z (towards the visitors). ~26 draw calls: geometry
 // is merged per moving part and material; all fingers are two InstancedMeshes.
 import * as THREE from 'three';
 import { net } from '../net/net.js';
@@ -28,8 +30,8 @@ const gauss = (x) => Math.exp(-x * x);
 const lerp = (a, b, t) => a + (b - a) * t;
 
 // palette
-const IVORY = 0xe8e0cc, IVORY_D = 0xcfc5ad, HAIR = 0x5b2618, NAVY = 0x1c2541, NAVY_L = 0x2c3866, BLACK = 0x161618;
-const RUBBER = 0x242322, CHROME = 0xd8d8d8, GOLD = 0xd9b45a, SCARF = 0x7c1830, SCARF_G = 0xc89a3c;
+const IVORY = 0xd6c8a2, IVORY_D = 0xbfae88, IVORY_NEW = 0xe8e4d6, GREY_PART = 0x9c9c96, HAIR = 0x8a4a30, NAVY = 0x1c2541, NAVY_L = 0x2c3866, BLACK = 0x18181a;
+const RUBBER = 0x262422, CHROME = 0xa9a8a0, GOLD = 0xc9a55a, SCARF = 0x7c1830, SCARF_G = 0xc89a3c;
 
 // ------------------------------------------------------------------------------------------ head shape
 // head-local: origin at the neck pivot, face towards +Z
@@ -83,6 +85,21 @@ function faceRelief(th, ph) {
   return d;
 }
 
+function plateOff(th, ph) {
+  const edge = Math.min(th - FACE.th0, FACE.th1 - th, (ph - FACE.ph0) * 1.4, FACE.ph1 - ph);
+  return 0.0012 + 0.0022 * sstep(0, 0.12, edge) + faceRelief(th, ph);
+}
+// cheap Phillips screw head on a surface (zinc plated, cross slot)
+function screw(bin, p, n, r = 0.0034) {
+  const q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), n);
+  const roll = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), Math.random() * PI);
+  q.multiply(roll);
+  bin.add(new THREE.CylinderGeometry(r, r * 1.05, r * 0.5, 12).applyQuaternion(q).translate(p.x + n.x * r * 0.25, p.y + n.y * r * 0.25, p.z + n.z * r * 0.25), 0xa4a49c);
+  for (const a of [0, PI / 2]) {
+    const g = new THREE.BoxGeometry(r * 1.4, r * 0.3, r * 0.28).rotateY(a).applyQuaternion(q);
+    bin.add(g.translate(p.x + n.x * r * 0.52, p.y + n.y * r * 0.52, p.z + n.z * r * 0.52), 0x202020);
+  }
+}
 // parametric grid from sample arrays (u along cols, v along rows) -> indexed geometry with uv
 function sgrid(us, vs, fn, keep = null) {
   const pos = [], uv = [], idx = [];
@@ -127,101 +144,142 @@ function canvas(w, h) { const c = document.createElement('canvas'); c.width = w;
 function ctex(c, srgb = true) { const t = new THREE.CanvasTexture(c); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 8; return t; }
 const FU = (th) => ((th - FACE.th0) / (FACE.th1 - FACE.th0)) * 512;
 const FV = (ph) => (1 - (ph - FACE.ph0) / (FACE.ph1 - FACE.ph0)) * 512;
+// cheap pad-printed beige plastic face: yellowed, scuffed, mould line, features printed slightly off register
 function faceTexture() {
   const c = canvas(512, 512), x = c.getContext('2d');
-  // porcelain base, warm towards the cheeks, cooler at the temples
-  const g = x.createRadialGradient(256, 250, 30, 256, 250, 330);
-  g.addColorStop(0, '#f6f0e6'); g.addColorStop(0.7, '#efe6d8'); g.addColorStop(1, '#ddd2c0');
+  const r = rng(77);
+  const g = x.createRadialGradient(256, 240, 40, 256, 250, 330);
+  g.addColorStop(0, '#e2d6b6'); g.addColorStop(0.6, '#d9caa4'); g.addColorStop(1, '#c4b088');
   x.fillStyle = g; x.fillRect(0, 0, 512, 512);
+  // yellowing blotches + mottled injection flow lines
+  for (let i = 0; i < 40; i++) { const cx = r() * 512, cy = r() * 512, rr = 20 + r() * 80; const b = x.createRadialGradient(cx, cy, 0, cx, cy, rr); b.addColorStop(0, `rgba(170,140,70,${0.05 + r() * 0.08})`); b.addColorStop(1, 'rgba(170,140,70,0)'); x.fillStyle = b; x.fillRect(cx - rr, cy - rr, rr * 2, rr * 2); }
+  x.strokeStyle = 'rgba(255,250,235,0.05)'; x.lineWidth = 6;
+  for (let i = 0; i < 12; i++) { x.beginPath(); x.moveTo(0, r() * 512); x.bezierCurveTo(170, r() * 512, 340, r() * 512, 512, r() * 512); x.stroke(); }
   const blob = (th, ph, rx, ry, col, a) => {
     const cx = FU(th), cy = FV(ph);
-    const r = x.createRadialGradient(cx, cy, 0, cx, cy, rx);
-    r.addColorStop(0, col.replace('A', a)); r.addColorStop(1, col.replace('A', 0));
+    const rg = x.createRadialGradient(cx, cy, 0, cx, cy, rx);
+    rg.addColorStop(0, col.replace('A', a)); rg.addColorStop(1, col.replace('A', 0));
     x.save(); x.translate(cx, cy); x.scale(1, ry / rx); x.translate(-cx, -cy);
-    x.fillStyle = r; x.beginPath(); x.arc(cx, cy, rx, 0, TAU); x.fill(); x.restore();
+    x.fillStyle = rg; x.beginPath(); x.arc(cx, cy, rx, 0, TAU); x.fill(); x.restore();
   };
+  // grime in the creases: around the nose wings, under the eyes, the lip corners
   for (const s of [-1, 1]) {
-    blob(s * 0.52, -0.16, 70, 46, 'rgba(214,120,120,A)', 0.22);   // blush
-    blob(s * FACE.eyeTh, FACE.eyePh + 0.04, 70, 44, 'rgba(120,90,120,A)', 0.24); // eyeshadow
-    // eyeliner almond around the eye dome
-    x.save();
-    x.translate(FU(s * FACE.eyeTh), FV(FACE.eyePh));
-    x.strokeStyle = 'rgba(30,18,16,0.85)'; x.lineWidth = 3.2;
-    x.beginPath(); x.ellipse(0, 0, 46, 29, 0, PI * 1.04, PI * 1.96); x.stroke();
-    x.lineWidth = 1.6; x.strokeStyle = 'rgba(40,24,20,0.55)';
-    x.beginPath(); x.ellipse(0, 2, 44, 26, 0, PI * 0.1, PI * 0.9); x.stroke();
-    // lashes at the outer corner
-    x.strokeStyle = 'rgba(25,14,12,0.9)'; x.lineWidth = 1.6;
-    for (let k = 0; k < 4; k++) { const a = PI * (1.62 + k * 0.09) * (s > 0 ? 1 : 1); const ex = Math.cos(a) * 46, ey = Math.sin(a) * 29; x.beginPath(); x.moveTo(s > 0 ? Math.abs(ex) : -Math.abs(ex), ey); x.lineTo((s > 0 ? Math.abs(ex) : -Math.abs(ex)) + s * 5, ey - 6); x.stroke(); }
-    x.restore();
-    // brows: thin, arched, slightly too high
-    x.strokeStyle = 'rgba(58,30,20,0.9)'; x.lineWidth = 4; x.lineCap = 'round';
-    x.beginPath();
-    x.moveTo(FU(s * 0.17), FV(0.27)); x.quadraticCurveTo(FU(s * 0.33), FV(0.37), FU(s * 0.53), FV(0.29));
-    x.stroke();
+    blob(s * 0.1, -0.24, 26, 40, 'rgba(90,70,40,A)', 0.22);
+    blob(s * FACE.eyeTh, FACE.eyePh, 52, 34, 'rgba(80,62,40,A)', 0.3);
+    blob(s * 0.3, FACE.mouth, 14, 10, 'rgba(70,50,30,A)', 0.35);
   }
-  // lips: closed, calm smile; the parting line sits exactly on the jaw split
+  // pad-printed make-up: flat toy blush dots, simple brows, outlined eyes, lipstick a bit off the lip relief
+  const off = 3; // print misregistration (px)
+  for (const s of [-1, 1]) {
+    x.fillStyle = 'rgba(205,110,100,0.24)'; x.beginPath(); x.ellipse(FU(s * 0.53) + off, FV(-0.17), 30, 20, 0, 0, TAU); x.fill();
+    x.strokeStyle = 'rgba(60,34,22,0.88)'; x.lineWidth = 4.5; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(FU(s * 0.16) + off, FV(0.27)); x.quadraticCurveTo(FU(s * 0.33) + off, FV(0.37), FU(s * 0.53) + off, FV(0.29)); x.stroke();
+    x.strokeStyle = 'rgba(60,34,22,0.25)'; x.lineWidth = 3;
+    x.beginPath(); x.moveTo(FU(s * 0.16) - 2, FV(0.27) + 3); x.quadraticCurveTo(FU(s * 0.33) - 2, FV(0.37) + 3, FU(s * 0.53) - 2, FV(0.29) + 3); x.stroke();
+    x.save(); x.translate(FU(s * FACE.eyeTh) + off, FV(FACE.eyePh));
+    x.strokeStyle = 'rgba(28,18,14,0.85)'; x.lineWidth = 3.2;
+    x.beginPath(); x.ellipse(0, 0, 46, 29, 0, PI * 1.04, PI * 1.96); x.stroke();
+    x.lineWidth = 1.6; x.strokeStyle = 'rgba(40,24,20,0.5)';
+    x.beginPath(); x.ellipse(0, 2, 44, 26, 0, PI * 0.1, PI * 0.9); x.stroke();
+    x.restore();
+  }
   const my = FV(FACE.mouth);
-  const lip = (top) => {
-    x.beginPath();
-    x.moveTo(FU(-0.28), my - 2);
-    if (top) {
-      x.bezierCurveTo(FU(-0.15), FV(-0.4), FU(-0.07), FV(-0.36), FU(0), FV(-0.385));
-      x.bezierCurveTo(FU(0.07), FV(-0.36), FU(0.15), FV(-0.4), FU(0.28), my - 2);
-      x.quadraticCurveTo(FU(0), my + 3, FU(-0.28), my - 2);
-    } else {
-      x.quadraticCurveTo(FU(0), my + 3, FU(0.28), my - 2);
-      x.bezierCurveTo(FU(0.16), FV(-0.5), FU(-0.16), FV(-0.5), FU(-0.28), my - 2);
-    }
-    x.closePath();
-    const lg = x.createLinearGradient(0, FV(-0.36), 0, FV(-0.52));
-    lg.addColorStop(0, '#a34a58'); lg.addColorStop(0.5, '#b65a66'); lg.addColorStop(1, '#8e3a48');
-    x.fillStyle = lg; x.fill();
-  };
-  lip(true); lip(false);
-  x.strokeStyle = 'rgba(70,20,30,0.9)'; x.lineWidth = 2.2;
-  x.beginPath(); x.moveTo(FU(-0.29), my - 4); x.quadraticCurveTo(FU(0), my + 4, FU(0.29), my - 4); x.stroke();
-  blob(0.02, -0.455, 18, 6, 'rgba(255,240,240,A)', 0.35); // lower lip gloss
-  // nostrils + philtrum shading
-  for (const s of [-1, 1]) blob(s * 0.035, -0.275, 7, 4, 'rgba(70,40,36,A)', 0.55);
-  blob(0, -0.33, 10, 18, 'rgba(160,120,110,A)', 0.12);
-  // beauty mark, a factory serial on the jaw line, panel seams
-  x.fillStyle = 'rgba(50,28,24,0.85)'; x.beginPath(); x.arc(FU(0.2), FV(-0.33), 2.4, 0, TAU); x.fill();
-  x.fillStyle = 'rgba(80,70,60,0.45)'; x.font = 'bold 11px "IBM Plex Mono", monospace'; x.textAlign = 'center';
-  x.save(); x.translate(FU(-0.82), FV(-0.42)); x.rotate(-1.2); x.fillText('RX-07', 0, 0); x.restore();
-  x.strokeStyle = 'rgba(60,50,40,0.35)'; x.lineWidth = 1.5;
-  for (const s of [-1, 1]) { x.beginPath(); x.moveTo(FU(s * 0.72), FV(0.4)); x.quadraticCurveTo(FU(s * 0.78), FV(0.0), FU(s * 0.66), FV(-0.4)); x.stroke(); }
-  // ventriloquist jaw cut: from the mouth corners straight down to the chin edge
+  x.fillStyle = 'rgba(150,62,70,0.85)';
+  x.beginPath(); x.moveTo(FU(-0.27) + off, my); x.bezierCurveTo(FU(-0.14) + off, FV(-0.4), FU(-0.06) + off, FV(-0.365), FU(0) + off, FV(-0.385));
+  x.bezierCurveTo(FU(0.06) + off, FV(-0.365), FU(0.14) + off, FV(-0.4), FU(0.27) + off, my); x.quadraticCurveTo(FU(0) + off, my + 4, FU(-0.27) + off, my); x.fill();
+  x.beginPath(); x.moveTo(FU(-0.27) + off, my); x.quadraticCurveTo(FU(0) + off, my + 4, FU(0.27) + off, my);
+  x.bezierCurveTo(FU(0.15) + off, FV(-0.5), FU(-0.15) + off, FV(-0.5), FU(-0.27) + off, my); x.fill();
+  x.strokeStyle = 'rgba(60,20,24,0.9)'; x.lineWidth = 2.2;
+  x.beginPath(); x.moveTo(FU(-0.29), my - 3); x.quadraticCurveTo(FU(0), my + 4, FU(0.29), my - 3); x.stroke();
+  // paint rubbed off the nose tip and the lower lip
+  x.fillStyle = 'rgba(238,228,205,0.6)'; x.beginPath(); x.ellipse(FU(0.0), FV(-0.2), 9, 6, 0, 0, TAU); x.fill();
+  x.fillStyle = 'rgba(214,200,170,0.75)'; x.beginPath(); x.ellipse(FU(0.06) + off, FV(-0.47), 9, 4, 0.3, 0, TAU); x.fill();
+  for (const s of [-1, 1]) blob(s * 0.035, -0.275, 7, 4, 'rgba(50,34,24,A)', 0.6);
+  // scuffs and scratches
+  for (let i = 0; i < 70; i++) { x.strokeStyle = `rgba(${r() < 0.6 ? '90,72,46' : '245,238,220'},${0.08 + r() * 0.22})`; x.lineWidth = 0.6 + r() * 1.4; const px = r() * 512, py = r() * 512, a = r() * PI, l = 4 + r() * 26; x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * l, py + Math.sin(a) * l); x.stroke(); }
+  // mould parting line down both sides, the ventriloquist jaw cut, factory stamp
+  x.strokeStyle = 'rgba(245,238,215,0.5)'; x.lineWidth = 1.6;
+  for (const s of [-1, 1]) { x.beginPath(); x.moveTo(FU(s * 0.93), FV(0.62)); x.quadraticCurveTo(FU(s * 0.99), FV(0.0), FU(s * 0.86), FV(-0.9)); x.stroke(); }
   x.strokeStyle = 'rgba(52,36,30,0.75)'; x.lineWidth = 2.4;
   for (const s of [-1, 1]) { x.beginPath(); x.moveTo(FU(s * FACE.jawTh), FV(FACE.mouth)); x.lineTo(FU(s * FACE.jawTh), FV(FACE.ph0)); x.stroke(); }
-  x.beginPath(); x.moveTo(FU(-FACE.jawTh), FV(FACE.mouth)); x.lineTo(FU(-0.27), FV(FACE.mouth) - 2); x.moveTo(FU(0.27), FV(FACE.mouth) - 2); x.lineTo(FU(FACE.jawTh), FV(FACE.mouth)); x.stroke();
+  x.beginPath(); x.moveTo(FU(-FACE.jawTh), FV(FACE.mouth)); x.lineTo(FU(-0.3), FV(FACE.mouth) - 2); x.moveTo(FU(0.3), FV(FACE.mouth) - 2); x.lineTo(FU(FACE.jawTh), FV(FACE.mouth)); x.stroke();
+  x.fillStyle = 'rgba(90,76,52,0.55)'; x.font = 'bold 10px "IBM Plex Mono", monospace'; x.textAlign = 'center';
+  x.save(); x.translate(FU(-0.84), FV(-0.4)); x.rotate(-1.3); x.fillText('RX-07  LOT 9411', 0, 0); x.restore();
+  x.save(); x.translate(FU(0.0), FV(-0.9)); x.fillText('MADE IN SUBLEVEL B4', 0, 0); x.restore();
   // plate edge: dark gap fading in (the seam to the skull)
   const e = x.createLinearGradient(0, 0, 512, 0);
-  e.addColorStop(0, 'rgba(40,30,24,0.9)'); e.addColorStop(0.035, 'rgba(40,30,24,0)'); e.addColorStop(0.965, 'rgba(40,30,24,0)'); e.addColorStop(1, 'rgba(40,30,24,0.9)');
+  e.addColorStop(0, 'rgba(40,30,20,0.9)'); e.addColorStop(0.03, 'rgba(40,30,20,0)'); e.addColorStop(0.97, 'rgba(40,30,20,0)'); e.addColorStop(1, 'rgba(40,30,20,0.9)');
   x.fillStyle = e; x.fillRect(0, 0, 512, 512);
   const ev = x.createLinearGradient(0, 0, 0, 512);
-  ev.addColorStop(0, 'rgba(40,30,24,0.8)'); ev.addColorStop(0.03, 'rgba(40,30,24,0)'); ev.addColorStop(0.97, 'rgba(40,30,24,0)'); ev.addColorStop(1, 'rgba(40,30,24,0.9)');
+  ev.addColorStop(0, 'rgba(40,30,20,0.8)'); ev.addColorStop(0.03, 'rgba(40,30,20,0)'); ev.addColorStop(0.97, 'rgba(40,30,20,0)'); ev.addColorStop(1, 'rgba(40,30,20,0.9)');
   x.fillStyle = ev; x.fillRect(0, 0, 512, 512);
-  // plain porcelain patch (eyelid uvs) in the top-left corner
-  x.fillStyle = '#efe7da'; x.fillRect(0, 0, 24, 24);
+  // plain patch for the eyelid uvs
+  x.fillStyle = '#d6c8a2'; x.fillRect(0, 0, 24, 24);
   return ctex(c);
 }
+// printed paper name badge in a clip-on plastic sleeve
 function badgeTexture() {
-  const c = canvas(256, 96), x = c.getContext('2d');
-  const g = x.createLinearGradient(0, 0, 0, 96); g.addColorStop(0, '#f0d890'); g.addColorStop(1, '#b08a3e');
-  x.fillStyle = g; x.fillRect(0, 0, 256, 96);
-  x.fillStyle = '#1c2541'; x.fillRect(5, 5, 246, 86);
-  x.fillStyle = '#f0d890'; x.font = 'bold 40px Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillText('GLORIA', 128, 38);
-  x.font = 'bold 15px "IBM Plex Mono", monospace'; x.fillText('RECEPTION · RX-07', 128, 72);
+  const c = canvas(256, 128), x = c.getContext('2d');
+  x.fillStyle = '#f2efe4'; x.fillRect(0, 0, 256, 128);
+  x.fillStyle = '#b8222a'; x.fillRect(0, 0, 256, 30);
+  x.fillStyle = '#fff'; x.font = 'bold 20px Arial'; x.textAlign = 'center'; x.fillText('HELLO, MY NAME IS', 128, 22);
+  x.fillStyle = '#1a1a1a'; x.font = 'bold 44px "Courier New", monospace'; x.fillText('GLORIA', 128, 76);
+  x.font = '14px "Courier New", monospace'; x.fillText('RECEPTION UNIT RX-07', 128, 104);
+  x.fillStyle = 'rgba(40,30,10,0.12)'; for (let i = 0; i < 300; i++) x.fillRect(Math.random() * 256, Math.random() * 128, 2, 1);
+  x.strokeStyle = 'rgba(0,0,0,0.35)'; x.lineWidth = 3; x.strokeRect(1, 1, 254, 126);
   return ctex(c);
+}
+// tiling worn-plastic detail (16 cm per tile): mottling, scuffs, scratches, grime specks (+ roughness)
+function wearTextures() {
+  const S = 256, c = canvas(S, S), x = c.getContext('2d'), rc = canvas(S, S), y = rc.getContext('2d');
+  const r = rng(1994);
+  x.fillStyle = '#f4f2ee'; x.fillRect(0, 0, S, S);
+  y.fillStyle = '#909090'; y.fillRect(0, 0, S, S); // roughness ~0.56
+  const wrap = (fn) => { for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) { x.save(); y.save(); x.translate(ox, oy); y.translate(ox, oy); fn(); x.restore(); y.restore(); } };
+  for (let i = 0; i < 26; i++) { const cx = r() * S, cy = r() * S, rr = 10 + r() * 40, a = 0.04 + r() * 0.07; wrap(() => { const g = x.createRadialGradient(cx, cy, 0, cx, cy, rr); g.addColorStop(0, `rgba(160,130,70,${a})`); g.addColorStop(1, 'rgba(160,130,70,0)'); x.fillStyle = g; x.fillRect(cx - rr, cy - rr, rr * 2, rr * 2); }); }
+  for (let i = 0; i < 120; i++) {
+    const px = r() * S, py = r() * S, a = r() * PI, l = 3 + r() * 22, dark = r() < 0.55, w = 0.5 + r() * 1.3, al = 0.1 + r() * 0.3;
+    wrap(() => {
+      x.strokeStyle = dark ? `rgba(70,60,45,${al})` : `rgba(255,255,250,${al})`; x.lineWidth = w;
+      x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * l, py + Math.sin(a) * l); x.stroke();
+      y.strokeStyle = `rgba(${dark ? 220 : 60},${dark ? 220 : 60},${dark ? 220 : 60},${al + 0.2})`; y.lineWidth = w + 1;
+      y.beginPath(); y.moveTo(px, py); y.lineTo(px + Math.cos(a) * l, py + Math.sin(a) * l); y.stroke();
+    });
+  }
+  for (let i = 0; i < 500; i++) { const px = r() * S, py = r() * S; x.fillStyle = `rgba(60,50,35,${0.1 + r() * 0.3})`; x.fillRect(px, py, 1, 1); y.fillStyle = 'rgba(255,255,255,0.4)'; y.fillRect(px, py, 2, 2); }
+  for (let i = 0; i < 30; i++) { const px = r() * S, py = r() * S, rr = 6 + r() * 18; y.fillStyle = `rgba(${r() < 0.5 ? 40 : 200},${r() < 0.5 ? 40 : 200},${r() < 0.5 ? 40 : 200},0.18)`; y.beginPath(); y.arc(px, py, rr, 0, TAU); y.fill(); }
+  const map = ctex(c), rough = ctex(rc, false);
+  for (const t of [map, rough]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
+  return { map, rough };
+}
+// cheap synthetic wig fibres: streaky colour + fibre normals along v
+function wigTextures() {
+  const W = 256, H = 64, c = canvas(W, H), x = c.getContext('2d');
+  const r = rng(52);
+  x.fillStyle = '#808080'; x.fillRect(0, 0, W, H);
+  for (let i = 0; i < 520; i++) { const px = r() * W, v = 90 + r() * 120; x.strokeStyle = `rgb(${v},${v},${v})`; x.lineWidth = 0.6 + r() * 1.6; x.beginPath(); x.moveTo(px, 0); x.lineTo(px + (r() - 0.5) * 3, H); x.stroke(); }
+  const col = ctex(c);
+  const src = x.getImageData(0, 0, W, H).data, out = canvas(W, H), o = out.getContext('2d'), img = o.createImageData(W, H);
+  const Hh = (i, j) => src[(((j + H) % H) * W + ((i + W) % W)) * 4] / 255;
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const dx = (Hh(i + 1, j) - Hh(i - 1, j)) * 2.5, l = Math.hypot(dx, 1), k = (j * W + i) * 4;
+    img.data[k] = (-dx / l * 0.5 + 0.5) * 255; img.data[k + 1] = 128; img.data[k + 2] = (1 / l * 0.5 + 0.5) * 255; img.data[k + 3] = 255;
+  }
+  o.putImageData(img, 0, 0);
+  const nrm = ctex(out, false);
+  for (const t of [col, nrm]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(10, 1); }
+  return { col, nrm };
+}
+function rng(seed) { let s = seed >>> 0 || 1; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; }
+function textures() {
+  if (!TX) TX = { face: faceTexture(), badge: badgeTexture(), twill: twillNormal(), wear: wearTextures(), wig: wigTextures() };
+  return TX;
 }
 // fine twill for the blazer (normal map, tiles ~8 cm)
 function twillNormal() {
   const s = 128, h = canvas(s, s), x = h.getContext('2d');
   x.fillStyle = '#808080'; x.fillRect(0, 0, s, s);
   for (let i = -s; i < s * 2; i += 6) { x.strokeStyle = 'rgba(255,255,255,0.35)'; x.lineWidth = 2.5; x.beginPath(); x.moveTo(i, 0); x.lineTo(i + s, s); x.stroke(); }
-  for (let i = 0; i < 1400; i++) { x.fillStyle = `rgba(${Math.random() < 0.5 ? 0 : 255},${Math.random() < 0.5 ? 0 : 255},${Math.random() < 0.5 ? 0 : 255},0.06)`; x.fillRect(Math.random() * s, Math.random() * s, 2, 1); }
   const src = x.getImageData(0, 0, s, s).data, out = canvas(s, s), o = out.getContext('2d'), img = o.createImageData(s, s);
   const H = (i, j) => src[(((j + s) % s) * s + ((i + s) % s)) * 4] / 255;
   for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) {
@@ -233,24 +291,24 @@ function twillNormal() {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
-function textures() {
-  if (!TX) TX = { face: faceTexture(), badge: badgeTexture(), twill: twillNormal() };
-  return TX;
-}
 
 function materials(rig) {
   const tx = textures();
   const M = {
-    shell: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0, envMapIntensity: 1.1 }),
-    face: new THREE.MeshStandardMaterial({ map: tx.face, roughness: 0.2, metalness: 0, envMapIntensity: 1.25 }),
-    cloth: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, normalMap: tx.twill, normalScale: new THREE.Vector2(0.45, 0.45), envMapIntensity: 0.6 }),
-    metal: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.22, metalness: 1, envMapIntensity: 1.3 }),
-    badge: new THREE.MeshStandardMaterial({ map: tx.badge, roughness: 0.35, metalness: 0.4 }),
+    // injection-moulded ABS: satin, scuffed, yellowed (vertex colours carry the per-panel shade)
+    shell: new THREE.MeshStandardMaterial({ vertexColors: true, map: tx.wear.map, roughnessMap: tx.wear.rough, roughness: 1.0, metalness: 0, envMapIntensity: 0.55 }),
+    face: new THREE.MeshStandardMaterial({ map: tx.face, roughnessMap: tx.wear.rough, roughness: 0.95, metalness: 0, envMapIntensity: 0.6 }),
+    cloth: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.74, metalness: 0, normalMap: tx.twill, normalScale: new THREE.Vector2(0.4, 0.4), envMapIntensity: 0.5 }),
+    metal: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.85, envMapIntensity: 0.9 }),
+    wig: new THREE.MeshStandardMaterial({ vertexColors: true, map: tx.wig.col, normalMap: tx.wig.nrm, normalScale: new THREE.Vector2(0.7, 0.7), roughness: 0.72, metalness: 0, envMapIntensity: 0.45 }),
+    badge: new THREE.MeshStandardMaterial({ map: tx.badge, roughness: 0.3, metalness: 0 }),
     glow: new THREE.MeshBasicMaterial({ vertexColors: true }),
   };
-  for (const k of ['shell', 'face', 'cloth', 'metal', 'badge']) { vlPatch(M[k], rig); M[k].name = 'rx07_' + k; }
+  // the jaw is a whiter replacement part
+  M.jaw = M.face.clone(); M.jaw.color.setRGB(1.06, 1.06, 1.1);
+  for (const k of ['shell', 'face', 'jaw', 'cloth', 'metal', 'wig', 'badge']) { vlPatch(M[k], rig); M[k].name = 'rx07_' + k; }
   M.glow.name = 'rx07_glow';
-  M.glow.color.setScalar(2.4);
+  M.glow.color.setScalar(2.0);
   return M;
 }
 
@@ -290,7 +348,7 @@ export function buildReceptionistModel(rig) {
 
   // ---------------- lower body (static): pencil skirt lap, plastic knees + shins, chrome ankles, pumps
   {
-    const cloth = new GBin(), shell = new GBin(), metal = new GBin();
+    const cloth = new GBin(), shell = new GBin({ metricAll: 6 }), metal = new GBin();
     const lap = sgrid(lin(0, TAU, 40), lin(-0.11, 0.4, 16), (th, z, p) => {
       const t = clamp((z + 0.11) / 0.51, 0, 1);
       const hw = lerp(0.15, 0.125, t) * (z < -0.05 ? Math.sqrt(1 - Math.pow((z + 0.05) / 0.06, 2) * 0.5) : 1), hh = lerp(0.08, 0.058, t);
@@ -304,7 +362,7 @@ export function buildReceptionistModel(rig) {
     cloth.add(new THREE.SphereGeometry(1, 20, 10, 0, TAU, 0, PI / 2), NAVY, T(0, 0.575, -0.11, -PI / 2, 0, 0, 0.15, 0.06, 0.08));
     for (const s of [-1, 1]) {
       const kx = s * 0.062;
-      shell.sphere(0.047, IVORY, T(kx, 0.53, 0.41), { seg: 20, rings: 12 });
+      shell.sphere(0.047, s > 0 ? GREY_PART : IVORY, T(kx, 0.53, 0.41), { seg: 20, rings: 12 });
       metal.add(new THREE.TorusGeometry(0.045, 0.004, 6, 24), RUBBER, T(kx, 0.53, 0.41, 0, PI / 2, 0));
       // shin: tapered shell with a seam groove, plastic calf
       shell.cyl(0.041, 0.03, 0.39, IVORY, T(kx, 0.31, 0.43, 0.06, 0, 0), { seg: 20 });
@@ -334,7 +392,7 @@ export function buildReceptionistModel(rig) {
   P.torso = torso;
   const TY = 0.6; // torso pivot height (geometry below is authored in root space, shifted by -TY)
   {
-    const cloth = new GBin(), shell = new GBin(), metal = new GBin();
+    const cloth = new GBin(), shell = new GBin({ metricAll: 6 }), metal = new GBin();
     const body = sgrid(lin(0, TAU, 48), lin(0.58, 1.125, 30), (th, y, p) => {
       const s = sectionAt(BODY, y);
       sePoint(s, th, p);
@@ -346,7 +404,8 @@ export function buildReceptionistModel(rig) {
     shell.add(body, IVORY, null, { shade: (x, y, z) => 0.92 + 0.08 * sstep(0.2, 0.45, y) - 0.25 * gauss(x / 0.003) * (z > 0 ? 1 : 0) });
     // sternum seam strip + screws in the V
     shell.box(0.004, 0.2, 0.003, 0x4a443a, T(0, 0.98 - TY, 0.101, -0.25, 0, 0));
-    for (const s of [-1, 1]) metal.cyl(0.0045, 0.0045, 0.003, CHROME, T(s * 0.03, 1.03 - TY, 0.086, PI / 2 - 0.4, 0, 0), { seg: 10 });
+    for (const s of [-1, 1]) screw(metal, V(s * 0.032, 1.03 - TY, 0.088), V(0, Math.sin(0.4), Math.cos(0.4)), 0.0042);
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) shell.cyl(0.0024, 0.0024, 0.002, 0x1a1814, T(-0.012 + j * 0.012, (0.985 + i * 0.012) - TY, 0.1 - i * 0.003, PI / 2 - 0.3, 0, 0), { seg: 8 });
     // blazer: front opening above y 0.8 (theta range shrinks by the V half-angle)
     const NU = 56, ys = lin(0.56, 1.13, 34);
     const coat = sgrid(lin(0, 1, NU), ys, (u, y, p) => {
@@ -384,7 +443,7 @@ export function buildReceptionistModel(rig) {
     outward(collar, V(0, 1.1 - TY, -0.01));
     cloth.add(collar, NAVY_L);
     // buttons
-    for (const y of [0.7, 0.765]) metal.cyl(0.0085, 0.0085, 0.006, GOLD, T(0, y - TY, sectionAt(COAT, y).zc + sectionAt(COAT, y).hd + bust(y, 0) + 0.003, PI / 2, 0, 0), { seg: 16 });
+    for (const y of [0.7, 0.765]) shell.cyl(0.0085, 0.0085, 0.006, BLACK, T(0, y - TY, sectionAt(COAT, y).zc + sectionAt(COAT, y).hd + bust(y, 0) + 0.003, PI / 2, 0, 0), { seg: 16 });
     // scarf: neck band, knot, two fanned tails (burgundy silk with gold diagonal stripes)
     const silk = (x, y, z) => (Math.floor((x * 0.7 + y) / 0.012) % 4 === 0 ? 1.0 : 0.62);
     const stripe = (g) => { const p = g.attributes.position.array, col = g.attributes.color.array, a = new THREE.Color(SCARF), b = new THREE.Color(SCARF_G); for (let i = 0; i < p.length / 3; i++) { const k = silk(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]) > 0.9 ? b : a; col[i * 3] = k.r; col[i * 3 + 1] = k.g; col[i * 3 + 2] = k.b; } };
@@ -402,14 +461,25 @@ export function buildReceptionistModel(rig) {
     }
     // R.O.O.M. lapel pin (right lapel = her right = -x)
     metal.cyl(0.009, 0.009, 0.004, GOLD, T(-0.085, 0.985 - TY, 0.112, PI / 2 - 0.3, 0, 0.25), { seg: 16 });
+    // holo projector clipped to her left shoulder pad: black puck, brass ring, cyan lens
+    shell.cyl(0.02, 0.023, 0.016, BLACK, T(0.12, 1.088 - TY, 0.03, -0.25, 0, -0.18), { seg: 16 });
+    metal.add(new THREE.TorusGeometry(0.014, 0.0025, 6, 18), GOLD, T(0.12 + 0.0015, 1.097 - TY, 0.032, PI / 2 - 0.25, 0, -0.18));
+    P.projGlow = new THREE.Mesh(new THREE.SphereGeometry(0.009, 12, 8, 0, TAU, 0, PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.6, 2.2, 2.4) }));
+    P.projGlow.position.set(0.1215, 1.098 - TY, 0.033);
+    P.projGlow.rotation.set(-0.25, 0, -0.18);
+    torso.add(P.projGlow);
     // shoulder joints (hidden under the pads) + arm sockets
     for (const s of [-1, 1]) metal.sphere(0.03, 0x8a8a8a, T(s * 0.17, 1.045 - TY, -0.01));
     P.torsoMeshes = [cloth.mesh(M.cloth, torso, { shadow: true }), shell.mesh(M.shell, torso, { shadow: true }), metal.mesh(M.metal, torso)];
     // name badge on her left chest
-    const badge = new THREE.Mesh(new THREE.PlaneGeometry(0.066, 0.025), M.badge);
-    badge.position.set(0.078, 0.93 - TY, 0.123);
-    badge.rotation.set(-0.12, 0.42, 0.03);
+    const badge = new THREE.Mesh(new THREE.PlaneGeometry(0.072, 0.036), M.badge);
+    badge.position.set(0.078, 0.925 - TY, 0.124);
+    badge.rotation.set(-0.12, 0.42, 0.05);
     torso.add(badge);
+    const clip = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.012, 0.003), M.metal);
+    clip.geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(clip.geometry.attributes.position.count * 3).fill(0.65), 3));
+    clip.position.set(0, 0.022, 0.001);
+    badge.add(clip);
   }
 
   // ---------------- neck (servo): rubber gaiter, chrome core, piston tendons
@@ -418,7 +488,7 @@ export function buildReceptionistModel(rig) {
   torso.add(neck);
   P.neck = neck;
   {
-    const shell = new GBin(), metal = new GBin();
+    const shell = new GBin({ metricAll: 6 }), metal = new GBin();
     const prof = [];
     for (let i = 0; i <= 12; i++) prof.push(new THREE.Vector2(i % 2 ? 0.031 : 0.027, i * 0.0062));
     shell.add(new THREE.LatheGeometry(prof, 22), RUBBER);
@@ -438,7 +508,7 @@ export function buildReceptionistModel(rig) {
   neck.add(head);
   P.head = head;
   {
-    const shell = new GBin(), metal = new GBin(), glow = new GBin();
+    const shell = new GBin({ metricAll: 6 }), metal = new GBin(), glow = new GBin(), wigB = new GBin();
     // skull (ivory), seam groove down the back
     const skull = sgrid(lin(-PI, PI, 56), lin(-PI / 2 + 0.05, PI / 2 - 0.02, 32), (th, ph, p) => headPoint(th, ph, 0, p));
     outward(skull, HC);
@@ -457,8 +527,8 @@ export function buildReceptionistModel(rig) {
     const hairOff = (th, ph, v) => {
       const base = 0.011 + 0.006 * sstep(0.2, 1.3, ph) + 0.004 * (Math.cos(th) < 0 ? 1 : 0);
       const flip = 0.014 * Math.pow(1 - v, 3) * sstep(0.7, 1.2, Math.abs(th));
-      const groove = 0.0016 * Math.sin(th * 34 + ph * 5 + Math.sin(ph * 6) * 1.5);
-      return base + flip + groove;
+      const frizz = 0.0013 * Math.sin(th * 71 + ph * 13) * Math.sin(ph * 37 + th * 5) + 0.0009 * Math.sin(th * 133 + ph * 41) + 0.002 * Math.pow(1 - v, 2) * Math.sin(th * 23);
+      return base + flip + frizz;
     };
     const NV = 26;
     const hair = sgrid(lin(-PI, PI, 112), lin(-0.08, 1, NV + 1), (th, v, p) => {
@@ -468,7 +538,17 @@ export function buildReceptionistModel(rig) {
       headPoint(th, ph, hairOff(th, ph, v), p);
     });
     outward(hair, HC);
-    shell.add(hair, HAIR, null, { shade: (x, y, z) => { const th = Math.atan2(x, z - HC.z); return 0.78 + 0.22 * (0.5 + 0.5 * Math.sin(th * 34 + (y - HC.y) * 50)); } });
+    const streak = (x, y, z) => { const th = Math.atan2(x, z - HC.z), k = Math.sin(Math.round(th * 40) * 12.9898) * 43758.5453; return 0.72 + 0.28 * (k - Math.floor(k)); };
+    wigB.add(hair, HAIR, null, { shade: streak });
+    // flyaway fibres: it is a cheap wig
+    const fr = rng(808);
+    for (let i = 0; i < 9; i++) {
+      const th = (fr() - 0.5) * PI * 1.9, ph = lerp(0.2, 1.3, fr());
+      const a = headPoint(th, ph, hairOff(th, ph, 0.6), V()), n = headPoint(th, ph, 0, V()).sub(HC).normalize();
+      const b = a.clone().addScaledVector(n, 0.006 + fr() * 0.012).add(V((fr() - 0.5) * 0.02, -0.012 - fr() * 0.02, (fr() - 0.5) * 0.02));
+      const m = a.clone().lerp(b, 0.5).addScaledVector(n, 0.006);
+      wigB.tube([a, m, b], 0.0004, HAIR, { radial: 3, seg: 6 });
+    }
     // headset: band over the crown, ear cup on her left, boom mic to the mouth corner
     const band = [];
     for (let i = 0; i <= 16; i++) { const t = i / 16, th = lerp(-PI / 2 - 0.05, PI / 2 + 0.05, t), ph = lerp(0.15, PI / 2 - 0.06, Math.sin(t * PI)); const pp = headPoint(th, ph, hairOff(th, ph, 0.8) + 0.004, V()); band.push(pp); }
@@ -496,7 +576,22 @@ export function buildReceptionistModel(rig) {
       metal.add(new THREE.TorusGeometry(Math.sqrt(EYE_R * EYE_R - EYE_D * EYE_D * 0.85), 0.0011, 6, 28).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), n)).translate(rc.x, rc.y, rc.z), 0x6a5a50);
     }
     P.eyes = eyes;
+    // screws holding the face plate on, a seam ridge under the jaw line
+    for (const [th, ph] of [[-0.93, 0.5], [0.93, 0.5], [-0.84, -0.62], [0.84, -0.62]]) {
+      const n = V(), p = headPoint(th, ph, plateOff(th, ph) + 0.0004, V(), n);
+      screw(metal, p, n, 0.0032);
+    }
+    for (const s of [-1, 1]) {
+      const pts = []; for (let i = 0; i <= 8; i++) pts.push(headPoint(s * PI / 2, lerp(-1.25, -0.5, i / 8), 0.0006, V()));
+      shell.tube(pts, 0.0009, IVORY_D, { radial: 4, seg: 16 });
+    }
     P.headShell = shell.mesh(M.shell, head, { shadow: true });
+    // the wig sits a little crooked
+    const wig = new THREE.Group();
+    wig.position.set(0.0035, 0.002, -0.002);
+    wig.rotation.set(0.02, 0.03, 0.045);
+    head.add(wig);
+    P.wig = wigB.mesh(M.wig, wig, { shadow: true });
     metal.mesh(M.metal, head);
     P.headGlow = glow.mesh(M.glow, head);
     // LED irises (ring + pupil) riding on the dome fronts
@@ -505,12 +600,13 @@ export function buildReceptionistModel(rig) {
     for (const e of eyes) {
       const q = new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), e.n);
       const front = e.c.clone().addScaledVector(e.n, EYE_R - 0.0004);
+      const dim = e === eyes[0] ? 0.62 : 1; // one LED is older and dimmer
       // LED iris: bright inner rim fading out, a dark aperture pupil, a faint halo
       const g = iris.add(new THREE.RingGeometry(0.0019, 0.0066, 28, 3).applyQuaternion(q).translate(front.x, front.y, front.z), 0xffffff);
       const pa = g.attributes.position.array, ca = g.attributes.color.array;
       for (let i = 0; i < pa.length / 3; i++) {
         const d = Math.hypot(pa[i * 3] - front.x, pa[i * 3 + 1] - front.y, pa[i * 3 + 2] - front.z);
-        const k = clamp((d - 0.0019) / 0.0047, 0, 1), c = ci.clone().lerp(co, Math.pow(k, 0.8));
+        const k = clamp((d - 0.0019) / 0.0047, 0, 1), c = ci.clone().lerp(co, Math.pow(k, 0.8)).multiplyScalar(dim);
         ca[i * 3] = c.r; ca[i * 3 + 1] = c.g; ca[i * 3 + 2] = c.b;
       }
       iris.add(new THREE.CircleGeometry(0.0019, 16).applyQuaternion(q).translate(front.x + e.n.x * 0.0002, front.y + e.n.y * 0.0002, front.z + e.n.z * 0.0002), 0x020406);
@@ -524,10 +620,6 @@ export function buildReceptionistModel(rig) {
     // face plate (upper) + hinged jaw, porcelain with the painted face
     const ths = cat(lin(FACE.th0, -FACE.jawTh, 14), lin(-FACE.jawTh, FACE.jawTh, 52), lin(FACE.jawTh, FACE.th1, 14));
     const phs = cat(lin(FACE.ph0, FACE.mouth, 26), lin(FACE.mouth, FACE.ph1, 52));
-    const plateOff = (th, ph) => {
-      const edge = Math.min(th - FACE.th0, FACE.th1 - th, (ph - FACE.ph0) * 1.4, FACE.ph1 - ph);
-      return 0.0012 + 0.0022 * sstep(0, 0.12, edge) + faceRelief(th, ph);
-    };
     const isJaw = (th, ph) => ph < FACE.mouth && Math.abs(th) < FACE.jawTh;
     const mk = (keep) => {
       const g = sgrid(ths, phs, (th, ph, p) => headPoint(th, ph, plateOff(th, ph), p), keep);
@@ -549,7 +641,7 @@ export function buildReceptionistModel(rig) {
     head.add(jaw);
     const jg = mk((th, ph) => isJaw(th, ph));
     jg.translate(-piv.x, -piv.y, -piv.z);
-    P.jawMesh = new THREE.Mesh(jg, M.face);
+    P.jawMesh = new THREE.Mesh(jg, M.jaw);
     P.jawMesh.castShadow = true;
     jaw.add(P.jawMesh);
     // dark mouth cavity behind the jaw gap
@@ -605,11 +697,14 @@ export function buildReceptionistModel(rig) {
     wr.position.y = -L2;
     el.add(wr);
     // hand frame: fingers along +z, palm facing -y
-    const hb = new GBin(), mb = new GBin();
+    const hb = new GBin({ metricAll: 6 }), mb = new GBin();
     mb.add(new THREE.TorusGeometry(0.022, 0.004, 6, 20), CHROME, T(0, 0, -0.02));
+    const hc = side > 0 ? IVORY_NEW : IVORY; // her left hand is a newer, whiter replacement
     hb.cyl(0.02, 0.022, 0.035, IVORY_D, T(0, 0, -0.035, PI / 2, 0, 0), { seg: 14 });
-    hb.box(0.074, 0.026, 0.078, IVORY, T(0, 0, 0.012), { r: 0.012, seg: 3 });
-    hb.box(0.06, 0.006, 0.05, IVORY_D, T(0, 0.012, 0.012), { r: 0.003 });
+    hb.box(0.074, 0.026, 0.078, hc, T(0, 0, 0.012), { r: 0.012, seg: 3 });
+    hb.box(0.06, 0.006, 0.05, hc, T(0, 0.012, 0.012), { r: 0.003 });
+    for (const sx of [-1, 1]) hb.box(0.0016, 0.0016, 0.07, IVORY_D, T(sx * 0.0372, 0, 0.012));
+    for (const sx of [-1, 1]) screw(mb, V(sx * 0.02, 0.0155, -0.005), V(0, 1, 0), 0.0028);
     for (let i = 0; i < 4; i++) mb.sphere(0.0035, CHROME, T(side * (-0.027 + i * 0.018), 0.013, 0.03));
     P[side < 0 ? 'handR' : 'handL'] = hb.mesh(M.shell, wr, { shadow: true });
     mb.mesh(M.metal, wr);
@@ -627,7 +722,8 @@ export function buildReceptionistModel(rig) {
   const pin = new THREE.SphereGeometry(1, 10, 8);
   { const n = pin.attributes.position.count; pin.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3)); }
   const pins = new THREE.InstancedMesh(pin, M.metal, 28);
-  for (let i = 0; i < 28; i++) { fingers.setColorAt(i, segCol); pins.setColorAt(i, new THREE.Color(0x9a9a9a)); }
+  // right hand: yellowed, with one dark grey replacement finger; left hand: newer, whiter
+  for (let i = 0; i < 28; i++) { fingers.setColorAt(i, i >= 14 ? new THREE.Color(IVORY_NEW) : i >= 6 && i <= 8 ? new THREE.Color(GREY_PART) : segCol); pins.setColorAt(i, new THREE.Color(0x8e8c84)); }
   for (const m of [fingers, pins]) { m.frustumCulled = false; m.castShadow = true; root.add(m); }
   P.fingers = fingers; P.pins = pins;
   return P;
@@ -635,6 +731,7 @@ export function buildReceptionistModel(rig) {
 
 // ------------------------------------------------------------------------------------------ animation rig
 const DOWN = V(0, -1, 0);
+const _hl = V(), _ha = V(), _hv = V();
 const _a = V(), _b = V(), _c = V(), _d = V(), _w = V(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m1 = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _m3 = new THREE.Matrix4();
 // two-bone IK in torso space (shoulder group parent = torso)
 function solveArm(a, L1, L2, target, pole, handQ) {
@@ -812,51 +909,124 @@ export class ReceptionistAnimator {
   press() { this.pressT = 0; }
 }
 
-// ------------------------------------------------------------------------------------------ customer display
-// pole-mounted VFD on the counter facing the visitors: shows what she says and the elevator countdown
-class VFD {
-  constructor(rig) {
-    this.c = canvas(512, 128);
+// ------------------------------------------------------------------------------------------ hologram
+// Her words, projected from the shoulder projector as a flickering cyan scanline panel floating above the
+// counter, turned towards whoever is reading it. Text is typed out; scanlines roll, rows jitter, a glitch
+// band sweeps through now and then and the whole panel shimmers.
+const HOLO_VS = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const HOLO_FS = `
+uniform sampler2D map; uniform float uTime, uAlpha, uGlitch; uniform vec3 uColor;
+varying vec2 vUv;
+float h(float n){ return fract(sin(n) * 43758.5453); }
+void main(){
+  vec2 uv = vUv;
+  float row = floor(uv.y * 90.0);
+  float tick = floor(uTime * 20.0);
+  uv.x += (h(row * 1.7 + tick) - 0.5) * 0.004 * (0.4 + uGlitch);
+  float bandY = fract(uTime * 0.37);
+  float band = smoothstep(0.035, 0.0, abs(uv.y - bandY)) * step(0.55, h(floor(uTime * 3.0)));
+  uv.x += band * 0.025 * (h(tick) - 0.5);
+  vec4 t = texture2D(map, uv);
+  vec4 tr = texture2D(map, uv + vec2(0.003, 0.0));
+  vec4 tb = texture2D(map, uv - vec2(0.003, 0.0));
+  float scan = 0.62 + 0.38 * sin(vUv.y * 260.0 - uTime * 9.0);
+  float edge = smoothstep(0.0, 0.05, vUv.x) * smoothstep(1.0, 0.95, vUv.x) * smoothstep(0.0, 0.1, vUv.y) * smoothstep(1.0, 0.9, vUv.y);
+  float fill = 0.07 + 0.05 * sin(vUv.y * 40.0 + uTime * 2.0);
+  float flick = 0.82 + 0.18 * h(tick * 0.37);
+  vec3 col = uColor * (t.r * 2.6 + fill * 1.5) + vec3(0.25, -0.05, -0.05) * tr.r * 0.5 + vec3(-0.05, 0.0, 0.3) * tb.r * 0.5;
+  col += uColor * band * 0.35;
+  float a = clamp(edge * scan * flick * uAlpha, 0.0, 1.0);
+  gl_FragColor = vec4(col * a, a);
+}`;
+class Holo {
+  constructor() {
+    this.c = canvas(1024, 288);
     this.x = this.c.getContext('2d');
-    this.tex = ctex(this.c);
-    this.group = new THREE.Group();
-    const b = new GBin(), m = new GBin();
-    m.cyl(0.012, 0.012, 0.08, CHROME, T(0, 0.04, 0), { seg: 12 });
-    m.cyl(0.05, 0.055, 0.012, 0x333333, T(0, 0.006, 0), { seg: 20 });
-    b.box(0.3, 0.085, 0.05, 0x1c1c1e, T(0, 0.13, 0, -0.18, 0, 0), { r: 0.008 });
-    b.box(0.31, 0.012, 0.055, 0x2a2a2c, T(0, 0.088, 0.008, -0.18, 0, 0), { r: 0.004 });
-    const mats = { shell: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35 }), metal: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 1 }) };
-    vlPatch(mats.shell, rig); vlPatch(mats.metal, rig);
-    this.mats = mats;
-    b.mesh(mats.shell, this.group, { shadow: true });
-    m.mesh(mats.metal, this.group);
-    const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.27, 0.0675), new THREE.MeshBasicMaterial({ map: this.tex, toneMapped: true }));
-    scr.material.color.setScalar(1.6);
-    scr.position.set(0, 0.134, 0.025);
-    scr.rotation.x = -0.18;
-    this.group.add(scr);
-    this.screen = scr;
-    this.lines = ['', ''];
-    this.scroll = 0;
-    this.draw(['WELCOME TO R.O.O.M.', 'PLEASE SEE RECEPTION'], 0);
-  }
-  draw(lines, t) {
-    const x = this.x, w = 512, h = 128;
-    x.fillStyle = '#031210'; x.fillRect(0, 0, w, h);
-    // dot-matrix cell grid
-    x.fillStyle = 'rgba(40,255,200,0.05)';
-    for (let i = 0; i < 20; i++) for (let j = 0; j < 2; j++) x.fillRect(12 + i * 24.4, 10 + j * 58, 21, 50);
-    x.font = 'bold 44px "VT323", monospace'; x.textBaseline = 'top';
-    x.fillStyle = '#5affd6'; x.shadowColor = '#3affc8'; x.shadowBlur = 10;
-    lines.forEach((s, j) => {
-      s = String(s || '');
-      if (s.length > 20) { const k = Math.floor(t * 6) % (s.length + 6); s = (s + '      ' + s).slice(k, k + 20); }
-      for (let i = 0; i < Math.min(20, s.length); i++) x.fillText(s[i], 14 + i * 24.4, 12 + j * 58);
+    this.tex = ctex(this.c, false);
+    this.mat = new THREE.ShaderMaterial({
+      uniforms: { map: { value: this.tex }, uTime: { value: 0 }, uAlpha: { value: 0 }, uGlitch: { value: 0 }, uColor: { value: new THREE.Color(0.16, 0.95, 0.88) } },
+      vertexShader: HOLO_VS, fragmentShader: HOLO_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false, toneMapped: false,
     });
-    x.shadowBlur = 0;
+    this.panel = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.26), this.mat);
+    this.panel.renderOrder = 5;
+    this.panel.frustumCulled = false;
+    // the projection cone from the lens to the panel's lower edge (vertices updated every frame)
+    const bg = new THREE.BufferGeometry();
+    bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9 * 3), 3));
+    bg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0.5, 0, 0, 1, 1, 1, 0.5, 0, 1, 1, 0.5, 1.2, 0.5, 0, 0.5, 1.2, 0, 1]), 2));
+    this.beamMat = new THREE.ShaderMaterial({
+      uniforms: { uAlpha: { value: 0 }, uTime: { value: 0 } },
+      vertexShader: HOLO_VS,
+      fragmentShader: `uniform float uAlpha, uTime; varying vec2 vUv; void main(){ float a = pow(clamp(vUv.y, 0.0, 1.0), 2.2) * (0.7 + 0.3 * sin(vUv.y * 190.0 - uTime * 16.0)) * uAlpha * 0.09; gl_FragColor = vec4(vec3(0.15, 0.9, 0.85) * a, a); }`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false, toneMapped: false,
+    });
+    this.beam = new THREE.Mesh(bg, this.beamMat);
+    this.beam.frustumCulled = false;
+    this.beam.renderOrder = 4;
+    this.alpha = 0; this.want = 0; this.key = ''; this.t = 0;
+  }
+  // lines: [title, body] ; typed: chars of body revealed
+  draw(title, body, typed, t) {
+    const key = `${title}|${body}|${typed}|${Math.floor(t * 2) % 2}`;
+    if (key === this.key) return;
+    this.key = key;
+    const x = this.x, W = 1024, H = 288;
+    x.clearRect(0, 0, W, H);
+    x.fillStyle = '#000'; x.fillRect(0, 0, W, H);
+    x.strokeStyle = '#fff'; x.lineWidth = 4; x.strokeRect(10, 10, W - 20, H - 20);
+    x.lineWidth = 2; x.strokeRect(22, 22, W - 44, H - 44);
+    for (const [px, py] of [[10, 10], [W - 10, 10], [10, H - 10], [W - 10, H - 10]]) { x.fillStyle = '#fff'; x.fillRect(px - 8, py - 8, 16, 16); }
+    x.fillStyle = '#fff'; x.textBaseline = 'top';
+    x.font = 'bold 44px "VT323", "IBM Plex Mono", monospace';
+    x.fillText(title, 44, 34);
+    x.fillRect(44, 82, Math.min(W - 88, x.measureText(title).width + 30), 3);
+    x.font = '50px "VT323", "IBM Plex Mono", monospace';
+    const words = String(body || '').split(' '), lines = [];
+    let cur = '';
+    for (const w of words) { const tst = cur ? cur + ' ' + w : w; if (x.measureText(tst).width > W - 100 && cur) { lines.push(cur); cur = w; } else cur = tst; }
+    if (cur) lines.push(cur);
+    let left = typed;
+    const shown = [];
+    for (const ln of lines) { if (left <= 0) break; shown.push(ln.slice(0, left)); left -= ln.length + 1; }
+    const vis = shown.slice(-3);
+    vis.forEach((ln, i) => x.fillText(ln, 44, 100 + i * 54));
+    if (Math.floor(t * 3) % 2 === 0) { const last = vis[vis.length - 1] || ''; x.fillRect(46 + x.measureText(last).width, 100 + Math.max(0, vis.length - 1) * 54 + 6, 22, 40); }
     this.tex.needsUpdate = true;
   }
-  dispose() { this.tex.dispose(); this.screen.material.dispose(); this.mats.shell.dispose(); this.mats.metal.dispose(); }
+  update(dt, lens, at, viewer, glitch) {
+    this.t += dt;
+    this.alpha += (this.want - this.alpha) * (1 - Math.exp(-dt * (this.want > this.alpha ? 9 : 5)));
+    const on = this.alpha > 0.01;
+    this.panel.visible = on; this.beam.visible = on;
+    if (!on) return;
+    // power-on: the panel unfolds vertically with a stutter
+    const unfold = Math.min(1, this.alpha * 1.4);
+    const jit = (Math.random() - 0.5) * 0.004 * (1 + glitch * 4);
+    this.panel.position.copy(at);
+    this.panel.position.y += Math.sin(this.t * 1.7) * 0.012 + jit;
+    this.panel.position.x += jit * 0.6;
+    if (viewer) {
+      const dx = viewer.x - this.panel.position.x, dz = viewer.z - this.panel.position.z;
+      this.panel.rotation.set(0, Math.atan2(dx, dz), 0);
+      const pitch = Math.atan2(viewer.y - this.panel.position.y, Math.hypot(dx, dz));
+      this.panel.rotateX(-pitch * 0.6);
+    }
+    this.panel.scale.set(1, unfold * (Math.random() < 0.03 ? 0.8 : 1), 1);
+    this.mat.uniforms.uTime.value = this.t;
+    this.mat.uniforms.uAlpha.value = this.alpha * (Math.random() < 0.02 ? 0.4 : 1);
+    this.mat.uniforms.uGlitch.value = glitch;
+    // beam: lens -> lower corners of the panel
+    this.panel.updateMatrixWorld(true);
+    const L = this.panel.localToWorld(_a.set(-0.46, -0.13, 0)), R = this.panel.localToWorld(_b.set(0.46, -0.13, 0)), C = this.panel.localToWorld(_c.set(0, -0.13, 0));
+    const pa = this.beam.geometry.attributes.position.array;
+    const put = (i, v) => { pa[i * 3] = v.x; pa[i * 3 + 1] = v.y; pa[i * 3 + 2] = v.z; };
+    put(0, lens); put(1, L); put(2, R); put(3, lens); put(4, R); put(5, C); put(6, lens); put(7, C); put(8, L);
+    this.beam.geometry.attributes.position.needsUpdate = true;
+    this.beam.geometry.computeBoundingSphere();
+    this.beamMat.uniforms.uAlpha.value = this.alpha;
+    this.beamMat.uniforms.uTime.value = this.t;
+  }
+  dispose() { this.tex.dispose(); this.mat.dispose(); this.beamMat.dispose(); this.panel.geometry.dispose(); this.beam.geometry.dispose(); }
 }
 
 // ------------------------------------------------------------------------------------------ device
@@ -864,17 +1034,16 @@ const LINES = {
   intro1: 'Good morning, {N}. Welcome to R.O.O.M. I am Gloria, your receptionist.',
   intro2: 'The company needs furniture. Your first assignment: build your camp.',
   again: 'Welcome back, {N}.',
-  offer: 'Dispatch now?',
+  offer: 'Dispatch now? Press [{K}] to confirm.',
   confirm: 'Very good, {N}. Opening the gate. Please step into the car.',
   hurry: 'The elevator leaves in {S} seconds, {N}. Please step inside.',
   missed: 'Nobody boarded. I have recalled the car. Talk to me when you are ready.',
   transit: 'The car is in transit. Please wait.',
   cancel: 'Of course. Take your time, {N}.',
 };
-const VFDTXT = {
-  intro1: ['GOOD MORNING', '{N}'], intro2: ['YOUR ASSIGNMENT:', 'BUILD YOUR CAMP'], again: ['WELCOME BACK', '{N}'],
-  offer: ['DISPATCH NOW?', '[{K}] YES'], confirm: ['GATE OPENING', 'STEP INTO THE CAR'], hurry: ['ELEVATOR DEPARTS', 'IN {S} SECONDS'],
-  missed: ['CAR RECALLED', 'PLEASE SEE RECEPTION'], transit: ['CAR IN TRANSIT', 'PLEASE WAIT'], cancel: ['OF COURSE', 'TAKE YOUR TIME'],
+const HOLO_TITLE = {
+  intro1: 'GOOD MORNING, {N}', intro2: 'ORIENTATION', again: 'WELCOME BACK, {N}', offer: 'DISPATCH NOW?', confirm: 'DISPATCH CONFIRMED',
+  hurry: 'ELEVATOR DEPARTING', missed: 'CAR RECALLED', transit: 'CAR IN TRANSIT', cancel: 'RECEPTION',
 };
 const introduced = new Set(); // per page session: who already heard the orientation
 
@@ -892,10 +1061,9 @@ export class ReceptionistBot extends Device {
     this.P = buildReceptionistModel(this.rig);
     this.root.add(this.P.root);
     this.anim = new ReceptionistAnimator(this.P);
-    this.vfd = new VFD(this.rig);
-    this.vfd.group.position.set(0.93, 1.075, 0.83);
-    this.vfd.group.rotation.y = -0.62;
-    this.root.add(this.vfd.group);
+    // holographic speech panel (world space: it billboards to the reader)
+    this.holo = new Holo();
+    world.group?.add(this.holo.panel, this.holo.beam);
     this.root.traverse((o) => { if (o.isMesh) o.userData.noProbe = true; });
     this.queue = [];          // pending lines for the local speaker
     this.say = null;          // { id, n, s, t, dur }
@@ -905,14 +1073,14 @@ export class ReceptionistBot extends Device {
     this.stare = false; this.stareHold = 0;
     this.attend = 0;
     this.keyT = 0;
-    this.vfdT = 0;
+    this.holoT = 0;
   }
 
   build() {
     this.root.updateMatrixWorld(true);
     const ud = { kind: 'device', device: this };
     // torso + head (prompt target), and the display pole
-    const boxes = [[0, 1.05, 0.02, 0.2, 0.28, 0.16], [0.93, 1.19, 0.83, 0.14, 0.05, 0.05]];
+    const boxes = [[0, 1.05, 0.02, 0.2, 0.28, 0.16]];
     for (const [x, y, z, hx, hy, hz] of boxes) {
       const c = this.root.localToWorld(V(x, y, z));
       this.colliders.push(this.world.physics.addStaticBox(c.x, c.y, c.z, hx, hy, hz, ud, this.root.rotation.y));
@@ -920,6 +1088,15 @@ export class ReceptionistBot extends Device {
   }
 
   get elevator() { return this.lobby?.elevator; }
+
+  // same as confirming "Dispatch now?" with her (host: opens the gate; client: asks the host)
+  requestDispatch(name) {
+    const n = String(name || this.world.game?.local?.name || 'EMPLOYEE').slice(0, 24);
+    this.offerT = 0;
+    this.queue.length = 0;
+    this.send('dispatch', { n });
+    return true;
+  }
 
   prompt() {
     const k = input.keyName('interact');
@@ -987,7 +1164,7 @@ export class ReceptionistBot extends Device {
     const fill = (s) => s.replace('{N}', N).replace('{S}', String(secs)).replace('{K}', input.keyName('interact'));
     const text = fill(LINES[id] || '');
     const dur = 1.2 + text.length * 0.052;
-    this.say = { id, text, vfd: (VFDTXT[id] || ['', '']).map((s) => fill(s).toUpperCase()), t: 0, dur };
+    this.say = { id, text, title: fill(HOLO_TITLE[id] || 'RECEPTION'), t: 0, dur };
     const head = this.P.head.getWorldPosition(V());
     audio.play('healthity_talk', { pos: head, volume: 0.55, length: Math.min(3.4, dur), pitch: 0.7 });
     if (mine) {
@@ -1078,26 +1255,27 @@ export class ReceptionistBot extends Device {
       onTwitch: () => this._servo(0.45),
       onKey: () => { if (near < 7 && (this.keyT -= 1) <= 0) { this.keyT = 2; audio.play('ui_type', { pos: this.P.head.getWorldPosition(_c).setY(0.8), volume: 0.12 }); } },
     });
-    // customer display
-    this.vfdT += dt;
-    if (this.vfdT > 0.12) {
-      this.vfdT = 0;
-      const el = this.elevator;
-      let lines;
-      if (this.say) lines = this.say.vfd;
-      else if (el?.state.ph === 'board') lines = ['ELEVATOR DEPARTS', `IN ${el.secondsLeft()} SECONDS`];
-      else if (el?.state.ph === 'depart') lines = ['CAR IN TRANSIT', 'PLEASE WAIT'];
-      else if (this.offerT > 0) lines = ['DISPATCH NOW?', `[${input.keyName('interact')}] YES`];
-      else lines = Math.floor(this.anim.t / 6) % 3 === 2 ? ['WE SEE YOU', ''] : ['WELCOME TO R.O.O.M.', 'PLEASE SEE RECEPTION'];
-      this.vfd.draw(lines, this.anim.t);
-    }
+    // hologram: what she says, the dispatch offer, the countdown
+    const el = this.elevator;
+    let title = null, body = '', typed = 999;
+    if (this.say) { title = this.say.title; body = this.say.text; typed = Math.floor(Math.max(0, this.say.t - 0.2) * 38); }
+    else if (el?.state.ph === 'board') { title = 'ELEVATOR DEPARTING'; body = `Departs in ${el.secondsLeft()} seconds. Everyone inside the car goes.`; }
+    else if (this.offerT > 0) { title = 'DISPATCH NOW?'; body = `Press [${input.keyName('interact')}] to confirm.`; }
+    this.holo.want = title ? 1 : 0;
+    if (title) this.holo.draw(title, body, typed, this.anim.t);
+    const lens = this.P.projGlow.getWorldPosition(_hl);
+    const at = this.root.localToWorld(_ha.set(0.78, 1.56, 0.55));
+    const viewer = g?.local?.world ? _hv.set(g.local.pos.x, g.local.pos.y + 1.16, g.local.pos.z) : null;
+    this.holo.update(dt, lens, at, viewer, this.anim.twitch ? 1 : this.stare ? 0.5 : 0);
+    this.P.projGlow.material.color.setRGB(0.4 + this.holo.alpha * 0.6, 1.4 + this.holo.alpha * 1.4, 1.5 + this.holo.alpha * 1.4);
   }
 
   _servo(v) { audio.play('_tick_small', { pos: this.P.head.getWorldPosition(_c), volume: v }); audio.play('android_servo', { pos: _c, volume: v * 0.8 }); }
 
   dispose() {
     super.dispose();
-    this.vfd.dispose();
+    this.holo.dispose();
+    this.holo.panel.removeFromParent(); this.holo.beam.removeFromParent();
     this.P.root.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); });
     for (const m of Object.values(this.P.M)) m.dispose?.();
     this.P.lidMesh.material.dispose();

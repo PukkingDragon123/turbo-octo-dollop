@@ -303,6 +303,20 @@ const HASH = /* glsl */`
   float nzG(vec2 p){ return texture2D(uNoiseTex, p).g; }
   float nzB(vec2 p){ return texture2D(uNoiseTex, p).b; }`;
 
+// drips into standing water: rings expanding from a few spots per 0.9 m grid square (normal tilt in bkRipN)
+const RIPPLE = /* glsl */`
+        if (bkPuddle > 0.01) {
+          vec2 gid = floor(vWPos.xz / 0.9); vec2 gf = vWPos.xz - gid * 0.9;
+          float ph = bkH(gid + 3.1);
+          vec2 ctr = vec2(0.3 + 0.3 * fract(ph * 17.3), 0.3 + 0.3 * fract(ph * 29.7));
+          float per = 1.4 + ph * 2.2;
+          float tt = fract(uTime / per + ph);
+          vec2 dv = gf - ctr; float dd = length(dv);
+          float rad = tt * 0.3;
+          float ring = (1.0 - smoothstep(0.0, 0.01 + fwidth(dd), abs(dd - rad))) * (1.0 - tt) * step(0.45, fract(ph * 7.3));
+          bkRipN = vec3(dv.x, 0.0, dv.y) / max(dd, 1e-3) * ring * 0.45 * bkPuddle;
+        }`;
+
 // world-space grime / damage per surface kind -----------------------------------
 // 1 carpet, 2 wallpaper, 3 drop-ceiling tiles, 4 concrete, 5 clean interior (lobby), 6 painted block
 function grimeGLSL(kind, wet) {
@@ -327,12 +341,20 @@ function grimeGLSL(kind, wet) {
         c = mix(c, c * vec3(0.7, 0.6, 0.45), spill * 0.45 + ring * 0.35);
         c *= 1.0 - seam * 0.22;
         bkDampness = damp * 0.6 + spill * 0.3;
+        // organic wet patches: the baked wetness is a smooth potential, broken up here by world-space noise into
+        // puddles with a soaked halo and a dried tide ring (no cell-shaped squares)
         float wetv = ${W};
-        float wetF = sat(wetv * (0.7 + mid * 0.6));
-        bkPuddle = smoothstep(0.62, 0.72, wetv * (0.55 + fine * 0.9));
-        c *= mix(1.0, 0.56, wetF);
-        c = mix(c, c * vec3(0.82, 0.86, 0.84), bkPuddle * 0.5);
-        bkWetness = max(wetF * 0.8, bkDampness * 0.25);
+        float wm = wetv > 0.002 ? wetv * 1.15 + (nzR(wp * 0.42 + 5.1) - 0.5) * 0.8 + (fine - 0.5) * 0.3 : -1.0;
+        float halo = smoothstep(0.1, 0.42, wm);
+        float wetF = smoothstep(0.34, 0.62, wm);
+        bkPuddle = smoothstep(0.68, 0.76, wm);
+        float tide = (1.0 - smoothstep(0.0, 0.03 + fwidth(wm), abs(wm - 0.14))) * step(0.0, wm);
+        c *= mix(1.0, 0.82, halo); c = mix(c, c * vec3(0.93, 0.87, 0.74), halo * 0.45);
+        c *= mix(1.0, 0.6, wetF);
+        c = mix(c, c * vec3(0.6, 0.5, 0.36), tide * 0.3 * uGrime);
+        c = mix(c, c * vec3(0.8, 0.85, 0.84), bkPuddle * 0.5);
+        bkWetness = max(max(wetF * 0.8, halo * 0.22), bkDampness * 0.25);
+        ${RIPPLE}
         diffuseColor.rgb = c;
       }`;
     case 2: return /* glsl */`
@@ -434,9 +456,14 @@ function grimeGLSL(kind, wet) {
           c *= 1.0 - joint * 0.55;
           bkWetness = max(oil * 0.55, damp * 0.35);
           float wetv = ${W};
-          bkPuddle = smoothstep(0.6, 0.72, wetv * (0.55 + nzG(wp * 0.23) * 0.9));
-          c *= mix(1.0, 0.62, sat(wetv));
-          bkWetness = max(bkWetness, wetv * 0.8);
+          float wm = wetv > 0.002 ? wetv * 1.15 + (nzR(wp * 0.42 + 5.1) - 0.5) * 0.8 + (nzG(wp * 0.23) - 0.5) * 0.3 : -1.0;
+          float wetF = smoothstep(0.25, 0.6, wm);
+          bkPuddle = smoothstep(0.66, 0.74, wm);
+          float tide = (1.0 - smoothstep(0.0, 0.03 + fwidth(wm), abs(wm - 0.12))) * step(0.0, wm);
+          c *= mix(1.0, 0.6, wetF);
+          c = mix(c, c * vec3(1.12, 1.1, 1.06), tide * 0.25 * uGrime);
+          bkWetness = max(bkWetness, wetF * 0.85);
+          ${RIPPLE}
         } else {
           bool alongZ = abs(wn.x) > abs(wn.z);
           float u = alongZ ? vWPos.z : vWPos.x;
@@ -576,7 +603,7 @@ function patchLegacy(shader, field, grimeKind, opts) {
       float sat(float x){ return clamp(x, 0.0, 1.0); }
       ${HASH}`)
     .replace('#include <map_fragment>', `#include <map_fragment>
-      float bkWetness = 0.0, bkPuddle = 0.0, bkDampness = 0.0, bkPeel = 0.0;
+      float bkWetness = 0.0, bkPuddle = 0.0, bkDampness = 0.0, bkPeel = 0.0; vec3 bkRipN = vec3(0.0);
       ${grimeGLSL(grimeKind, !!opts.wet)}`)
     .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
       roughnessFactor = mix(roughnessFactor, 0.3, bkWetness);
@@ -824,7 +851,7 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
       #ifdef USE_MAP
         bkTileSetup(vMapUv + bkLqUv);
       #endif` : ''}
-      float bkWetness = 0.0, bkPuddle = 0.0, bkDampness = 0.0, bkPeel = 0.0;`)
+      float bkWetness = 0.0, bkPuddle = 0.0, bkDampness = 0.0, bkPeel = 0.0; vec3 bkRipN = vec3(0.0);`)
     .replace('#include <map_fragment>', `#include <map_fragment>
       ${grimeGLSL(grimeKind, wet)}`)
     .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
@@ -835,6 +862,7 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
       bkSpecK = mix(uSpecMul, 1.0, clamp(bkWetness * 1.5 + bkPuddle + bkLqWet, 0.0, 1.0));`)
     .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       if (bkLqWet > 0.001) normal = normalize(normal + (viewMatrix * vec4(bkLqN, 0.0)).xyz * bkLqWet);
+      if (bkPuddle > 0.01) normal = normalize(normal + (viewMatrix * vec4(bkRipN, 0.0)).xyz);
       ${opts.macro ? `
       {
         // drywall / plaster waviness in grazing light: world-space low-frequency normal tilt

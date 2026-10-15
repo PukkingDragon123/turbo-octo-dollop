@@ -32,7 +32,8 @@ A GitHub Pages workflow (`.github/workflows/deploy.yml`) builds and deploys on e
 | Move / sprint / crouch / jump | WASD / Shift / Ctrl or C / Space |
 | Grab physics objects (and teammates) | hold **LMB**. While holding: **wheel** = distance, **R + mouse** = rotate, **RMB** = throw |
 | Interact / pick up | **E** |
-| Use the selected item (eat, drink, heal, weld, dismantle, collect sample) | **RMB** |
+| Use the selected item (eat, drink, heal, light, throw) | **RMB** |
+| Built-in multitool (empty hand): attach / detach / dismantle what you aim at, or the camp part you carry | **RMB** (hold). **R** switches ATTACH / DISMANTLE |
 | Inventory slots | **1–5** / wheel |
 | Drop or throw an item | **G** |
 | Flashlight | **F** |
@@ -73,27 +74,15 @@ There is no on-screen HUD. Vitals, carried items, tasks, credits and messages li
    * Cloning lab with creepy half-finished clones floating in tubes.
    * Uncanny touches: a waiting-room chair slowly sinks into the floor, and posters, clocks and the Employee of the Month change when nobody is looking.
    * Pull the **dispatch lever**. Anything inside the hazard-striped zone comes with you.
-2. **Dispatch**: the team falls through the ceiling into **Level 0, the Yellow Rooms**, with a cardboard **starter kit** (flashlight, protein bar, almond milk, bandage and multitool, one set per clone). Late joiners don't get a box.
-3. **Mission**:
-   * Find and repair **three generators**, each with its own physical mechanic:
-     * **Diesel:** carry a fuel can and hold it at the filler cap, then hold and release the recoil cord inside the timing window.
-     * **Electrical:** open the panel, re-wire colour-coded terminals (wrong socket = shock), insert an industrial fuse and throw the breaker.
-     * **Mechanical:** weld three glowing cracks, tighten four bolts with the multitool, then crank it up. Several clones crank faster.
-   * Every generator is loud and attracts monsters.
-4. **Physically carry the field radio** to each running generator to establish an uplink. Use the radio to:
-   * transmit research photos;
-   * deposit samples;
-   * order **supply crates**, which crash through the ceiling;
-   * **request extraction**.
-5. **Evacuate**: a mysterious exit door opens with a 120-second countdown.
-   * Physically carry whatever you want to keep into the exit room.
-   * Anyone left outside dies.
-   * The next dimension starts with a fresh 7-day timer.
-6. **Death**:
-   * Dead clones spectate. Their body and items stay in the world.
-   * Teammates can spend credits at the **cloning pad** to bring them back.
-   * If everyone dies, or Day 7 ends, the run is over: back to HQ, starting again from Level 1.
-   * Only cosmetics and achievements persist between runs.
+2. **Level 0 (`src/game/campmission.js`)** introduces one system at a time. The HQ receptionist announces each stage on the wristwatch and Healthity explains it:
+   1. **Build your camp.** A **TENT KIT** crate waits at the camp clearing. Open it ([E]) and five parts spill out: two tent poles, the canvas, the stakes and a camp lamp. Drag each part onto its glowing ghost marker and attach it with the **built-in multitool** (empty hand + RMB). When the last part clicks in, the tent pops up and the lamp lights the camp.
+   2. **Stay fed.** The stomach growls: from now on **hunger and thirst** drain (bars top left). Eat or drink something.
+   3. **Make quota.** Furniture is money. Drag it into the **teleport pad hall**, put it on the pads and pull the lever: the pads charge up, the items beam away and their value uploads to your watch as team money (couch $210, desk $160, office chair $70, clutter a few dollars). Money can't buy anything.
+   4. **Get out.** The quota is the main mission ($1500 solo, +$900 per extra clone). When it is met, an exit room opens in a corner of the camp for 180 seconds. Get inside: the shift is complete and the team returns to HQ.
+   * The 7-day clock still runs: when Day 7 ends, the dimension collapses and the run is lost.
+3. **Death (Level 0)**: dead clones spectate for a few seconds, then a new clone is printed at the camp automatically. Each re-clone costs **half of the team's money**. Their body and dropped items stay where they died.
+4. **Other dimensions** (Poolrooms, Grasslands) still run the older generator / field radio mission, with credits for research and a paid cloning pad. Supply-crate ordering is discontinued everywhere.
+5. Only cosmetics and achievements persist between runs.
 
 ### The seven-day reality collapse
 
@@ -114,12 +103,12 @@ When Day 7 ends, the dimension is gone and so is anyone still inside it.
 * **Physics (Rapier)**
   * Almost everything can be grabbed, rotated, dragged, stacked, thrown and broken.
   * Each player's grab force is capped, so heavy furniture needs several clones working together.
-  * **Weld** objects together or to walls with real physics joints to build barricades.
-  * Dismantle furniture into materials with the multitool.
+  * The **built-in multitool** (empty hand + RMB) **attaches** whatever you aim at to what it touches (a real fixed physics joint: barricades, furniture stacks), **detaches** it again, or (press R) **dismantles** furniture into crafting materials. The welding torch still welds too.
+  * Looking at furniture with an empty hand shows its name and, once the pads are online, what the pads pay for it.
   * Craft barricade panels, spike traps, noise makers, splints, bandages and lamps at **workbenches**.
-* **Survival**: hunger, thirst, blood volume and blood pressure, bleeding (light or heavy), fractures, infection, stamina, sleep and insomnia, and sanity.
-  * Sanity drops in the dark, when alone and when you see monsters.
-  * Low sanity brings hallucinations: whispers, fake footsteps, shadow figures and lying warnings.
+* **Survival** (`src/game/survival.js`) is kept simple for now: health, **hunger**, **thirst**, stamina and bleeding (light or heavy; it costs health until bandaged).
+  * Blood pressure, infection, fractures, sleep / microsleep and sanity (with its hallucinations and fake warnings) are still in the code but switched off by one flag, `ADVANCED_SURVIVAL`.
+  * `survival.needsActive`: hunger and thirst only drain while it is on (Level 0 switches it on once the camp is built).
 * **Healthity**: a floating medical robot with a pixel face. It warns you about your condition and gives terrible corporate wellness advice. You can pat it.
 * **Wristwatch**: a retro corporate terminal with these tabs:
   * **STATUS**: vitals with a live EKG.
@@ -178,6 +167,19 @@ When Day 7 ends, the dimension is gone and so is anyone still inside it.
   * a corridor of identical doors;
   * an office party frozen mid-celebration;
   * a room tilted 9°.
+* Unsettling details: doors that open onto a wall, chairs set out facing whoever walks in, an armchair staring into a corner, a room that mirrors itself.
+* Unsettling events (every minute or two):
+  * a desk phone rings in an empty office and stops when you get close;
+  * the lights go out one by one behind you;
+  * a figure stands at the end of a long corridor and is gone when you approach or look away;
+  * chairs behind you turn to face you.
+* Rare jumpscares (at most one every 3–5 minutes, never before the camp is built on Day 1, never in the camp or pad hall, never harmful):
+  * something sprints across the corridor ahead;
+  * a face appears in a wall vent;
+  * every light around trips at once with a shriek in the dark;
+  * a pale faceless clone stands right behind you when you turn around.
+  `?scares=0` turns them off.
+* Wet areas are organic: puddles collect under water-logged ceiling tiles, in low spots and along damp walls. They have soaked halos, tide rings and drips rippling the standing water. Flooded sectors have curved shorelines.
 * Lighting is "dynamic baked" fluorescent light. Every vertex stores its strongest lights, so individual tubes can flicker, die or turn red while the whole level renders with a few materials. Moving objects get per-object light probes.
 * Performance: props are culled by size and by walls (a 2D line of sight over the cell grid). Untouched furniture in chunks far from every player is put away and comes back exactly as it was.
 

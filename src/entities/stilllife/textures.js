@@ -12,10 +12,10 @@ const once = (k, fn) => {
   }
   return cache.get(k);
 };
-export const TEX_NAMES = ['burlap', 'hazmat', 'fluff', 'grime'];
+export const TEX_NAMES = ['shell', 'hazmat', 'fluff', 'grime'];
 // raw RGBA data of a texture (for building in a worker and installing on the main thread)
 export function textureData(name) {
-  const t = { burlap: burlapTex, hazmat: hazmatTex, fluff: fluffTex, grime: grimeTex }[name]();
+  const t = { shell: shellTex, burlap: burlapTex, hazmat: hazmatTex, fluff: fluffTex, grime: grimeTex }[name]();
   return { name, data: t.image.data, w: t.image.width, h: t.image.height };
 }
 export function installTextureData(d) { if (!cache.has(d.name)) installed.set(d.name, d); }
@@ -147,6 +147,54 @@ export const burlapTex = () => once('burlap', () => {
     }
   }
   return finish(W, H, alb, hgt, 2.2);
+});
+
+// --- cheap ivory plastic shell (the clones are robots now): orange-peel moulding, scuffs, a crazing network
+// of hairline cracks (G dips to ~0.3, shown where the shell is stressed = `thin`) and a few deep cracks (G -> 0)
+export const shellTex = () => once('shell', () => {
+  const W = 256, H = 256;
+  const mott = fbmField(W, H, 4, 4, 81), fine = fbmField(W, H, 64, 2, 82), peel = fbmField(W, H, 24, 2, 84);
+  const alb = new Float32Array(W * H), hgt = new Float32Array(W * H), gap = new Float32Array(W * H).fill(1);
+  const r = new RNG(83);
+  // crazing: tileable Voronoi cell borders
+  const N = 24, px = new Float32Array(N), py = new Float32Array(N);
+  for (let k = 0; k < N; k++) { px[k] = r.next() * W; py[k] = r.next() * H; }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let d1 = 1e9, d2 = 1e9;
+    for (let k = 0; k < N; k++) {
+      let dx = Math.abs(x - px[k]), dy = Math.abs(y - py[k]);
+      if (dx > W / 2) dx = W - dx;
+      if (dy > H / 2) dy = H - dy;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+    }
+    const e = d2 - d1, i = y * W + x;
+    const wob = (fine[i] - 0.5) * 1.4;
+    gap[i] = 0.3 + 0.7 * clamp((e + wob - 0.5) / 1.6, 0, 1);
+  }
+  // a few deep cracks wandering across the tile
+  const crack = new Float32Array(W * H);
+  for (let k = 0; k < 7; k++) {
+    let x = r.next() * W, y = r.next() * H, a = r.next() * TAU;
+    for (let s2 = 0, n = r.int(5, 11); s2 < n; s2++) {
+      const l = r.range(6, 18), nx = x + Math.cos(a) * l, ny = y + Math.sin(a) * l;
+      stroke(crack, null, W, H, x, y, nx, ny, r.range(0.9, 1.6) * (1 - s2 / (n + 2)), 1, 0);
+      if (r.chance(0.3)) { const b = a + r.sign() * r.range(0.6, 1.2); stroke(crack, null, W, H, nx, ny, nx + Math.cos(b) * l * 0.6, ny + Math.sin(b) * l * 0.6, 0.8, 0.8, 0); }
+      x = nx; y = ny; a += r.range(-0.8, 0.8);
+    }
+  }
+  // scuffs: short pale scratches
+  const scuff = new Float32Array(W * H);
+  for (let k = 0; k < 160; k++) {
+    const x = r.next() * W, y = r.next() * H, a = r.next() * TAU, l = r.range(3, 14);
+    stroke(scuff, null, W, H, x, y, x + Math.cos(a) * l, y + Math.sin(a) * l, r.range(0.4, 0.9), r.range(0.3, 1), 0);
+  }
+  for (let i = 0; i < W * H; i++) {
+    gap[i] = Math.min(gap[i], 1 - crack[i]);
+    hgt[i] = 0.5 + (peel[i] - 0.5) * 0.12 + (fine[i] - 0.5) * 0.03 - (1 - gap[i]) * 0.35 - scuff[i] * 0.05;
+    alb[i] = 0.9 + (mott[i] - 0.5) * 0.16 + scuff[i] * 0.08 - crack[i] * 0.5;
+  }
+  return finish(W, H, alb, hgt, 1.8, gap);
 });
 
 // --- hazmat coated fabric: soft wrinkles + sharp crinkle creases (no networks); G = crease mask
