@@ -6,7 +6,7 @@
 //   lunge     a gaunt figure sprints across the corridor a few metres ahead
 //   vent      a pale face snaps into view behind the grille of a nearby wall vent
 //   blackout  every light around trips at once, a shriek in the dark, then the tubes stutter back
-//   behind    a faceless clone stands right behind you; turn around and it is there (for a moment)
+//   behind    a broken robot clone (Still Life) stands right behind you; turn around and it is there (for a moment)
 // Unsettling events (every 1-2.5 minutes, quiet):
 //   phone     a desk phone rings in an empty office; it stops the moment you are close enough to answer
 //   lights    the lights go out one by one behind you as you walk down a hall, and come back after a while
@@ -19,6 +19,7 @@ import { net } from '../../../net/net.js';
 import { CELL } from './layout.js';
 import { LightField } from '../../../gfx/bakedlight.js';
 import { Q } from '../../../physics/physics.js';
+import { buildStillLife } from '../../../entities/optional.js';
 
 const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -67,17 +68,6 @@ function silhouette(pose = 'stand') {
   body.add(mesh(g.head, g.dark, 0, 1.08, 0.04, 0, 0, run ? 0 : 0.28));
   for (const s of [-1, 1]) joint(body, s * 0.19, 0.88, 0, run ? s * 0.95 : 0.05, s * 0.1, 0.84, g.limb, g.dark);
   for (const s of [-1, 1]) joint(hips, s * 0.09, 0, 0, run ? -s * 0.75 : 0, s * 0.03, 0.84, g.limb, g.dark);
-  return r;
-}
-// a faceless, pale copy of a clone (sack-doll proportions)
-function doll() {
-  const g = geo(), r = new THREE.Group();
-  r.add(mesh(g.body, g.pale, 0, 0.62, 0));
-  r.add(mesh(g.dollHead, g.pale, 0, 1.18, 0.02));
-  for (const s of [-1, 1]) {
-    r.add(mesh(g.stub, g.pale, s * 0.36, 0.62, 0.02, 0, 0, s * 0.12));
-    r.add(mesh(g.stub, g.pale, s * 0.14, 0.17, 0, 0, 0, 0));
-  }
   return r;
 }
 // a pale face with empty eyes and a slack open mouth (front +z)
@@ -301,7 +291,9 @@ export class Scares {
     if (!this._los(pos.x, pos.z, bx, bz, 0.9)) return null;
     const c = this.level.cell(bx, bz);
     if (!c || c.special?.pit || c.ceil < 1.6) return null;
-    const d = this._addFigure(doll());
+    // one of the broken robot clones (a Still Life watcher) stands at arm's length
+    const sl = buildStillLife('watcher', 1 + ((Math.random() * 997) | 0));
+    const d = this._addFigure(sl.root);
     d.position.set(bx, (this.level.floorY?.(bx, bz) ?? 0), bz);
     let t = 0, seen = -1;
     audio.play('breath_heavy', { pos: new THREE.Vector3(bx, 1.1, bz), volume: 0.35, delay: 1.2 });
@@ -312,6 +304,7 @@ export class Scares {
         const p = l.pos;
         const dx = p.x - d.position.x, dz = p.z - d.position.z, dist = Math.hypot(dx, dz);
         d.rotation.y = Math.atan2(dx, dz);
+        sl.update(dt, {});
         d.updateMatrixWorld(true);
         if (seen < 0) {
           const fw = this._fwd();

@@ -272,7 +272,7 @@ function chairTower(level, rec, room, b, rng) {
   }
   // detailed chairs where you can see them up close, a low-poly stacking chair for the stacks above (tens of
   // chairs vanishing into the dark would otherwise cost ~7k triangles each)
-  const near = M.filter((m) => m.elements[13] < 2.3), far = M.filter((m) => m.elements[13] >= 2.3);
+  const near = M.filter((m) => m.elements[13] < 1.25), far = M.filter((m) => m.elements[13] >= 1.25); // phones: keep the detailed chairs to the bottom two
   instancedFurniture(level, rec, 'chair_wood', near, new THREE.Vector3(b.cx, 1.5, b.cz));
   if (far.length) {
     const im = new THREE.InstancedMesh(lowChair(hh), lowChairMat(), far.length);
@@ -506,7 +506,9 @@ export function populateWeird(level, room, rec, rng) {
     }
     case 'ball_pit': {
       const rr = pitRect(room, rec);
-      for (let k = 0; k < 3; k++) sp(level, rng.pick(['rubber_duck', 'basketball']), rr.x0 + 0.5 + rng.next() * (rr.x1 - rr.x0 - 1), -room.pit.depth + 0.85, rr.z0 + 0.5 + rng.next() * (rr.z1 - rr.z0 - 1), rng.next() * 6, { sleep: false });
+      // toys in the west half only: clear of the slide's landing (centre) and the steps out (south-east)
+      const mid = (rr.x0 + rr.x1) / 2;
+      for (let k = 0; k < 3; k++) sp(level, rng.pick(['rubber_duck', 'basketball']), rr.x0 + 0.4 + rng.next() * Math.max(0.1, mid - 0.75 - rr.x0 - 0.4), -room.pit.depth + 0.85, rr.z0 + 0.5 + rng.next() * (rr.z1 - rr.z0 - 1), rng.next() * 6, { sleep: false });
       spPlaced(level, placer, 'box_medium', b.x1 - 0.5, b.z1 - 0.5, 0.2);
       break;
     }
