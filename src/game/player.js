@@ -240,7 +240,7 @@ export class LocalPlayer {
       audio.play(this.watchOpen ? 'watch_beep' : 'ui_back', { volume: 0.5, bus: 'ui' });
     }
     // notices make the clone glance at the wrist (no screen HUD)
-    const glance = !this.watchOpen && this.game.watch?.peeking && !this.grab && !this.useAction ? 0.75 : 0;
+    const glance = !this.watchOpen && this.game.watch?.peeking && !this.grab && !this.useAction ? 0.62 : 0;
     this.watchRaised = damp(this.watchRaised, this.watchOpen ? 1 : glance, this.watchOpen || glance ? 10 : 7, dt);
 
     // sleeping

@@ -14,6 +14,7 @@ npm run dev        # http://localhost:5173
 npm run build      # static build in dist/ (deployable to any static host)
 ```
 
+* **First dimension**: pick Level 0, the Poolrooms or the Grasslands on the main menu; the dispatch lever sends you there.
 * **Solo shift**: play offline.
 * **Host shift**: creates a 5-character shift code. Up to three friends enter it under **Join shift**.
   * Multiplayer is peer-to-peer WebRTC (PeerJS).
@@ -49,6 +50,10 @@ Touch devices get on-screen controls styled like the knobs of a 1990s field term
 * **Buttons**: JUMP, USE (shows what it will do), GRAB (hold; THROW and ROT appear while carrying), ITEM, DUCK, plus WATCH, LIGHT, NEXT, DROP, VIEW and MENU along the top. ◀ ▶ switch watch tabs.
 * Phones start on the LOW graphics preset unless you pick one in Settings.
 
+#### Healthity on screen
+
+When Healthity talks it pops into the corner of your screen with a speech bubble and a synthesized robot voice (toggle in Settings). It greets you, walks you through Day 1 and HQ with tips, and comments on what you pick up. Press **X** (or the HLTH button, or tap its bubble) for a check-up: your vitals, what you need most and what to do next.
+
 #### No HUD
 
 There is no on-screen HUD. Vitals, carried items, tasks, credits and messages live on the wristwatch. When something happens (HQ radio, a pickup, a warning, the exit countdown) the watch beeps and your clone glances at it. Raising the watch zooms in on its face.
@@ -56,7 +61,7 @@ There is no on-screen HUD. Vitals, carried items, tasks, credits and messages li
 ## The game loop
 
 1. **HQ lobby (Sublevel B4)**
-   * Reception with a receptionist who turns to watch you when nobody is looking.
+   * Reception with a receptionist who turns to watch you when nobody is looking, and GREET-O-TRON 9000, a beige CRT-headed service robot that tracks you, stamps forms and greets you by name ([E]). Its grin gets too wide when nobody is looking.
    * Open office with working CRT terminals: shift roster, orientation, achievements and lore.
    * Locker room: customize your clone in front of a real mirror.
    * Break room:
@@ -96,7 +101,8 @@ Each day lasts exactly **10 real minutes**, so you have at most 70 minutes per d
 
 | Days | What happens |
 |---|---|
-| 1–2 | Stable. |
+| 1 | Probation day: guaranteed safe. No monsters, no hallucinations, injuries can't kill you. |
+| 2 | Stable, but things start hunting. |
 | 3–4 | More anomalies and monsters. Furniture starts moving when nobody is looking. |
 | 5–6 | Lights die, furniture sinks into the carpet, and more creatures appear. |
 | 7 | Reality starts to collapse: walls wobble, lights turn red, unseen corridors re-arrange themselves and monsters get aggressive. |
@@ -153,6 +159,13 @@ When Day 7 ends, the dimension is gone and so is anyone still inside it.
   * the remains of previous clones;
   * a glimpse of the Poolrooms.
 * Lighting is "dynamic baked" fluorescent light. Every vertex stores its strongest lights, so individual tubes can flicker, die or turn red while the whole level renders with a few materials. Moving objects get per-object light probes.
+
+### Level 37: the Poolrooms
+
+* An endless forward-only waterway of giant tiled halls (48 × 24 m, 7.6 m ceilings) with a deep, dark canal down the middle. Sluice walls seal each hall, so the team has to **punt a raft** onward (hold [E] on the raft; more punters go faster). Everyone and everything on the deck rides along.
+* Decor: pendant lamps, skylights, spiral slides, lifeguard chairs, loungers, shower banks, mushroom fountains, hot tubs, palms, ferns, ivy, algae mats, lily pads and floaties. Each hall has a mood: bright, overgrown, dark and flooded, or bath hall.
+* The water is murky green-black and you can't see the bottom. Swimming drains stamina, you can drown, and some stretches are **contaminated**: wading in or drinking them causes infection. The **water tester** in the starter kit reads SAFE, TRACE or CONTAMINATED.
+* From Day 2, a **giant mutated goldfish** with a cluster of eyes and human arms stalks the canal, lunges at swimmers and rams the raft. **Mutant leeches** latch onto clones in the water; pull them off and eat them if you're desperate.
 
 ## Tech notes
 

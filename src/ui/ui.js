@@ -663,7 +663,7 @@ export class UI {
       ws.getWorldPosition(this._wsPos);
       engine.vmFocus = this._wsPos;
       const small = Math.min(window.innerWidth, window.innerHeight) < 600 ? 1 : 0.7;
-      engine.vmFocusW = raise * raise * (3 - 2 * raise) * small * (l.watchOpen ? 1 : 0.4);
+      engine.vmFocusW = raise * raise * (3 - 2 * raise) * small * (l.watchOpen ? 1 : 0.15);
     } else engine.vmFocusW = 0;
     // post fx from survival state
     const P = engine.post.params;
