@@ -11,7 +11,7 @@ import { resolveCos, DEFAULT_COSMETICS } from './dollcos.js';
 import { dollMaterial, DM } from './dollmat.js';
 import { gloveGeo, thumbGeo, tapeWrap, GLOVE_DIM, GLOVE, TAPE } from './suit.js';
 import { grid, displace, tint, ensureOutward, gridArcUV, pillow, gauss, ss } from './geom.js';
-import { decalQuad } from './gear.js';
+import { decalQuad, toRegion as toRegionFP } from './gear.js';
 
 const PI = Math.PI, TAU = PI * 2;
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -99,19 +99,70 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
     tw.applyMatrix4(Mg).applyMatrix4(Mw);
     B.add('tape', tw, () => [[fore, 1]], TAPE);
   }
-  // wrist terminal on the left forearm (top, +Y), above the tape
-  const WZ = -L + 0.118, WY = AR + 0.017;
+  // wrist terminal on the left forearm (top, +Y), above the tape: a chunky retro Pip-Boy-style
+  // unit. Olive-drab housing clamped round the sleeve by a ribbed cuff, a thick rounded bezel
+  // around the recessed CRT (watchScreen) under a domed glass, a knurled tuning dial + selector
+  // knob and status lamp on the wrist side, push buttons and the name plate on the elbow side.
+  const WZ = -L + 0.118, WY = AR + 0.017, OLIVE = 0x596043, OLIVE_D = 0x3c4130, TRIM = 0x26272a;
   const Mf = restMs[bones.foreL.userData.i];
   const addL = (mat, g, col) => B.add(mat, g.applyMatrix4(Mf), () => [['foreL', 1]], col);
-  const strap = grid(40, 3, (i, j, p) => { const a = (i / 40) * TAU, v = j / 3, r = AR + 0.006 + 0.0025 * Math.sin(PI * v); p.set(Math.cos(a) * r, Math.sin(a) * r, WZ + (v - 0.5) * 0.026); }, { closedU: true });
-  ensureOutward(strap, V(0, 0, WZ));
-  addL('rubber', strap, 0x1d1d20);
-  addL('plastic', pillow(0.086, 0.03, 0.074).translate(0, WY - 0.004, WZ), 0x26272b);
-  addL('metal', pillow(0.09, 0.008, 0.078).translate(0, WY + 0.009, WZ), 0x8e9298);
-  for (const z of [-0.024, 0.024]) addL('metal', new THREE.CylinderGeometry(0.0055, 0.0055, 0.012, 10).rotateZ(PI / 2).translate(0.047, WY - 0.003, WZ + z), 0xd0d0d0);
-  addL('plastic', new THREE.BoxGeometry(0.01, 0.012, 0.012).translate(-0.047, WY - 0.003, WZ), 0xc8302a);
-  addL('plastic', pillow(0.072, 0.005, 0.008).translate(0, WY + 0.0125, WZ - 0.034), 0x111111);
-  addL('decal', decalQuad(0.034, 0.01, 'name').rotateX(-PI / 2).rotateY(PI / 2).translate(0, WY + 0.0132, WZ - 0.031), 0xffffff);
+  // clamp cuff round the sleeve (ribbed at both ends)
+  const cuff = grid(48, 10, (i, j, p) => {
+    const a = (i / 48) * TAU, v = j / 10, z = WZ + (v - 0.5) * 0.12;
+    const r = AR + 0.0135 + 0.0035 * (ss(0.12, 0.0, v) + ss(0.88, 1.0, v)) + 0.002 * Math.sin(PI * v);
+    p.set(Math.cos(a) * r, Math.sin(a) * r, z);
+  }, { closedU: true });
+  ensureOutward(cuff, V(0, 0, WZ));
+  tint(cuff, (x, y, z) => 0.92 + 0.08 * Math.cos((z - WZ) * 160));
+  addL('plastic', cuff, OLIVE_D);
+  for (const e of [-1, 1]) addL('metal', new THREE.TorusGeometry(AR + 0.0175, 0.0022, 6, 40).translate(0, 0, WZ + e * 0.061), 0x8a8e84);
+  // main housing on top + side cheeks
+  const body = pillow(0.096, 0.036, 0.138); body.translate(0, WY - 0.007, WZ);
+  addL('plastic', body, OLIVE);
+  for (const e of [-1, 1]) addL('plastic', pillow(0.016, 0.03, 0.12).translate(e * 0.05, WY - 0.014, WZ), OLIVE_D);
+  // corner screws
+  for (const [x, z] of [[-0.04, -0.06], [0.04, -0.06], [-0.04, 0.06], [0.04, 0.06]]) addL('metal', new THREE.CylinderGeometry(0.003, 0.003, 0.003, 8).translate(x, WY + 0.0125, WZ + z), 0xb8bcb4);
+  // thick rounded bezel around the screen (screen 0.045 across x 0.06 along z, recessed)
+  {
+    const rr = (sh, w, h, r) => { const x = -w / 2, y = -h / 2; sh.moveTo(x + r, y); sh.lineTo(x + w - r, y); sh.quadraticCurveTo(x + w, y, x + w, y + r); sh.lineTo(x + w, y + h - r); sh.quadraticCurveTo(x + w, y + h, x + w - r, y + h); sh.lineTo(x + r, y + h); sh.quadraticCurveTo(x, y + h, x, y + h - r); sh.lineTo(x, y + r); sh.quadraticCurveTo(x, y, x + r, y); return sh; };
+    const shape = rr(new THREE.Shape(), 0.066, 0.082, 0.011);
+    shape.holes.push(rr(new THREE.Path(), 0.052, 0.067, 0.006));
+    const bz = new THREE.ExtrudeGeometry(shape, { depth: 0.006, bevelEnabled: true, bevelThickness: 0.0025, bevelSize: 0.0022, bevelSegments: 2, curveSegments: 4 });
+    bz.rotateX(-PI / 2).translate(0, WY + 0.0115, WZ);
+    addL('plastic', bz, TRIM);
+    // dark CRT surround inside the bezel
+    addL('plastic', new THREE.BoxGeometry(0.054, 0.004, 0.069).translate(0, WY + 0.0105, WZ), 0x0c0d0c);
+  }
+  // knurled tuning dial (wrist side) with a ticked face, small selector knob, status lamp
+  {
+    const dz = WZ - 0.052, dx = 0.017, R = 0.0125, H = 0.012;
+    const knob = new THREE.CylinderGeometry(R, R * 1.06, H, 32, 1);
+    const P = knob.attributes.position;
+    for (let i = 0; i < P.count; i++) { const x = P.getX(i), z = P.getZ(i), r = Math.hypot(x, z); if (r > R * 0.9) { const a = Math.atan2(z, x), k = 1 + 0.06 * (Math.cos(a * 16) > 0 ? 1 : -1); P.setX(i, x * k); P.setZ(i, z * k); } }
+    knob.computeVertexNormals();
+    addL('plastic', knob.translate(dx, WY + 0.013 + H / 2, dz), 0x2c2d2a);
+    addL('metal', new THREE.CylinderGeometry(R * 1.2, R * 1.25, 0.003, 28).translate(dx, WY + 0.0135, dz), 0x9a9e94);
+    const face = new THREE.CircleGeometry(R * 0.86, 24); toRegionFP(face, 'bezel'); face.rotateX(-PI / 2).rotateY(PI / 2).translate(dx, WY + 0.0132 + H + 0.0004, dz);
+    addL('decal', face, 0xffffff);
+    const sel = new THREE.CylinderGeometry(0.0075, 0.008, 0.009, 6); sel.translate(-0.02, WY + 0.0175, dz);
+    addL('plastic', sel, 0x2c2d2a);
+    addL('plastic', new THREE.BoxGeometry(0.0025, 0.003, 0.009).translate(-0.02, WY + 0.0225, dz), 0xd8d2c0);
+    const lamp = new THREE.SphereGeometry(0.0042, 12, 8, 0, TAU, 0, PI / 2); toRegionFP(lamp, 'glow'); lamp.translate(-0.002, WY + 0.0128, dz + 0.004);
+    addL('decal', lamp, 0xffb040);
+    addL('metal', new THREE.TorusGeometry(0.0048, 0.0013, 6, 14).rotateX(PI / 2).translate(-0.002, WY + 0.013, dz + 0.004), 0xa8aca4);
+  }
+  // push buttons + name plate (elbow side)
+  for (const [k, col] of [[-1, 0xb8322a], [0, 0xd8a432], [1, 0x8a8c84]]) {
+    const b = pillow(0.011, 0.007, 0.008); b.translate(k * 0.016 - 0.008, WY + 0.0145, WZ + 0.055);
+    addL('rubber', b, col);
+  }
+  addL('plastic', pillow(0.0115, 0.004, 0.046).translate(-0.0415, WY + 0.0118, WZ + 0.004), 0x111111);
+  addL('decal', decalQuad(0.042, 0.0092, 'name').rotateX(-PI / 2).rotateY(PI / 2).translate(-0.0415, WY + 0.0141, WZ + 0.004), 0xffffff);
+  // side tuning knob (outer edge) + a short antenna stub toward the elbow
+  addL('plastic', new THREE.CylinderGeometry(0.011, 0.011, 0.012, 20).rotateZ(PI / 2).translate(-0.06, WY - 0.004, WZ - 0.02), 0x2c2d2a);
+  addL('metal', new THREE.CylinderGeometry(0.006, 0.006, 0.006, 14).rotateZ(PI / 2).translate(-0.0525, WY - 0.004, WZ - 0.02), 0x9a9e94);
+  addL('metal', new THREE.CylinderGeometry(0.0022, 0.0022, 0.03, 8).rotateX(PI / 2).translate(-0.04, WY + 0.008, WZ + 0.08), 0x8a8e88);
+  addL('plastic', new THREE.SphereGeometry(0.0038, 10, 8).translate(-0.04, WY + 0.008, WZ + 0.095), 0x1a1a1a);
   // build meshes
   const skeleton = new THREE.Skeleton(list, restMs.map((m) => m.clone().invert()));
   const meshes = [];
@@ -134,7 +185,10 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
   watchScreen.position.set(0, WY + 0.0134, WZ);
   watchScreen.rotation.set(-PI / 2, 0, PI / 2);
   bones.foreL.add(watchScreen);
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.064, 0.049), new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.06, roughness: 0.06, clearcoat: 0.8, envMapIntensity: 0.9, depthWrite: false }));
+  // raised CRT glass: a convex dome over the recessed screen (same plane frame as the screen)
+  const glassGeo = new THREE.PlaneGeometry(0.0635, 0.0485, 16, 12);
+  { const P = glassGeo.attributes.position; for (let i = 0; i < P.count; i++) { const u = P.getX(i) / 0.03175, v = P.getY(i) / 0.02425; P.setZ(i, 0.0055 * Math.max(0, 1 - u * u) * Math.max(0, 1 - v * v) ** 0.8); } glassGeo.computeVertexNormals(); }
+  const glass = new THREE.Mesh(glassGeo, new THREE.MeshPhysicalMaterial({ color: 0x9ab09a, transparent: true, opacity: 0.08, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.6, depthWrite: false }));
   glass.position.set(0, WY + 0.0142, WZ); glass.rotation.copy(watchScreen.rotation);
   bones.foreL.add(glass);
   const rightHand = new THREE.Object3D(); rightHand.name = 'rightHand';

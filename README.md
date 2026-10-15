@@ -40,6 +40,19 @@ A GitHub Pages workflow (`.github/workflows/deploy.yml`) builds and deploys on e
 | Third-person view | **T** |
 | Pause | **Esc** |
 
+#### Phones and tablets
+
+Touch devices get on-screen controls styled like the knobs of a 1990s field terminal (force them with `?touch=1`, hide them with `?touch=0`):
+
+* **Left thumb**: a floating analog stick. Push it to the rim to sprint.
+* **Right thumb**: drag to look, tap to interact with whatever is under the dot.
+* **Buttons**: JUMP, USE (shows what it will do), GRAB (hold; THROW and ROT appear while carrying), ITEM, DUCK, plus WATCH, LIGHT, NEXT, DROP, VIEW and MENU along the top. ◀ ▶ switch watch tabs.
+* Phones start on the LOW graphics preset unless you pick one in Settings.
+
+#### No HUD
+
+There is no on-screen HUD. Vitals, carried items, tasks, credits and messages live on the wristwatch. When something happens (HQ radio, a pickup, a warning, the exit countdown) the watch beeps and your clone glances at it. Raising the watch zooms in on its face.
+
 ## The game loop
 
 1. **HQ lobby (Sublevel B4)**
@@ -147,7 +160,8 @@ When Day 7 ends, the dimension is gone and so is anyone still inside it.
 * **Rendering**:
   * PBR materials on procedural canvas textures (albedo, normal and roughness).
   * Planar water reflections and a real mirror.
-  * Post-processing: bloom, GTAO on High, FXAA, and a camcorder pass with grain, vignette, chromatic aberration, damage and sanity warping, and collapse glitching.
+  * Post-processing: bloom, GTAO on High, FXAA, and an old-footage pass: lens barrel, film-gate weave, VHS line jitter, chroma bleed and a rolling tracking band, halation around lights, dust and scratches, a faded warm grade, grain, vignette, damage and sanity warping, and collapse glitching.
+  * **Liquefaction**: the walls breathe. Wallpaper flows and drips, glossy ripples run across every surface and the picture itself warps. It grows with day instability and lost sanity, and every minute or so an episode turns the walls fully liquid for a few seconds (`?liquid=0..1` pins the level for testing).
   * The first-person viewmodel is drawn in its own overlay pass.
 * **Networking**:
   * The host is authoritative for props, monsters, devices, the day clock and the mission.

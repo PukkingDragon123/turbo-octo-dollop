@@ -1,16 +1,19 @@
 // The R.O.O.M. Corporate Wrist Terminal: a chunky retro watch on the clone's left wrist.
-// Tabs: STATUS (vitals + EKG) · CAMERA (research photos) · RESEARCH · MAP · MSG · TASKS.
+// Tabs: STATUS (vitals + EKG) · INV · CAMERA (research photos) · RESEARCH · MAP · MSG · TASKS.
 // Drawn on a canvas that is mapped onto the 3D watch screen in the first-person viewmodel.
+// There is no screen HUD: notices (HQ radio, pickups, warnings, achievements) make the watch beep and the
+// clone glances at the wrist for a moment, showing the notice on the watch face.
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
 import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
 import { profile } from '../core/profile.js';
-import { CrtScreen, text, bar, box, wrap } from './crt.js';
-import { SAMPLES } from '../game/itemdefs.js';
+import { CrtScreen, text, bar, box, wrap, FONT } from './crt.js';
+import { SAMPLES, itemName } from '../game/itemdefs.js';
 import { CELL, wallN, wallW, W } from '../world/levels/yellow/layout.js';
 
-const TABS = ['status', 'camera', 'research', 'map', 'msg', 'tasks'];
+const TABS = ['status', 'inv', 'camera', 'research', 'map', 'msg', 'tasks'];
+const TAB_NAMES = ['STAT', 'INV', 'CAM', 'RSCH', 'MAP', 'MSG', 'TASK'];
 
 export class Watch {
   constructor(game) {
@@ -25,6 +28,12 @@ export class Watch {
     this.photoRequest = false;
     this.lastPhoto = null;
     this.viewfinder = null;
+    this.notices = [];
+    this.peekT = 0;
+    this._beepT = 0;
+    this._exitPeekT = 0;
+    this._hurtPeekT = 0;
+    this._lastSel = -1;
     this._buildViewfinder();
     this.attach(game.local.arms);
   }
@@ -37,6 +46,21 @@ export class Watch {
       arms.watchScreen.material.toneMapped = true;
     }
   }
+
+  // a notice glances the watch up for a few seconds (unless it is already raised, then it shows as a banner)
+  notify(text, kind = '', from = '') {
+    if (!text) return;
+    const top = this.notices[0];
+    if (top && top.text === text && this.peekT > 0) { top.n++; this.peekT = Math.max(this.peekT, 2.2); return; }
+    this.notices.unshift({ text, kind, from, n: 1, t: Date.now() });
+    if (this.notices.length > 4) this.notices.pop();
+    this.peekT = Math.min(5.5, 2.4 + text.length * 0.035);
+    if (this._beepT <= 0 && audio.ready) { audio.play('watch_beep', { volume: kind === 'bad' || kind === 'warn' ? 0.4 : 0.25, bus: 'ui' }); this._beepT = 0.35; }
+    this.screen.lastDraw = -1;
+  }
+
+  // true while the clone glances at the watch for a notice
+  get peeking() { return this.peekT > 0 && !this.game.local?.dead; }
 
   log(from, msg) {
     this.messages.unshift({ from, msg, t: Date.now() });
@@ -66,6 +90,9 @@ export class Watch {
     const g = this.game;
     const l = g.local;
     if (!g.world) { this.viewfinder.style.display = 'none'; return; }
+    this.peekT = Math.max(0, this.peekT - dt);
+    this._beepT -= dt;
+    this._autoNotices(dt);
     // tab switching
     if (l.watchOpen && !l.dead && !g.terminal.active) {
       if (input.hit('tabPrev')) { this.tabIdx = (this.tabIdx - 1 + TABS.length) % TABS.length; audio.play('watch_beep', { volume: 0.3, bus: 'ui' }); }
@@ -96,6 +123,38 @@ export class Watch {
     this.ekg[this.ekgI = (this.ekgI + 1) % this.ekg.length] = v;
     // draw
     if (l.watchRaised > 0.05 || Math.random() < 0.05) this.screen.draw(dt, (ctx, w, h, pal, t) => this._draw(ctx, w, h, pal, t));
+    else this.screen.time += dt;
+  }
+
+  _autoNotices(dt) {
+    const g = this.game;
+    const l = g.local;
+    if (g.state !== 'playing' || l.dead) return;
+    // item in hand changed: glance at the wrist to read what it is
+    const inv = l.inv;
+    if (inv && inv.selected !== this._lastSel) {
+      const first = this._lastSel < 0;
+      this._lastSel = inv.selected;
+      const cur = inv.current;
+      if (!first && cur && this.peekT < 1) { this.notices.unshift({ text: `HOLDING: ${itemName(cur.type)}`, kind: '', from: `SLOT ${inv.selected + 1}`, n: 1, t: Date.now() }); this.notices.length = Math.min(this.notices.length, 4); this.peekT = 1.4; }
+    }
+    // evacuation countdown: check the wrist regularly
+    const m = g.world.level?.mission;
+    if (m?.state.exit && !m.state.exit.done) {
+      this._exitPeekT -= dt;
+      const left = Math.ceil(m.exitTimeLeft());
+      if (this._exitPeekT <= 0 || (left <= 10 && this._exitPeekT <= 6)) {
+        this._exitPeekT = left <= 30 ? 8 : 18;
+        this.notify(`EVACUATE! EXIT CLOSES IN ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`, 'bad', 'EXIT');
+      }
+    }
+    // vitals alarm
+    this._hurtPeekT -= dt;
+    const s = l.survival;
+    if (this._hurtPeekT <= 0 && (s.health < 25 || s.bleed >= 2)) {
+      this._hurtPeekT = 40;
+      this.notify(s.bleed >= 2 ? 'HEAVY BLEEDING. APPLY BANDAGE.' : `VITALS CRITICAL. HP ${Math.round(s.health)}`, 'bad', 'MEDICAL');
+    }
   }
 
   snap() {
@@ -151,20 +210,23 @@ export class Watch {
     const l = g.local;
     const s = l.survival;
     // header: tab strip + day
-    const tabs = ['STAT', 'CAM', 'RSCH', 'MAP', 'MSG', 'TASK'];
+    const tabs = TAB_NAMES;
     const tw = (w - 12) / tabs.length;
+    const glance = this.peeking && !l.watchOpen;
     tabs.forEach((n, i) => {
-      const sel = i === this.tabIdx;
+      const sel = i === this.tabIdx && !glance;
       if (sel) { ctx.fillStyle = pal.fg; ctx.fillRect(6 + i * tw, 4, tw - 3, 30); }
-      text(ctx, n, 6 + i * tw + tw / 2 - 1, 4, 28, sel ? pal.bg : pal.dim, 'center');
+      text(ctx, n, 6 + i * tw + tw / 2 - 1, 4, 26, sel ? pal.bg : pal.dim, 'center');
     });
     text(ctx, `DAY ${g.day.active ? g.day.day : '-'}/7`, 10, 38, 34, pal.hi);
     text(ctx, g.day.active ? `${g.day.leftString()}` : 'HQ', w - 10, 38, 34, pal.fg, 'right');
     ctx.fillStyle = pal.dim;
     ctx.fillRect(6, 74, w - 12, 2);
     const y0 = 80;
+    if (glance) { this._notice(ctx, w, h, pal, t, y0); return; }
     switch (this.tab) {
       case 'status': this._status(ctx, w, h, pal, t, y0, s); break;
+      case 'inv': this._inv(ctx, w, h, pal, t, y0); break;
       case 'camera': {
         text(ctx, 'RESEARCH CAMERA', 20, y0 + 10, 34, pal.hi);
         text(ctx, `FILM: ${12 - (l.photos?.length || 0)}/12`, 20, y0 + 56, 30, pal.fg);
@@ -202,6 +264,70 @@ export class Watch {
       case 'tasks': this._tasks(ctx, w, h, pal, t, y0); break;
       default: break;
     }
+    // a notice that arrives while the watch is up runs as a banner along the bottom
+    if (this.peeking && this.notices[0]) {
+      const n = this.notices[0];
+      ctx.fillStyle = pal.bg;
+      ctx.fillRect(0, h - 40, w, 40);
+      ctx.fillStyle = n.kind === 'bad' || n.kind === 'warn' ? pal.bad : pal.fg;
+      ctx.fillRect(0, h - 40, w, 3);
+      const msg = `${n.from ? n.from + ': ' : ''}${n.text}`;
+      ctx.font = `26px ${FONT}`;
+      const tw2 = ctx.measureText(msg).width;
+      const x = tw2 > w - 20 ? w - ((t * 90) % (tw2 + w)) : 10;
+      text(ctx, msg, x, h - 34, 26, n.kind === 'bad' || n.kind === 'warn' ? pal.bad : pal.hi);
+    }
+  }
+
+  _notice(ctx, w, h, pal, t, y0) {
+    const n = this.notices[0];
+    if (!n) return;
+    const bad = n.kind === 'bad' || n.kind === 'warn';
+    const col = bad ? pal.bad : n.kind === 'good' ? pal.good : n.kind === 'healthity' ? pal.good : pal.hi;
+    // blinking notice lamp + source
+    if (Math.floor(t * 4) % 2 || !bad) { ctx.fillStyle = col; ctx.fillRect(14, y0 + 12, 14, 14); }
+    text(ctx, `${(n.from || 'NOTICE').toUpperCase()}${n.n > 1 ? ' x' + n.n : ''}`, 38, y0 + 4, 32, bad ? pal.bad : pal.fg);
+    // big type: the glance is short and the watch face small on a phone
+    let fs = 48;
+    let lines = wrap(ctx, n.text.toUpperCase(), w - 36, fs);
+    if (lines.length > 4) { fs = 38; lines = wrap(ctx, n.text.toUpperCase(), w - 36, fs); }
+    lines.slice(0, 5).forEach((ln, i) => text(ctx, ln, 18, y0 + 44 + i * fs, fs, col));
+    // older notices, dimmed
+    let y = y0 + 50 + Math.min(5, lines.length) * fs + 6;
+    for (const o of this.notices.slice(1, 3)) {
+      if (y > h - 60) break;
+      text(ctx, `- ${o.text}`.slice(0, 38), 18, y, 22, pal.dim);
+      y += 24;
+    }
+    // vitals strip
+    const s = this.game.local.survival;
+    text(ctx, 'HP', 14, h - 34, 26, s.health < 30 ? pal.bad : pal.fg);
+    bar(ctx, 50, h - 30, 150, 18, s.health / 100, s.health < 30 ? pal.bad : pal.fg, pal.dim);
+    text(ctx, `${this.game.run.credits} CR`, w - 14, h - 34, 26, pal.hi, 'right');
+  }
+
+  _inv(ctx, w, h, pal, t, y0) {
+    const g = this.game;
+    const inv = g.local.inv;
+    text(ctx, 'CARRIED ITEMS', 20, y0 + 2, 30, pal.hi);
+    text(ctx, `${g.run.credits} CR`, w - 20, y0 + 2, 30, pal.fg, 'right');
+    inv.slots.forEach((it, i) => {
+      const y = y0 + 40 + i * 44;
+      const sel = i === inv.selected;
+      if (sel) { ctx.fillStyle = pal.fg; ctx.fillRect(14, y - 2, w - 28, 38); }
+      const c = sel ? pal.bg : it ? pal.fg : pal.dim;
+      text(ctx, `${i + 1}`, 24, y + 2, 30, c);
+      if (!it) { text(ctx, '- empty -', 60, y + 2, 28, c); return; }
+      const nm = it.type === 'sample_jar' && it.state.kind ? `Sample: ${SAMPLES[it.state.kind]?.name}` : itemName(it.type);
+      text(ctx, nm.slice(0, 24), 60, y + 2, 28, c);
+      let tag = '';
+      if (it.type === 'flashlight') tag = `${Math.round((it.state.charge ?? 1) * 100)}%`;
+      if (it.type === 'welder') tag = `${Math.round((it.state.fuel ?? 1) * 100)}%`;
+      if (it.type === 'sample_jar') tag = it.state.kind ? 'FULL' : 'EMPTY';
+      if (it.state.lit) tag = 'LIT';
+      if (tag) text(ctx, tag, w - 24, y + 2, 28, c, 'right');
+    });
+    text(ctx, 'USE ITEM · NEXT · DROP', 20, h - 32, 24, Math.floor(t * 1.5) % 2 ? pal.dim : pal.fg);
   }
 
   _status(ctx, w, h, pal, t, y0, s) {
@@ -236,9 +362,22 @@ export class Watch {
     }
     ctx.stroke();
     const conds = s.conditions();
-    const lines = conds.length ? conds.slice(0, 3) : ['NOMINAL'];
+    const lines = conds.length ? conds.slice(0, 2) : ['NOMINAL'];
     lines.forEach((c, i) => text(ctx, c, x2, y0 + 172 + i * 26, 24, conds.length ? pal.bad : pal.good));
-    void t;
+    const g = this.game;
+    const m = g.world?.level?.mission;
+    let obj = 'HQ: GO TO DISPATCH';
+    if (m) {
+      const n = m.generators.filter((x) => x.running).length;
+      const lk = m.linksCount();
+      obj = n < 3 ? `GENERATORS ${n}/3` : lk < 3 ? `UPLINKS ${lk}/3` : m.state.exit ? 'REACH THE EXIT' : 'CALL EXTRACTION';
+      if (m.state.exit && !m.state.exit.done) {
+        const left = Math.ceil(m.exitTimeLeft());
+        obj = `EXIT ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+      }
+    }
+    text(ctx, `STA ${Math.round(s.stamina)}/${s.maxStamina}`, 10, h - 30, 24, s.stamina < 8 ? pal.bad : pal.fg);
+    text(ctx, `${g.run.credits} CR · ${obj}`, w - 10, h - 30, 24, m?.state.exit ? (Math.floor(t * 3) % 2 ? pal.bad : pal.hi) : pal.hi, 'right');
   }
 
   _map(ctx, w, h, pal, t, y0) {

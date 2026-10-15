@@ -22,6 +22,10 @@ import * as Tex from './textures.js';
 
 export const FIELD_SIZE = 128;
 
+// Reality "liquefaction" (0 = solid, 1 = walls flow like wet paint), shared by every baked material and driven
+// by gfx/distort.js together with the screen-space warp of the post stack.
+export const LIQUID = { value: 0 };
+
 export class LightField {
   constructor() {
     this.size = FIELD_SIZE;
@@ -50,6 +54,7 @@ export class LightField {
       uRoomA: { value: rooms },
       uRoomB: { value: roomsB },
       uRoomKey: { value: new THREE.Vector2(1.5, 40) },
+      uLiquid: LIQUID,
     };
     this.globalMul = 1;
     this.tint = new THREE.Color(1, 1, 1);
@@ -537,6 +542,7 @@ function patchLegacy(shader, field, grimeKind, opts) {
       uniform float uLightScale;
       uniform float uCollapse;
       uniform float uTime;
+      uniform float uLiquid;
       varying vec3 vBaked;
       varying vec3 vWPos;
       varying float vAO;
@@ -560,6 +566,7 @@ function patchLegacy(shader, field, grimeKind, opts) {
       uniform float uGrime;
       uniform float uTime;
       uniform float uCollapse;
+      uniform float uLiquid;
       uniform vec4 uGrid;
       float sat(float x){ return clamp(x, 0.0, 1.0); }
       ${HASH}`)
@@ -577,10 +584,48 @@ function patchLegacy(shader, field, grimeKind, opts) {
 }
 
 const WOBBLE = /* glsl */`
+      if (uLiquid > 0.001) {
+        // slow swell along the surface normal: long wavelengths so coarse wall subdivisions still bend smoothly
+        vec4 lw = modelMatrix * vec4(transformed, 1.0);
+        float sw = sin(lw.x * 0.9 + lw.y * 1.3 + uTime * 0.8) * sin(lw.z * 0.8 - lw.y * 0.7 - uTime * 0.6)
+                 + 0.5 * sin((lw.x + lw.z) * 1.7 - uTime * 1.4);
+        transformed += objectNormal * sw * 0.035 * uLiquid * smoothstep(0.05, 0.6, lw.y);
+      }
       if (uCollapse > 0.0) {
         vec4 wp0 = modelMatrix * vec4(transformed, 1.0);
         float wob = sin(wp0.x * 1.7 + uTime * 1.3) * sin(wp0.z * 1.3 - uTime * 0.9) * sin(wp0.y * 2.0 + uTime * 0.7);
         transformed += objectNormal * wob * 0.09 * uCollapse;
+      }`;
+
+// Liquid surfaces: texture coordinates flow (walls drip downward in slow rivulets, floors swirl), the surface
+// normal ripples with travelling waves and the material turns glossy, so the fluorescent highlights wobble
+// across the walls like light on wet paint. Outputs bkLqUv (uv offset), bkLqN (world normal tilt), bkLqWet.
+const LIQUID_FS = /* glsl */`
+      vec2 bkLqUv = vec2(0.0); vec3 bkLqN = vec3(0.0); float bkLqWet = 0.0;
+      if (uLiquid > 0.001) {
+        vec3 gn = normalize(cross(dFdx(vWPos), dFdy(vWPos)));
+        float wall = 1.0 - abs(gn.y);
+        bool az = abs(gn.x) > abs(gn.z);
+        // surface-plane coordinates (u along the wall, v up) or the floor plane
+        vec2 sp = wall > 0.5 ? vec2(az ? vWPos.z : vWPos.x, vWPos.y) : vWPos.xz;
+        float t = uTime;
+        // domain-warped flow
+        vec2 q = sp * 0.55;
+        vec2 w1 = vec2(sin(q.y * 1.7 + t * 0.55) + sin(q.x * 0.9 - t * 0.3), cos(q.x * 1.3 - t * 0.45) + sin(q.y * 0.7 + t * 0.35));
+        vec2 w2 = vec2(sin((q.y + w1.x * 0.6) * 2.3 - t * 0.9), cos((q.x + w1.y * 0.6) * 2.1 + t * 0.8));
+        // rivulets: columns of the wall slide down at their own speed
+        float col = floor(sp.x * 3.0);
+        float rate = fract(sin(col * 91.7) * 4375.85);
+        float drip = wall * pow(rate, 3.0) * (0.25 + 0.75 * fract(t * 0.03 * (0.5 + rate) + rate * 7.0));
+        bkLqUv = (w1 * 0.018 + w2 * 0.012) * uLiquid + vec2(0.0, drip * 0.35 * uLiquid * uLiquid);
+        // travelling ripples for the lighting
+        float ph = dot(sp, vec2(2.1, 1.3)) - t * 2.4 + w1.x * 1.4;
+        float ph2 = dot(sp, vec2(-1.2, 2.6)) - t * 1.7 + w2.y;
+        vec2 g = vec2(cos(ph) * 2.1 - cos(ph2) * 1.2, cos(ph) * 1.3 + cos(ph2) * 2.6) * 0.09;
+        vec3 tU = wall > 0.5 ? (az ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)) : vec3(1.0, 0.0, 0.0);
+        vec3 tV = wall > 0.5 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+        bkLqN = -(tU * g.x + tV * g.y);
+        bkLqWet = clamp(uLiquid * (0.45 + 0.55 * wall), 0.0, 1.0);
       }`;
 
 const COLLAPSE_FS = /* glsl */`
@@ -615,6 +660,7 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
       uniform float uLightScale;
       uniform float uCollapse;
       uniform float uTime;
+      uniform float uLiquid;
       varying vec4 vOutAO;
       varying vec3 vWPos;
       ${FETCH}`;
@@ -666,6 +712,7 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
       uniform float uGrime;
       uniform float uTime;
       uniform float uCollapse;
+      uniform float uLiquid;
       uniform vec4 uGrid;
       uniform vec2 uLightMix;
       uniform float uSpecMul;
@@ -765,9 +812,10 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
     .replace('#include <common>', `#include <common>\n${fsPars}`)
     .replace('#include <clipping_planes_pars_fragment>', `#include <clipping_planes_pars_fragment>\n${fsFuncs}`)
     .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+      ${LIQUID_FS}
       ${opts.tiles ? `
       #ifdef USE_MAP
-        bkTileSetup(vMapUv);
+        bkTileSetup(vMapUv + bkLqUv);
       #endif` : ''}
       float bkWetness = 0.0, bkPuddle = 0.0, bkDampness = 0.0, bkPeel = 0.0;`)
     .replace('#include <map_fragment>', `#include <map_fragment>
@@ -775,8 +823,10 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
     .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
       roughnessFactor = mix(roughnessFactor, 0.32, bkWetness);
       roughnessFactor = mix(roughnessFactor, 0.05, bkPuddle);
-      roughnessFactor = mix(roughnessFactor, 0.9, bkPeel);`)
+      roughnessFactor = mix(roughnessFactor, 0.9, bkPeel);
+      roughnessFactor = mix(roughnessFactor, 0.12, bkLqWet);`)
     .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      if (bkLqWet > 0.001) normal = normalize(normal + (viewMatrix * vec4(bkLqN, 0.0)).xyz * bkLqWet);
       ${opts.macro ? `
       {
         // drywall / plaster waviness in grazing light: world-space low-frequency normal tilt
@@ -830,12 +880,14 @@ function patchGrid(shader, field, local, grimeKind, opts, grid, aoMode) {
         totalEmissiveRadiance *= clamp(own * 0.8, 0.0, 2.2);
       }`) : ''}
       ${COLLAPSE_FS}`);
+  // every surface texture lookup follows the liquid flow
+  fs = fs.replace(/texture2D\(\s*(map|normalMap|roughnessMap)\s*,\s*(vMapUv|vNormalMapUv|vRoughnessMapUv)\s*\)/g, 'texture2D( $1, $2 + bkLqUv )');
   if (opts.tiles) {
-    fs = fs.replace(/texture2D\(\s*map\s*,\s*vMapUv\s*\)/g, 'bkTex( map )')
-      .replace(/texture2D\(\s*roughnessMap\s*,\s*vRoughnessMapUv\s*\)/g, 'bkTex( roughnessMap )')
+    fs = fs.replace(/texture2D\(\s*map\s*,\s*vMapUv \+ bkLqUv\s*\)/g, 'bkTex( map )')
+      .replace(/texture2D\(\s*roughnessMap\s*,\s*vRoughnessMapUv \+ bkLqUv\s*\)/g, 'bkTex( roughnessMap )')
       .replace(/texture2D\(\s*metalnessMap\s*,\s*vMetalnessMapUv\s*\)/g, 'bkTex( metalnessMap )')
       .replace(/texture2D\(\s*aoMap\s*,\s*vAoMapUv\s*\)/g, 'bkTex( aoMap )')
-      .replace('vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;', 'vec3 mapN = bkTex( normalMap ).xyz * 2.0 - 1.0; if (bkTileRot > 0.5) mapN.xy = -mapN.xy;');
+      .replace('vec3 mapN = texture2D( normalMap, vNormalMapUv + bkLqUv ).xyz * 2.0 - 1.0;', 'vec3 mapN = bkTex( normalMap ).xyz * 2.0 - 1.0; if (bkTileRot > 0.5) mapN.xy = -mapN.xy;');
   }
   shader.fragmentShader = fs;
 }

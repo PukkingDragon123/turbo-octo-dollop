@@ -30,24 +30,42 @@ let registered = false;
 function register() {
   if (registered) return;
   registered = true;
-  // crinkled PVC-coated hazmat fabric (albedo ~neutral: the suit colour comes from the material)
+  // rubberised PVC coverall sheet (albedo ~neutral: the suit colour comes from the material).
+  // A smooth calendered coat with broad soft undulation, sparse sharp crumple creases (slightly
+  // stress-whitened and rougher) and a faint orange peel; no fibre-scale noise, so it reads as a
+  // glossy coated film rather than felt.
   Synth.registerRecipe('doll_pvc', {
-    defaults: { c0: 0xffffff, c2: 0x6a5a3a, p0: [0.5, 1, 0, 0], wear: 0.35, meters: 0.36, bump: 3.2, size: 512 },
+    defaults: { c0: 0xffffff, c2: 0x6a5a3a, p0: [0.36, 1, 0, 0], wear: 0.3, meters: 0.36, bump: 3.0, size: 512 },
     glsl: `S surface(vec2 uv){
-      float big = ridged(uv, vec2(3.0, 2.0), 4);
-      float mid = ridged(uv + vec2(0.37, 0.71), vec2(7.0, 5.0), 4);
-      float crk = ridged(uv + vec2(0.13, 0.29), vec2(17.0, 13.0), 3);
-      float lines = pow(ridged(uv + vec2(0.61, 0.17), vec2(9.0, 6.0), 2), 3.0);
-      float m = fbm(uv, vec2(4.0), 5);
-      float scrim = (0.5 + 0.5 * sin(uv.x * PI * 2.0 * 150.0)) * (0.5 + 0.5 * sin(uv.y * PI * 2.0 * 150.0));
+      float bil = fbm(uv, vec2(3.0, 2.0), 4);
+      float bil2 = fbm(uv + vec2(0.31, 0.57), vec2(5.0, 4.0), 3);
+      float c1 = pow(ridged(uv + vec2(0.37, 0.71), vec2(4.0, 3.0), 2), 6.0);
+      float c2 = pow(ridged(uv + vec2(0.13, 0.29), vec2(8.0, 6.0), 1), 9.0);
+      float c3 = pow(ridged(uv + vec2(0.61, 0.17), vec2(13.0, 11.0), 1), 12.0);
+      float crease = c1 * 0.75 + c2 * 0.45 + c3 * 0.25;
+      float peel = gn(uv * 110.0, vec2(110.0));
       float dirt = smoothstep(0.6, 0.92, fbm(uv + 6.0, vec2(3.0), 6)) * uWear;
       float scuff = scratches(uv, 9.0, 0.35, 0.006) * uWear;
-      vec3 col = vec3(0.9) * (0.975 + (m - 0.5) * 0.07) * (0.965 + big * 0.035);
-      col = mix(col, uC2, dirt * 0.3); col = mix(col, col * 1.08, scuff * 0.5);
+      vec3 col = vec3(0.9) * (0.985 + (bil - 0.5) * 0.05);
+      col = mix(col, vec3(1.0), sat(crease) * 0.1);
+      col = mix(col, uC2, dirt * 0.3); col = mix(col, col * 1.06, scuff * 0.5);
       S s; s.albedo = col;
-      s.height = big * 0.5 + mid * 0.3 + crk * 0.14 + lines * 0.22 + scrim * 0.012;
-      s.rough = uP0.x + (1.0 - crk) * 0.07 - big * 0.07 + dirt * 0.28 + scuff * 0.1;
-      s.ao = 0.8 + big * 0.2; s.metal = 0.0; return s; }`,
+      s.height = bil * 0.55 + bil2 * 0.25 + crease * 0.32 + peel * 0.008;
+      s.rough = uP0.x + sat(crease) * 0.14 + dirt * 0.3 + scuff * 0.12 + (peel - 0.5) * 0.05 + (bil2 - 0.5) * 0.08;
+      s.ao = 0.9 + bil * 0.1 - sat(crease) * 0.04; s.metal = 0.0; return s; }`,
+  });
+  // dense spun-bonded Tyvek (cleanroom suit): matte, fibrous mottling, soft crumples
+  Synth.registerRecipe('doll_tyvek', {
+    defaults: { c0: 0xffffff, c2: 0x6a5a3a, p0: [0.82, 1, 0, 0], wear: 0.25, meters: 0.3, bump: 2.0, size: 512 },
+    glsl: `S surface(vec2 uv){
+      float bil = fbm(uv, vec2(3.0, 2.0), 4);
+      float c1 = pow(ridged(uv + vec2(0.37, 0.71), vec2(5.0, 4.0), 2), 4.0);
+      float mot = fbm(uv + 3.0, vec2(24.0), 3);
+      float dirt = smoothstep(0.6, 0.92, fbm(uv + 6.0, vec2(3.0), 6)) * uWear;
+      vec3 col = vec3(0.92) * (0.96 + (mot - 0.5) * 0.08);
+      col = mix(col, uC2, dirt * 0.25);
+      S s; s.albedo = col; s.height = bil * 0.5 + c1 * 0.4 + mot * 0.04;
+      s.rough = uP0.x + (mot - 0.5) * 0.08 + dirt * 0.1; s.ao = 0.9 + bil * 0.1; s.metal = 0.0; return s; }`,
   });
   // dense canvas-like burlap (PEAK heads are a fine hessian: weave visible up close, mottled further away)
   Synth.registerRecipe('doll_burlap', {
@@ -186,6 +204,42 @@ export function synth(name, opts = {}, repeat = null) {
 }
 
 // ---------------------------------------------------------------------------
+// Joint compression folds (tileable, CPU-built): stacked lens-shaped ridges running across the
+// limb (constant v), rounded crests and sharp valleys. RGB = tangent-space normal, A = cavity
+// (0 in a valley, 1 on a crest). The suit shader blends it in where the skin weights say the
+// vertex sits on a joint (elbows, knees, waist, armpits, neck, ankles). UV v runs along the limb.
+// ---------------------------------------------------------------------------
+export const CREASE_METERS = 0.19;
+export function creaseTexture() {
+  return cached('dollCrease', () => {
+    const N = 256, RINGS = 7, h = new Float32Array(N * N);
+    const hash = (k) => { const s = Math.sin(k * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const u = i / N, v = j / N;
+      const warp = 0.32 * Math.sin(TAU * (u + 0.13)) + 0.18 * Math.sin(TAU * (2 * u + v) + 1.7) + 0.1 * Math.sin(TAU * (3 * u - v) + 0.4);
+      const t = v * RINGS + warp, k = ((Math.floor(t) % RINGS) + RINGS) % RINGS, f = t - Math.floor(t);
+      const crest = Math.pow(Math.sin(PI * f), 0.65);                         // rounded crest, sharp valley
+      const lens = 0.5 + 0.5 * Math.sin(TAU * (u * (1 + (k % 3 === 0 ? 1 : 0)) + hash(k)));  // folds fade in / out around the limb
+      const amp = 0.35 + 0.65 * Math.pow(lens, 1.5) * (0.6 + 0.4 * hash(k + 9));
+      h[j * N + i] = crest * amp;
+    }
+    const data = new Uint8Array(N * N * 4), K = 9.0;
+    const H = (i, j) => h[(((j % N) + N) % N) * N + (((i % N) + N) % N)];
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const dx = (H(i - 1, j) - H(i + 1, j)) * K, dy = (H(i, j - 1) - H(i, j + 1)) * K;
+      const l = Math.hypot(dx, dy, 1), o = (j * N + i) * 4;
+      data[o] = Math.round((dx / l * 0.5 + 0.5) * 255); data[o + 1] = Math.round((dy / l * 0.5 + 0.5) * 255);
+      data[o + 2] = Math.round((1 / l * 0.5 + 0.5) * 255); data[o + 3] = Math.round(Math.min(1, H(i, j) * 1.6) * 255);
+    }
+    const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat, THREE.UnsignedByteType);
+    t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.anisotropy = 4;
+    t.needsUpdate = true;
+    return t;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Decal atlas (1024 x 1024, shared). Regions in px: x, y, w, h (canvas space, y down).
 // ---------------------------------------------------------------------------
 export const ATLAS = {
@@ -207,6 +261,10 @@ export const ATLAS = {
   black: [600, 700, 80, 80],
   pcb: [8, 712, 300, 120],             // watch side / gadget detail
   name: [320, 712, 300, 60],           // name tape "R.O.O.M."
+  stencil: [8, 840, 520, 130],         // sprayed "R.O.O.M." back stencil
+  bio: [540, 840, 120, 120],           // biohazard mark (thigh)
+  suitno: [670, 850, 340, 70],         // "SUIT No." thigh print
+  bezel: [670, 930, 90, 90],           // knurled knob / dial face (wrist terminal)
 };
 // UV for region r at (u, v) in 0..1 (v = 0 bottom of the region)
 export function atlasUV(r, u, v) {
@@ -340,6 +398,41 @@ function drawAtlas(ctx, emissive = false) {
   { const [x, y, w, h] = R('glow'); ctx.fillStyle = '#ffd860'; ctx.fillRect(x, y, w, h); }
   { const [x, y, w, h] = R('pcb'); ctx.fillStyle = '#1d5a32'; ctx.fillRect(x, y, w, h); ctx.strokeStyle = '#c8a040'; ctx.lineWidth = 2; for (let i = 0; i < 12; i++) { ctx.beginPath(); ctx.moveTo(x + 10 + i * 24, y + 10); ctx.lineTo(x + 10 + i * 24, y + 60); ctx.lineTo(x + 30 + i * 24, y + 100); ctx.stroke(); } }
   { const [x, y, w, h] = R('name'); ctx.fillStyle = '#2a2a2e'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#f2c418'; ctx.font = `bold 34px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('R.O.O.M.', x + w / 2, y + h / 2 + 2); }
+  // --- sprayed stencil "R.O.O.M." (letters broken by stencil bridges, overspray speckle)
+  {
+    const [x, y, w, h] = R('stencil');
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.fillStyle = '#18181a'; ctx.font = `bold 92px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('R.O.O.M.', x + w / 2, y + h * 0.4);
+    ctx.font = `bold 22px ${MONO}`; ctx.fillText('HAZMAT CLASS 3  \u00b7  CONTAINMENT', x + w / 2, y + h * 0.86);
+    // stencil bridges
+    ctx.globalCompositeOperation = 'destination-out';
+    for (let k = 0; k < 8; k += 2) { const bx = x + w / 2 + (k - 3.5) * 55.5; ctx.fillRect(bx - 3, y + h * 0.4 - 30, 6, 16); ctx.fillRect(bx - 3, y + h * 0.4 + 12, 6, 14); }
+    const r = new RNG(17);
+    for (let i = 0; i < 900; i++) { const px = x + r.next() * w, py = y + r.next() * h; ctx.fillRect(px, py, 1 + r.next() * 3, 1 + r.next() * 3); }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(24,24,26,0.9)';
+    for (let i = 0; i < 260; i++) { const px = x + w * 0.12 + r.next() * w * 0.76, py = y + h * 0.15 + r.next() * h * 0.55; ctx.fillRect(px, py, 1.5, 1.5); }
+    ctx.restore();
+  }
+  // --- biohazard mark: trefoil in a ring (black on transparent)
+  {
+    const [x, y, w, h] = R('bio'); const cx = x + w / 2, cy = y + h / 2 + 4, r0 = w * 0.44;
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.fillStyle = '#18181a';
+    for (let k = 0; k < 3; k++) { const a = -PI / 2 + k * TAU / 3; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r0 * 0.36, cy + Math.sin(a) * r0 * 0.36, r0 * 0.44, 0, TAU); ctx.fill(); }
+    ctx.globalCompositeOperation = 'destination-out';
+    for (let k = 0; k < 3; k++) { const a = -PI / 2 + k * TAU / 3; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r0 * 0.5, cy + Math.sin(a) * r0 * 0.5, r0 * 0.3, 0, TAU); ctx.fill(); }
+    ctx.beginPath(); ctx.arc(cx, cy, r0 * 0.15, 0, TAU); ctx.fill();
+    ctx.lineWidth = r0 * 0.07; ctx.beginPath(); ctx.arc(cx, cy, r0 * 0.27, 0, TAU); ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.beginPath(); ctx.arc(cx, cy, r0 * 0.1, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  // --- "SUIT No." print
+  { const [x, y, w, h] = R('suitno'); ctx.fillStyle = '#18181a'; ctx.font = `bold 30px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('SUIT No.0451-B', x + w / 2, y + h * 0.36); ctx.font = `bold 17px ${MONO}`; ctx.fillText('SIZE: CLONE / ONE-SIZE', x + w / 2, y + h * 0.82); }
+  // --- knurled dial face (radial ticks)
+  { const [x, y, w, h] = R('bezel'); const cx = x + w / 2, cy = y + h / 2; ctx.fillStyle = '#2a2b2e'; ctx.beginPath(); ctx.arc(cx, cy, w / 2, 0, TAU); ctx.fill(); ctx.strokeStyle = '#d8d4c4'; ctx.lineWidth = 3; for (let i = 0; i < 12; i++) { const a = i / 12 * TAU; ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * w * 0.3, cy + Math.sin(a) * w * 0.3); ctx.lineTo(cx + Math.cos(a) * w * 0.44, cy + Math.sin(a) * w * 0.44); ctx.stroke(); } ctx.fillStyle = '#e04030'; ctx.fillRect(cx - 3, y + 6, 6, w * 0.32); }
 }
 function lcdFace(ctx, x, y, w, h, glow) {
   ctx.save();

@@ -198,18 +198,26 @@ export function buildWatch(B) {
   const strap = grid(28, 2, (i, j, p) => { const a = (i / 36) * TAU, v = j / 3; p.set(Math.cos(a) * (r + 0.0025 * Math.sin(PI * v)), y + (v - 0.5) * 0.02, Math.sin(a) * (r + 0.0025 * Math.sin(PI * v))); }, { closedU: true });
   ensureOutward(strap, V(0, y, 0));
   B.rigid(el, 'rubber', strap, 0x1d1d20);
-  // case on the outer (-X) side
-  const cx = -(r + 0.009);
-  const body = pillow(0.018, 0.044, 0.05); body.translate(cx, y, 0);
-  B.rigid(el, 'plastic', body, 0x2a2b2f);
-  const bezel = pillow(0.006, 0.046, 0.052); bezel.translate(cx - 0.0085, y, 0);
-  B.rigid(el, 'metal', bezel, 0xb4b8be);
-  const lcd = decalQuad(0.038, 0.029, 'lcd'); lcd.rotateY(-PI / 2).rotateX(0).translate(cx - 0.0118, y, 0);
+  // chunky retro wrist terminal on the outer (-X) side (matches the first-person unit): olive
+  // housing on a clamp cuff, dark bezel round the LCD, knurled dial + selector, side knob
+  const cx = -(r + 0.009), OLIVE = 0x596043, TRIM = 0x26272a;
+  const cuffG = grid(32, 4, (i, j, p) => { const a = (i / 32) * TAU, v = j / 4; p.set(Math.cos(a) * (r + 0.0035 + 0.0015 * Math.sin(PI * v)), y + (v - 0.5) * 0.05, Math.sin(a) * (r + 0.0035 + 0.0015 * Math.sin(PI * v))); }, { closedU: true });
+  ensureOutward(cuffG, V(0, y, 0));
+  B.rigid(el, 'plastic', cuffG, 0x3c4130);
+  const body = pillow(0.02, 0.058, 0.06); body.translate(cx - 0.001, y, 0);
+  B.rigid(el, 'plastic', body, OLIVE);
+  const bezel = pillow(0.006, 0.044, 0.036); bezel.translate(cx - 0.0095, y + 0.004, 0);
+  B.rigid(el, 'plastic', bezel, TRIM);
+  const lcd = decalQuad(0.034, 0.026, 'lcd'); lcd.rotateY(-PI / 2).rotateX(0).translate(cx - 0.0128, y, 0);
   // orient so the text reads along the forearm (rotate 90deg in the face plane)
-  lcd.translate(-cx + 0.0118, -y, 0); lcd.rotateX(PI / 2); lcd.translate(cx - 0.0118, y, 0);
+  lcd.translate(-cx + 0.0128, -y, 0); lcd.rotateX(PI / 2); lcd.translate(cx - 0.0128, y + 0.004, 0);
   B.rigid(el, 'decal', lcd, 0xffffff);
-  for (const z of [-0.018, 0.018]) B.rigid(el, 'metal', new THREE.CylinderGeometry(0.0035, 0.0035, 0.007, 8).rotateX(PI / 2).translate(cx - 0.002, y + 0.016, z * 1.2), 0xd0d0d0);
-  B.rigid(el, 'plastic', new THREE.BoxGeometry(0.008, 0.01, 0.007).translate(cx, y - 0.026, 0), 0xc8302a);
+  // dial + selector toward the wrist, buttons toward the elbow, side knob
+  B.rigid(el, 'plastic', new THREE.CylinderGeometry(0.0072, 0.0076, 0.007, 14).rotateZ(PI / 2).translate(cx - 0.0125, y - 0.022, 0.009), 0x2c2d2a);
+  B.rigid(el, 'plastic', new THREE.CylinderGeometry(0.0045, 0.0045, 0.006, 6).rotateZ(PI / 2).translate(cx - 0.012, y - 0.022, -0.011), 0x2c2d2a);
+  for (const [k, col] of [[-1, 0xb8322a], [0, 0xd8a432], [1, 0x8a8c84]]) B.rigid(el, 'rubber', pillow(0.004, 0.005, 0.007).translate(cx - 0.0105, y + 0.027, k * 0.009), col);
+  B.rigid(el, 'plastic', new THREE.CylinderGeometry(0.0065, 0.0065, 0.008, 12).translate(cx, y, 0.033), 0x2c2d2a);
+  for (const z of [-0.026, 0.026]) B.rigid(el, 'metal', new THREE.CylinderGeometry(0.0022, 0.0022, 0.004, 8).rotateZ(PI / 2).translate(cx - 0.0105, y - 0.027, z * 0.95), 0xb8bcb4);
   B.info.watch = { bone: el, pos: V(cx - 0.012, y, 0), rot: new THREE.Euler(0, -PI / 2, 0) };
 }
 

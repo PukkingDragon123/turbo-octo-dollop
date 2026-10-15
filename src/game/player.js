@@ -239,7 +239,9 @@ export class LocalPlayer {
       this.watchOpen = !this.watchOpen;
       audio.play(this.watchOpen ? 'watch_beep' : 'ui_back', { volume: 0.5, bus: 'ui' });
     }
-    this.watchRaised = damp(this.watchRaised, this.watchOpen ? 1 : 0, 10, dt);
+    // notices make the clone glance at the wrist (no screen HUD)
+    const glance = !this.watchOpen && this.game.watch?.peeking && !this.grab && !this.useAction ? 0.75 : 0;
+    this.watchRaised = damp(this.watchRaised, this.watchOpen ? 1 : glance, this.watchOpen || glance ? 10 : 7, dt);
 
     // sleeping
     if (s.sleeping) {
@@ -276,6 +278,9 @@ export class LocalPlayer {
       if (input.down('back')) iz += 1;
       if (input.down('left')) ix -= 1;
       if (input.down('right')) ix += 1;
+      // analog stick (touch): direction and magnitude, so a half-pushed stick walks slowly
+      const ax = input.moveAxis;
+      if (ax && Math.hypot(ax.x, ax.y) > 0.08) { ix = ax.x; iz = ax.y; }
     }
     const wantCrouch = canControl && input.down('crouch');
     // un-crouch only if there is headroom
@@ -287,8 +292,8 @@ export class LocalPlayer {
     if (this.collider) this.collider.setHalfHeight(this._hh());
 
     const len = Math.hypot(ix, iz);
-    if (len > 0) { ix /= len; iz /= len; }
-    this.moving = len > 0;
+    if (len > 1) { ix /= len; iz /= len; }
+    this.moving = len > 0.05;
     const canSprint = !s.fracture && s.stamina > 1 && !this.crouching && iz < 0.2;
     this.sprinting = canControl && input.down('sprint') && this.moving && canSprint && (this.sprinting || s.stamina > 6);
     let speed = this.crouching ? CROUCH_SPEED : this.sprinting ? SPRINT : WALK;
@@ -297,6 +302,9 @@ export class LocalPlayer {
     if (s.blood < 3000) speed *= 0.85;
     this.waterDepth = level?.waterDepth?.(this.pos.x, this.pos.z) ?? 0;
     if (this.waterDepth > 0.05) speed *= 0.78;
+    // level water physics (Poolrooms: treading / swimming in deep water); may set vel.y, returns a speed factor
+    const wm = level?.waterMotion?.(this, dt, canControl);
+    if (wm !== undefined) speed *= wm;
     // carrying heavy things slows you down
     if (this.grab) {
       const p = this.world.props.get(this.grab.id);
@@ -308,7 +316,7 @@ export class LocalPlayer {
     _fwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     _right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const wish = _v.set(0, 0, 0).addScaledVector(_fwd, -iz).addScaledVector(_right, ix).multiplyScalar(speed);
-    const accel = this.grounded ? (this.moving ? 16 : 13) : 2.5;
+    const accel = this.grounded ? (this.moving ? 16 : 13) : this.swimming ? 4 : 2.5;
     this.vel.x = damp(this.vel.x, wish.x, accel, dt);
     this.vel.z = damp(this.vel.z, wish.z, accel, dt);
     // knockback / yank from others
@@ -786,6 +794,7 @@ export class LocalPlayer {
       case 'multitool':
       case 'sample':
       case 'swing':
+      case 'test':
         this.holdAction = this.game.tools.begin(def.use, item, this);
         break;
       default:

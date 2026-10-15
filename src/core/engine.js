@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { PostFX } from '../gfx/post.js';
 
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _o = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+
 export const QUALITY = {
   low: { pixelRatio: 0.75, shadows: false, shadowSize: 512, bloom: false, ao: false, msaa: false, maxDpr: 1 },
   medium: { pixelRatio: 1.0, shadows: true, shadowSize: 1024, bloom: true, ao: false, msaa: false, maxDpr: 1.25 },
@@ -126,6 +128,16 @@ class Engine {
     this.frame++;
     this.vmCamera.position.set(0, 0, 0);
     this.vmCamera.quaternion.identity();
+    // look-at-the-watch: the viewmodel camera turns towards the raised wrist terminal and zooms in so the
+    // watch face is readable even on a phone (vmFocus: point in camera space, vmFocusW: 0..1)
+    const w = this.vmFocusW || 0;
+    if (w > 0.001 && this.vmFocus) {
+      _m.lookAt(_o, this.vmFocus, _up);
+      _q.setFromRotationMatrix(_m);
+      this.vmCamera.quaternion.slerp(_q, w);
+    }
+    const fov = 60 - 24 * w;
+    if (Math.abs(this.vmCamera.fov - fov) > 0.01) { this.vmCamera.fov = fov; this.vmCamera.updateProjectionMatrix(); }
     this.post.render(dt, this.time);
   }
 }

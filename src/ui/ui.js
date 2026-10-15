@@ -93,7 +93,16 @@ export class UI {
       </div></div>
       <div id="controls" class="screen"><div class="crt">
         <h2>CONTROLS</h2>
-        <div style="font-size:24px;line-height:1.35">
+        <div class="touch-only" style="font-size:22px;line-height:1.35">
+          LEFT THUMB: drag anywhere to walk · push the stick to the rim to sprint<br/>
+          RIGHT THUMB: drag to look · tap to use what is under the dot<br/>
+          <span class="kbd">USE</span> interact / pick up (shows the action) · <span class="kbd">JUMP</span> · <span class="kbd">DUCK</span> toggle crouch<br/>
+          <span class="kbd">GRAB</span> hold to carry physics objects · <span class="kbd">THROW</span> while carrying · <span class="kbd">ROT</span> hold + drag to rotate<br/>
+          <span class="kbd">ITEM</span> use the held item · <span class="kbd">NEXT</span> switch item · <span class="kbd">DROP</span><br/>
+          <span class="kbd">WATCH</span> raise the wrist terminal · <span class="kbd">◀ ▶</span> tabs · <span class="kbd">SNAP</span> photo in CAM<br/>
+          <span class="kbd">LIGHT</span> flashlight · <span class="kbd">VIEW</span> third person · <span class="kbd">MENU</span> pause
+        </div>
+        <div class="desk-only" style="font-size:24px;line-height:1.35">
           <span class="kbd">WASD</span> move · <span class="kbd">SHIFT</span> sprint · <span class="kbd">CTRL</span>/<span class="kbd">C</span> crouch · <span class="kbd">SPACE</span> jump<br/>
           <span class="kbd">LMB</span> hold to GRAB physics objects (and teammates)<br/>
           &nbsp;&nbsp;while grabbing: <span class="kbd">WHEEL</span> push/pull · <span class="kbd">R</span>+mouse rotate · <span class="kbd">RMB</span> throw<br/>
@@ -101,7 +110,8 @@ export class UI {
           <span class="kbd">RMB</span> use held item (eat, drink, heal, weld, dismantle, sample)<br/>
           <span class="kbd">F</span> flashlight · <span class="kbd">TAB</span> wristwatch (<span class="kbd">Q</span>/<span class="kbd">E</span> tabs, <span class="kbd">LMB</span> photo in CAMERA)<br/>
           <span class="kbd">V</span> push-to-talk · <span class="kbd">H</span> wave · <span class="kbd">J</span> dance · <span class="kbd">B</span> point · <span class="kbd">T</span> 3rd person<br/>
-          <span class="kbd">ESC</span> pause
+          <span class="kbd">ESC</span> pause<br/>
+          There is no HUD: vitals, items, tasks and messages are on your wristwatch. It beeps and you glance at it when something happens.
         </div>
         <div class="menu" style="margin-top:16px"><button class="btn interactive" data-act="back">BACK</button></div>
       </div></div>
@@ -111,6 +121,11 @@ export class UI {
       <div id="alert" class="screen"><div class="crt"><h2>NOTICE</h2><div id="alert-text" style="font-size:26px"></div><div class="menu" style="margin-top:14px"><button class="btn interactive" data-act="alert-ok">OK</button></div></div></div>
       <div id="loading"><div class="t">DISPATCHING</div><div class="l">...</div><div class="bar"><div></div></div></div>
     `;
+    // the artifact build runs in a sandboxed frame without WebRTC: solo only
+    if (import.meta.env.VITE_SOLO_ONLY) {
+      for (const a of ['host', 'join']) $(`[data-act="${a}"]`, this.root)?.remove();
+      $('#menu-main .hint', this.root).textContent = 'Solo build: online co-op needs the full version.';
+    }
     this.hud = $('#hud', this.root);
     this.menuOpen = true;
     this.screens = {};
@@ -147,7 +162,7 @@ export class UI {
     $('#in-code', this.root).addEventListener('keydown', (e) => { if (e.key === 'Enter') this._act('dojoin'); });
     for (const inp of this.root.querySelectorAll('[data-set]')) {
       const k = inp.dataset.set;
-      const v = profile.settings[k];
+      const v = k === 'quality' ? engine.qualityName : profile.settings[k];
       inp.value = String(v);
       inp.addEventListener('input', () => this._setting(k, inp.value));
       inp.addEventListener('change', () => this._setting(k, inp.value));
@@ -176,6 +191,7 @@ export class UI {
     let v = raw;
     if (['master', 'sfx', 'music', 'ambient', 'voice', 'sensitivity'].includes(k)) v = parseFloat(raw);
     if (k === 'invertY') v = raw === 'true';
+    if (k === 'quality') profile.settings.qualityPicked = true;
     profile.settings[k] = v;
     profile.save();
     this.applySettings();
@@ -318,6 +334,7 @@ export class UI {
 
   // ------------------------------------------------------------------
   toast(text, kind = '') {
+    this.game?.watch?.notify(text, kind);
     const t = el(`<div class="toast ${kind}"></div>`);
     t.textContent = text;
     this.toastEl.appendChild(t);
@@ -333,6 +350,7 @@ export class UI {
     while (this.feedEl.children.length > 5) this.feedEl.firstChild.remove();
     setTimeout(() => { m.style.transition = 'opacity 1s'; m.style.opacity = '0'; setTimeout(() => m.remove(), 1000); }, 9000 + text.length * 40);
     this.game?.watch?.log(from || 'SYS', text);
+    if (from) this.game?.watch?.notify(text, kind, from);
   }
 
   hq(text, from = 'HQ') {
@@ -345,6 +363,7 @@ export class UI {
     $('.t', box).textContent = a.name;
     $('.d', box).textContent = a.desc;
     box.style.display = 'block';
+    this.game?.watch?.notify(`${a.name}: ${a.desc}`, 'good', 'ACHIEVEMENT');
     audio.ready && audio.play('credits', { volume: 0.6, bus: 'ui' });
     clearTimeout(this._achT);
     this._achT = setTimeout(() => { box.style.display = 'none'; }, 4500);
@@ -367,6 +386,12 @@ export class UI {
     z.style.left = `${a * 100}%`;
     z.style.width = `${(b - a) * 100}%`;
     $('.needle', t).style.left = `${Math.min(1, frac) * 100}%`;
+  }
+
+  shortItem(it) {
+    if (!it) return '';
+    const n = it.type === 'sample_jar' && it.state.kind ? (SAMPLES[it.state.kind]?.name || 'Sample') : itemName(it.type);
+    return n.toUpperCase().split(/\s+/).slice(-1)[0].slice(0, 9);
   }
 
   setPrompt(t) {
@@ -542,9 +567,10 @@ export class UI {
     $('#topright .obj', this.root).textContent = obj;
     $('#topright .exit', this.root).textContent = exit;
     // prompt & crosshair
-    const prompt = l.dead ? null : g.terminal?.active ? null : l.focus?.prompt || this._prompt;
-    this.promptEl.textContent = prompt || '';
-    this.crossEl.className = l.grab ? 'grab' : l.focus ? 'focus' : '';
+    let prompt = l.dead ? null : g.terminal?.active ? null : l.focus?.prompt || this._prompt;
+    if (prompt && input.touch) prompt = prompt.replace(/^\[[^\]]*\]\s*/, '');
+    if (this.promptEl.textContent !== (prompt || '')) this.promptEl.textContent = prompt || '';
+    this.crossEl.className = l.grab ? 'grab' : l.focus?.prompt ? 'focus' : '';
     this.crossEl.style.display = l.dead || g.terminal?.active || this.customizing ? 'none' : 'block';
     // hotbar
     if (l.inv.version !== this.invVersion) {
@@ -610,6 +636,16 @@ export class UI {
       l.avatar.root.visible = true;
       l.arms.root.visible = false;
     } else this.customCamPos = null;
+    // raised wrist terminal: steer the viewmodel camera onto the watch face (stronger on small screens)
+    const ws = l.arms?.watchScreen;
+    const raise = l.dead || this.customizing ? 0 : Math.max(0, Math.min(1, (l.watchRaised - 0.25) / 0.75));
+    if (ws && raise > 0) {
+      if (!this._wsPos) this._wsPos = new THREE.Vector3();
+      ws.getWorldPosition(this._wsPos);
+      engine.vmFocus = this._wsPos;
+      const small = Math.min(window.innerWidth, window.innerHeight) < 600 ? 1 : 0.7;
+      engine.vmFocusW = raise * raise * (3 - 2 * raise) * small * (l.watchOpen ? 1 : 0.8);
+    } else engine.vmFocusW = 0;
     // post fx from survival state
     const P = engine.post.params;
     P.uDamage.value = damp(P.uDamage.value, Math.max(s.damageFlash, s.health < 30 ? 0.35 + Math.sin(g.time * 3) * 0.1 : 0, s.bleed >= 2 ? 0.25 : 0), 6, dt);

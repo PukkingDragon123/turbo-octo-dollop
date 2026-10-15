@@ -14,6 +14,8 @@ import { UI } from './ui/ui.js';
 import { Game } from './game/game.js';
 import { Terminal } from './ui/terminal.js';
 import { Watch } from './ui/watch.js';
+import { TouchControls, wantsTouch } from './ui/touch.js';
+import { Distortion } from './gfx/distort.js';
 import { Healthity } from './game/healthity.js';
 import { Voice } from './net/voice.js';
 import { preloadItems } from './entities/models_items.js';
@@ -28,7 +30,11 @@ async function boot() {
   document.body.appendChild(bootEl);
   const setL = (t) => { const e = document.getElementById('boot-l'); if (e) e.textContent = t; };
 
-  engine.init(document.body, params.get('q') || profile.settings.quality);
+  input.touch = wantsTouch();
+  if (input.touch) document.documentElement.classList.add('touch');
+  // phones get the light preset unless the player picked one themselves
+  const q = params.get('q') || (input.touch && !profile.settings.qualityPicked ? 'low' : profile.settings.quality);
+  engine.init(document.body, q);
   input.attach(engine.renderer.domElement);
   setL('LOADING PHYSICS...');
   await initPhysics();
@@ -55,6 +61,8 @@ async function boot() {
   game.watch = new Watch(game);
   game.healthity = new Healthity(game);
   game.voice = new Voice(game);
+  game.touch = input.touch ? new TouchControls(game) : null;
+  game.distort = new Distortion(game);
   ui.applySettings();
   window.__game = game;
   window.__net = net;
@@ -99,6 +107,8 @@ async function boot() {
         game.voice.update(dt);
       }
       ui.update(dt);
+      game.touch?.update(dt);
+      game.distort.update(dt);
       audio.update?.(dt);
       engine.render(dt);
       game.watch.captureIfRequested(engine.renderer.domElement);

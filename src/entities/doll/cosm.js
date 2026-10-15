@@ -9,7 +9,7 @@ import { clamp, lerp } from './kit.js';
 import { valueNoise2, RNG } from '../../core/rng.js';
 import { DIM, Y, PartBuilder, torsoW, armW, legW, hoodW } from './dollrig.js';
 import { SACK, FACE, facePt, frameQ, shellPoint, headRay } from './sack.js';
-import { torsoPt, torsoNrm, torsoPhiX, torsoA, rimFacePt, HOOD, WEB, TAPE, tapeWrap, mergeSimple } from './suit.js';
+import { torsoPt, torsoNrm, torsoPhiX, torsoA, rimFacePt, HOOD, WEB, TAPE, tapeWrap, mergeSimple, buildFaceplate } from './suit.js';
 import { buildStraps, buildTank, buildRegulator, buildStrapGauge, decalGrid, decalQuad, toRegion, remapCircleUV, STRAP_X } from './gear.js';
 import { grid, displace, tint, solid, ensureOutward, gridArcUV, tubeR, curvePts, ribbonOn, ss, gauss, pillow, sePt } from './geom.js';
 
@@ -463,6 +463,8 @@ export function buildVisorPart(e) {
   const B = new PartBuilder();
   const f = GEAR[e.id];
   if (f) f(B, e);
+  // the suit's own clear faceplate (gear that sticks out further brings its own visor)
+  if (e.id === 'none' || e.id === 'goggles' || e.id === 'glasses' || e.id === 'sunglasses') buildFaceplate(B);
   return B;
 }
 const headRing = (y, off, { tilt = 0 } = {}) => { const pts = []; for (let i = 0; i <= 64; i++) { const az = (i / 64) * TAU; const d = V(Math.sin(az), (y - SACK.cy) / 0.24 + tilt * Math.cos(az), -Math.cos(az)).normalize(); const p = shellPoint(d, off, 1, V()); pts.push(p); } return pts; };

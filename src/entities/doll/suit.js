@@ -11,7 +11,7 @@ import { clamp, lerp, smooth } from './kit.js';
 import { valueNoise2 } from '../../core/rng.js';
 import { DIM, Y, PartBuilder, torsoW, armW, legW, hoodW } from './dollrig.js';
 import { SACK, FACE, headPoint, headRay, headGrad, facePt, faceCapGeo, sackTone } from './sack.js';
-import { grid, gridNormals, displace, tint, solid, ensureOutward, gridArcUV, sweep, tubeR, curvePts, ribbonOn, sePt, ss, gauss } from './geom.js';
+import { grid, gridNormals, displace, tint, solid, ensureOutward, gridArcUV, sweep, tubeR, curvePts, ribbonOn, sePt, ss, gauss, pillow } from './geom.js';
 import { atlasUV } from './dolltex.js';
 
 const PI = Math.PI, TAU = PI * 2;
@@ -19,7 +19,7 @@ const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const _v = V(), _w = V(), _n = V(), _p = V(), _q = new THREE.Quaternion();
 const nz = (x, y, s) => valueNoise2(x, y, s) - 0.5;
 
-export const TAPE = 0x7c8086, WEB = 0x1d1e21, GLOVE = 0x141416, BOOT = 0x131315, SOLE = 0x1c1b1a, SEAM = 0.86;
+export const TAPE = 0x7c8086, WEB = 0x1d1e21, GLOVE = 0x141416, BOOT = 0x131315, SOLE = 0x2a2826, SEAM = 0.86, GASKET = 0x232427, PAD = 0x34363b;
 
 // ============================================================================
 // Torso surface
@@ -158,18 +158,25 @@ function buildSleeve(B, side) {
   B.skinned('suit', g, armW(side));
 }
 
+const LEG_PROF = [[-0.045, 0.0], [-0.03, 0.05], [-0.008, 0.075], [0.03, 0.087], [0.08, 0.089], [0.125, 0.086], [0.155, 0.088], [0.178, 0.09], [0.192, 0.084], [0.204, 0.08], [0.212, 0.077]];
+const legProfC = new THREE.SplineCurve(LEG_PROF.map(([dy, r]) => new THREE.Vector2(r, dy))).getSpacedPoints(300);
+// leg radius at dy below the hip (before folds) and the fold displacement (dy, angle a; a = -PI/2 is the front)
+export function legR(dy) { const P = legProfC; for (let i = 1; i < P.length; i++) if (P[i].y >= dy) { const a = P[i - 1], b = P[i]; return lerp(a.x, b.x, (dy - a.y) / Math.max(1e-6, b.y - a.y)); } return P[P.length - 1].x; }
+export function legFold(dy, a, s) {
+  let d = Math.sin(((dy - 0.125 + 0.01 * Math.sin(2 * a)) / 0.032) * TAU) * 0.0042 * gauss(dy, 0.125, 0.035);
+  d += Math.sin(((dy - 0.168 + 0.007 * Math.sin(3 * a + 1 + s)) / 0.022) * TAU) * 0.0058 * gauss(dy, 0.168, 0.022);
+  d += Math.sin(a * 12 + s * 2) * 0.0025 * ss(0.185, 0.205, dy);
+  d += nz(a * 1.5 + s * 7, dy * 12, 4) * 0.007;
+  return d * ss(-0.02, 0.01, dy);
+}
+// rest-space point on the folded suit leg surface (+off outward)
+export function legPt(side, dy, a, off = 0, out = V()) {
+  const s = side === 'L' ? -1 : 1, r = legR(dy) + legFold(dy, a, s) + off;
+  return out.set(s * DIM.hipX + Math.cos(a) * r, Y.pelvis - dy, 0.004 + Math.sin(a) * r);
+}
 function buildLeg(B, side) {
   const s = side === 'L' ? -1 : 1, ax = V(s * DIM.hipX, 0, 0.004), top = Y.pelvis;
-  const prof = [[-0.045, 0.0], [-0.03, 0.05], [-0.008, 0.075], [0.03, 0.087], [0.08, 0.089], [0.125, 0.086], [0.155, 0.088], [0.178, 0.09], [0.192, 0.084], [0.204, 0.08], [0.212, 0.077]];
-  const g = radialTube(ax, top, prof, 32, 28, {
-    fold: (dy, a) => {
-      let d = Math.sin(((dy - 0.125 + 0.01 * Math.sin(2 * a)) / 0.032) * TAU) * 0.0042 * gauss(dy, 0.125, 0.035);
-      d += Math.sin(((dy - 0.168 + 0.007 * Math.sin(3 * a + 1 + s)) / 0.022) * TAU) * 0.0058 * gauss(dy, 0.168, 0.022);
-      d += Math.sin(a * 12 + s * 2) * 0.0025 * ss(0.185, 0.205, dy);
-      d += nz(a * 1.5 + s * 7, dy * 12, 4) * 0.007;
-      return d * ss(-0.02, 0.01, dy);
-    },
-  });
+  const g = radialTube(ax, top, LEG_PROF, 32, 30, { fold: (dy, a) => legFold(dy, a, s) });
   tint(g, (x, y, z) => grime(x, y, z) * (1 - 0.16 * ss(0.3, 0.15, y)));
   B.skinned('suit', g, legW(side));
 }
@@ -241,16 +248,32 @@ function buildHood(B) {
   gridArcUV(g, 1, 1);
   B.skinned('suit', g, hoodW);
 
-  // elastic rim: a puckered rolled tube hugging the face
+  // visor gasket: a chunky moulded rubber frame bonded into the face opening (the faceplate
+  // sits in it), with a row of clamp bolts and two latch blocks at the temples
   const rim = [], N = 72;
-  for (let i = 0; i < N; i++) { rimFacePt(i / N, _p, _n); rim.push(_p.clone().addScaledVector(_n, 0.0085).add(V(0, hb, 0))); }
-  const rg = sweep([...rim, rim[0], rim[1]].slice(0, N + 1), 8, (t, a, o) => {
-    const r = HOOD.rimR * (1 + 0.07 * Math.cos(t * TAU * 26) + 0.04 * Math.sin(t * TAU * 7));
-    o.set(Math.cos(a) * r, Math.sin(a) * r * 0.85);
+  for (let i = 0; i < N; i++) { rimFacePt(i / N, _p, _n); rim.push(_p.clone().addScaledVector(_n, 0.0095).add(V(0, hb, 0))); }
+  const rg = sweep([...rim, rim[0], rim[1]].slice(0, N + 1), 10, (t, a, o) => {
+    const r = HOOD.rimR * 1.28 * (1 + 0.012 * Math.cos(t * TAU * 18));
+    o.set(Math.cos(a) * r, Math.sin(a) * r * 0.78);
   });
-  tint(rg, () => 0.92);
   gridArcUV(rg, 1, 1);
-  B.skinned('suit', rg, hoodW);
+  B.skinned('rubber', rg, hoodW, GASKET);
+  for (let k = 0; k < 14; k++) {
+    const t = (k + 0.5) / 14;
+    if (Math.abs(t - 0.5) < 0.04 || Math.abs(t) < 0.04 || Math.abs(t - 1) < 0.04) continue;   // latches sit at the temples
+    rimFacePt(t, _p, _n); _p.addScaledVector(_n, 0.0095 + HOOD.rimR * 1.0).y += hb;
+    const q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), _n);
+    const bolt = new THREE.CylinderGeometry(0.0042, 0.0048, 0.004, 8); bolt.applyQuaternion(q).translate(_p.x, _p.y, _p.z);
+    B.skinned('metal', bolt, hoodW, 0xa4a8ae);
+  }
+  for (const t of [0, 0.5]) {
+    rimFacePt(t, _p, _n); _p.addScaledVector(_n, 0.0125).y += hb;
+    const q = new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), _n);
+    const latch = pillow(0.016, 0.034, 0.012); latch.applyQuaternion(q).translate(_p.x, _p.y, _p.z);
+    B.skinned('plastic', latch, hoodW, 0x2e2f33);
+    const lever = new THREE.BoxGeometry(0.008, 0.026, 0.004); lever.translate(0, 0, 0.007).applyQuaternion(q).translate(_p.x, _p.y, _p.z);
+    B.skinned('metal', lever, hoodW, 0xb8bcc2);
+  }
 
   // drawstring cords + toggles (hang from cordL / cordR)
   for (const [S, s] of [['L', -1], ['R', 1]]) {
@@ -287,11 +310,12 @@ function buildFront(B, seamCol) {
   const flap = surfStrip(B, 'suit', at, an, 40, 0.056, 0.0075, null, torsoW, { bevel: 0.6 });
   displace(flap, (x, y) => Math.sin(y * 70) * 0.0012);
   tint(flap, (x, y) => (0.97 + nz(y * 30, x * 30, 4) * 0.04) * (1 - 0.12 * ss(0.3, 0.27, y)));
-  // stitched edges of the flap (seam tape tone)
+  // grey seam tape sealing both edges of the flap (the zip line)
   for (const e of [-1, 1]) {
-    const at2 = (t, out) => { const y = lerp(y0 + 0.01, y1 - 0.01, t); const phi = torsoPhiX(fx + e * 0.026, y); return torsoPt(phi, y, 0.0115, out); };
-    const an2 = (t, out) => { const y = lerp(y0 + 0.01, y1 - 0.01, t); return torsoNrm(torsoPhiX(fx + e * 0.026, y), y, out); };
-    surfStrip(B, 'suit', at2, an2, 30, 0.006, 0.0015, seamCol, torsoW);
+    const at2 = (t, out) => { const y = lerp(y0 + 0.004, y1 - 0.004, t); const phi = torsoPhiX(fx + e * 0.026, y); return torsoPt(phi, y, 0.0112 + 0.0012 * Math.sin(y * 70), out); };
+    const an2 = (t, out) => { const y = lerp(y0 + 0.004, y1 - 0.004, t); return torsoNrm(torsoPhiX(fx + e * 0.026, y), y, out); };
+    const tg = surfStrip(B, 'tape', at2, an2, 44, 0.013, 0.0014, TAPE, torsoW, { bevel: 0.8 });
+    tint(tg, (x, y) => 0.94 + nz(y * 60 + e * 3, x * 40, 6) * 0.12);
   }
   // press-stud snaps holding the flap shut
   for (const y of [0.36, 0.47, 0.58, 0.69, 0.79]) {
@@ -361,7 +385,7 @@ function torsoTopAt(x, z) {
 // ============================================================================
 export const GLOVE_DIM = { cuffTop: 0.052, len: 0.098 };
 // glove surface in the wrist bone's local space (hand along -Y, thumb toward -Z, palm medial)
-export function gloveGeo(side, { rings = 26, segs = 24, cuff = true } = {}) {
+export function gloveGeo(side, { rings = 36, segs = 28, cuff = true } = {}) {
   const s = side === 'L' ? -1 : 1;
   const yTop = cuff ? GLOVE_DIM.cuffTop : 0.03, yTip = -GLOVE_DIM.len;
   const g = grid(segs, rings, (i, j, p) => {
@@ -379,16 +403,21 @@ export function gloveGeo(side, { rings = 26, segs = 24, cuff = true } = {}) {
     if (k > 0.5 && p.x * s < 0) p.x *= 0.88;
   }, { closedU: true, poleTop: true });
   ensureOutward(g, V(0, -0.02, 0));
-  // creases: wrist, knuckles (back of the hand), a few random rubber wrinkles on the cuff
+  // thick moulded rubber: ribbed gauntlet rings, wrist crease, knuckle guard bumps on the back of
+  // the hand, two finger grooves suggesting the mitten's fingers, a few wrinkles on the cuff
   displace(g, (x, y, z) => {
-    const back = clamp(x * s / 0.02, 0, 1);
-    let d = -0.0016 * gauss(y, -0.006, 0.004);
-    d += -0.0016 * gauss(y, -0.05, 0.003) * back;
-    d += -0.0011 * gauss(y, -0.057, 0.003) * back;
-    d += Math.sin(Math.atan2(z, x) * 9 + y * 80) * 0.0012 * ss(0.0, 0.03, y);
-    d += nz(Math.atan2(z, x) * 3 + s * 4, y * 60, 2) * 0.0014;
+    const back = clamp(x * s / 0.02, 0, 1), palm = clamp(-x * s / 0.02, 0, 1);
+    let d = -0.0018 * gauss(y, -0.006, 0.004);
+    d += 0.0016 * (gauss(y, 0.006, 0.0022) + gauss(y, 0.0135, 0.0022) + gauss(y, 0.021, 0.0022)) * (cuff ? 1 : 0);
+    for (const zk of [-0.021, -0.007, 0.007, 0.021]) d += 0.0032 * gauss(y, -0.05, 0.0055) * gauss(z, zk, 0.0055) * back;
+    d += -0.0011 * gauss(y, -0.061, 0.003) * back;
+    for (const zk of [-0.0135, 0.0, 0.0135]) d += -0.0013 * gauss(z, zk, 0.0018) * ss(-0.064, -0.078, y) * (1 - ss(-0.09, -0.097, y));
+    d += 0.0008 * palm * ss(-0.02, -0.035, y) * (Math.sin(y * 520) * Math.sin(z * 520) > 0.3 ? 1 : 0);
+    d += Math.sin(Math.atan2(z, x) * 9 + y * 80) * 0.0010 * ss(0.022, 0.04, y);
+    d += nz(Math.atan2(z, x) * 3 + s * 4, y * 60, 2) * 0.0012;
     return d;
-  }, { aoK: 0.35, aoAmp: 0.0015 });
+  }, { aoK: 0.4, aoAmp: 0.0015 });
+  tint(g, (x, y) => 1 + 0.35 * gauss(y, 0.0135, 0.008) * (cuff ? 1 : 0));
   gridArcUV(g, 1, 1);
   return g;
 }
@@ -435,7 +464,7 @@ function bootLevel(y) {
   return L[L.length - 1].slice(1);
 }
 export function bootGeo() {
-  const rings = 22, segs = 32, y0 = -0.08, y1 = 0.07;
+  const rings = 30, segs = 44, y0 = -0.08, y1 = 0.07;
   const g = grid(segs, rings, (i, j, p) => {
     const y = lerp(y0, y1, j / rings), [cz, hx, hz, e] = bootLevel(y), a = (i / segs) * TAU;
     sePt(a, e, _p);
@@ -443,30 +472,44 @@ export function bootGeo() {
   }, { closedU: true });
   ensureOutward(g, V(0, 0, -0.01));
   displace(g, (x, y, z) => {
-    let d = 0.0015 * gauss(y, -0.002, 0.004);                                 // ankle reinforcement ridge
+    let d = 0.0018 * gauss(y, -0.002, 0.004);                                 // ankle reinforcement ridge
     d += -0.0012 * gauss(y, 0.03, 0.0035) * (z > 0 ? 1 : 0.5);
-    d += nz(x * 40 + z * 20, y * 60, 5) * 0.001;
-    d += -0.0015 * gauss(Math.hypot(x * 0.9, z + 0.11) , 0.045, 0.004) * ss(-0.02, -0.06, y); // toe-cap seam
+    d += nz(x * 40 + z * 20, y * 60, 5) * 0.0009;
+    d += Math.sin(Math.atan2(z, x) * 7 + 1.3) * 0.0012 * gauss(y, 0.015, 0.012);   // flex wrinkles at the ankle
+    const tc = Math.hypot(x * 0.9, z + 0.11);
+    d += 0.0042 * ss(0.05, 0.035, tc) * ss(-0.012, -0.03, y);                     // raised steel toe cap
+    d += -0.0018 * gauss(tc, 0.05, 0.0035) * ss(-0.015, -0.035, y);               // toe-cap seam
+    d += 0.0022 * gauss(z, 0.062, 0.012) * ss(-0.02, -0.05, y);                    // heel counter
     return d;
   }, { aoK: 0.3, aoAmp: 0.0015 });
-  tint(g, (x, y) => 1 - 0.25 * ss(-0.06, -0.08, y));
+  tint(g, (x, y, z) => {
+    const tc = Math.hypot(x * 0.9, z + 0.11), cap = ss(0.052, 0.042, tc) * ss(-0.012, -0.03, y);
+    return (1 - 0.25 * ss(-0.06, -0.08, y)) * (1 + 1.8 * cap);
+  });
   gridArcUV(g, 1, 1);
   return g;
 }
 export function soleGeo() {
-  // outline of the boot's bottom section, grown a bit; lofted rim + treaded bottom
-  const segs = 36;
-  const ring = (k, dy, grow) => { const [cz, hx, hz, e] = bootLevel(-0.08); return (i, p) => { sePt((i / segs) * TAU, e, _p); return p.set(_p.x * (hx + grow), -0.08 + dy, cz + _p.y * (hz + grow)); }; };
-  const levels = [ring(0, 0.004, -0.004), ring(1, 0.0, 0.004), ring(2, -0.006, 0.006), ring(3, -0.014, 0.006), ring(4, -0.019, 0.003), ring(5, -0.021, -0.002)];
+  // chunky lugged outsole: lofted rim with tread blocks round the edge, instep notch, treaded bottom
+  const segs = 72;
+  const notch = (z) => 0.0075 * gauss(z, -0.012, 0.022);
+  const ring = (dy, grow, lug = 0) => { const [cz, hx, hz, e] = bootLevel(-0.08); return (i, p) => {
+    const a = (i / segs) * TAU; sePt(a, e, _p);
+    const L = lug && (i % 4 < 2) ? lug : 0;
+    const z = cz + _p.y * (hz + grow + L);
+    return p.set(_p.x * (hx + grow + L), -0.08 + dy + (dy < -0.01 ? notch(z) : 0), z);
+  }; };
+  const levels = [ring(0.008, -0.004), ring(0.004, 0.004), ring(-0.001, 0.0075), ring(-0.007, 0.0075, 0.0028), ring(-0.015, 0.0075, 0.0028), ring(-0.019, 0.004), ring(-0.021, -0.002)];
   const side = grid(segs, levels.length - 1, (i, j, p) => levels[j](i, p), { closedU: true });
   ensureOutward(side, V(0, -0.09, -0.03));
+  tint(side, (x, y) => 1 + 0.6 * gauss(y, -0.077, 0.0022));                 // welt stripe
   // bottom: polar grid with chevron lugs
-  const [cz, hx, hz, e] = bootLevel(-0.08), nr = 6;
+  const [cz, hx, hz, e] = bootLevel(-0.08), nr = 8;
   const bottom = grid(segs, nr, (i, j, p) => {
     const r = (j / nr), a = (i / segs) * TAU; sePt(a, e, _p);
-    const x = _p.x * (hx - 0.002) * r, z = cz + _p.y * (hz - 0.002) * r;
+    const x = _p.x * (hx + 0.002) * r, z = cz + _p.y * (hz + 0.002) * r;
     const lug = (Math.abs(Math.sin((z * 45 + Math.abs(x) * 30))) > 0.45 ? 1 : 0) * (r < 0.93 ? 1 : 0);
-    p.set(x, -0.101 - lug * 0.004, z);
+    p.set(x, -0.101 - lug * 0.004 + notch(z), z);
   }, { closedU: true, poleBottom: true });
   ensureOutward(bottom, V(0, -0.05, -0.03));
   gridArcUV(side, 1, 1);
@@ -557,6 +600,140 @@ function buildHeadCap(B) {
 }
 
 // ============================================================================
+// Clear faceplate: a domed visor seated in the gasket, bulging enough to clear the clown nose
+// (head-bone space; worn with no face gear or with goggles / glasses that fit underneath)
+// ============================================================================
+export function buildFaceplate(B) {
+  const nu = 72, nv = 16, n = V(), fwd = V(0, -0.12, -1).normalize(), dir = V();
+  const g = grid(nu, nv, (i, j, p) => {
+    const a = (i / nu) * TAU, r = Math.max(0, 1 - j / nv), c = Math.cos(a), sn = Math.sin(a);
+    const x = (HOOD.ox + 0.004) * r * Math.sign(c) * Math.pow(Math.abs(c), 2 / HOOD.e);
+    const y = HOOD.oy + (HOOD.oh + 0.004) * r * Math.sign(sn) * Math.pow(Math.abs(sn), 2 / HOOD.e);
+    facePt(x, y, 0, p, n);
+    const bulge = 0.014 + 0.084 * Math.pow(Math.max(0, 1 - Math.pow(r, 2.6)), 0.55);
+    dir.copy(n).lerp(fwd, ss(0.0, 0.6, 1 - r)).normalize();
+    p.addScaledVector(dir, bulge);
+  }, { closedU: true, poleTop: true });
+  ensureOutward(g, V(0, HOOD.oy, 0));
+  B.rigid('head', 'glass', g, 0xffffff);
+}
+
+// ============================================================================
+// Utility belt (webbing + cam buckle + pouches), knee pads, stencilled prints
+// ============================================================================
+export const BELT = { y: 0.445, h: 0.034 };
+// offset that clears the folded torso surface and the storm flap
+function beltOff(x, y, z, phi) {
+  const front = Math.max(0, -Math.cos(phi));
+  return Math.max(torsoFold(x, y, z, phi), 0.0128 * gauss(x, 0.018, 0.04) * front) + 0.0055;
+}
+function onTorso(phi, y, extra, out = V()) {
+  torsoPt(phi, y, 0, out);
+  return torsoPt(phi, y, beltOff(out.x, y, out.z, phi) + extra, out);
+}
+const qFromN = (n) => new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(V(), n.clone().negate(), V(0, 1, 0)));
+function buildBelt(B) {
+  const { y, h } = BELT, nu = 140;
+  const g = grid(nu, 3, (i, j, p) => {
+    const phi = (i / nu) * TAU, yy = y + (j / 3 - 0.5) * h;
+    onTorso(phi, yy, 0.0018 * Math.sin(PI * j / 3), p);
+  }, { closedU: true });
+  ensureOutward(g, V(0, y, 0));
+  gridArcUV(g, 1, 1);
+  tint(g, (x, yy, z, i) => { const j = Math.floor(i / (nu + 1)); return j === 0 || j === 3 ? 0.8 : 1; });
+  B.skinned('tape', g, torsoW, WEB);
+  // stitched edge ribs
+  for (const e of [-1, 1]) {
+    const rib = grid(nu, 1, (i, j, p) => { const phi = (i / nu) * TAU; onTorso(phi, y + e * (h / 2 - 0.004) + (j - 0.5) * 0.0016, 0.0026, p); }, { closedU: true });
+    ensureOutward(rib, V(0, y, 0));
+    B.skinned('tape', rib, torsoW, 0x3a3c40);
+  }
+  // cam buckle at the front (a little left of the flap)
+  {
+    const x = -0.05, phi = torsoPhiX(x, y), n = torsoNrm(phi, y, V()), p = onTorso(phi, y, 0.004, V()), q = qFromN(n);
+    const frame = pillow(0.052, 0.044, 0.008); frame.applyQuaternion(q).translate(p.x, p.y, p.z);
+    B.skinned('metal', frame, torsoW, 0x9a9ea4);
+    const plate = pillow(0.036, 0.03, 0.006); plate.translate(0, 0, 0.004).applyQuaternion(q).translate(p.x, p.y, p.z);
+    B.skinned('plastic', plate, torsoW, 0x2b2c30);
+    const lever = new THREE.BoxGeometry(0.03, 0.008, 0.004); lever.translate(0, 0.008, 0.008).applyQuaternion(q).translate(p.x, p.y, p.z);
+    B.skinned('metal', lever, torsoW, 0xc4c8cc);
+  }
+  // pouches: two on the hips, one small at the back right
+  for (const [x, front, w, hh, d, col] of [[0.2, true, 0.07, 0.072, 0.032, 0x3d4034], [-0.2, true, 0.062, 0.064, 0.03, 0x3d4034], [0.12, false, 0.052, 0.052, 0.026, 0x34372d]]) {
+    const yc = y - 0.01, phi = torsoPhiX(x, yc, front), n = torsoNrm(phi, yc, V()).setY(0).normalize();
+    const base = onTorso(phi, yc, 0.002, V()), q = qFromN(n);
+    const body = pillow(w, hh, d); body.translate(0, -0.004, d / 2 - 0.002);
+    displace(body, (px, py, pz) => nz(px * 70 + pz * 50, py * 70, 9) * 0.0012);
+    body.applyQuaternion(q).translate(base.x, base.y, base.z);
+    B.skinned('tape', body, torsoW, col);
+    const flap = pillow(w + 0.006, hh * 0.42, 0.009); flap.translate(0, hh * 0.3, d - 0.002).applyQuaternion(q).translate(base.x, base.y, base.z);
+    B.skinned('tape', flap, torsoW, new THREE.Color(col).multiplyScalar(0.82).getHex());
+    const snap = new THREE.CylinderGeometry(0.0055, 0.006, 0.003, 12).rotateX(PI / 2); snap.translate(0, hh * 0.18, d + 0.003).applyQuaternion(q).translate(base.x, base.y, base.z);
+    B.skinned('metal', snap, torsoW, 0xb4b8bc);
+  }
+}
+
+function buildKneePads(B) {
+  for (const side of ['L', 'R']) {
+    const s = side === 'L' ? -1 : 1, dyC = 0.136, R = 0.092, ax = V(s * DIM.hipX, Y.pelvis - dyC, 0.004);
+    // a thick moulded cap bent around the knee: pillow in (arc, height, thickness) laid on the
+    // folded leg surface, domed in the middle, with two moulded grooves
+    const pad = pillow(0.088, 0.07, 0.014, 0.01, 7);
+    const P = pad.attributes.position;
+    for (let i = 0; i < P.count; i++) {
+      const x = P.getX(i), y = P.getY(i), z = P.getZ(i) + 0.007, a = -PI / 2 - s * 0.08 - x / R;   // (x mirrored so the winding stays outward)
+      const dome = 0.009 * Math.max(0, 1 - (y / 0.036) ** 2) * Math.max(0, 1 - (x / 0.046) ** 2);
+      const groove = -0.0016 * (gauss(y, 0.011, 0.0025) + gauss(y, -0.011, 0.0025)) * ss(0.04, 0.025, Math.abs(x)) * (z > 0.007 ? 1 : 0);
+      legPt(side, dyC - y, a, 0.004 + z * (1 + dome / 0.014) + groove, _p);
+      P.setXYZ(i, _p.x, _p.y, _p.z);
+    }
+    pad.computeVertexNormals();
+    tint(pad, (x, y) => 1 + 0.25 * gauss(y, Y.pelvis - dyC, 0.02));
+    B.skinned('rubber', pad, legW(side), PAD);
+    // elastic strap around the back of the knee
+    const st = grid(40, 2, (i, j, p) => { const a = -PI / 2 + 0.45 + (i / 40) * (TAU - 0.9), yy = (j / 2 - 0.5) * 0.018; legPt(side, dyC - yy, a, 0.0035 + 0.0012 * Math.sin(PI * j / 2), p); });
+    ensureOutward(st, ax);
+    B.skinned('tape', st, legW(side), WEB);
+  }
+}
+
+// stencilled prints (shared decal atlas): lower back "R.O.O.M." + biohazard and the suit number on
+// the right thigh
+function buildStencils(B) {
+  // lower back, below the belt (visible under any backpack)
+  const yb = 0.385, W = 0.2, H = 0.05;
+  const back = grid(24, 4, (i, j, p) => {
+    const x = (i / 24 - 0.5) * W, y = yb + (j / 4 - 0.5) * H, phi = torsoPhiX(x, y, false);
+    torsoPt(phi, y, 0, p); torsoPt(phi, y, torsoFold(p.x, y, p.z, phi) + 0.0016, p);
+  });
+  ensureOutward(back, V(0, yb, 0));
+  const uv = back.attributes.uv; for (let k = 0; k < uv.count; k++) { const [a1, b1] = atlasUV('stencil', uv.getX(k), uv.getY(k)); uv.setXY(k, a1, b1); }
+  B.skinned('decal', back, torsoW);
+  // biohazard mark on the front of the right upper sleeve
+  {
+    const side = 'R', ax = DIM.shX, R = 0.0785, dy = 0.075, w = 0.036;
+    const g = grid(8, 8, (i, j, p) => {
+      const a = -PI / 2 + 0.25 - (i / 8 - 0.5) * (w / R), yy = Y.chest - dy + (j / 8 - 0.5) * w;
+      p.set(ax + Math.cos(a) * R, yy, Math.sin(a) * R * 0.96);
+    });
+    ensureOutward(g, V(ax, Y.chest - dy, 0));
+    const u2 = g.attributes.uv; for (let k = 0; k < u2.count; k++) { const [a1, b1] = atlasUV('bio', u2.getX(k), u2.getY(k)); u2.setXY(k, a1, b1); }
+    B.skinned('decal', g, armW(side));
+  }
+  // suit number printed on the lower belly, left of the flap (below the belt)
+  {
+    const W = 0.075, H = 0.016, cx = -0.085, cy = 0.392;
+    const g = grid(10, 3, (i, j, p) => {
+      const x = cx - (i / 10 - 0.5) * W, y = cy + (j / 3 - 0.5) * H, phi = torsoPhiX(x, y);
+      torsoPt(phi, y, 0, p); torsoPt(phi, y, torsoFold(p.x, y, p.z, phi) + 0.0018, p);
+    });
+    ensureOutward(g, V(cx, cy, 0));
+    const u2 = g.attributes.uv; for (let k = 0; k < u2.count; k++) { const [a1, b1] = atlasUV('suitno', u2.getX(k), u2.getY(k)); u2.setXY(k, a1, b1); }
+    B.skinned('decal', g, torsoW);
+  }
+}
+
+// ============================================================================
 // Base part (everything every avatar wears)
 // ============================================================================
 export function buildSuitBase() {
@@ -571,6 +748,9 @@ export function buildSuitBase() {
   buildGloves(B);
   buildBoots(B);
   buildTape(B);
+  buildBelt(B);
+  buildKneePads(B);
+  buildStencils(B);
   buildHeadCap(B);
   return B;
 }

@@ -36,6 +36,10 @@ class Input {
     this.enabled = true;
     this.textCapture = null; // when a text field is focused / terminal typing
     this.listeners = [];
+    // touch devices: the on-screen controls (ui/touch.js) feed virtual keys, buttons and look deltas;
+    // "pointer lock" becomes a plain flag so the pause / resume flow works unchanged
+    this.touch = false;
+    this.moveAxis = null; // analog stick { x, y } in [-1, 1] (y < 0 = forward), null when idle
   }
 
   attach(canvas) {
@@ -56,7 +60,7 @@ class Input {
       this.released.add(e.code);
       for (const l of this.listeners) l('up', e.code, e);
     });
-    window.addEventListener('blur', () => { this.keys.clear(); this.mouse.buttons = 0; });
+    window.addEventListener('blur', () => { this.keys.clear(); this.mouse.buttons = 0; this.moveAxis = null; });
     window.addEventListener('mousemove', (e) => {
       this.mouse.x = e.clientX;
       this.mouse.y = e.clientY;
@@ -68,12 +72,16 @@ class Input {
         this.mouse.dy += dy;
       }
     });
+    // compatibility mouse events that follow a touch would otherwise read as clicks / grabs
+    const synthetic = () => this.touch && performance.now() - (this.lastTouch || -1e9) < 1200;
     window.addEventListener('mousedown', (e) => {
+      if (synthetic()) return;
       const b = 1 << e.button;
       this.mouse.buttons |= b;
       this.mouse.pressed |= b;
     });
     window.addEventListener('mouseup', (e) => {
+      if (synthetic()) return;
       const b = 1 << e.button;
       this.mouse.buttons &= ~b;
       this.mouse.released |= b;
@@ -81,6 +89,7 @@ class Input {
     window.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('wheel', (e) => { this.mouse.wheel += Math.sign(e.deltaY); }, { passive: true });
     document.addEventListener('pointerlockchange', () => {
+      if (this.touch) return;
       this.locked = document.pointerLockElement === canvas;
       for (const l of this.listeners) l('lock', this.locked);
     });
@@ -88,14 +97,45 @@ class Input {
 
   onEvent(fn) { this.listeners.push(fn); }
 
+  _setLocked(v) {
+    if (this.locked === v) return;
+    this.locked = v;
+    for (const l of this.listeners) l('lock', v);
+  }
+
+  // ---- virtual input (touch controls) ----
+  virtualDown(code) {
+    if (!this.keys.has(code)) this.pressed.add(code);
+    this.keys.add(code);
+  }
+  virtualUp(code) {
+    if (!this.keys.has(code)) return;
+    this.keys.delete(code);
+    this.released.add(code);
+  }
+  virtualMouse(btn, down) {
+    const b = 1 << btn;
+    if (down) { this.mouse.buttons |= b; this.mouse.pressed |= b; } else if (this.mouse.buttons & b) { this.mouse.buttons &= ~b; this.mouse.released |= b; }
+  }
+  addLook(dx, dy) { this.mouse.dx += dx; this.mouse.dy += dy; }
+  releaseAll() {
+    for (const k of [...this.keys]) this.virtualUp(k);
+    for (let b = 0; b < 3; b++) this.virtualMouse(b, false);
+    this.moveAxis = null;
+  }
+
   requestLock() {
+    if (this.touch) { this._setLocked(true); return; }
     if (!this.canvas || this.locked) return;
     try {
       const p = this.canvas.requestPointerLock({ unadjustedMovement: true });
       if (p && p.catch) p.catch(() => { try { this.canvas.requestPointerLock(); } catch (e) { /* ignore */ } });
     } catch (e) { /* ignore */ }
   }
-  exitLock() { if (document.pointerLockElement) document.exitPointerLock(); }
+  exitLock() {
+    if (this.touch) { this.releaseAll(); this._setLocked(false); return; }
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
 
   // --- queries ---
   down(action) {
