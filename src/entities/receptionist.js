@@ -933,10 +933,13 @@ void main(){
   float edge = smoothstep(0.0, 0.05, vUv.x) * smoothstep(1.0, 0.95, vUv.x) * smoothstep(0.0, 0.1, vUv.y) * smoothstep(1.0, 0.9, vUv.y);
   float fill = 0.07 + 0.05 * sin(vUv.y * 40.0 + uTime * 2.0);
   float flick = 0.82 + 0.18 * h(tick * 0.37);
-  vec3 col = uColor * (t.r * 2.6 + fill * 1.5) + vec3(0.25, -0.05, -0.05) * tr.r * 0.5 + vec3(-0.05, 0.0, 0.3) * tb.r * 0.5;
-  col += uColor * band * 0.35;
-  float a = clamp(edge * scan * flick * uAlpha, 0.0, 1.0);
-  gl_FragColor = vec4(col * a, a);
+  // a smoky dark-teal pane (so it reads against bright office walls) with glowing cyan type
+  float ink = clamp(t.r, 0.0, 1.0);
+  vec3 pane = vec3(0.01, 0.07, 0.08) + uColor * fill * 0.6;
+  vec3 col = mix(pane, uColor * 2.4, ink) + vec3(0.3, -0.05, -0.05) * tr.r * 0.6 + vec3(-0.05, 0.0, 0.35) * tb.r * 0.6;
+  col += uColor * band * 0.5;
+  float a = clamp(mix(0.55, 1.0, ink) * edge * mix(1.0, scan, 0.6) * flick * uAlpha, 0.0, 1.0);
+  gl_FragColor = vec4(col, a);
 }`;
 class Holo {
   constructor() {
@@ -945,7 +948,7 @@ class Holo {
     this.tex = ctex(this.c, false);
     this.mat = new THREE.ShaderMaterial({
       uniforms: { map: { value: this.tex }, uTime: { value: 0 }, uAlpha: { value: 0 }, uGlitch: { value: 0 }, uColor: { value: new THREE.Color(0.16, 0.95, 0.88) } },
-      vertexShader: HOLO_VS, fragmentShader: HOLO_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false, toneMapped: false,
+      vertexShader: HOLO_VS, fragmentShader: HOLO_FS, transparent: true, depthWrite: false, blending: THREE.NormalBlending, side: THREE.DoubleSide, fog: false, toneMapped: false,
     });
     this.panel = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.26), this.mat);
     this.panel.renderOrder = 5;

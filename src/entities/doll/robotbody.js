@@ -34,8 +34,8 @@ const COVER = [
   { y: 1.22, hw: 0.158, hd: 0.106, zc: -0.008, p: 2.6 },
   { y: 1.3, hw: 0.164, hd: 0.102, zc: -0.004, p: 2.8 },
   { y: 1.365, hw: 0.162, hd: 0.093, zc: 0.002, p: 3.0 },
-  { y: 1.405, hw: 0.136, hd: 0.078, zc: 0.006, p: 2.8 },
-  { y: 1.432, hw: 0.086, hd: 0.064, zc: 0.01, p: 2.4 },
+  { y: 1.405, hw: 0.148, hd: 0.08, zc: 0.006, p: 3.0 },
+  { y: 1.432, hw: 0.094, hd: 0.066, zc: 0.01, p: 2.5 },
   { y: 1.452, hw: 0.058, hd: 0.053, zc: 0.012, p: 2.2 },
 ];
 export const COVER_Y0 = COVER[0].y, COVER_Y1 = COVER[COVER.length - 1].y;
@@ -142,7 +142,7 @@ function buildCoverTorso(B) {
 }
 
 // rolled short sleeve (stops above the elbow)
-const SLEEVE_PROF = [[-0.032, 0.0], [-0.027, 0.022], [-0.014, 0.039], [0.008, 0.049], [0.05, 0.0505], [0.1, 0.0495], [0.14, 0.049], [0.17, 0.0485]];
+const SLEEVE_PROF = [[-0.022, 0.0], [-0.018, 0.02], [-0.008, 0.036], [0.01, 0.0465], [0.05, 0.048], [0.1, 0.0475], [0.14, 0.047], [0.17, 0.0468]];
 export const SLEEVE_END = 0.17;
 function buildSleeve(B, side) {
   const s = side === 'L' ? -1 : 1, ax = s * RD.shX, top = RY.sh;
@@ -154,8 +154,8 @@ function buildSleeve(B, side) {
   ensureOutward(g, V(ax, top - 0.08, 0));
   displace(g, (x, y, z) => {
     const dy = top - y, a = Math.atan2(z, x - ax);
-    let d = Math.sin(((dy + 0.006 * Math.sin(2 * a + s)) / 0.03) * TAU) * 0.0025 * gauss(dy, 0.05, 0.03);
-    d += nz(a * 1.6 + s * 5 + 9, dy * 14, 3) * 0.004;
+    let d = Math.sin(((dy + 0.006 * Math.sin(2 * a + s)) / 0.03) * TAU) * 0.0012 * gauss(dy, 0.06, 0.03);
+    d += nz(a * 1.6 + s * 5 + 9, dy * 14, 3) * 0.003;
     return d * ss(-0.03, 0.0, dy);
   }, { aoK: 0.18, aoAmp: 0.005 });
   tint(g, (x, y, z) => (1 - 0.1 * ss(0.0, -0.04, RY.sh - y) * ss(0.12, 0.2, Math.abs(x))) * grime(x, y, z));
@@ -163,7 +163,7 @@ function buildSleeve(B, side) {
   B.skinned('suit', g, armW(side));
   // rolled cuff + inner annulus closing the opening down to the arm
   const cy = top - SLEEVE_END;
-  const cuff = new THREE.TorusGeometry(0.0488, 0.0078, 10, 32).rotateX(PI / 2).scale(1, 1, 0.96).translate(ax, cy + 0.004, 0);
+  const cuff = new THREE.TorusGeometry(0.0466, 0.0072, 10, 32).rotateX(PI / 2).scale(1, 1, 0.96).translate(ax, cy + 0.004, 0);
   vcol(cuff, (x, y, z) => 0.85 + 0.1 * Math.sin(Math.atan2(z, x - ax) * 9));
   B.skinned('suit', cuff, armW(side));
   const ring = new THREE.RingGeometry(0.035, 0.051, 32, 1).rotateX(PI / 2).translate(ax, cy - 0.002, 0);
