@@ -35,9 +35,7 @@ const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vect
 const _q1 = new THREE.Quaternion();
 
 // the 'laugh' expression arrives with the robot clones; until then 'happy' + talking + our own head jitter
-const LAUGH = (() => {
-  try { return Object.values(AV).some((f) => typeof f === 'function' && /['"`]laugh['"`]|\blaugh\s*:/.test(Function.prototype.toString.call(f))); } catch (e) { return false; }
-})();
+const LAUGH = true; // the android rig (doll_avatar.js) supports expression 'laugh'
 
 // seats around the table: x, z, yaw (avatars face -Z; yaw PI faces the camera)
 const SEATS = [
@@ -373,7 +371,7 @@ export class MenuScene {
       av.root.position.set(0, 0, 0); av.root.rotation.set(0, 0, 0);
       c.minY = 0; c.height = 1.1; c.headY = 0.95; c.chairSit = false;
       try {
-        av.update(0, { emote: 'sit', grounded: true, speed: 0, table: 0.76 });
+        av.update(0, { emote: 'sit', grounded: true, speed: 0, table: 0.74 });
         av.root.updateMatrixWorld(true);
         const b = av.bones || {};
         const pel = b.pelvis ? b.pelvis.getWorldPosition(new THREE.Vector3()).y : 0;
@@ -420,7 +418,7 @@ export class MenuScene {
       const W = this.outlineW;
       m.onBeforeCompile = (sh) => {
         sh.uniforms.uOW = W;
-        sh.vertexShader = 'uniform float uOW;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\ttransformed += normalize( normal ) * uOW;');
+        sh.vertexShader = 'uniform float uOW;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tfloat nL = length( normal );\n\tif ( nL > 1e-4 && nL < 1e4 ) transformed += normal * ( uOW / nL );');
       };
       m.customProgramCacheKey = () => 'menu-outline';
       this._outlineMat = m;
@@ -849,7 +847,7 @@ export class MenuScene {
     c.head.x = damp(c.head.x, c.headT.x, k, dt); c.head.y = damp(c.head.y, c.headT.y, k, dt); c.head.z = damp(c.head.z, c.headT.z, k, dt);
     const wasBurst = !!av.st?.laughBurst;
     try {
-      av.update(c.mode === 'freeze' ? 0 : dt, { emote: 'sit', grounded: true, speed: 0, expression: expr, talking, pitch: 0, table: 0.76 - c.seatY, lookAt: lookAt || undefined });
+      av.update(c.mode === 'freeze' ? 0 : dt, { emote: 'sit', grounded: true, speed: 0, expression: expr, talking, pitch: 0, table: 0.74 - c.seatY, lookAt: lookAt || undefined });
     } catch (e) { if (!this._warned) { this._warned = true; console.warn('[menu] clone update', e); } }
     if (native && c.mode === 'laugh') {
       const now = !!av.st.laughBurst;
