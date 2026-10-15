@@ -591,16 +591,19 @@ export class YellowLevel {
       for (const s of rec.slides) {
         const dx = s.bx - s.ax, dz = s.bz - s.az, L2 = dx * dx + dz * dz;
         if (L2 < 1e-6) continue;
-        let t = ((p.x - s.ax) * dx + (p.z - s.az) * dz) / L2;
-        if (t < -0.05 || t > 1.05) continue;
-        t = Math.max(0, Math.min(1, t));
+        const L = Math.sqrt(L2);
+        const t = ((p.x - s.ax) * dx + (p.z - s.az) * dz) / L2;
+        // the last segment keeps pushing ~0.9 m past the chute's end so clones launch off it
+        const over = t > 1;
+        if (t < -0.05 || t > (s.last ? 1 + 0.9 / L : 1.05)) continue;
         const qx = s.ax + dx * t, qz = s.az + dz * t;
         if ((p.x - qx) ** 2 + (p.z - qz) ** 2 > (s.hw + 0.12) ** 2) continue;
-        const sy = s.ay + (s.by - s.ay) * t;
-        if (p.y < sy - 0.3 || p.y > sy + 0.4) continue;
+        const tc = Math.max(0, Math.min(1, t));
+        const sy = s.ay + (s.by - s.ay) * tc;
+        if (p.y < sy - (over && s.last ? 1.2 : 0.3) || p.y > sy + 0.4) continue;
         // on the chute: drive the velocity along it towards `speed` (the yank is added after the player's own
         // acceleration, so aim for the target from the damped velocity); little steering while sliding
-        const L = Math.sqrt(L2), ux = dx / L, uz = dz / L;
+        const ux = dx / L, uz = dz / L;
         const k = 1 - Math.exp(-16 * dt);
         const along = player.vel.x * ux + player.vel.z * uz;
         const want = s.speed ?? 6;

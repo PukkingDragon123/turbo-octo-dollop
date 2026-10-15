@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { Sculpt, MAT } from './sdf.js';
 import { PartSet, ClothSet } from './parts.js';
 import { BoneSpec, assembleBody } from './rig.js';
-import { Frame, glove, boot, tape, tear, scar, surfPath, onSurf, hit, rag, add3, sub3, norm3, gloveJoints, cuffCenter, limbFolds, drip, hose } from './details.js';
+import { Frame, glove, boot, tape, tear, scar, surfPath, onSurf, hit, rag, add3, sub3, norm3, gloveJoints, cuffCenter, limbFolds, drip, hose, servoJoints, wires } from './details.js';
 import { PAL, RNG, PI, clamp, lerp } from './core.js';
 import { Spring, SpringV, Hold, tremor, rot, addRot, rotAxis, ik2, Planter, setWorldQuat, parentLocal } from './anim.js';
 import * as G from './geo.js';
@@ -73,7 +73,8 @@ export function template() {
     if (FRONT[k]) {
       body.chain([a, m], [0.06, 0.05], { bones: ['u' + k], mat: MAT.SUIT, col: PAL.suitDirty, k: 0.04, thin: 0, dirt: 0.55, noise: [0.003, 14] });
       body.sphere(m, 0.054, { bone: 'l' + k, mat: MAT.SUIT, col: PAL.suitDirty, k: 0.03, thin: 0, dirt: 0.6 });
-      body.cone(m, [e[0], e[1] + 0.05, e[2]], 0.04, 0.032, { bone: 'l' + k, k: 0.02, thin: 0.6, dirt: 0.55, noise: [0.002, 25] });
+      body.cone(m, [e[0], e[1] + 0.05, e[2]], 0.04, 0.032, { bone: 'l' + k, k: 0.02, thin: 0.6, dirt: 0.55, noise: [0.001, 25] });
+      servoJoints(body, m, [e[0], e[1] + 0.07, e[2]], 0.036, 3, { bone: 'l' + k, jitter: 0.25 });
       limbFolds(body, a, m, 0.06, { seed: k.charCodeAt(1) * 3 });
       body.torus(m, 0.05, 0.008, null, { bone: 'l' + k, mat: MAT.SUIT, col: PAL.suitDirty, k: 0.01, dirt: 0.8, noise: [0.006, 30] });
     } else {
@@ -173,6 +174,9 @@ export function template() {
   for (const k of ['RL', 'RR']) tape(parts, feet, [LIMB[k][2][0], 0.2, LIMB[k][2][2]], sub3(LIMB[k][1], LIMB[k][2]), { wraps: 2, width: 0.034, seed: 4, reach: 0.13 });
   // wet stains running down the ribs
   for (const s of [-1, 1]) drip(body, onSurf(body, [s * 0.14, 0.7, -0.2]).p, { n: 3, len: 0.14, w: 0.01, col: 0x3a1a0c, wet: 0.6, seed: 9 + s });
+  // wiring spilling from under the jaw and between the ribs
+  { const q = onSurf(body, [0, 0.56, -0.44]); wires(parts, q.p, q.n, { n: 5, len: 0.16, seed: 21, bone: 'neck1', ws: body }); }
+  for (const s of [-1, 1]) { const q = onSurf(body, [s * 0.17, 0.6, -0.12]); wires(parts, q.p, q.n, { n: 3, len: 0.1, seed: 30 + s, bone: 'chest', ws: body }); }
 
   const { geo, stats } = assembleBody([
     { S: body, h: 0.0145, tris: 9500 }, { S: head, h: 0.009, tris: 7000 }, { S: hands, h: 0.007, tris: 4200 }, { S: feet, h: 0.012, tris: 2000 },

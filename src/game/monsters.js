@@ -552,7 +552,6 @@ export class MonsterManager {
     this.raidActive = 0;
     this.fakeCamp = null;     // debug / test camp when the mission has none
     this._players = [];
-    this._playerPool = [];
     this._playersAt = -1;
     this._litList = [];
     this._litAt = -1;
@@ -574,11 +573,14 @@ export class MonsterManager {
     this._playersAt = this.time;
     const out = this._players;
     out.length = 0;
-    let n = 0;
+    // one persistent record per player id: AIs hold on to their target record across frames, and a
+    // player who died / left keeps a record flagged dead (instead of it being reused for someone else)
+    const recs = this._playerRecs || (this._playerRecs = new Map());
+    for (const r of recs.values()) r.dead = true;
     const rec = (id, pos, flash, yaw, pitch) => {
-      const r = this._playerPool[n] || (this._playerPool[n] = { id: null, pos: null, flash: false, dead: false, yaw: 0, pitch: 0, safe: false });
-      n++;
-      r.id = id; r.pos = pos; r.flash = flash; r.yaw = yaw; r.pitch = pitch; r.dead = false;
+      let r = recs.get(id);
+      if (!r) { r = { id, pos: null, flash: false, dead: false, yaw: 0, pitch: 0, safe: false }; recs.set(id, r); }
+      r.pos = pos; r.flash = flash; r.yaw = yaw; r.pitch = pitch; r.dead = false;
       r.safe = !!zoneAt(this.world, pos);
       out.push(r);
     };

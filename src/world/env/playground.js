@@ -86,7 +86,7 @@ export function troughShell(w = 0.62, wall = 0.32, t = 0.035) {
 export function samplePath(fn, n) { const out = []; for (let i = 0; i <= n; i++) out.push(fn(i / n)); return out; }
 
 // Build a slide along a centre line (points at the bed surface). gBed: bright plastic, gShell: same or darker.
-// Returns { cols: [...], segs: [{ax, ay, az, bx, by, bz, hw}] }
+// Returns { cols: [...], segs: [{ax, ay, az, bx, by, bz, hw, last?}] }
 export function slide(gBed, gShell, pts, o = {}) {
   const w = o.w ?? 0.62, wall = o.wall ?? 0.32;
   const frames = pathFrames(pts);
@@ -108,6 +108,8 @@ export function slide(gBed, gShell, pts, o = {}) {
     }
     segs.push({ ax: A.p[0], ay: A.p[1], az: A.p[2], bx: B.p[0], by: B.p[1], bz: B.p[2], hw: w / 2 });
   }
+  // the run-out: the push continues a little past the chute's end so clones launch off it instead of stopping on the lip
+  if (segs.length) segs[segs.length - 1].last = true;
   return { cols, segs };
 }
 

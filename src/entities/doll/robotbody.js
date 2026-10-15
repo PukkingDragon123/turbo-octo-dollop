@@ -107,7 +107,7 @@ export function grime(x, y, z) {
 }
 
 function buildCoverTorso(B) {
-  const nu = 84, nv = 50;
+  const nu = 68, nv = 42;
   const ys = lin(COVER_Y0, COVER_Y1, nv);
   // columns run round from the right edge of the V-neck to its left edge (the seam below the V is the zip)
   const g = grid(nu, nv, (i, j, p) => { const y = ys[j], vo = VOPEN(y); coverPt(vo + (i / nu) * (TAU - 2 * vo), y, 0, p); }, { closedU: true });
@@ -146,9 +146,9 @@ const SLEEVE_PROF = [[-0.022, 0.0], [-0.018, 0.02], [-0.008, 0.036], [0.01, 0.04
 export const SLEEVE_END = 0.17;
 function buildSleeve(B, side) {
   const s = side === 'L' ? -1 : 1, ax = s * RD.shX, top = RY.sh;
-  const curve = new THREE.SplineCurve(SLEEVE_PROF.map(([dy, r]) => new THREE.Vector2(r, dy))).getSpacedPoints(30);
-  const g = grid(32, 30, (i, j, p) => {
-    const q = curve[j], a = (i / 32) * TAU;
+  const curve = new THREE.SplineCurve(SLEEVE_PROF.map(([dy, r]) => new THREE.Vector2(r, dy))).getSpacedPoints(22);
+  const g = grid(26, 22, (i, j, p) => {
+    const q = curve[j], a = (i / 26) * TAU;
     p.set(ax + Math.cos(a) * q.x, top - q.y, Math.sin(a) * q.x * 0.96);
   }, { closedU: true, poleBottom: true });
   ensureOutward(g, V(ax, top - 0.08, 0));
@@ -163,7 +163,7 @@ function buildSleeve(B, side) {
   B.skinned('suit', g, armW(side));
   // rolled cuff + inner annulus closing the opening down to the arm
   const cy = top - SLEEVE_END;
-  const cuff = new THREE.TorusGeometry(0.0466, 0.0072, 10, 32).rotateX(PI / 2).scale(1, 1, 0.96).translate(ax, cy + 0.004, 0);
+  const cuff = new THREE.TorusGeometry(0.0466, 0.0072, 8, 26).rotateX(PI / 2).scale(1, 1, 0.96).translate(ax, cy + 0.004, 0);
   vcol(cuff, (x, y, z) => 0.85 + 0.1 * Math.sin(Math.atan2(z, x - ax) * 9));
   B.skinned('suit', cuff, armW(side));
   const ring = new THREE.RingGeometry(0.035, 0.051, 32, 1).rotateX(PI / 2).translate(ax, cy - 0.002, 0);
@@ -176,9 +176,9 @@ const LEG_PROF = [[-0.06, 0.03], [-0.035, 0.07], [-0.005, 0.087], [0.08, 0.083],
 export const HEM_Y = RY.pelvis - 0.775;
 function buildTrouser(B, side) {
   const s = side === 'L' ? -1 : 1, ax = s * RD.hipX, top = RY.pelvis;
-  const curve = new THREE.SplineCurve(LEG_PROF.map(([dy, r]) => new THREE.Vector2(r, dy))).getSpacedPoints(44);
-  const g = grid(32, 44, (i, j, p) => {
-    const q = curve[j], a = (i / 32) * TAU;
+  const curve = new THREE.SplineCurve(LEG_PROF.map(([dy, r]) => new THREE.Vector2(r, dy))).getSpacedPoints(34);
+  const g = grid(26, 34, (i, j, p) => {
+    const q = curve[j], a = (i / 26) * TAU;
     p.set(ax + Math.cos(a) * q.x, top - q.y, 0.004 + Math.sin(a) * q.x);
   }, { closedU: true });
   ensureOutward(g, V(ax, top - 0.3, 0));
@@ -193,7 +193,7 @@ function buildTrouser(B, side) {
   tint(g, (x, y, z) => grime(x, y, z) * (1 - 0.12 * ss(0.4, 0.15, y)));
   gridArcUV(g, 1, 1);
   B.skinned('suit', g, legW(side));
-  const cuff = new THREE.TorusGeometry(0.059, 0.007, 8, 32).rotateX(PI / 2).translate(ax, HEM_Y + 0.004, 0.004);
+  const cuff = new THREE.TorusGeometry(0.059, 0.007, 7, 26).rotateX(PI / 2).translate(ax, HEM_Y + 0.004, 0.004);
   vcol(cuff, 0.8);
   B.skinned('suit', cuff, legW(side));
   const ring = new THREE.RingGeometry(0.03, 0.06, 32, 1).rotateX(PI / 2).translate(ax, HEM_Y + 0.0, 0.004);
@@ -458,11 +458,11 @@ function buildLegEnd(B, side) {
   B.rigid(an, 'metal', vcol(new THREE.SphereGeometry(0.022, 12, 10), 0.3));
   // foot shell (ankle-bone space: sole bottom at y = -RD.ankleH, toe toward -Z)
   const soleTop = -RD.ankleH + 0.017;
-  const zs = lin(0.062, -0.188, 22);
+  const zs = lin(0.062, -0.188, 16);
   const hw = (z) => z > 0.03 ? lerp(0.03, 0.034, (0.062 - z) / 0.032) : z > -0.12 ? lerp(0.034, 0.046, (0.03 - z) / 0.15) : lerp(0.046, 0.03, (-0.12 - z) / 0.068);
   const top = (z) => z > -0.02 ? 0.012 : lerp(0.012, soleTop + 0.03, ss(-0.02, -0.16, z));
-  const foot = grid(28, zs.length - 1, (i, j, p) => {
-    const z = zs[j], a = (i / 28) * TAU, w = hw(z), t = top(z), yb = soleTop, yc = (t + yb) / 2, hh = (t - yb) / 2;
+  const foot = grid(22, zs.length - 1, (i, j, p) => {
+    const z = zs[j], a = (i / 22) * TAU, w = hw(z), t = top(z), yb = soleTop, yc = (t + yb) / 2, hh = (t - yb) / 2;
     const end = j === 0 || j === zs.length - 1 ? 0.0 : 1;
     const c = Math.cos(a), sn = Math.sin(a), e = 2 / 3.2;
     p.set(Math.sign(c) * Math.pow(Math.abs(c), e) * w * end, yc + Math.sign(sn) * Math.pow(Math.abs(sn), e) * hh * end, z);

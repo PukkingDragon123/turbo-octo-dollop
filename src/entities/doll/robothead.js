@@ -120,7 +120,7 @@ export function buildHead(B, face = {}) {
 
   // ---- skull (ABS), with the plate window cut out, parting-line groove over the crown
   {
-    const ths = lin(-PI, PI, 72), phs = lin(-PI / 2 + 0.05, PI / 2 - 0.002, 40);
+    const ths = lin(-PI, PI, 60), phs = lin(-PI / 2 + 0.05, PI / 2 - 0.002, 30);
     const g = sgrid(ths, phs, (th, ph, p) => headPoint(th, ph, 0.0003 * g1((Math.abs(th) - PI / 2) / 0.03), p), (th, ph) => !inPlate(th, ph, 0.05));
     outward(g, HC);
     vcol(g, (x, y, z) => {
@@ -133,8 +133,8 @@ export function buildHead(B, face = {}) {
     B.rigid('head', 'shell', g);
   }
   // ---- face plate + jaw (porcelain); uv = painted face
-  const ths = cat(lin(FACE.th0, -FACE.jawTh, 16), lin(-FACE.jawTh, FACE.jawTh, 40), lin(FACE.jawTh, FACE.th1, 16));
-  const phs = cat(lin(FACE.ph0, FACE.mouth, 22), lin(FACE.mouth, FACE.seamPh, 30), lin(FACE.seamPh, FACE.ph1, 26));
+  const ths = cat(lin(FACE.th0, -FACE.jawTh, 12), lin(-FACE.jawTh, FACE.jawTh, 30), lin(FACE.jawTh, FACE.th1, 12));
+  const phs = cat(lin(FACE.ph0, FACE.mouth, 16), lin(FACE.mouth, FACE.seamPh, 24), lin(FACE.seamPh, FACE.ph1, 18));
   const mkPlate = (keep) => {
     const g = sgrid(ths, phs, (th, ph, p) => headPoint(th, ph, plate(th, ph), p), keep);
     const uv = g.attributes.uv;
@@ -241,7 +241,7 @@ export function buildHead(B, face = {}) {
       }
       continue;
     }
-    const ball = new THREE.SphereGeometry(r, 28, 18);
+    const ball = new THREE.SphereGeometry(r, 22, 14);
     vcol(ball, (x, y, z) => {
       const f = -z / r; // 1 at the front
       const vein = (valueNoise2(Math.atan2(y, x) * 9 + (S === 'L' ? 3 : 7), f * 6, 3) > 0.74 ? 1 : 0) * sstep(0.2, 0.6, 1 - f) * 0.25;
