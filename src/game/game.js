@@ -596,6 +596,7 @@ export class Game {
   }
 
   onItemUsed(type, wasBleeding) {
+    this.world?.level?.onItemUsed?.(type);
     if ((type === 'bandage' || type === 'medkit') && wasBleeding && this.local.survival.bleed === 0) profile.unlock('medic');
     if (type === 'almond_water' || type === 'almond_milk') {
       if (profile.stat('almond') >= 10) profile.unlock('hydrated');

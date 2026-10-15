@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import * as Synth from '../../../gfx/texsynth.js';
 import { WATER_Y } from './layout.js';
+import { leafTexture, algaeTexture } from './flora.js';
 
 // ---------------------------------------------------------------------------
 // Recipes
@@ -192,8 +193,8 @@ export const PU = {
   uCaustTex: { value: null },
   uRippleTex: { value: null },
   uCrackTex: { value: null },
-  uAbsorb: { value: new THREE.Vector3(0.38, 0.07, 0.045) },
-  uScatter: { value: new THREE.Color(0.0, 0.085, 0.11) },
+  uAbsorb: { value: new THREE.Vector3(0.95, 0.42, 0.55) },
+  uScatter: { value: new THREE.Color(0.01, 0.055, 0.045) },
   uDecay: { value: 0 },
   uPoolGlow: { value: 1 },
   uCaustStr: { value: 1 },
@@ -248,6 +249,9 @@ export const BASE = {
   pvc: () => once('pvc', () => Synth.pbrMaterial('plastic', { c0: 0x8e979c, c1: 0x7c858a, c2: 0x3c4040, p0: [0.42, 0.3, 0, 0], wear: 0.35, size: 256, repeat: [2, 2], name: 'pool_pvc' })),
   tank: () => once('tank', () => Synth.pbrMaterial('plastic', { c0: 0x2f68a8, c1: 0x285c94, c2: 0x1a2c3c, p0: [0.28, 0.2, 0, 0], wear: 0.3, size: 256, repeat: [2, 2], name: 'pool_tank' })),
   red: () => once('red', () => Synth.pbrMaterial('paint_metal', { c0: 0xb3221a, c1: 0x8a8d90, c2: 0x6a3a1c, c3: 0x8a6a52, wear: 0.3, size: 256, repeat: [2, 2], name: 'pool_red_paint' })),
+  leaf: () => once('leaf', () => new THREE.MeshStandardMaterial({ map: leafTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.58, metalness: 0, envMapIntensity: 0.6, name: 'pool_leaf' })),
+  algae: () => once('algae', () => new THREE.MeshStandardMaterial({ map: algaeTexture(), transparent: true, depthWrite: false, alphaTest: 0.04, side: THREE.DoubleSide, roughness: 0.75, metalness: 0, envMapIntensity: 0.5, name: 'pool_algae' })),
+  fiber: () => once('fiber', () => Synth.pbrMaterial('plastic', { c0: 0xf4f2ec, c1: 0xe6e2d8, c2: 0x8a8678, p0: [0.22, 0.25, 0, 0], wear: 0.45, size: 256, repeat: [3, 3], name: 'pool_fiberglass', physical: true, clearcoat: 0.5, clearcoatRoughness: 0.25 })),
   plantFloor: () => once('plantFloor', () => Synth.pbrMaterial('concrete', { c0: 0x8f9a96, c1: 0x7a8682, c2: 0x4a5250, c3: 0xa8b2ae, p0: [70, 0.35, 0.5, 0.45], world: true, meters: 2, size: 512, name: 'pool_plant_floor' })),
 };
 
@@ -453,7 +457,7 @@ export function surface(base, field, opts = {}) {
           #ifdef P_SUB
           if (pSubDepth > 0.0) {
             vec2 cpu = vPWPos.xz + cn.xz * 0.3;
-            cUnder = pCaust(cpu * 1.15, uTime * 1.1) * exp(-pSubDepth * 0.3) * (max(0.0, cn.y) * 0.75 + 0.25) * 1.6;
+            cUnder = pCaust(cpu * 1.15, uTime * 1.1) * exp(-pSubDepth * 1.35) * (max(0.0, cn.y) * 0.75 + 0.25) * 1.6;
           }
           #endif
           float cAbove = pSubDepth > 0.0 ? 0.0 : vPCaust * pCaust(cp, uTime) * 0.55;
@@ -475,7 +479,7 @@ export function surface(base, field, opts = {}) {
       .replace('#include <opaque_fragment>', `#include <opaque_fragment>
         #ifdef P_SUB
         if (pSubDepth > 0.0 && pCamAbove > 0.0) {
-          vec3 tr = exp(-uAbsorb * (pPath + pSubDepth * 0.45));
+          vec3 tr = exp(-uAbsorb * (pPath + pSubDepth * 0.8));
           float glowL = dot(vPGlow, vec3(0.33)) * uPoolGlow;
           vec3 ins = uScatter * (1.0 - exp(-pPath * 0.85)) * (pL * 0.9 + 0.05 + glowL * 1.4);
           gl_FragColor.rgb = gl_FragColor.rgb * tr + ins;

@@ -330,3 +330,128 @@ export function shaftGeometry(list) {
 }
 
 export { HEIGHT };
+
+// ---------------------------------------------------------------------------
+// Waterway set pieces
+
+// Kiddie-pool mushroom fountain: fibreglass stem + cap standing in a wading pool (floor at y0).
+// Returns { boxes, curtain: {x, z, r, top, bottom} } — the falling water sheet is drawn by the level.
+export function mushroomFountain(B, x, z, y0, big, seed = 1) {
+  const F = B.fiber || B.slide;
+  const r = big ? 1.25 : 0.9, h = big ? 2.15 : 1.7;
+  const hue = [[0.95, 0.42, 0.38], [0.98, 0.78, 0.3], [0.45, 0.72, 0.95], [0.96, 0.55, 0.72]][seed % 4];
+  // stem: slightly bulbous, cream, with a skirt ring
+  F.setTint(0.95, 0.92, 0.84);
+  F.lathe([[0.0, y0], [0.32, y0], [0.3, y0 + 0.06], [0.22, y0 + 0.25], [0.2, h * 0.45], [0.23, h * 0.8], [0.28, h - 0.12], [0.0, h - 0.1]], 22, new THREE.Matrix4().makeTranslation(x, 0, z));
+  F.lathe([[0.24, h * 0.62], [0.33, h * 0.6], [0.34, h * 0.63], [0.24, h * 0.66]], 22, new THREE.Matrix4().makeTranslation(x, 0, z));
+  // cap: dome on top, shallow underside with a rolled rim the water spills from
+  F.setTint(hue[0], hue[1], hue[2]);
+  const cap = [[0.0, h + r * 0.62], [r * 0.35, h + r * 0.58], [r * 0.65, h + r * 0.44], [r * 0.86, h + r * 0.25], [r * 0.98, h + 0.06], [r, h - 0.02], [r * 0.95, h - 0.07], [r * 0.6, h - 0.1], [0.25, h - 0.12], [0.0, h - 0.12]];
+  F.lathe(cap.reverse(), 30, new THREE.Matrix4().makeTranslation(x, 0, z));
+  // white spots
+  F.setTint(0.97, 0.96, 0.92);
+  let s = seed * 7 + 3;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let k = 0; k < 9; k++) {
+    const a = rnd() * Math.PI * 2, d = 0.15 + rnd() * 0.68;
+    const rr = r * d;
+    const yy = h + r * 0.62 * Math.cos(Math.min(1, d) * Math.PI / 2.05) + 0.012;
+    const nrm = new THREE.Vector3(Math.cos(a) * d, 1.1, Math.sin(a) * d).normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), nrm);
+    F.lathe([[0.06 + rnd() * 0.08, 0.0], [0.0, 0.004]], 12, new THREE.Matrix4().compose(V(x + Math.cos(a) * rr, yy, z + Math.sin(a) * rr), q, new THREE.Vector3(1, 1, 1)));
+  }
+  F.setTint(1, 1, 1);
+  return {
+    boxes: [{ min: [x - 0.3, y0, z - 0.3], max: [x + 0.3, h, z + 0.3] }, { min: [x - r * 0.7, h - 0.12, z - r * 0.7], max: [x + r * 0.7, h + r * 0.55, z + r * 0.7] }],
+    curtain: { x, z, r: r * 0.99, top: h - 0.04, bottom: y0 },
+  };
+}
+
+// A bank of two wall showers with tiled stall partitions (wall behind at z = wz, stalls toward +z)
+// Returns { boxes, heads: [[x, y, z]] }
+export function showerStalls(B, x, wz, seed = 1) {
+  const boxes = [], heads = [];
+  const depth = 1.15, th = 0.07, hgt = 1.95;
+  for (const sx of [-1.5, 0, 1.5]) {
+    const px = x + sx;
+    B.wall.setTint(1, 1, 1);
+    B.wall.roundPrism(px - th / 2, wz, px + th / 2, wz + depth, 0.12, hgt, 0.025, 2, { top: true });
+    // stall feet (chrome) lifting the partition off the wet floor
+    for (const fz of [wz + 0.25, wz + depth - 0.12]) B.chrome.box(V(px - 0.025, 0, fz - 0.025), V(px + 0.025, 0.12, fz + 0.025));
+    boxes.push({ min: [px - th / 2, 0, wz], max: [px + th / 2, hgt, wz + depth] });
+  }
+  for (const sx of [-0.75, 0.75]) {
+    showerColumn(B, x + sx, wz, 0);
+    heads.push([x + sx, 2.06, wz + 0.22]);
+    // grate under each shower
+    B.chrome.box(V(x + sx - 0.12, 0.0, wz + 0.45), V(x + sx + 0.12, 0.006, wz + 0.69));
+  }
+  void seed;
+  return { boxes, heads };
+}
+
+// Sluice wall over the canal between two halls at x = gx: header from GATE_Y to the ceiling, steel
+// guide channels at both sides and the raised, rusted gate leaf hanging in the slot.
+export function sluiceGate(B, gx, z0, z1, gateY, ceil, T) {
+  const h = T / 2;
+  const M = B.wall;
+  M.setTint(1, 1, 1);
+  M.vface('x', gx - h, -1, z0, z1, gateY, ceil);
+  M.vface('x', gx + h, 1, z0, z1, gateY, ceil);
+  M.hface(gateY, -1, gx - h, gx + h, z0, z1);
+  // accent band along the bottom of the header
+  M.setTint(0.42, 0.6, 0.86);
+  M.vface('x', gx - h - 0.004, -1, z0, z1, gateY + 0.05, gateY + 0.22);
+  M.vface('x', gx + h + 0.004, 1, z0, z1, gateY + 0.05, gateY + 0.22);
+  M.setTint(1, 1, 1);
+  const S = B.steel;
+  // guide channels from the canal floor to the header
+  for (const zz of [z0 + 0.06, z1 - 0.06]) {
+    S.setTint(0.55, 0.5, 0.45);
+    S.box(V(gx - h - 0.1, -3.7, zz - 0.06), V(gx + h + 0.1, gateY, zz + 0.06));
+  }
+  // the raised gate leaf (rust red), its lower edge showing under the header
+  const R = B.red || S;
+  R.setTint(0.62, 0.32, 0.22);
+  R.box(V(gx - 0.05, gateY - 0.32, z0 + 0.12), V(gx + 0.05, gateY + 0.02, z1 - 0.12));
+  // stiffening ribs + rivets
+  R.setTint(0.5, 0.26, 0.18);
+  for (let zz = z0 + 0.6; zz < z1 - 0.3; zz += 1.2) {
+    for (const sx of [-1, 1]) R.box(V(gx + sx * 0.05 - (sx < 0 ? 0.03 : 0), gateY - 0.3, zz - 0.04), V(gx + sx * 0.05 + (sx > 0 ? 0.03 : 0), gateY, zz + 0.04));
+  }
+  R.setTint(1, 1, 1);
+  S.setTint(1, 1, 1);
+  // hoist chains disappearing into the header
+  for (const zz of [z0 + 1.2, z1 - 1.2]) B.chrome.tube([V(gx, gateY + 0.02, zz), V(gx, gateY + 0.6, zz)], 0.015, 6, true);
+  return [{ min: [gx - h, gateY - 0.32, z0], max: [gx + h, ceil, z1] }];
+}
+
+// Hanging pendant lamp: rod from the ceiling, enamel shade, glowing bulb
+export function pendantLamp(B, x, ceil, y, z) {
+  B.steel.setTint(0.35, 0.36, 0.36);
+  B.steel.tube([V(x, ceil, z), V(x, y + 0.27, z)], 0.012, 6, false);
+  B.steel.setTint(0.18, 0.32, 0.3);
+  const m = new THREE.Matrix4().makeTranslation(x, y, z);
+  B.steel.lathe([[0.3, 0.0], [0.335, -0.012], [0.34, 0.0], [0.27, 0.06], [0.13, 0.22], [0.06, 0.3], [0.035, 0.34]], 22, m);
+  B.steel.setTint(1, 1, 1);
+  B.chrome.lathe([[0.3, 0.0], [0.26, 0.05], [0.12, 0.2], [0.05, 0.27], [0.0, 0.28]].reverse(), 18, m);
+  B.emit.lathe([[0.0, 0.0], [0.07, 0.03], [0.1, 0.09], [0.08, 0.15], [0.0, 0.17]], 14, m);
+}
+
+// Tall spiral tube slide coming out of the ceiling on the north walkway and plunging into the canal.
+// (x0, wz): the spiral axis; dir: +1 the run goes toward +x. Returns centreline points.
+export function spiralSlidePoints(x0, zc, ceil, dir, exitZ, waterY) {
+  const pts = [];
+  const R = 0.95, turns = 1.6, yTop = ceil + 0.5, yBot = 2.4;
+  const n = 26;
+  for (let k = 0; k <= n; k++) {
+    const t = k / n;
+    const a = Math.PI / 2 + dir * t * turns * Math.PI * 2;
+    pts.push(V(x0 + Math.cos(a) * R * Math.min(1, t * 4 + 0.2), yTop + (yBot - yTop) * t, zc - Math.sin(a) * R * Math.min(1, t * 4 + 0.2)));
+  }
+  const last = pts[pts.length - 1];
+  pts.push(V(last.x + dir * 0.9, 1.7, Math.max(last.z, zc) + 0.9));
+  pts.push(V(last.x + dir * 1.5, 0.95, exitZ - 0.6));
+  pts.push(V(last.x + dir * 1.8, waterY + 0.45, exitZ + 0.6));
+  return pts;
+}

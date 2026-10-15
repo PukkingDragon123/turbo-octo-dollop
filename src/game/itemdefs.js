@@ -25,6 +25,7 @@ export const ITEM = {
   painkillers: { name: 'Painkillers', pocket: true, use: 'heal', fx: { health: 12, sanity: 10, pain: -1 } },
   splint: { name: 'Splint', pocket: true, use: 'heal', fx: { fracture: -1 } },
   paper_cup: { name: 'Cup of Water', pocket: true, use: 'drink', fx: { thirst: 22 } },
+  leech: { name: 'Leech', pocket: true, use: 'eat', fx: { hunger: 12, thirst: 4, infection: 5, sanity: -6 } },
 
   // --- tools ---
   welder: { name: 'Welding Torch', pocket: true, use: 'weld', fuel: 1 },
@@ -38,6 +39,7 @@ export const ITEM = {
   fuse: { name: 'Industrial Fuse', pocket: true, mission: true },
   fuel_can: { name: 'Fuel Can', pocket: false, mission: true, fuel: 1 },
   sample_jar: { name: 'Sample Jar', pocket: true, use: 'sample' },
+  water_tester: { name: 'Water Tester', pocket: true, use: 'test' },
   keycard: { name: 'Keycard', pocket: true },
   noise_maker: { name: 'Noise Maker', pocket: true, use: 'arm' },
   spike_trap: { name: 'Spike Trap', pocket: false, trap: 'spike' },
@@ -159,6 +161,7 @@ export const SAMPLES = {
   black_mold: { name: 'Black Mold', color: 0x2a2a1a, credits: 45 },
   carpet_fungus: { name: 'Carpet Fungus', color: 0x8a7a3a, credits: 30 },
   flood_water: { name: 'Anomalous Water', color: 0x6a8a7a, credits: 40 },
+  infected_water: { name: 'Contaminated Water', color: 0x8a9a30, credits: 70 },
   still_life_tissue: { name: 'Still Life Tissue', color: 0xd8b48a, credits: 150 },
   rat: { name: 'Specimen: Rat', color: 0x6a5a4a, credits: 35 },
   wallpaper_growth: { name: 'Wallpaper Growth', color: 0xc8b450, credits: 35 },

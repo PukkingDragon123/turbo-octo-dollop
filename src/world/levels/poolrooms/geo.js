@@ -273,7 +273,7 @@ export class Mesher {
 
   // Sweep a profile around a closed axis-aligned rectangle [x0,x1]x[z0,z1] (miters at the corners).
   // profile [[d, y]]: d = offset outward from the rectangle. Normals point toward +d / +y side.
-  sweepRect(x0, z0, x1, z1, y, profile, flip = false) {
+  sweepRect(x0, z0, x1, z1, y, profile, flip = false, open = null) {
     const np = profile.length;
     const vs = [0];
     for (let k = 1; k < np; k++) vs.push(vs[k - 1] + Math.hypot(profile[k][0] - profile[k - 1][0], profile[k][1] - profile[k - 1][1]));
@@ -291,6 +291,10 @@ export class Mesher {
       [[x0, z1], [x0, z0], [-1, 0]], // west
     ];
     for (const [s0, s1, o] of sides) {
+      // open sides (W / E) are skipped; the neighbouring sides then end square instead of mitred
+      if (open && ((o[0] < 0 && open.W) || (o[0] > 0 && open.E))) continue;
+      const sq0 = open && o[2] === undefined && ((o[1] !== 0) && ((s0[0] === x0 && open.W) || (s0[0] === x1 && open.E)));
+      const sq1 = open && ((o[1] !== 0) && ((s1[0] === x0 && open.W) || (s1[0] === x1 && open.E)));
       const base = this.vcount;
       const tx = Math.sign(s1[0] - s0[0]), tz = Math.sign(s1[1] - s0[1]);
       const len = Math.hypot(s1[0] - s0[0], s1[1] - s0[1]);
@@ -300,7 +304,7 @@ export class Mesher {
         for (let k = 0; k < np; k++) {
           const d = profile[k][0];
           // corner offset: at the ends move along the side by -d / +d (mitered rectangle offset)
-          const along = f * len + (i === 0 ? -d : i === nu ? d : 0);
+          const along = f * len + (i === 0 ? (sq0 ? 0 : -d) : i === nu ? (sq1 ? 0 : d) : 0);
           const ex = (i === 0 || i === nu) ? 0 : 0;
           const px = s0[0] + tx * along + o[0] * d + ex;
           const pz = s0[1] + tz * along + o[1] * d;

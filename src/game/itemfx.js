@@ -27,6 +27,8 @@ export function applyItemVisual(type, s, model, lit = isLitState(type, s)) {
     ud.setLit?.(lit);
   } else if (type === 'flashlight') {
     ud.setOn?.(false);
+  } else if (type === 'water_tester') {
+    ud.setResult?.(s?.result || null);
   }
 }
 

@@ -6,7 +6,7 @@ import { RAPIER, GROUPS } from '../../../physics/physics.js';
 import { LightField } from '../../../gfx/bakedlight.js';
 import {
   CELL, CHUNK, HEIGHT, TALL, W, T, WATER_Y, SUNK_Y, VAULT_SPRING, getLayout, cellInfo, wallN, wallW,
-  wallTransmission,
+  wallTransmission, GIANT, PEND_Y, GATE_Y, CANAL_Z0, CANAL_Z1,
 } from './layout.js';
 import { Mesher, archWall, groinVault } from './geo.js';
 import { Baker } from './bake.js';
@@ -14,7 +14,8 @@ import { surface, BASE } from './poolmat.js';
 import { buildPool, poolRect, poolWaterQuads, drainGrate, TINT_NOSE } from './pools.js';
 import { poolPoint, poolCoords, poolFloorAt } from './layout.js';
 import * as Mat from '../../../gfx/materials.js';
-import { lifeguardChair, bench, showerColumn, pipeRun, pumpUnit, filterTank, tileDebris, shaftGeometry, shaftMaterial, waterslide } from './decor.js';
+import { lifeguardChair, bench, showerColumn, pipeRun, pumpUnit, filterTank, tileDebris, shaftGeometry, shaftMaterial, waterslide, mushroomFountain, showerStalls, sluiceGate, pendantLamp, spiralSlidePoints } from './decor.js';
+import { palm, fern, monstera, vines, algaeMat } from './flora.js';
 import { SIGN, signQuad, signBaseMaterial } from './signs.js';
 import { hash01 } from '../../../core/rng.js';
 
@@ -31,15 +32,17 @@ export const LIGHT_TONES = [
 const TONE_INT = [1.12, 1.1, 0.85, 0.95, 0.8, 1.85, 1.0, 1.25];
 
 export function cellLightSpec(c) {
-  if (!c.light) return null;
+  if (!c.light || c.void) return null;
   const sky = c.lightKind === 'sky';
+  const pend = c.lightKind === 'pendant';
+  const giant = c.ceil > TALL + 0.5;
   return {
     x: (c.i + 0.5) * CELL,
-    y: c.vault ? TALL - 0.08 : c.ceil + (sky ? 0.2 : -0.06),
+    y: pend ? PEND_Y + 0.06 : c.vault ? TALL - 0.08 : c.ceil + (sky ? 0.2 : -0.06),
     z: (c.j + 0.5) * CELL,
-    radius: sky ? 12.5 : c.ceil > 4 ? 11 : 9,
+    radius: sky ? (giant ? 15 : 12.5) : pend ? 12.5 : c.ceil > 4 ? 11 : 9,
     color: LIGHT_TONES[c.lightTone] || LIGHT_TONES[0],
-    base: TONE_INT[c.lightTone] ?? 1,
+    base: (TONE_INT[c.lightTone] ?? 1) * (sky && giant ? 1.35 : pend ? 1.1 : 1),
     mode: c.lightMode,
     seed: c.lightSeed,
     sky,
@@ -48,7 +51,7 @@ export function cellLightSpec(c) {
 
 const solidEdge = (t) => t === W.FULL || t === W.DOOR || t === W.HALF_A || t === W.HALF_B || t === W.WINDOW;
 const ceilOf = (c) => (c ? c.ceil : HEIGHT);
-const floorOf = (c) => (!c ? 0 : c.floor === 'pool' ? (c.pool.room ? Math.min(c.pool.shallowY, c.pool.deepY) : 0) : c.fy);
+const floorOf = (c) => (!c || c.void ? 0 : c.floor === 'pool' ? (c.pool.room ? Math.min(c.pool.shallowY, c.pool.deepY) : 0) : c.fy);
 
 // ---------------------------------------------------------------------------
 // queries shared with the level (light baking, probes)
@@ -224,13 +227,38 @@ export function* buildChunkSteps(level, cx, cz, out = null) {
     sign: new Mesher({ seg: 3 }),
     slide: new Mesher({ seg: 3 }),
     slideIn: new Mesher({ seg: 3 }),
-    boxes: [], rboxes: [], lamps: [], ladders: [], floats: [], shafts: [],
-    water: { pos: [], floor: [], idx: [] }, spill: { pos: [], floor: [], idx: [] },
+    leaf: new Mesher({ seg: 3 }),
+    fiber: new Mesher({ seg: 3 }),
+    algae: new Mesher({ seg: 3 }),
+    boxes: [], rboxes: [], lamps: [], ladders: [], floats: [], shafts: [], curtains: [], showers: [],
+    water: { pos: [], floor: [], idx: [], inf: [] }, spill: { pos: [], floor: [], idx: [], inf: [] },
     windows: new Map(), grilles: new Map(), drains: [],
   };
   for (const w of layout.windows) B.windows.set(`${w.li},${w.lj},${w.side}`, w);
   for (const g of layout.grilles) B.grilles.set(`${g.li},${g.lj},${g.side}`, g);
 
+  if (layout.void) {
+    // solid rock outside the waterway: only the band's south wall lives in these chunks
+    yield* emitWalls(B, Q, layout, ox, oz, rec);
+    const field = level.field;
+    const baker = new Baker({ lightsNear: level.lightsNear, occl: Q.occl, ao: Q.ao, caust: Q.caust, glow: () => {} });
+    if (!B.wall.isEmpty()) {
+      const geo = B.wall.build();
+      yield* baker.bakeIter(geo, { bounce: 0.55 });
+      const mesh = new THREE.Mesh(geo, surface(BASE.wallTile(), field, {}));
+      mesh.receiveShadow = true;
+      mesh.matrixAutoUpdate = false;
+      group.add(mesh);
+      rec.meshes.push(mesh);
+    }
+    for (const b of B.boxes) {
+      const hx = (b.max[0] - b.min[0]) / 2, hy = (b.max[1] - b.min[1]) / 2, hz = (b.max[2] - b.min[2]) / 2;
+      if (hx < 0.002 || hy < 0.002 || hz < 0.002) continue;
+      rec.physicsColliders.push(level.world.physics.addStaticBox((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2, hx, hy, hz, { kind: 'static', surface: 'world' }));
+    }
+    group.updateMatrixWorld(true);
+    return rec;
+  }
   yield* emitFloors(B, Q, layout, ox, oz);
   yield 'floors';
   yield* emitCeilings(B, Q, layout, ox, oz);
@@ -244,19 +272,27 @@ export function* buildChunkSteps(level, cx, cz, out = null) {
     buildPool(B, p, ox, oz);
     const r = poolRect(p, ox, oz);
     for (let k = nl; k < B.lamps.length; k++) B.lamps[k].rect = r;
-    poolWaterQuads(B.water, p, ox, oz);
+    poolWaterQuads(B.water, p, ox, oz, (x, z) => (Q.cellAt(Math.floor(x / CELL), Math.floor(z / CELL))?.infected ? 1 : 0));
     for (let j = p.rz; j < p.rz + p.h; j++) for (let i = p.rx; i < p.rx + p.w; i++) rec.waterCells.push(layout.cells[j * N + i]);
   }
   yield 'pools';
   // sunk-cell water + spill sheets
   for (const c of layout.cells) {
-    if (c.floor === 'sunk' && c.water) { waterCell(B.water, c, WATER_Y, SUNK_Y); rec.waterCells.push(c); }
-    else if (c.spill && !c.pool) waterCell(B.spill, c, 0, 0);
+    if (c.floor === 'sunk' && c.water) { waterCell(B.water, c, WATER_Y, SUNK_Y, c.infected ? 1 : 0); rec.waterCells.push(c); }
+    else if (c.spill && !c.pool) waterCell(B.spill, c, 0, 0, c.infected ? 1 : 0);
   }
   // tube slides
   for (const d of layout.decor) {
     if (d.kind !== 'slide') continue;
     const p = layout.pools[d.pool];
+    if (p.kind === 'canal') {
+      // tall spiral slide on the north walkway, plunging into the canal
+      const [sx] = poolPoint(p, ox, oz, d.s, 0);
+      const ceil = GIANT;
+      const pts = spiralSlidePoints(sx, 1.45, ceil, 1, CANAL_Z0, WATER_Y);
+      for (const b of waterslide(B, pts, ceil, () => 0)) B.boxes.push(b);
+      continue;
+    }
     const A = (p.axis === 'x' ? p.h : p.w) * CELL;
     const out = (m) => (d.side < 0 ? -m / A : 1 + m / A); // m metres outside the long side (negative = inside)
     const P = (s, m, y) => { const [x, z] = poolPoint(p, ox, oz, s, out(m)); return new THREE.Vector3(x, y, z); };
@@ -282,6 +318,42 @@ export function* buildChunkSteps(level, cx, cz, out = null) {
     const [px, pz] = poolPoint(p, ox, oz, d.s, 0.5);
     for (const b of lifeguardChair(B, x, z, Math.atan2(px - x, pz - z))) B.boxes.push(b);
   }
+  // waterway dressing: shower banks, plants, ivy, algae mats, mushroom fountains, the sluice wall
+  let dk = 0;
+  for (const d of layout.decor) {
+    const seed = (layout.cx * 131 + (dk++) * 17 + layout.seed) >>> 0;
+    switch (d.kind) {
+      case 'showers': {
+        const r = showerStalls(B, ox + (d.x - layout.cx * CHUNK * CELL), oz + T / 2, seed);
+        for (const b of r.boxes) B.boxes.push(b);
+        for (const h of r.heads) B.showers.push(h);
+        break;
+      }
+      case 'palm': for (const b of palm(B, ox + d.x - layout.cx * CHUNK * CELL, oz + d.z, d.s, seed)) B.boxes.push(b); break;
+      case 'fern': for (const b of fern(B, ox + d.x - layout.cx * CHUNK * CELL, oz + d.z, d.s, seed, d.z > CANAL_Z1 + 0.2 || d.z < CANAL_Z0 - 0.2)) B.boxes.push(b); break;
+      case 'monstera': for (const b of monstera(B, ox + d.x - layout.cx * CHUNK * CELL, oz + d.z, d.s, seed)) B.boxes.push(b); break;
+      case 'vines': vines(B, ox + d.x - layout.cx * CHUNK * CELL, oz + d.z, d.n, d.len, GIANT - 0.05, seed); break;
+      case 'algae': {
+        const p = layout.pools[d.pool];
+        const A = (p.axis === 'x' ? p.h : p.w) * CELL;
+        const tt = Math.min(1 - (d.r * 0.6) / A, Math.max((d.r * 0.6) / A, d.t));
+        const [x, z] = poolPoint(p, ox, oz, d.s, tt);
+        const inf = Q.cellAt(Math.floor(x / CELL), Math.floor(z / CELL))?.infected;
+        const v = inf ? (seed % 3 === 0 ? 2 : 0) : seed % 4;
+        algaeMat(B.algae, x, WATER_Y + 0.006, z, d.r, d.rot, v, inf ? [1.05, 1.08, 0.55] : [0.82, 0.9, 0.78]);
+        break;
+      }
+      case 'mushroom': {
+        const p = layout.pools[d.pool];
+        const r = mushroomFountain(B, ox + d.x, oz + d.z, p.shallowY, d.big, seed);
+        for (const b of r.boxes) B.boxes.push(b);
+        B.curtains.push(r.curtain);
+        break;
+      }
+      default: break;
+    }
+  }
+  if (layout.gate) for (const b of sluiceGate(B, ox, CANAL_Z0 - T / 2, CANAL_Z1 + T / 2, GATE_Y, GIANT, T)) B.boxes.push(b);
   yield 'decor';
   // room set dressing
   for (const room of layout.specials) roomGeometry(B, Q, room, layout, ox, oz);
@@ -338,6 +410,17 @@ export function* buildChunkSteps(level, cx, cz, out = null) {
   yield* add(B.sign, surface(signBaseMaterial(), field, {}), { bake: { mode: 'fast' }, noRefl: true });
   yield* add(B.slide, surface(BASE.slide(), field, {}), { cast: true, bake: { mode: 'fast' } });
   yield* add(B.slideIn, surface(BASE.slideIn(), field, {}), { bake: { mode: 'fast' }, noRefl: true });
+  yield* add(B.leaf, surface(BASE.leaf(), field, { noCaust: true }), { bake: { mode: 'fast', bounce: 0.6 }, noRefl: true, cast: true });
+  yield* add(B.fiber, surface(BASE.fiber(), field, {}), { cast: true, bake: { mode: 'fast' } });
+  const nAl = meshes.length;
+  yield* add(B.algae, surface(BASE.algae(), field, { noCaust: true }), { bake: { mode: 'fast', bounce: 0.6 }, noRefl: true });
+  if (meshes.length > nAl) {
+    const am = meshes[meshes.length - 1];
+    am.renderOrder = 4;
+    am.receiveShadow = false;
+    am.userData.baseY = 0;
+    rec.algaeMesh = am;
+  }
   for (const m of meshes) { group.add(m); rec.meshes.push(m); }
   if (B.shafts.length) {
     const sm = new THREE.Mesh(shaftGeometry(B.shafts), shaftMaterial(field));
@@ -359,6 +442,8 @@ export function* buildChunkSteps(level, cx, cz, out = null) {
   if (wmesh) { group.add(wmesh); rec.waterMesh = wmesh; level.reflection.meshes.add(wmesh); }
   const smesh = yield* waterMesh(B.spill, baker, level.waterMaterial, 0);
   if (smesh) { smesh.visible = false; group.add(smesh); rec.spillMesh = smesh; level.reflection.meshes.add(smesh); }
+  rec.curtains = B.curtains;
+  rec.showers = B.showers;
   // rope floats
   if (B.floats.length) {
     const im = level.floatMesh(B.floats);
@@ -394,11 +479,11 @@ function bakeOwn(geo, wOwn) {
   geo.setAttribute('aLDir', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
 }
 
-function waterCell(Wm, c, y, fy) {
+function waterCell(Wm, c, y, fy, inf = 0) {
   const x0 = c.i * CELL, z0 = c.j * CELL;
   const n = 6;
   const base = Wm.pos.length / 3;
-  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) { Wm.pos.push(x0 + (CELL * i) / n, y, z0 + (CELL * j) / n); Wm.floor.push(fy); }
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) { Wm.pos.push(x0 + (CELL * i) / n, y, z0 + (CELL * j) / n); Wm.floor.push(fy); Wm.inf.push(inf); }
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
     const a = base + j * (n + 1) + i, b = a + 1, cc = a + n + 1, d = cc + 1;
     Wm.idx.push(a, cc, b, b, cc, d);
@@ -413,6 +498,8 @@ function* waterMesh(Wm, baker, mat, baseY) {
   for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
   g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
   g.setAttribute('aFloorY', new THREE.Float32BufferAttribute(Wm.floor, 1));
+  const inf = Wm.inf.length === Wm.floor.length ? Wm.inf : new Array(Wm.floor.length).fill(0);
+  g.setAttribute('aInfect', new THREE.Float32BufferAttribute(inf, 1));
   g.setIndex(Wm.pos.length / 3 > 65535 ? new THREE.Uint32BufferAttribute(Wm.idx, 1) : new THREE.Uint16BufferAttribute(Wm.idx, 1));
   yield* baker.bakeIter(g, { bounce: 0.5 });
   g.computeBoundingSphere();
@@ -438,7 +525,7 @@ function* emitFloors(B, Q, layout, ox, oz) {
   let n = 0;
   for (const c of layout.cells) {
     if ((++n & 15) === 0) yield 'floor';
-    if (c.pool) continue;
+    if (c.pool || c.void) continue;
     const x0 = c.i * CELL, z0 = c.j * CELL, x1 = x0 + CELL, z1 = z0 + CELL;
     if (c.floor === 'sunk') {
       B.floorSub.setTint(1, 1, 1);
@@ -447,7 +534,7 @@ function* emitFloors(B, Q, layout, ox, oz) {
       const nb = [[0, -1, 'z', z0, 1], [0, 1, 'z', z1, -1], [-1, 0, 'x', x0, 1], [1, 0, 'x', x1, -1]];
       for (const [di, dj, ax, d, sgn] of nb) {
         const o = Q.cellAt(c.i + di, c.j + dj);
-        if (!o || o.floor === 'sunk' || o.pool) continue;
+        if (!o || o.floor === 'sunk' || o.pool || o.void) continue;
         const top = floorOf(o);
         if (ax === 'z') B.floorSub.vface('z', d, sgn, x0, x1, SUNK_Y, top);
         else B.floorSub.vface('x', d, sgn, z0, z1, SUNK_Y, top);
@@ -479,6 +566,7 @@ function* emitCeilings(B, Q, layout, ox, oz) {
   let n = 0;
   for (const c of layout.cells) {
     if ((++n & 7) === 0) yield 'ceil';
+    if (c.void) continue;
     const x0 = c.i * CELL, z0 = c.j * CELL, x1 = x0 + CELL, z1 = z0 + CELL;
     const cxm = x0 + CELL / 2, czm = z0 + CELL / 2;
     const y = c.ceil;
@@ -508,6 +596,7 @@ function* emitCeilings(B, Q, layout, ox, oz) {
     CM.hface(y, -1, x0, x1, z0, z1, holes);
     if (kind === 'panel') panelLight(B, cxm, y, czm, hw, hd, CM);
     else if (kind === 'sky') skyLight(B, cxm, y, czm, hw);
+    else if (kind === 'pendant') pendantLamp(B, cxm, y, PEND_Y, czm);
     else if (kind === 'dome') domeLight(B, c.special === spawn ? cxm + (c.li === spawn.rx ? -0.6 : 0.6) : cxm, y - 0.004, c.special === spawn ? czm + (c.lj === spawn.rz ? -0.6 : 0.6) : czm, 0.2);
   }
   if (spawn) spawnHole(B, ox + (spawn.rx + 1) * CELL, HEIGHT, oz + (spawn.rz + 1) * CELL);
@@ -637,17 +726,17 @@ function emitEdge(B, Q, c, o, axis, type, rec) {
     } else Ms.vface(faceAxis, dd, sg, s0 + sa, s0 + sb, ya, yb, holes);
   };
   const faces = (sa, sb, ya, yb, holesC = null, holesO = null) => {
-    // +o face (toward c) and -o face (toward o)
-    face1(sideMesher(c), c, d + h, 1, sa, sb, ya, yb, holesC);
-    face1(sideMesher(o), o, d - h, -1, sa, sb, ya, yb, holesO);
+    // +o face (toward c) and -o face (toward o); never toward the solid rock
+    if (!c?.void) face1(sideMesher(c), c, d + h, 1, sa, sb, ya, yb, holesC);
+    if (!o?.void) face1(sideMesher(o), o, d - h, -1, sa, sb, ya, yb, holesO);
   };
   const endCap = (s, sgn, ya, yb) => {
     if (axis === 'x') M.vface('x', s0 + s, sgn, d - h, d + h, ya, yb);
     else M.vface('z', s0 + s, sgn, d - h, d + h, ya, yb);
   };
   const coves = (sa, sb) => {
-    if (c && c.floor !== 'pool' && c.roomStyle !== 'yellow') cove(M, faceAxis, d + h, 1, s0 + sa, s0 + sb, fyC);
-    if (o && o.floor !== 'pool' && o.roomStyle !== 'yellow') cove(M, faceAxis, d - h, -1, s0 + sa, s0 + sb, fyO);
+    if (c && !c.void && c.floor !== 'pool' && c.roomStyle !== 'yellow') cove(M, faceAxis, d + h, 1, s0 + sa, s0 + sb, fyC);
+    if (o && !o.void && o.floor !== 'pool' && o.roomStyle !== 'yellow') cove(M, faceAxis, d - h, -1, s0 + sa, s0 + sb, fyO);
   };
   const E0 = -h, E1 = CELL + h;
   switch (type) {
@@ -672,7 +761,7 @@ function emitEdge(B, Q, c, o, axis, type, rec) {
       endCap(E0, -1, y0, top); endCap(E1, 1, y0, top);
       coves(E0, E1);
       pushBox(E0, E1, y0, top);
-      if (!win && !gr && !roomPool && c.roomStyle !== 'yellow') wallSign(B, c, axis, d + h, s0, fyC);
+      if (!win && !gr && !roomPool && !c.void && c.roomStyle !== 'yellow') wallSign(B, c, axis, d + h, s0, fyC);
       break;
     }
     case W.WINDOW: {
@@ -756,7 +845,7 @@ function wallSign(B, c, axis, dFace, s0, fy) {
 
 // header slab closing a ceiling height step on an edge (from the low ceiling to the high one)
 function bulkhead(B, Q, c, o, axis, sa, sb) {
-  if (!c || !o) return;
+  if (!c || !o || c.void || o.void) return;
   if (c.vault && o.vault) return;
   const cc = ceilOf(c), co = ceilOf(o);
   if (Math.abs(cc - co) < 0.05) return;
@@ -1022,10 +1111,10 @@ function* buildColliders(level, B, layout, ox, oz, rec) {
     let li = 0;
     while (li < N) {
       const c = layout.cells[lj * N + li];
-      if (c.pool) { li++; continue; }
+      if (c.pool || c.void) { li++; continue; }
       const fy = floorOf(c);
       let e = li + 1;
-      while (e < N) { const o = layout.cells[lj * N + e]; if (o.pool || floorOf(o) !== fy) break; e++; }
+      while (e < N) { const o = layout.cells[lj * N + e]; if (o.pool || o.void || floorOf(o) !== fy) break; e++; }
       const x0 = ox + li * CELL, x1 = ox + e * CELL, z0 = oz + lj * CELL, z1 = z0 + CELL;
       cols.push(phys.addStaticBox((x0 + x1) / 2, fy - 0.3, (z0 + z1) / 2, (x1 - x0) / 2, 0.3, CELL / 2, udFloor));
       li = e;
@@ -1036,9 +1125,10 @@ function* buildColliders(level, B, layout, ox, oz, rec) {
     let li = 0;
     while (li < N) {
       const c = layout.cells[lj * N + li];
+      if (c.void) { li++; continue; }
       const cy = c.ceil;
       let e = li + 1;
-      while (e < N && layout.cells[lj * N + e].ceil === cy) e++;
+      while (e < N && !layout.cells[lj * N + e].void && layout.cells[lj * N + e].ceil === cy) e++;
       const x0 = ox + li * CELL, x1 = ox + e * CELL, z0 = oz + lj * CELL;
       cols.push(phys.addStaticBox((x0 + x1) / 2, cy + 0.3, z0 + CELL / 2, (x1 - x0) / 2, 0.3, CELL / 2, udCeil));
       li = e;

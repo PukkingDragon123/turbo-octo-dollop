@@ -134,6 +134,8 @@ export function makePoolWater(reflection, field) {
       attribute vec4 aLightW;
       attribute vec3 aGlow;
       attribute float aFloorY;
+      attribute float aInfect;
+      varying float vInf;
       uniform mat4 uTexMat;
       uniform sampler2D uLightTex;
       uniform float uLightScale;
@@ -154,6 +156,7 @@ export function makePoolWater(reflection, field) {
         vBaked = (fetchLight(aLightCells.x) * aLightW.x + fetchLight(aLightCells.y) * aLightW.y + fetchLight(aLightCells.z) * aLightW.z + fetchLight(aLightCells.w) * aLightW.w) * uLightScale;
         vGlow = aGlow;
         vFloorY = aFloorY;
+        vInf = aInfect;
         vec4 mvPosition = viewMatrix * wp;
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
@@ -172,6 +175,8 @@ export function makePoolWater(reflection, field) {
       varying vec3 vBaked;
       varying vec3 vGlow;
       varying float vFloorY;
+      varying float vInf;
+      float wHash(vec2 q){ return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
       void main(){
         vec2 p = vWPos.xz;
         vec2 n1 = texture2D(uRippleTex, p * 0.31 + vec2(uTime * 0.017, uTime * 0.011)).xy * 2.0 - 1.0;
@@ -189,6 +194,21 @@ export function makePoolWater(reflection, field) {
           slope += (d / max(dist, 1e-3)) * sin(x * 34.0) * env * 0.9;
         }
         if (uCollapse > 0.0) slope += vec2(sin(p.x * 2.3 + uTime * 3.1), cos(p.y * 1.9 - uTime * 2.7)) * 0.08 * uCollapse;
+        // contaminated water: rising bubbles popping on a slick, slow surface
+        float bub = 0.0;
+        if (vInf > 0.01) {
+          vec2 g = p * 3.1;
+          vec2 cid = floor(g);
+          float h = wHash(cid);
+          float ph = fract(uTime * (0.12 + h * 0.2) + h * 7.0);
+          vec2 c = cid + 0.2 + 0.6 * vec2(wHash(cid + 3.7), wHash(cid + 9.1));
+          float dd = length(g - c);
+          float rad = 0.05 + ph * 0.16;
+          float ring = exp(-pow((dd - rad) * 38.0, 2.0)) * step(0.72, h) * (1.0 - ph);
+          bub = ring * vInf;
+          slope *= 1.0 - vInf * 0.45;
+          slope += normalize(g - c + 1e-4) * ring * 0.25 * vInf;
+        }
         vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
         vec3 V = normalize(cameraPosition - vWPos);
         float depth = max(0.0, uLevel - vFloorY);
@@ -206,13 +226,21 @@ export function makePoolWater(reflection, field) {
           refl = mix(envc, refl, uReflOn);
           // haze of the water body (thin over shallow floors, denser over the deep end)
           float vy = max(0.2, V.y);
-          float haze = (1.0 - exp(-(depth + 0.12) * (0.55 + uMurk * 4.0) / vy)) * (0.16 + uMurk * 0.8);
-          vec3 body = (uScatter * 2.2 + uScatter * uMurk * 2.0) * (L + 0.08) + glow * vec3(0.3, 0.65, 0.85) * 0.45;
+          // dark, murky body: thin over the shallows, a near-opaque green-black over the deep water
+          float haze = (1.0 - exp(-(depth + 0.1) * (1.05 + uMurk * 4.0) / vy)) * (0.4 + uMurk * 0.55);
+          vec3 body = (uScatter * 2.2 + uScatter * uMurk * 2.0) * (L + 0.08) + glow * vec3(0.25, 0.6, 0.55) * 0.35;
+          // contamination: sickly yellow-green film with an oily rainbow sheen
+          body = mix(body, vec3(0.2, 0.24, 0.05) * (L + 0.1), vInf * 0.75);
+          haze = mix(haze, min(1.0, haze + 0.25), vInf);
+          float filmK = fract(cosT * 2.3 + (texture2D(uRippleTex, p * 0.07 + uTime * 0.004).x) * 1.7);
+          vec3 film = 0.5 + 0.5 * cos(6.2831 * (filmK + vec3(0.0, 0.33, 0.67)));
           // sparkle: tiny bright glints where the ripples face the ceiling lights
           vec3 R = reflect(-V, N);
           float spark = pow(max(0.0, R.y), 900.0) * 6.0 * L;
           vec3 col = refl * F * uReflStr + body * haze + spark * vec3(1.0, 0.98, 0.95);
-          float a = clamp(F * uReflStr + haze, 0.0, 1.0);
+          col += film * vInf * (0.05 + F * 0.25) * (L + 0.15);
+          col += vec3(0.75, 0.8, 0.55) * bub * (L + 0.2) * 1.3;
+          float a = clamp(F * uReflStr + haze + bub * 0.3, 0.0, 1.0);
           // very shallow sheets of water fade out at their edge
           float thin = smoothstep(0.0, 0.035, depth);
           outc = vec4(col * thin, a * thin);
@@ -222,6 +250,7 @@ export function makePoolWater(reflection, field) {
           float window = smoothstep(0.64, 0.74, cosT);
           vec3 above = (vBaked * 1.1 + uAmbient * 3.0 + 0.04) * vec3(0.85, 0.97, 1.0);
           vec3 tir = uScatter * 3.0 * (L + 0.15) + glow * 0.3;
+          tir = mix(tir, vec3(0.12, 0.13, 0.03) * (L + 0.1), vInf * 0.6);
           outc = vec4(mix(tir, above, window), 1.0);
           outc.rgb *= mix(0.92, 0.35, window);
           outc.a = mix(0.92, 0.35, window);

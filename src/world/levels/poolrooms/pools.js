@@ -136,7 +136,8 @@ export function buildPool(B, p, ox, oz) {
     }
   }
   // end walls: s = 0 (normal +s) and s = L (normal -s)
-  for (const [s, sg] of p.room ? [] : [[0, 1], [L, -1]]) {
+  const ends = p.room ? [] : [[0, 1], [L, -1]].filter(([s]) => !(s === 0 ? (p.dir > 0 ? p.openW : p.openE) : (p.dir > 0 ? p.openE : p.openW)));
+  for (const [s, sg] of ends) {
     const n = [sdir[0] * sg, 0, sdir[2] * sg];
     const bot = p.kind === 'spa' ? -0.25 : (s === 0 ? (p.steps > 0 ? -RISE : F(0)) : F(L));
     const nv = Math.max(1, Math.round(A / seg));
@@ -158,23 +159,27 @@ export function buildPool(B, p, ox, oz) {
   }
   // wall colliders around the basin (outside the rect, from below the floor to the deck)
   if (!p.room) {
+    // open ends (the canal continues into the next chunk) carry no wall, coping or collider
+    const oW = p.axis === 'x' && p.openW, oE = p.axis === 'x' && p.openE;
     const wb = 0.32;
-    B.boxes.push({ min: [X0 - wb, minY - 0.4, Z0 - wb], max: [X1 + wb, 0, Z0] });
-    B.boxes.push({ min: [X0 - wb, minY - 0.4, Z1], max: [X1 + wb, 0, Z1 + wb] });
-    B.boxes.push({ min: [X0 - wb, minY - 0.4, Z0], max: [X0, 0, Z1] });
-    B.boxes.push({ min: [X1, minY - 0.4, Z0], max: [X1 + wb, 0, Z1] });
+    const xa = oW ? X0 : X0 - wb, xb = oE ? X1 : X1 + wb;
+    B.boxes.push({ min: [xa, minY - 0.4, Z0 - wb], max: [xb, 0, Z0] });
+    B.boxes.push({ min: [xa, minY - 0.4, Z1], max: [xb, 0, Z1 + wb] });
+    if (!oW) B.boxes.push({ min: [X0 - wb, minY - 0.4, Z0], max: [X0, 0, Z1] });
+    if (!oE) B.boxes.push({ min: [X1, minY - 0.4, Z0], max: [X1 + wb, 0, Z1] });
     // ---------------- coping ----------------
     B.trim.setTint(WHITE);
-    B.trim.sweepRect(X0, Z0, X1, Z1, 0, COPING, true);
+    B.trim.sweepRect(X0, Z0, X1, Z1, 0, COPING, true, { W: oW, E: oE });
     const cw = COPING_W, ch = COPING_H;
-    B.boxes.push({ min: [X0 - cw, 0, Z0 - cw], max: [X1 + cw, ch, Z0], kind: 'coping' });
-    B.boxes.push({ min: [X0 - cw, 0, Z1], max: [X1 + cw, ch, Z1 + cw], kind: 'coping' });
-    B.boxes.push({ min: [X0 - cw, 0, Z0], max: [X0, ch, Z1], kind: 'coping' });
-    B.boxes.push({ min: [X1, 0, Z0], max: [X1 + cw, ch, Z1], kind: 'coping' });
+    const ca = oW ? X0 : X0 - cw, cb = oE ? X1 : X1 + cw;
+    B.boxes.push({ min: [ca, 0, Z0 - cw], max: [cb, ch, Z0], kind: 'coping' });
+    B.boxes.push({ min: [ca, 0, Z1], max: [cb, ch, Z1 + cw], kind: 'coping' });
+    if (!oW) B.boxes.push({ min: [X0 - cw, 0, Z0], max: [X0, ch, Z1], kind: 'coping' });
+    if (!oE) B.boxes.push({ min: [X1, 0, Z0], max: [X1 + cw, ch, Z1], kind: 'coping' });
   }
 
   // ---------------- depth markers on the coping ----------------
-  if (!p.room && B.sign && p.kind !== 'spa') {
+  if (!p.room && B.sign && p.kind !== 'spa' && p.kind !== 'canal') {
     const kShallow = p.kind === 'wading' ? SIGN.DEPTH_WADE : SIGN.DEPTH_SHALLOW;
     const kDeep = p.kind === 'deep' ? SIGN.DEPTH_DEEP : p.kind === 'lap' ? SIGN.DEPTH_LAP : SIGN.DEPTH_WADE;
     const y = COPING_H + 0.0025;
@@ -234,7 +239,7 @@ export function buildPool(B, p, ox, oz) {
     const m = frameAt(x, y, z, nIn);
     B.chrome.lathe([[0.0, -0.002], [0.13, -0.002], [0.15, 0.004], [0.152, 0.012], [0.14, 0.02], [0.118, 0.022]], 24, m);
     B.lamp.lathe([[0.118, 0.016], [0.09, 0.024], [0.05, 0.029], [0.0, 0.03]], 24, m);
-    B.lamps.push({ x: x + nIn[0] * 0.12, y, z: z + nIn[2] * 0.12, on: p.lightsOn ? 1 : 0, pool: p });
+    B.lamps.push({ x: x + nIn[0] * 0.12, y, z: z + nIn[2] * 0.12, on: (lp.on ?? p.lightsOn) ? 1 : 0, pool: p });
   }
 
   // ---------------- main drains ----------------
@@ -304,7 +309,7 @@ export function buildPool(B, p, ox, oz) {
     // climbing device + collider
     const top = W(ld.s, t, 0);
     const deckPos = [top[0] - nIn[0] * 0.75, 0.02, top[2] - nIn[2] * 0.75];
-    const poolPos = [top[0] + nIn[0] * 0.55, fl + 0.02, top[2] + nIn[2] * 0.55];
+    const poolPos = [top[0] + nIn[0] * 0.55, Math.max(fl, WATER_Y - 1.1) + 0.02, top[2] + nIn[2] * 0.55];
     const c0 = [top[0] + nIn[0] * 0.12, (fl + 0.9) / 2, top[2] + nIn[2] * 0.12];
     const hAlong = 0.32, hIn = 0.1, hy = (0.9 - fl) / 2;
     B.ladders.push({
@@ -416,7 +421,7 @@ export function drainGrate(B, x, y, z, h, axis = 'x', recess = false) {
 function _box(x, y, z) { return new THREE.Vector3(x, y, z); }
 
 // Water-surface geometry for a pool (y = WATER_Y), with aFloorY per vertex
-export function poolWaterQuads(Wm, p, ox, oz) {
+export function poolWaterQuads(Wm, p, ox, oz, infectAt = null) {
   const { X0, Z0, X1, Z1 } = poolRect(p, ox, oz);
   const nx = Math.max(2, Math.round((X1 - X0) / 0.5)), nz = Math.max(2, Math.round((Z1 - Z0) / 0.5));
   const base = Wm.pos.length / 3;
@@ -434,6 +439,7 @@ export function poolWaterQuads(Wm, p, ox, oz) {
       }
       Wm.pos.push(x, WATER_Y, z);
       Wm.floor.push(fy);
+      Wm.inf?.push(infectAt ? infectAt(x, z) : (p.infected ? 1 : 0));
     }
   }
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {

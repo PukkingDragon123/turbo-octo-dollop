@@ -1,63 +1,74 @@
 // Deterministic layout generation for Level 37 — "The Poolrooms".
 // Pure data (no three.js). Same 3 m cell lattice and 8x8-cell chunks as the Yellow Rooms (so the
-// shared mission / monster / anomaly / critter systems keep working), but with per-cell floor and
-// ceiling heights, sunken flooded floors and rectangular pool basins (deep / lap / wading / spa).
-// Every peer generates identical layouts from (seed, chunk, variant). Pools and rooms do not depend
-// on the variant (day-7 corridor shifts only rearrange walls between ordinary deck cells).
+// shared mission / monster / anomaly / critter systems keep working), with per-cell floor and
+// ceiling heights, sunken flooded floors and rectangular pool basins.
+//
+// The level is one endless flooded waterway running east (+x) from the arrival dock: a chain of
+// giant tiled halls (two chunks = 48 m long, 21 m wide, 7.6 m high) along chunk row cz = 0, each
+// split by a 12 m wide, 3.6 m deep canal. On foot a hall is a dead end: every hall is sealed from
+// the next by a sluice wall that only leaves the canal open, so the team has to take the raft (or
+// swim through the dark water) to go forward. The generators wait in plant rooms further ahead.
+// Everything outside the band is solid ("void"). Every peer generates identical layouts.
 import { hash01, hash3, RNG, valueNoise2 } from '../../../core/rng.js';
-import { CELL, CHUNK, CHUNK_M, HEIGHT, W, missionChunks, wallPassable, wallTransmission } from '../yellow/layout.js';
+import { CELL, CHUNK, CHUNK_M, HEIGHT, W, wallPassable, wallTransmission } from '../yellow/layout.js';
 
-export { CELL, CHUNK, CHUNK_M, HEIGHT, W, missionChunks, wallPassable, wallTransmission };
+export { CELL, CHUNK, CHUNK_M, HEIGHT, W, wallPassable, wallTransmission };
 
 export const TALL = 4.6;        // natatorium / colonnade ceiling (vault apex)
 export const VAULT_SPRING = 3.1; // groin vault springing height (apex = TALL)
+export const GIANT = 7.6;       // the giant halls along the waterway
+export const PEND_Y = 4.7;      // hanging pendant lamps
+export const GATE_Y = 3.7;      // underside of the sluice walls between halls
 export const WATER_Y = -0.1;    // base water level (10 cm below the deck)
 export const SUNK_Y = -0.2;     // sunken, flooded floors
+export const CANAL_Y = -3.6;    // canal floor: too deep to see the bottom
 export const T = 0.24;          // wall thickness
 export const RISE = 0.1833;     // pool stair riser
 export const TREAD = 0.3;       // pool stair tread
+// canal rows (chunk-local) of every band chunk: [CANAL_J0, CANAL_J1); row 0 is the north walkway,
+// rows 5-7 the south deck (rooms and kiddie pools on rows 6-7)
+export const CANAL_J0 = 1, CANAL_J1 = 5;
+export const BACK = 6;          // first row of the back of the south deck
 
-const WALL_P = { halls: 0.37, natatorium: 0.06, colonnade: 0.0, flooded: 0.3 };
-const TALLZ = { natatorium: 1, colonnade: 1 };
+export const isBand = (cx, cz) => cz === 0 && cx >= 0;
+export const hallOf = (cx) => Math.floor(cx / 2);
+export const isGateChunk = (cx) => cx > 0 && cx % 2 === 0;
+// canal water bounds (world z), the raft and the goldfish stay inside
+export const CANAL_Z0 = CANAL_J0 * CELL, CANAL_Z1 = CANAL_J1 * CELL;
+export const CANAL_X0 = 1 * CELL; // the canal head (stairs) in chunk 0
+
+// Generators sit in plant rooms further down the waterway (halls 1-3)
+export function missionChunks(seed) {
+  const rng = new RNG(hash3(seed, 7, 7, 99));
+  const kinds = rng.shuffle(['diesel', 'electric', 'mech']);
+  return kinds.map((kind, k) => ({ kind, cx: 3 + k * 2, cz: 0 }));
+}
+
+// hall flavour: 'lido' (bright, kept), 'jungle' (overgrown, contaminated), 'dark' (failing lights,
+// flooded decks), 'bath' (shower halls, kiddie pools)
+export function hallStyle(seed, h) {
+  if (h <= 0) return 'lido';
+  const r = hash01(h, 3, 17, seed);
+  if (h === 1) return r < 0.5 ? 'bath' : 'jungle';
+  return r < 0.3 ? 'jungle' : r < 0.55 ? 'dark' : r < 0.8 ? 'bath' : 'lido';
+}
+
+// Contaminated water: long stretches of the canal (never the boarding hall), half the kiddie pools
+export function canalInfected(seed, i) {
+  if (i < 2 * CHUNK) return false;
+  const n = valueNoise2(i * 0.07 + (seed % 997), 3.3, 919);
+  return n > 0.5;
+}
 
 export function zoneAt(seed, i, j) {
-  // spawn chunk: an arrival hall (see generateLayout); its surroundings stay ordinary halls
-  if (i >= 0 && i < CHUNK && j >= 0 && j < CHUNK) return 'natatorium';
-  if (Math.abs(i - 4) <= 9 && Math.abs(j - 4) <= 9) {
-    // a little calmer around the spawn: no colonnades / floods directly next to it
-    const n = valueNoise2(i * 0.085 + (seed % 10000), j * 0.085 - 31, 711);
-    return n > 0.62 ? 'natatorium' : 'halls';
-  }
-  const s = seed % 10000;
-  const nNat = valueNoise2(i * 0.085 + s, j * 0.085 - 31, 711);
-  const nCol = valueNoise2(i * 0.11 - 17, j * 0.11 + s, 722);
-  const nFlood = valueNoise2(i * 0.1 + 53 + s, j * 0.1 + 7, 733);
-  if (nNat > 0.6) return 'natatorium';
-  if (nCol > 0.74) return 'colonnade';
-  if (nFlood > 0.72) return 'flooded';
-  return 'halls';
+  const cx = Math.floor(i / CHUNK), cz = Math.floor(j / CHUNK);
+  return isBand(cx, cz) ? 'natatorium' : 'void';
 }
 
 const SPECIALS = [
-  ['locker_room', 8], ['storage', 8], ['lifeguard_office', 7], ['pump_room', 6], ['endless_hall', 5],
-  ['yellow_bleed', 4], ['stairs_water', 5], ['drowned_room', 4], ['dead_clone', 6], ['vending_lonely', 5],
-  ['sinking', 5], ['clipping', 4], ['shower_room', 6],
+  ['locker_room', 8], ['storage', 9], ['lifeguard_office', 7], ['pump_room', 6], ['yellow_bleed', 3],
+  ['dead_clone', 6], ['vending_lonely', 5], ['sinking', 4], ['clipping', 3], ['shower_room', 7],
 ];
-
-function specialSize(kind) {
-  switch (kind) {
-    case 'endless_hall': return [6, 1];
-    case 'locker_room': return [2, 2];
-    case 'storage': return [2, 2];
-    case 'drowned_room': return [2, 2];
-    case 'sinking': return [2, 2];
-    case 'pump_room': return [2, 1];
-    case 'stairs_water': return [1, 2];
-    case 'shower_room': return [2, 1];
-    case 'yellow_bleed': return [2, 2];
-    default: return [1, 1];
-  }
-}
 
 // numeric-key cache (hit very often while baking light)
 const layoutCache = new Map();
@@ -77,205 +88,171 @@ export function getLayout(seed, cx, cz, variant = 0) {
 
 export function clearLayoutCache() { layoutCache.clear(); cacheSeed = null; }
 
+function voidCell(li, lj, i, j) {
+  return {
+    li, lj, i, j, zone: 'void', void: true, floor: 'deck', fy: 0, ceil: GIANT, vault: false, water: false, wet: 0, spill: false,
+    light: 0, lightKind: 'panel', lightMode: 'on', lightTone: 0, lightSeed: 0, lightRot: 0, special: null, reserved: true, pool: null, tint: 0,
+  };
+}
+
 // ---------------------------------------------------------------------------
 function generateLayout(seed, cx, cz, variant) {
   const N = CHUNK;
-  const rngFixed = new RNG(hash3(cx, cz, 515, seed));      // rooms & pools (variant independent)
-  const rng = new RNG(hash3(cx, cz, variant + 77, seed));  // walls, props
   const i0 = cx * N, j0 = cz * N;
   const cells = [];
+  const band = isBand(cx, cz);
+  const layout = {
+    seed, cx, cz, variant, cells, edgesN: new Uint8Array(N * N), edgesW: new Uint8Array(N * N),
+    pillars: [], specials: [], spawns: [], decor: [], vents: [], pools: [],
+    drains: [], grilles: [], windows: [], void: !band, gate: band && isGateChunk(cx), hall: hallOf(cx),
+    style: band ? hallStyle(seed, hallOf(cx)) : 'void',
+  };
+  if (!band) {
+    for (let lj = 0; lj < N; lj++) for (let li = 0; li < N; li++) cells.push(voidCell(li, lj, i0 + li, j0 + lj));
+    // the band's south wall lies on this chunk's first row
+    if (cz === 1 && cx >= 0) for (let li = 0; li < N; li++) layout.edgesN[li] = W.FULL;
+    return layout;
+  }
+  const rngFixed = new RNG(hash3(cx, cz, 515, seed));
+  const rng = new RNG(hash3(cx, cz, 77, seed));
+  const style = layout.style;
   for (let lj = 0; lj < N; lj++) {
     for (let li = 0; li < N; li++) {
       const i = i0 + li, j = j0 + lj;
-      const zone = zoneAt(seed, i, j);
-      const sunk = zone === 'flooded' || zone === 'colonnade';
       cells.push({
-        li, lj, i, j, zone,
-        floor: sunk ? 'sunk' : 'deck',
-        fy: sunk ? SUNK_Y : 0,
-        ceil: TALLZ[zone] ? TALL : HEIGHT,
-        vault: zone === 'colonnade',
-        water: sunk,
-        wet: sunk ? 1 : 0,
-        spill: false,
-        light: 1, lightKind: 'panel', lightMode: 'on', lightTone: 0, lightSeed: 0, lightRot: 0,
-        special: null, reserved: false, pool: null, tint: 0,
+        li, lj, i, j, zone: 'natatorium',
+        floor: 'deck', fy: 0, ceil: GIANT, vault: false, water: false, wet: 0, spill: false,
+        light: 1, lightKind: 'pendant', lightMode: 'on', lightTone: 0, lightSeed: 0, lightRot: 0,
+        special: null, reserved: false, pool: null, tint: 0, infected: false,
       });
     }
   }
   const cell = (li, lj) => cells[lj * N + li];
-  const inside = (li, lj) => li >= 0 && lj >= 0 && li < N && lj < N;
-  const edgesN = new Uint8Array(N * N);
-  const edgesW = new Uint8Array(N * N);
+  const { edgesN, edgesW } = layout;
 
-  // --- base walls ---
-  for (let lj = 0; lj < N; lj++) {
-    for (let li = 0; li < N; li++) {
-      const c = cell(li, lj);
-      const i = c.i, j = c.j;
-      edgesN[lj * N + li] = edgeWall(seed, variant, c.zone, zoneAt(seed, i, j - 1), i, j, 21);
-      edgesW[lj * N + li] = edgeWall(seed, variant, c.zone, zoneAt(seed, i - 1, j), i, j, 23);
-    }
+  // --- the hall shell: north + south walls, the sealed west end, sluice walls between halls ---
+  for (let li = 0; li < N; li++) edgesN[li] = W.FULL; // north wall (the south wall belongs to chunk cz = 1)
+  if (cx === 0) for (let lj = 0; lj < N; lj++) edgesW[lj * N] = W.FULL;
+  if (layout.gate) {
+    for (let lj = 0; lj < N; lj++) edgesW[lj * N] = lj >= CANAL_J0 && lj < CANAL_J1 ? W.NONE : W.FULL;
   }
 
-  const layout = {
-    seed, cx, cz, variant, cells, edgesN, edgesW,
-    pillars: [], specials: [], spawns: [], decor: [], vents: [], pools: [],
-    drains: [], grilles: [], windows: [],
-  };
-
-  // --- mission / fixed rooms (same places as in the Yellow Rooms) ---
+  // --- rooms at the back of the south deck (rows 6-7), doors onto the deck walk (row 5) ---
   const mission = missionChunks(seed);
-  const isSpawn = cx === 0 && cz === 0;
   const gen = mission.find((m) => m.cx === cx && m.cz === cz);
-  if (isSpawn) placeRoom(layout, rngFixed, 'spawn', 3, 3, 2, 2, { doors: 4 });
-  else if (gen) placeRoom(layout, rngFixed, 'gen_' + gen.kind, 3, 3, 2, 2, { doors: 2 });
+  if (cx === 0) {
+    placeRoom(layout, rngFixed, 'spawn', 1, BACK, 2, 2, { doors: 4 });
+  } else if (cx === 1) {
+    placeRoom(layout, rngFixed, 'workshop', 3, BACK, 2, 2, { doorsAt: [['N', 3], ['N', 4]] });
+  } else if (gen) {
+    placeRoom(layout, rngFixed, 'gen_' + gen.kind, 3, BACK, 2, 2, { doorsAt: [['N', 3], ['N', 4], ['W', BACK]], arch: true });
+  }
   for (const m of mission) {
-    if (m.kind === 'diesel' && cx === m.cx + 1 && cz === m.cz) placeRoom(layout, rngFixed, 'fuel_store', 2, 5, 1, 1, { doors: 1 });
-    if (m.kind === 'electric' && cx === m.cx && cz === m.cz + 1) placeRoom(layout, rngFixed, 'fuse_office', 5, 2, 1, 1, { doors: 1 });
+    // support rooms in the first chunk of the generator's hall
+    if (cx !== m.cx - 1) continue;
+    if (m.kind === 'diesel') placeRoom(layout, rngFixed, 'fuel_store', 5, BACK + 1, 1, 1, { doorsAt: [['N', 5]] });
+    if (m.kind === 'electric') placeRoom(layout, rngFixed, 'fuse_office', 5, BACK + 1, 1, 1, { doorsAt: [['N', 5]] });
   }
-  if (cx === 0 && cz === 1) placeRoom(layout, rngFixed, 'workshop', 2, 2, 2, 2, { doors: 2 });
-
-  // --- random special room ---
-  if (!isSpawn && !gen && rngFixed.chance(0.6)) {
+  // random special rooms: one in most chunks without a mission room
+  if (cx > 1 && !gen && !layout.specials.length && rngFixed.chance(0.75)) {
     const kind = rngFixed.weighted(SPECIALS);
-    const [w, h] = specialSize(kind);
-    const rx = rngFixed.int(1, N - 1 - w), rz = rngFixed.int(1, N - 1 - h);
-    if (canPlace(layout, rx, rz, w, h)) placeRoom(layout, rngFixed, kind, rx, rz, w, h, { doors: kind === 'endless_hall' ? 0 : rngFixed.int(1, 2) });
-  }
-
-  // --- pools ---
-  for (const room of layout.specials) {
-    if (room.kind === 'stairs_water') addPool(layout, rngFixed, 'stairs', room.rx, room.rz, room.w, room.h, { axis: room.poolAxis, dir: room.poolDir, room: true });
-    if (room.kind === 'drowned_room') addPool(layout, rngFixed, 'drowned', room.rx, room.rz, room.w, room.h, { axis: room.poolAxis, dir: room.poolDir, room: true });
-  }
-  if (isSpawn) {
-    // the arrival hall: two long lap pools flank the spawn room
-    addPool(layout, rngFixed, 'lap', 1, 1, 1, 6, { axis: 'z', dir: 1 });
-    addPool(layout, rngFixed, 'lap', 6, 1, 1, 6, { axis: 'z', dir: -1 });
-  } else placePools(layout, rngFixed);
-
-  // --- tall / low boundaries: tall zones meeting low ones get proper walls with openings ---
-  for (let lj = 0; lj < N; lj++) {
-    for (let li = 0; li < N; li++) {
-      const c = cell(li, lj);
-      for (const side of ['N', 'W']) {
-        const oi = side === 'W' ? c.i - 1 : c.i, oj = side === 'N' ? c.j - 1 : c.j;
-        const oz = inside(li - (side === 'W'), lj - (side === 'N')) ? cell(li - (side === 'W'), lj - (side === 'N')).zone : zoneAt(seed, oi, oj);
-        const arr = side === 'N' ? edgesN : edgesW;
-        const idx = lj * N + li;
-        if (c.reserved && c.special) continue; // room walls already set
-        const other = inside(li - (side === 'W'), lj - (side === 'N')) ? cell(li - (side === 'W'), lj - (side === 'N')) : null;
-        if (other?.reserved && other.special) continue;
-        const tallA = !!TALLZ[c.zone], tallB = !!TALLZ[oz];
-        if (c.zone === 'colonnade' && oz === 'colonnade') { arr[idx] = W.NONE; continue; }
-        if (tallA !== tallB || (c.zone === 'colonnade') !== (oz === 'colonnade')) {
-          const h = hash01(c.i * 3 + (side === 'N' ? 1 : 2), c.j, 31 + variant * 5, seed);
-          arr[idx] = h < 0.3 ? W.FULL : h < 0.72 ? W.ARCH : h < 0.9 ? W.DOOR : W.WINDOW;
-        }
-      }
+    const big = ['locker_room', 'storage', 'yellow_bleed', 'sinking', 'clipping'].includes(kind);
+    const wide = kind === 'pump_room' || kind === 'shower_room';
+    if (big) {
+      const rx = rngFixed.chance(0.5) ? 1 : 5;
+      placeRoom(layout, rngFixed, kind, rx, BACK, 2, 2, { doorsAt: [['N', rx + rngFixed.int(0, 1)]] });
+    } else if (wide) {
+      const rx = rngFixed.chance(0.5) ? 1 : 5;
+      placeRoom(layout, rngFixed, kind, rx, BACK + 1, 2, 1, { doorsAt: [['N', rx + rngFixed.int(0, 1)]] });
+    } else {
+      const rx = rngFixed.int(1, 6);
+      placeRoom(layout, rngFixed, kind, rx, BACK + 1, 1, 1, { doorsAt: [['N', rx]] });
     }
   }
 
-  // --- pool edges never carry walls ---
-  for (const p of layout.pools) {
-    if (p.room) continue;
-    for (let lj = p.rz; lj <= p.rz + p.h && lj < N; lj++) for (let li = p.rx; li < p.rx + p.w; li++) edgesN[lj * N + li] = W.NONE;
-    for (let lj = p.rz; lj < p.rz + p.h; lj++) for (let li = p.rx; li <= p.rx + p.w && li < N; li++) edgesW[lj * N + li] = W.NONE;
-  }
+  // --- the canal ---
+  const canal = cx === 0
+    ? addPool(layout, rngFixed, 'canal', 1, CANAL_J0, N - 1, CANAL_J1 - CANAL_J0, { axis: 'x', dir: 1, openE: true, steps: 7, shallowY: -1.25, flat: 0.9 })
+    : addPool(layout, rngFixed, 'canal', 0, CANAL_J0, N, CANAL_J1 - CANAL_J0, { axis: 'x', dir: 1, openW: true, openE: true });
+  for (let lj = CANAL_J0; lj < CANAL_J1; lj++) for (let li = canal.rx; li < N; li++) cell(li, lj).infected = canalInfected(seed, i0 + li);
+  canal.infected = cells.some((c) => c.pool === canal && c.infected);
 
-  // --- lights ---
-  for (const c of cells) assignLight(c, seed);
-
-  // --- pillars at cell corners ---
-  const cornerFree = (li, lj) => {
-    // corner point (li,lj) = top-left of cell (li,lj); touches cells (li-1..li, lj-1..lj)
-    for (let dj = -1; dj <= 0; dj++) for (let di = -1; di <= 0; di++) {
-      const a = li + di, b = lj + dj;
-      if (!inside(a, b)) continue;
-      const cc = cell(a, b);
-      if (cc.pool || (cc.reserved && cc.special && cc.special.kind !== 'spawn')) return false;
-      if (cc.special?.kind === 'spawn') return false;
+  // --- kiddie pools with mushroom fountains and hot tubs on the back deck (a dry ring around) ---
+  const free = (li, lj, w, h) => {
+    for (let j = lj - 1; j <= lj + h; j++) for (let i = li - 1; i <= li + w; i++) {
+      if (i < 0 || i >= N || j >= N) continue;
+      const c = cells[j * N + i];
+      if (!c || c.reserved || c.pool || c.void) return false;
     }
     return true;
   };
-  for (let lj = 0; lj < N; lj++) {
-    for (let li = 0; li < N; li++) {
-      const c = cell(li, lj);
-      if (!cornerFree(li, lj)) continue;
-      if (c.zone === 'colonnade' && zoneAt(seed, c.i - 1, c.j) === 'colonnade' && zoneAt(seed, c.i, c.j - 1) === 'colonnade' && zoneAt(seed, c.i - 1, c.j - 1) === 'colonnade') {
-        layout.pillars.push({ li, lj, size: 0.62, kind: 'column' });
-      } else if (c.zone === 'natatorium' && !isSpawn && (c.i % 2 === 0) && (c.j % 2 === 0) && hash01(c.i, c.j, 41, seed) < 0.35) {
-        layout.pillars.push({ li, lj, size: 0.7, kind: 'square' });
-      } else if (c.zone === 'halls' && hash01(c.i, c.j, 42, seed) < 0.03) {
-        layout.pillars.push({ li, lj, size: 0.5, kind: 'square' });
+  if (cx > 0 && style !== 'dark') {
+    const wantKiddie = style === 'bath' ? 0.9 : style === 'lido' ? 0.55 : 0.6;
+    if (rngFixed.chance(wantKiddie)) {
+      for (let tries = 0; tries < 8; tries++) {
+        const w = rngFixed.int(2, 3), rx = rngFixed.int(1, N - 1 - w);
+        if (!free(rx, BACK, w, 1)) continue;
+        const p = addPool(layout, rngFixed, 'wading', rx, BACK, w, 1, { axis: 'x', dir: rngFixed.chance(0.5) ? 1 : -1 });
+        p.infected = hash01(cx, rx, 313, seed) < (style === 'jungle' ? 0.8 : 0.45);
+        for (const c of cells) if (c.pool === p) c.infected = p.infected;
+        layout.decor.push({ kind: 'mushroom', pool: p.id, x: (rx + w / 2) * CELL, z: (BACK + 0.5) * CELL, big: w >= 3 });
+        break;
+      }
+    }
+    if ((style === 'bath' || style === 'lido') && rngFixed.chance(0.5)) {
+      for (let tries = 0; tries < 4; tries++) {
+        const rx = rngFixed.int(1, N - 2);
+        if (!free(rx, BACK, 1, 1)) continue;
+        const p = addPool(layout, rngFixed, 'spa', rx, BACK, 1, 1, {});
+        p.infected = hash01(cx, rx, 317, seed) < 0.5;
+        for (const c of cells) if (c.pool === p) c.infected = p.infected;
+        break;
       }
     }
   }
-
-  // ensure no cell is fully closed (open one edge)
-  for (let lj = 0; lj < N - 1; lj++) {
-    for (let li = 0; li < N - 1; li++) {
-      const c = cell(li, lj);
-      if (c.reserved) continue;
-      const n = edgesN[lj * N + li], w = edgesW[lj * N + li];
-      const s = edgesN[(lj + 1) * N + li], e = edgesW[lj * N + li + 1];
-      const closed = [n, w, s, e].filter((x) => !wallPassable(x)).length;
-      if (closed === 4) {
-        const k = Math.floor(hash01(c.i, c.j, 51, seed) * 4);
-        if (k === 0) edgesN[lj * N + li] = W.ARCH;
-        else if (k === 1) edgesW[lj * N + li] = W.ARCH;
-        else if (k === 2 && !cell(li, lj + 1).reserved) edgesN[(lj + 1) * N + li] = W.DOOR;
-        else if (!cell(li + 1, lj).reserved) edgesW[lj * N + li + 1] = W.ARCH;
-      }
+  // the dark halls have flooded decks (ankle-deep water over the tiles)
+  if (style === 'dark') {
+    for (const c of cells) {
+      if (c.void || c.pool || c.reserved) continue;
+      if (c.lj >= CANAL_J1 && hash01(c.i, c.j, 404, seed) < 0.75) { c.floor = 'sunk'; c.fy = SUNK_Y; c.water = true; c.wet = 1; c.infected = canalInfected(seed, c.i); }
     }
   }
 
-  // --- wetness, spill (late-day flooding) ---
+  // --- lights ---
+  for (const c of cells) assignLight(c, seed, style);
+
+  // --- pillars: a colonnade along the south deck ---
+  for (let li = 1; li < N; li++) {
+    const lj = BACK;
+    const around = [cell(li - 1, lj - 1), cell(li, lj - 1), cell(li - 1, lj), cell(li, lj)];
+    if (around.some((c) => c.reserved || c.pool)) continue;
+    if ((cx * N + li) % 2 === 0) layout.pillars.push({ li, lj, size: 0.7, kind: 'square' });
+  }
+
+  // --- wetness ---
   for (const c of cells) {
-    if (c.water) continue;
-    let nearWater = false;
-    for (let dj = -1; dj <= 1 && !nearWater; dj++) for (let di = -1; di <= 1; di++) {
-      if (!di && !dj) continue;
-      if (inside(c.li + di, c.lj + dj)) { if (cell(c.li + di, c.lj + dj).water) { nearWater = true; break; } }
-      else { const z = zoneAt(seed, c.i + di, c.j + dj); if (z === 'flooded' || z === 'colonnade') { nearWater = true; break; } }
+    if (c.void || c.water) continue;
+    let near = 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const o = cells[(c.lj + dj) * N + c.li + di];
+      if (o && Math.abs(di) + Math.abs(dj) && o.water && c.li + di >= 0 && c.li + di < N) near = 1;
     }
-    if (nearWater) c.wet = Math.max(c.wet, 0.55);
-    else if (hash01(c.i, c.j, 12, seed) < 0.18) c.wet = 0.35;
-    c.spill = nearWater && !c.reserved;
+    c.wet = near ? 0.6 : hash01(c.i, c.j, 12, seed) < 0.25 ? 0.4 : 0.15;
+    if (style === 'jungle') c.wet = Math.max(c.wet, 0.5);
   }
 
   // --- decor & detail positions ---
   placeDetails(layout, rng, seed);
 
   // --- prop spawns ---
-  for (const c of cells) if (!c.reserved || c.special?.kind === 'spawn') spawnZoneProps(layout, c, rng, seed);
+  for (const c of cells) if (!c.void && (!c.reserved || c.special?.kind === 'spawn')) spawnZoneProps(layout, c, rng, seed);
   for (const p of layout.pools) spawnPoolProps(layout, p, rngFixed, seed);
+  void variant;
   return layout;
 }
 
-function edgeWall(seed, variant, zA, zB, i, j, salt) {
-  const p = Math.max(WALL_P[zA] ?? 0.35, WALL_P[zB] ?? 0.35);
-  const h = hash01(i, j, salt + variant * 7, seed), h2 = hash01(i, j, salt + 1 + variant * 7, seed);
-  if (h >= p) return W.NONE;
-  if (h2 < 0.44) return W.FULL;
-  if (h2 < 0.58) return W.DOOR;
-  if (h2 < 0.74) return W.ARCH;
-  if (h2 < 0.82) return W.HALF_A;
-  if (h2 < 0.9) return W.HALF_B;
-  if (h2 < 0.95) return W.LOW;
-  return W.WINDOW;
-}
-
-function canPlace(layout, rx, rz, w, h) {
-  for (let j = rz; j < rz + h; j++) for (let i = rx; i < rx + w; i++) {
-    const c = layout.cells[j * CHUNK + i];
-    if (c.reserved || c.pool) return false;
-  }
-  return true;
-}
-
 // Enclosed room over cells [rx..rx+w-1]x[rz..rz+h-1] (chunk-local)
+// opts.doorsAt: [[side, index]] (side N/S use the column index, W/E the row index)
 function placeRoom(layout, rng, kind, rx, rz, w, h, opts = {}) {
   const N = CHUNK;
   const { cells, edgesN, edgesW } = layout;
@@ -308,33 +285,15 @@ function placeRoom(layout, rng, kind, rx, rz, w, h, opts = {}) {
     if (rx + w < N) boundary.push({ arr: 'W', idx: j * N + rx + w, side: 'E', j });
   }
   for (const b of boundary) (b.arr === 'N' ? edgesN : edgesW)[b.idx] = W.FULL;
+  const open = kind === 'spawn' ? W.ARCH : opts.arch || kind === 'workshop' ? W.ARCH : W.DOOR;
   if (kind === 'spawn') {
-    // arrival room: wide arched openings all around
-    for (const b of boundary) (b.arr === 'N' ? edgesN : edgesW)[b.idx] = W.ARCH;
-  } else {
-    const nd = opts.doors ?? 1;
-    const choices = rng.shuffle(boundary.slice());
-    for (let d = 0; d < Math.min(nd, choices.length); d++) {
-      const b = choices[d];
-      (b.arr === 'N' ? edgesN : edgesW)[b.idx] = kind.startsWith('gen_') || kind === 'workshop' ? W.ARCH : W.DOOR;
+    for (const b of boundary) if (b.side !== 'S') { (b.arr === 'N' ? edgesN : edgesW)[b.idx] = W.ARCH; room.doors.push(b); }
+  } else if (opts.doorsAt) {
+    for (const [side, k] of opts.doorsAt) {
+      const b = boundary.find((q) => q.side === side && (side === 'N' || side === 'S' ? q.i === k : q.j === k));
+      if (!b) continue;
+      (b.arr === 'N' ? edgesN : edgesW)[b.idx] = open;
       room.doors.push(b);
-    }
-    if (kind === 'endless_hall') {
-      edgesW[rz * N + rx] = W.ARCH;
-      if (rx + w < N) edgesW[rz * N + rx + w] = W.ARCH;
-    }
-    if (kind === 'stairs_water' || kind === 'drowned_room') {
-      // a single door at the top of the stairs; the rest of the room is a flooded basin
-      for (const b of boundary) (b.arr === 'N' ? edgesN : edgesW)[b.idx] = W.FULL;
-      room.doors.length = 0;
-      const axis = w >= h ? 'x' : 'z';
-      const dir = rng.chance(0.5) ? 1 : -1;
-      const side = axis === 'x' ? (dir > 0 ? 'W' : 'E') : (dir > 0 ? 'N' : 'S');
-      const cands = boundary.filter((b) => b.side === side);
-      const b = cands[Math.floor(rng.next() * cands.length)] || boundary[0];
-      (b.arr === 'N' ? edgesN : edgesW)[b.idx] = W.DOOR;
-      room.doors.push(b);
-      room.poolAxis = axis; room.poolDir = dir;
     }
   }
   for (let j = rz; j < rz + h; j++) for (let i = rx; i < rx + w; i++) {
@@ -344,8 +303,6 @@ function placeRoom(layout, rng, kind, rx, rz, w, h, opts = {}) {
     if (kind === 'fuse_office' || kind === 'lifeguard_office') c.lightTone = 1;
     if (kind === 'dead_clone') c.lightMode = 'flicker';
     if (kind === 'locker_room' || kind === 'shower_room') c.roomStyle = 'locker';
-    if (kind === 'endless_hall') { c.lightMode = 'on'; c.light = 1; c.lightSeed = 0.5; c.lightRot = 0; c.roomStyle = 'tunnel'; }
-    if (kind === 'stairs_water' || kind === 'drowned_room') { c.lightMode = c.i % 2 ? 'flicker' : 'on'; c.lightTone = 4; }
   }
   layout.specials.push(room);
   return room;
@@ -361,25 +318,32 @@ const POOL_KINDS = {
   spa: { shallowY: -0.55, deepY: -0.55, steps: 0 },
   drowned: { shallowY: -1.6, deepY: -1.6, steps: 9 },
   stairs: { shallowY: -2.2, deepY: -2.2, steps: 12 },
+  canal: { shallowY: CANAL_Y, deepY: CANAL_Y, steps: 0 },
 };
 
 function addPool(layout, rng, kind, rx, rz, w, h, o = {}) {
   const N = CHUNK;
-  const K = POOL_KINDS[kind];
+  const K = { ...POOL_KINDS[kind] };
+  if (o.steps !== undefined) K.steps = o.steps;
+  if (o.shallowY !== undefined) K.shallowY = o.shallowY;
   const axis = o.axis || (w >= h ? 'x' : 'z');
   const dir = o.dir || (rng.chance(0.5) ? 1 : -1);
   const L = (axis === 'x' ? w : h) * CELL; // length along the axis
   const run = Math.max(0, K.steps - 1) * TREAD;
+  const canal = kind === 'canal';
   const pool = {
     id: layout.pools.length, kind, rx, rz, w, h, axis, dir, L, room: !!o.room,
     shallowY: K.shallowY, deepY: K.deepY, steps: K.steps, run,
-    flat: kind === 'deep' ? Math.min(2.2, L * 0.25) : L, // shallow flat after the stairs
+    flat: o.flat ?? (kind === 'deep' ? Math.min(2.2, L * 0.25) : L), // shallow flat after the stairs
     deepFlat: kind === 'deep' ? Math.min(2.4, L * 0.25) : 0,
     ladders: [], lights: [], rope: null, lanes: [], drains: [], bench: kind === 'spa',
-    lightsOn: hash01(layout.cx * 7 + rx, layout.cz * 5 + rz, 91, layout.seed) < 0.85,
+    lightsOn: hash01(layout.cx * 7 + rx, layout.cz * 5 + rz, 91, layout.seed) < (canal ? 0.7 : 0.85),
     tile: kind === 'spa' ? 1 : kind === 'wading' ? 2 : 0,
+    openW: !!o.openW, openE: !!o.openE, infected: false,
   };
+  if (canal && o.flat !== undefined) pool.deepFlat = Math.max(0, L - run - pool.flat - 6.5);
   pool.slopeLen = Math.max(0.01, L - pool.run - pool.flat - pool.deepFlat);
+  if (canal && o.flat === undefined) { pool.flat = L; pool.slopeLen = 0.01; }
   for (let j = rz; j < rz + h; j++) for (let i = rx; i < rx + w; i++) {
     const c = layout.cells[j * N + i];
     c.pool = pool;
@@ -387,12 +351,16 @@ function addPool(layout, rng, kind, rx, rz, w, h, o = {}) {
     c.water = true;
     c.wet = 1;
     c.vault = false;
-    if (c.zone === 'colonnade' && !o.room) c.zone = 'natatorium';
   }
-  // details along the long sides: lights, ladders
   const across = (axis === 'x' ? h : w) * CELL;
-  if (pool.room) {
-    pool.drains.push({ s: L - 0.8, t: 0.5 });
+  if (canal) {
+    // underwater lamps along both walls (many dead), ladders out of the water every ~12 m
+    for (let s = (pool.steps ? pool.run + 1.6 : 1.3); s < L - 0.4; s += 3.0) {
+      pool.lights.push({ s, side: -1, on: hash01(layout.cx * 31 + Math.round(s * 10), 1, 93, layout.seed) < 0.55 });
+      pool.lights.push({ s: s + 1.5 < L ? s + 1.5 : s, side: 1, on: hash01(layout.cx * 31 + Math.round(s * 10), 2, 93, layout.seed) < 0.55 });
+    }
+    pool.ladders.push({ s: L * 0.3 + (layout.cx % 2) * 2.1, side: -1 });
+    pool.ladders.push({ s: L * 0.75 - (layout.cx % 2) * 1.8, side: 1 });
   } else if (kind === 'deep' || kind === 'lap' || kind === 'drowned') {
     for (let s = pool.run + 1.4; s < L - 0.8; s += 2.6) {
       pool.lights.push({ s, side: -1 });
@@ -408,44 +376,12 @@ function addPool(layout, rng, kind, rx, rz, w, h, o = {}) {
     pool.drains.push({ s: L - 0.9, t: 0.5 });
   } else if (kind === 'wading') {
     pool.lights.push({ s: L * 0.6, side: -1 });
-    pool.drains.push({ s: L * 0.6, t: 0.5 });
   } else if (kind === 'spa') {
     pool.lights.push({ s: L * 0.5, side: 1 });
     pool.drains.push({ s: L * 0.5, t: 0.5 });
   }
   layout.pools.push(pool);
   return pool;
-}
-
-function placePools(layout, rng) {
-  const N = CHUNK;
-  const { cells } = layout;
-  let nat = 0, halls = 0;
-  for (const c of cells) { if (c.zone === 'natatorium') nat++; else if (c.zone === 'halls') halls++; }
-  let want = nat > 26 ? 2 : nat > 8 ? 1 : 0;
-  if (halls > 30 && rng.chance(0.4)) want++;
-  let placed = 0;
-  for (let tries = 0; tries < 40 && placed < want; tries++) {
-    const natRich = nat > 8;
-    const kind = natRich ? rng.weighted([['deep', 5], ['lap', 3], ['wading', 2], ['spa', 1]]) : rng.weighted([['wading', 3], ['spa', 2], ['lap', 1]]);
-    let w, h;
-    if (kind === 'deep') { w = rng.int(2, 4); h = rng.int(3, 6); }
-    else if (kind === 'lap') { w = 1; h = rng.int(4, 6); }
-    else if (kind === 'wading') { w = rng.int(1, 2); h = rng.int(1, 3); }
-    else { w = 1; h = 1; }
-    if (rng.chance(0.5)) [w, h] = [h, w];
-    if (w > N - 2 || h > N - 2) continue;
-    const rx = rng.int(1, N - 1 - w), rz = rng.int(1, N - 1 - h);
-    let ok = true;
-    for (let j = rz - 1; j <= rz + h && ok; j++) for (let i = rx - 1; i <= rx + w; i++) {
-      const c = cells[j * N + i];
-      // pools keep a dry deck ring: no rooms, no other pools, no sunken floors around them
-      if (!c || c.reserved || c.pool || c.floor === 'sunk') { ok = false; break; }
-    }
-    if (!ok) continue;
-    addPool(layout, rng, kind, rx, rz, w, h);
-    placed++;
-  }
 }
 
 // Pool floor height at along-axis distance s (0 = stair end) — pure function of the pool record
@@ -488,78 +424,133 @@ export function poolPoint(p, ox, oz, s, t) {
 }
 
 // ---------------------------------------------------------------------------
-function assignLight(c, seed) {
+function assignLight(c, seed, style) {
+  if (c.void) { c.light = 0; return; }
   const h = hash01(c.i, c.j, 31, seed);
   const h2 = hash01(c.i, c.j, 32, seed);
   c.lightSeed = h2;
   c.lightRot = (c.i + c.j) % 2;
   if (c.reserved && c.special) {
     c.light = 1;
-    c.lightKind = c.special.kind === 'endless_hall' ? 'dome' : 'panel';
-  } else if (c.zone === 'natatorium') {
-    if (c.i % 2 === 0 && c.j % 2 === 0) { c.light = 1; c.lightKind = 'sky'; } else { c.light = h < 0.5 ? 1 : 0; c.lightKind = 'dome'; }
-  } else if (c.zone === 'colonnade') {
-    c.light = h < 0.9 ? 1 : 0;
-    c.lightKind = 'dome';
-  } else {
-    c.light = h < 0.86 ? 1 : 0;
     c.lightKind = 'panel';
+  } else if (c.pool && c.pool.kind === 'canal') {
+    // skylights high over the water alternate with pendant lamps hanging on long rods
+    const sky = c.i % 2 === 0 && (c.lj === 2 || c.lj === 3) && c.lj % 2 === (c.i / 2) % 2;
+    if (sky) { c.light = 1; c.lightKind = 'sky'; } else { c.light = h < (style === 'dark' ? 0.35 : 0.55) ? 1 : 0; c.lightKind = 'pendant'; }
+  } else {
+    c.light = c.i % 2 === 1 || h < 0.25 ? 1 : 0;
+    c.lightKind = 'pendant';
   }
-  if (c.zone === 'flooded') {
+  if (style === 'dark') {
     c.lightTone = 6;
-    if (h2 < 0.12) c.lightMode = 'dead';
-    else if (h2 < 0.22) c.lightMode = 'flicker';
-    else if (h2 < 0.27) c.lightMode = 'buzz';
+    if (h2 < 0.3) c.lightMode = 'dead';
+    else if (h2 < 0.45) c.lightMode = 'flicker';
+    else if (h2 < 0.5) c.lightMode = 'buzz';
   } else if (!c.reserved) {
-    if (h2 < 0.03) c.lightMode = 'dead';
-    else if (h2 < 0.07) c.lightMode = 'flicker';
-    else if (h2 < 0.1) c.lightMode = 'buzz';
+    if (h2 < 0.06) c.lightMode = 'dead';
+    else if (h2 < 0.11) c.lightMode = 'flicker';
+    else if (h2 < 0.14) c.lightMode = 'buzz';
+    if (style === 'jungle') c.lightTone = 6;
   }
   if (c.lightKind === 'sky') { c.lightTone = 5; if (c.lightMode !== 'dead') c.lightMode = 'on'; }
-  else if (c.lightKind === 'dome' && c.lightTone === 0) c.lightTone = 7;
+  else if (c.lightKind === 'pendant' && c.lightTone === 0) c.lightTone = 7;
 }
 
 // ---------------------------------------------------------------------------
-// Static details: drains, wall grilles (critter exits), porthole windows, benches, lifeguard chairs
+// Static details: drains, wall grilles (critter exits), porthole windows, slides, lifeguard chairs,
+// shower banks, plants, vines and algae mats
 function placeDetails(layout, rng, seed) {
   const N = CHUNK;
   const { cells, edgesN, edgesW } = layout;
+  const style = layout.style;
   for (const c of cells) {
-    if (c.pool || c.water) continue;
+    if (c.void || c.pool || c.water) continue;
     if (c.reserved && c.special?.kind !== 'spawn') continue;
     const h = hash01(c.i, c.j, 71, seed);
-    if (h < (c.wet > 0.4 ? 0.22 : 0.08) && c.special?.kind !== 'spawn') {
-      // square floor drain, off-centre so props and the exit room rarely sit on it
+    if (h < (c.wet > 0.4 ? 0.2 : 0.08) && c.special?.kind !== 'spawn') {
       layout.drains.push({ li: c.li, lj: c.lj, x: c.li * CELL + 0.6 + hash01(c.i, c.j, 72, seed) * 1.8, z: c.lj * CELL + 0.6 + hash01(c.i, c.j, 73, seed) * 1.8 });
     }
   }
-  // machine rooms drain through a floor grate (a critter exit) in their far corner cell
   for (const room of layout.specials) {
     if (room.kind !== 'pump_room' && room.kind !== 'workshop') continue;
     const li = room.rx + room.w - 1, lj = room.rz + room.h - 1;
     layout.drains.push({ li, lj, x: li * CELL + 1.0, z: lj * CELL + 1.0 });
   }
-  // porthole windows (glowing, recessed) on full walls
+  // high porthole windows on the giant walls, glowing; low grilles
   for (let lj = 0; lj < N; lj++) for (let li = 0; li < N; li++) {
     const c = cells[lj * N + li];
     for (const side of ['N', 'W']) {
       const t = (side === 'N' ? edgesN : edgesW)[lj * N + li];
       if (t !== W.FULL) continue;
+      const o = side === 'N' ? cells[(lj - 1) * N + li] : cells[lj * N + li - 1];
+      if (c.void && (!o || o.void)) continue;
       const h = hash01(c.i * 2 + (side === 'N' ? 1 : 0), c.j, 74, seed);
-      const tall = c.ceil > HEIGHT + 0.1;
-      if (h < (tall ? 0.55 : 0.16)) layout.windows.push({ li, lj, side, n: tall ? 3 : (h < 0.05 ? 2 : 1), high: tall });
-      else if (h > 0.93 && !c.special) layout.grilles.push({ li, lj, side });
+      const tall = Math.max(c.ceil, o ? o.ceil : 0) > HEIGHT + 0.1;
+      if (h < (tall ? 0.5 : 0.14)) layout.windows.push({ li, lj, side, n: tall ? 3 : (h < 0.05 ? 2 : 1), high: tall });
+      else if (h > 0.9 && !c.special && !c.void) layout.grilles.push({ li, lj, side });
     }
   }
-  // lifeguard chairs beside the big pools; a tube slide spirals into some deep ends
+  const canal = layout.pools.find((p) => p.kind === 'canal');
+  const hall = layout.hall;
+  // north walkway: a bank of showers against the wall, or a tube slide plunging into the canal
+  const ox = layout.cx * N;
+  const showerP = style === 'bath' ? 0.75 : style === 'lido' ? 0.35 : 0.2;
+  if (layout.cx > 0 && canal) {
+    const slideHere = hash01(hall, layout.cx, 83, seed) < (layout.cx % 2 ? 0.55 : 0.25);
+    if (slideHere) layout.decor.push({ kind: 'slide', pool: canal.id, s: Math.min(canal.L - 3.2, 5 + hash01(hall, 1, 84, seed) * 12), side: -1 });
+    const slide = layout.decor.find((d) => d.kind === 'slide');
+    for (let li = 0; li < N; li++) {
+      const c = cells[li];
+      if (c.reserved || c.pool) continue;
+      const x = (ox + li) * CELL;
+      if (slide && Math.abs(x + CELL / 2 - (ox * CELL + canal.rx * CELL + slide.s)) < 4.5) continue;
+      if (hash01(c.i, 0, 85, seed) < showerP) layout.decor.push({ kind: 'showers', li, x: x + CELL / 2 });
+    }
+  }
+  // lifeguard chair on the south deck (where no room stands)
+  if (canal && layout.cx > 0) {
+    const s = 3 + hash01(hall, layout.cx, 86, seed) * (canal.L - 6);
+    const li = Math.floor((canal.rx * CELL + s) / CELL);
+    const c = cells[CANAL_J1 * N + li];
+    if (c && !c.reserved && !c.pool && hash01(hall, layout.cx, 87, seed) < 0.6) layout.decor.push({ kind: 'lifeguard', pool: canal.id, s, side: 1 });
+  }
+  // plants: potted palms gone wild, ferns along the coping, vines hanging down the giant walls
+  const plantP = style === 'jungle' ? 0.9 : style === 'bath' ? 0.35 : style === 'dark' ? 0.25 : 0.45;
+  for (const c of cells) {
+    if (c.void || c.pool || c.reserved) continue;
+    const h = hash01(c.i, c.j, 88, seed);
+    if (h > plantP) continue;
+    const jx = hash01(c.i, c.j, 89, seed), jz = hash01(c.i, c.j, 90, seed);
+    if (c.lj === 0) {
+      // against the north wall
+      if (layout.decor.some((d) => d.kind === 'showers' && d.li === c.li)) continue;
+      layout.decor.push({ kind: jx < 0.5 ? 'palm' : 'fern', x: (c.i + 0.3 + jx * 0.4) * CELL, z: c.j * CELL + 0.55, s: 0.8 + jz * 0.6 });
+    } else if (c.lj === N - 1) {
+      layout.decor.push({ kind: jx < 0.6 ? 'palm' : 'monstera', x: (c.i + 0.25 + jx * 0.5) * CELL, z: (c.j + 1) * CELL - 0.6, s: 0.8 + jz * 0.7 });
+    } else if (c.lj === CANAL_J1) {
+      // ferns spilling over the coping
+      layout.decor.push({ kind: 'fern', x: (c.i + 0.2 + jx * 0.6) * CELL, z: c.j * CELL + 0.75, s: 0.6 + jz * 0.5 });
+    }
+  }
+  const vineP = style === 'jungle' ? 0.85 : style === 'dark' ? 0.5 : 0.3;
+  for (let li = 0; li < N; li++) {
+    for (const lj of [0, N - 1]) {
+      const c = cells[lj * N + li];
+      if (c.void || c.reserved) continue;
+      if (hash01(c.i, c.j, 91, seed) < vineP) layout.decor.push({ kind: 'vines', x: (c.i + 0.5) * CELL, z: lj === 0 ? c.j * CELL + T / 2 + 0.02 : (c.j + 1) * CELL - T / 2 - 0.02, n: lj === 0 ? 1 : -1, len: 2.5 + hash01(c.i, c.j, 92, seed) * 4.5 });
+    }
+  }
+  // algae mats drifting on the water (denser on contaminated stretches and in the jungle halls)
   for (const p of layout.pools) {
-    if (p.kind === 'deep' || p.kind === 'lap') {
-      const side = p.ladders[0]?.side ? -p.ladders[0].side : 1;
-      layout.decor.push({ kind: 'lifeguard', pool: p.id, s: p.L * 0.5, side });
-      const tall = layout.cells[p.rz * CHUNK + p.rx].ceil > HEIGHT + 0.5;
-      if (p.kind === 'deep' && p.L >= 9 && tall && hash01(layout.cx * 13 + p.rx, layout.cz * 7 + p.rz, 83, seed) < 0.6) {
-        layout.decor.push({ kind: 'slide', pool: p.id, s: p.L - 2.3, side });
-      }
+    if (p.kind === 'spa') continue;
+    const dens = (p.infected ? 1.6 : 1) * (style === 'jungle' ? 1.6 : style === 'lido' ? 0.6 : 1);
+    const n = Math.round((p.kind === 'canal' ? 26 : 8) * dens);
+    for (let k = 0; k < n; k++) {
+      const s = rng.range(0.3, p.L - 0.3);
+      // most of it clings to the walls
+      const edge = rng.chance(0.7);
+      const t = edge ? (rng.chance(0.5) ? rng.range(0.0, 0.1) : rng.range(0.9, 1.0)) : rng.range(0.1, 0.9);
+      layout.decor.push({ kind: 'algae', pool: p.id, s, t, r: rng.range(0.25, edge ? 0.9 : 0.6), rot: rng.next() * 6.28 });
     }
   }
   void rng;
@@ -571,80 +562,66 @@ function sp(layout, type, x, z, rotY = 0, extra = {}) {
   layout.spawns.push({ type, x, z, rotY, ...extra });
 }
 
-const LOOT_RARE = [['almond_water', 7], ['protein_bar', 3], ['chips', 2], ['soda_can', 3], ['energy_drink', 2], ['bandage', 3], ['battery', 3], ['glowstick', 2], ['sample_jar', 3], ['canned_food', 2], ['painkillers', 1], ['candy_bar', 2], ['flare', 1], ['medkit', 0.6], ['antibiotics', 0.6], ['flashlight', 0.6], ['multitool', 0.6], ['screws', 1], ['fabric_scrap', 2], ['wire_spool', 1], ['tape_roll', 1]];
+const LOOT_RARE = [['almond_water', 7], ['protein_bar', 3], ['chips', 2], ['soda_can', 3], ['energy_drink', 2], ['bandage', 3], ['battery', 3], ['glowstick', 2], ['sample_jar', 3], ['canned_food', 2], ['painkillers', 1], ['candy_bar', 2], ['flare', 1], ['medkit', 0.6], ['antibiotics', 0.9], ['flashlight', 0.6], ['multitool', 0.6], ['screws', 1], ['fabric_scrap', 2], ['wire_spool', 1], ['tape_roll', 1], ['water_tester', 0.7]];
 
 function spawnZoneProps(layout, c, rng, seed) {
-  if (c.pool) return;
+  if (c.pool || c.void) return;
   const x0 = c.li * CELL, z0 = c.lj * CELL;
   const cx = x0 + CELL / 2, cz = z0 + CELL / 2;
   const r = () => rng.range(-0.75, 0.75);
   const h = hash01(c.i, c.j, 61, seed);
   const y = c.fy;
   if (c.special?.kind === 'spawn') return;
-  switch (c.zone) {
-    case 'natatorium': {
-      if (h < 0.1) sp(layout, 'pool_chair', cx + r(), cz + r(), rng.next() * 6.28, { y });
-      else if (h < 0.13) sp(layout, 'kickboard', cx + r(), cz + r(), rng.next() * 6.28, { y });
-      else if (h < 0.15) sp(layout, 'wet_floor_sign', cx + r(), cz + r(), rng.next() * 6.28, { y });
-      else if (h < 0.17) sp(layout, 'pool_noodle', cx + r(), cz + r(), rng.next() * 6.28, { y });
-      if (hash01(c.i, c.j, 62, seed) < 0.035) sp(layout, rng.weighted(LOOT_RARE), cx + r(), cz + r(), rng.next() * 6.28, { y });
-      break;
-    }
-    case 'halls': {
-      if (h < 0.04) sp(layout, rng.pick(['pool_chair', 'pool_chair', 'kickboard', 'bucket', 'wet_floor_sign', 'mop', 'pool_ring', 'towel']), cx + r(), cz + r(), rng.next() * 6.28, { y });
-      else if (h < 0.055) sp(layout, rng.pick(['pool_lounger', 'table_folding', 'step_ladder', 'water_jug']), cx + r() * 0.5, cz + r() * 0.5, rng.next() * 6.28, { y });
-      if (hash01(c.i, c.j, 62, seed) < 0.03) sp(layout, rng.weighted(LOOT_RARE), cx + r(), cz + r(), rng.next() * 6.28, { y });
-      break;
-    }
-    case 'flooded':
-    case 'colonnade': {
-      if (h < 0.07) sp(layout, rng.pick(['pool_ring', 'kickboard', 'pool_noodle', 'rubber_duck', 'beach_ball', 'float_mat']), cx + r(), cz + r(), rng.next() * 6.28, { y: WATER_Y - 0.02, float: true });
-      else if (h < 0.09) sp(layout, rng.pick(['pool_chair', 'bucket', 'wet_floor_sign']), cx + r(), cz + r(), rng.next() * 6.28, { y });
-      if (hash01(c.i, c.j, 62, seed) < 0.025) sp(layout, rng.pick(['almond_water', 'almond_water', 'sample_jar', 'glowstick']), cx + r(), cz + r(), 0, { y });
-      break;
-    }
-    default: break;
+  if (c.floor === 'sunk') {
+    if (h < 0.12) sp(layout, rng.pick(['pool_ring', 'kickboard', 'pool_noodle', 'rubber_duck', 'beach_ball', 'float_mat']), cx + r(), cz + r(), rng.next() * 6.28, { y: WATER_Y - 0.02, float: true });
+    else if (h < 0.16) sp(layout, rng.pick(['pool_chair', 'bucket', 'wet_floor_sign']), cx + r(), cz + r(), rng.next() * 6.28, { y });
+  } else if (c.lj === 0) {
+    if (h < 0.1) sp(layout, rng.pick(['towel', 'kickboard', 'bucket', 'wet_floor_sign', 'mop']), cx + r(), cz + r() * 0.4, rng.next() * 6.28, { y });
+  } else {
+    if (h < 0.08) sp(layout, 'pool_chair', cx + r(), cz + r(), rng.next() * 6.28, { y });
+    else if (h < 0.11) sp(layout, rng.pick(['kickboard', 'wet_floor_sign', 'pool_noodle', 'towel', 'bucket']), cx + r(), cz + r(), rng.next() * 6.28, { y });
+    else if (h < 0.13) sp(layout, rng.pick(['table_folding', 'step_ladder', 'water_jug']), cx + r() * 0.5, cz + r() * 0.5, rng.next() * 6.28, { y });
   }
+  if (hash01(c.i, c.j, 62, seed) < 0.06) sp(layout, rng.weighted(LOOT_RARE), cx + r(), cz + r(), rng.next() * 6.28, { y });
 }
 
 function spawnPoolProps(layout, p, rng, seed) {
   const ox = 0, oz = 0;
-  // loungers in a row along one long side, facing the water
-  if (p.kind === 'deep' || p.kind === 'lap' || p.kind === 'wading') {
-    const side = rng.chance(0.5) ? -1 : 1;
-    const across = (p.axis === 'x' ? p.h : p.w) * CELL;
+  if (p.kind === 'canal') {
+    // a row of loungers on the south deck, facing the water
     const n = Math.floor(p.L / 2.2);
     const guard = layout.decor.find((d) => d.kind === 'lifeguard' && d.pool === p.id);
     for (let k = 0; k < n; k++) {
-      if (!rng.chance(0.6)) continue;
+      if (!rng.chance(layout.style === 'lido' ? 0.65 : 0.35)) continue;
       const s = 1.1 + k * 2.2;
-      // keep clear of the lifeguard chair, the slide, the ladders and the stairs' handrail posts
-      if (guard && guard.side === side && Math.abs(guard.s - s) < 1.3) continue;
-      if (layout.decor.some((d) => d.kind === 'slide' && d.pool === p.id && d.side === side && s > d.s - 1.4)) continue;
-      if (p.ladders.some((ld) => ld.side === side && Math.abs(ld.s - s) < 0.9)) continue;
-      if (s < 0.9) continue;
-      const t = side < 0 ? -1.15 / across : 1 + 1.15 / across;
-      const [x, z] = poolPoint(p, ox, oz, s, t);
+      if (guard && Math.abs(guard.s - s) < 1.4) continue;
+      if (p.ladders.some((ld) => ld.side === 1 && Math.abs(ld.s - s) < 1.0)) continue;
+      const [x, z] = poolPoint(p, ox, oz, s, 1 + 1.25 / ((p.h) * CELL));
       const cl = cellAtLocal(layout, x, z);
-      if (!cl || cl.pool || cl.reserved || cl.water) continue;
-      // lounger long axis perpendicular to the pool edge, head away from the water
-      const rot = p.axis === 'x' ? (side < 0 ? Math.PI : 0) : (side < 0 ? -Math.PI / 2 : Math.PI / 2);
-      sp(layout, 'pool_lounger', x, z, rot + rng.range(-0.08, 0.08), { y: 0 });
-      if (rng.chance(0.3)) sp(layout, 'towel', x + rng.range(-0.2, 0.2), z + rng.range(-0.2, 0.2), rng.next() * 6, { y: 0.42 });
+      if (!cl || cl.pool || cl.reserved || cl.water || cl.void) continue;
+      sp(layout, 'pool_lounger', x, z, Math.PI / 2 + rng.range(-0.1, 0.1), { y: 0 });
+      if (rng.chance(0.25)) sp(layout, 'towel', x + rng.range(-0.2, 0.2), z + rng.range(-0.2, 0.2), rng.next() * 6, { y: 0.42 });
+    }
+  } else if (p.kind === 'wading') {
+    for (let k = 0; k < 2; k++) {
+      if (!rng.chance(0.5)) continue;
+      const [x, z] = poolPoint(p, ox, oz, rng.range(0.5, p.L - 0.5), rng.chance(0.5) ? -0.12 : 1.12);
+      const cl = cellAtLocal(layout, x, z);
+      if (cl && !cl.pool && !cl.reserved && !cl.void) sp(layout, 'pool_chair', x, z, rng.next() * 6, { y: 0 });
     }
   }
   // things floating in the water
-  const nf = p.kind === 'spa' ? rng.int(0, 1) : rng.int(1, 3);
+  const nf = p.kind === 'spa' ? rng.int(0, 1) : p.kind === 'canal' ? rng.int(1, 3) : rng.int(1, 2);
   for (let k = 0; k < nf; k++) {
     const s = rng.range(0.8, p.L - 0.8), t = rng.range(0.25, 0.75);
     const [x, z] = poolPoint(p, ox, oz, s, t);
     sp(layout, rng.weighted([['pool_ring', 4], ['beach_ball', 2], ['float_mat', 2], ['kickboard', 2], ['pool_noodle', 2], ['rubber_duck', 1]]), x, z, rng.next() * 6.28, { y: WATER_Y - 0.02, float: true });
   }
-  // something lost at the bottom
-  if (rng.chance(0.35)) {
+  // something lost at the bottom of the shallow pools
+  if (p.kind !== 'canal' && rng.chance(0.4)) {
     const s = rng.range(p.run + 0.5, p.L - 0.6), t = rng.range(0.2, 0.8);
     const [x, z] = poolPoint(p, ox, oz, s, t);
-    sp(layout, rng.pick(['almond_water', 'sample_jar', 'battery', 'flashlight', 'medkit']), x, z, rng.next() * 6, { y: poolFloorAt(p, s, t), sunk: true });
+    sp(layout, rng.pick(['almond_water', 'sample_jar', 'battery', 'antibiotics', 'medkit']), x, z, rng.next() * 6, { y: poolFloorAt(p, s, t), sunk: true });
   }
   void seed;
 }
@@ -683,8 +660,9 @@ export function wallW(seed, i, j, variantFn) {
 
 // Pool stair edge? (the shallow-end boundary of a pool is walkable for the grid nav)
 export function poolStairSide(p) {
-  // returns 'N','S','E','W' — the boundary side at the stair end
-  if (p.kind === 'spa') return '*';
+  // returns 'N','S','E','W' — the boundary side at the stair end; '' = no walkable edge
+  if (p.kind === 'spa' || p.kind === 'wading') return '*';
+  if (p.kind === 'canal') return '';
   if (p.axis === 'x') return p.dir > 0 ? 'W' : 'E';
   return p.dir > 0 ? 'N' : 'S';
 }

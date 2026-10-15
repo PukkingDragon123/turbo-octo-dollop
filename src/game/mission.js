@@ -81,9 +81,10 @@ export class Mission {
       if (m.kind === 'diesel') g = new DieselGenerator(this.world, id, this);
       else if (m.kind === 'electric') g = new ElectricGenerator(this.world, id, this, hash3(lvl.seed, 5, 5, 5));
       else g = new MechGenerator(this.world, id, this);
-      // generators against the room's north side, facing into the room
-      g.root.position.set(x, 0, z - 1.6);
-      g.root.rotation.y = 0;
+      // generators against the room's north side, facing into the room (a level may place them itself)
+      const spot = lvl.generatorSpot?.(m);
+      g.root.position.set(spot ? spot.x : x, 0, spot ? spot.z : z - 1.6);
+      g.root.rotation.y = spot?.rot ?? 0;
       g.chunk = [m.cx, m.cz];
       this.world.addDevice(g);
       lvl.prepStatic(g.root, null);
@@ -110,7 +111,7 @@ export class Mission {
     });
     // fresh start: starter kit box (one kit per clone present), radio and cloning pad
     const items = [];
-    for (let i = 0; i < Math.max(1, players.length); i++) items.push(...STARTER);
+    for (let i = 0; i < Math.max(1, players.length); i++) items.push(...STARTER, ...(lvl.starterExtra || []));
     this.world.props.spawn('starter_box', new THREE.Vector3(c.x, HEIGHT - 0.5, c.z), new THREE.Quaternion(), { state: { items, open: 0 }, vel: new THREE.Vector3(0, -3, 0) });
     // the box crashes through the ceiling (open-sky levels drop it from the sky themselves)
     const ceil = lvl.ceilingY?.(c.x, c.z) ?? HEIGHT;

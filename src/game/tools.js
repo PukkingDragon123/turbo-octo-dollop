@@ -45,6 +45,7 @@ export class Tools {
       case 'multitool': return this._multitoolAction(item, player);
       case 'sample': return this._sampleAction(item, player);
       case 'swing': this._swing(item, player); return null;
+      case 'test': return this.world.level?.toolAction?.('test', item, player) ?? null;
       default: return null;
     }
   }
