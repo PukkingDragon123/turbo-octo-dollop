@@ -16,6 +16,8 @@ import { Terminal } from './ui/terminal.js';
 import { Watch } from './ui/watch.js';
 import { TouchControls, wantsTouch } from './ui/touch.js';
 import { Distortion } from './gfx/distort.js';
+import { juice } from './gfx/juice.js';
+import { floatText } from './ui/floattext.js';
 import { Healthity } from './game/healthity.js';
 import { Voice } from './net/voice.js';
 import { preloadItems } from './entities/models_items.js';
@@ -70,6 +72,8 @@ async function boot() {
   window.__net = net;
   window.__engine = engine;
   window.__input = input;
+  window.__juice = juice;
+  window.__floatText = floatText;
 
   bootEl.remove();
 
@@ -109,7 +113,7 @@ async function boot() {
     let dt = (now - last) / 1000;
     last = now;
     if (!(dt > 0)) dt = 1 / 60;
-    dt = Math.min(dt, 0.1);
+    dt = juice.scaleDt(Math.min(dt, 0.1));
     try {
       // main menu: the break-room set renders through the post stack (engine.setView) and handles the wardrobe
       if (menuScene && (game.state === 'menu' || game.state === 'joining')) menuScene.update(dt);
@@ -122,6 +126,8 @@ async function boot() {
         game.healthity.update(dt);
         game.voice.update(dt);
       }
+      juice.applyCamera(engine.view?.camera || engine.camera, dt);
+      floatText.update(dt);
       ui.update(dt);
       game.touch?.update(dt);
       game.distort.update(dt);
