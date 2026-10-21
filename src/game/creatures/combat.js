@@ -128,16 +128,21 @@ export class Combat {
     if (!origin) return null;
     const from = o.from ?? net.selfId;
     const mgr = this.mgr;
+    // rats and roaches (per client) die to any blow that reaches them first
+    const critter = () => {
+      const c = mgr.level.critters?.hit?.(origin, dir, range, Math.min(0.3, sweep));
+      return c ? { hit: true, agent: null, critter: c.critter, killed: true, point: c.point } : null;
+    };
     if (!net.isHost) {
       const r = rayCapsules(mgr.views.values(), origin, dir, range, sweep, (v) => (v.dead ? null : { pos: v.pos, r: v.hitR, h: v.hitH, lift: v.flyY || 0 }));
-      if (!r) return null;
+      if (!r) return critter();
       const point = origin.clone().addScaledVector(dir, r.t);
       if (!this.world.physics.lineOfSight(origin, point)) return null;
       net.toHost('mhitReq', { o: origin.toArray(), d: dir.toArray(), r: range, dmg, k: o.kind || 'blunt', rad: sweep, hv: heavy ? 1 : 0 });
       return { hit: true, agent: r.item, killed: false, point };
     }
     const r = rayCapsules(mgr.agents.values(), origin, dir, range, sweep, (a) => (a.dead || a.burrowed ? null : { pos: a.pos, r: a.radius, h: a.halfH * 2 + a.radius * 2, lift: a.flyY || 0 }));
-    if (!r) return null;
+    if (!r) return o.from === net.selfId ? critter() : null;
     const point = origin.clone().addScaledVector(dir, Math.max(0, r.t - 0.05));
     if (!this.world.physics.lineOfSight(origin, point)) return null;
     const killed = this.damage(r.item, dmg, dir, { from, kind: o.kind || 'blunt', point, heavy });

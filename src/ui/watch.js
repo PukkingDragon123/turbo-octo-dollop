@@ -543,8 +543,8 @@ export class Watch {
         y += 10;
       }
       if (obj?.detail) {
-        wrapText(obj.detail.toUpperCase(), AW - 8, FONT3).slice(0, 4).forEach((ln, i) => text(a, ln, 4, y + 2 + i * 7, P.fg, { font: FONT3 }));
-        y += 30;
+        wrapText(obj.detail.toUpperCase(), AW - 8, FONT3).slice(0, 3).forEach((ln, i) => text(a, ln, 4, y + 2 + i * 7, P.fg, { font: FONT3 }));
+        y += 23;
       }
       if (typeof obj?.progress === 'number') segBar(a, 4, Math.min(y, AH - 22), AW - 8, 7, obj.progress, P.fg);
     } else {

@@ -107,6 +107,7 @@ class Kiosk extends Device {
   }
 
   get econ() { return this.mission.econ; }
+  nearLocal(r = 12) { return this.root.position.distanceTo(this.world.game.local.pos) < r; }
   get unlocked() { return !!this.econ?.has(this.unlockKey); }
 
   _open(spec) {
@@ -527,8 +528,8 @@ export class QuestKiosk extends Kiosk {
         else {
           // cross-link: out of the side of the parent, along the gutter, into the child's top corner
           const sx = d.x < n.x ? 1 : -1;
-          const gx = x0 + sx * (NW / 2 + 8), my = y1 - 8;
-          drawLink([[x0 + sx * NW / 2, y0], [gx, y0], [gx, my], [x1 - sx * 30, my], [x1 - sx * 30, y1 - NH / 2]], st, colorOf(n));
+          const gx = x0 + sx * (NW / 2 + 8), my = ROWY(n.y) - 7;
+          drawLink([[x0 + sx * NW / 2, y0], [gx, y0], [gx, my], [x1 - sx * 30, my], [x1 - sx * 30, ROWY(n.y)]], st, colorOf(n));
         }
       }
     }
@@ -605,9 +606,9 @@ export class QuestKiosk extends Kiosk {
       text(ctx, n.name, 16, py, 32, col);
       text(ctx, `${n.sec}${n.hard ? ' · HARD' : ''} · ${st.toUpperCase()}`, W - 16, py + 4, 22, st === 'ready' ? pal.hi : pal.dim, 'right');
       ctx.font = '23px "VT323", monospace';
-      wrap(ctx, n.desc, 440, 23).slice(0, 3).forEach((ln, i) => text(ctx, ln, 16, py + 34 + i * 22, 23, pal.fg));
+      wrap(ctx, n.desc, 440, 23).slice(0, 2).forEach((ln, i) => text(ctx, ln, 16, py + 34 + i * 22, 23, pal.fg));
       // progress
-      const by = py + 104;
+      const by = py + 96;
       if (pr.parts) pr.parts.forEach((p, i) => text(ctx, `${p.label} ${p.have}/${p.need}`, 16 + i * 150, by - 6, 20, p.have >= p.need ? pal.good : pal.dim));
       else text(ctx, pr.failed ? 'FAILED: A CLONE WAS RE-PRINTED' : `PROGRESS ${pr.need >= 1000 ? `${short$(pr.have)} / ${short$(pr.need)}` : `${Math.floor(pr.have)} / ${pr.need}`}`, 16, by - 6, 20, pr.failed ? pal.bad : pal.dim);
       ctx.fillStyle = hexA(pal.dim, 0.35); ctx.fillRect(16, by + 18, 440, 8);
@@ -630,7 +631,7 @@ export class QuestKiosk extends Kiosk {
       if (k > 1) this.claimFx = null;
       else stamp(ctx, 'CLAIMED', W - 180, py + 60, clamp01(k * 2.4), pal.good);
     }
-    text(ctx, live ? '[WASD] NAVIGATE  [E] CLAIM  [TAB] EXIT' : `[${input.keyName('interact')}] OPEN THE QUEST NETWORK`, 16, H - 26, 20, pal.dim);
+    text(ctx, live ? '[WASD] NAVIGATE  [E] CLAIM  [TAB] EXIT' : `[${input.keyName('interact')}] OPEN THE QUEST NETWORK`, 16, H - 24, 20, pal.dim);
     void itemName; void WATCH_APPS;
   }
 }

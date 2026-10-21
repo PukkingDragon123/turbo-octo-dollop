@@ -312,6 +312,7 @@ export class Crusher extends Device {
   }
 
   get online() { return this.mission.padsOnline; }
+  nearLocal(r = 12) { return this.root.position.distanceTo(this.world.game.local.pos) < r; }
 
   _scan() {
     const out = { count: 0, total: 0, names: [], items: [], zero: [] };

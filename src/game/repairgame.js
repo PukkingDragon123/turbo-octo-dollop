@@ -399,7 +399,7 @@ export class RepairGame {
     const cam = this.camera;
     // camera: dolly in from far ("zoom into first person"), then a tiny handheld sway
     const aspect = window.innerWidth / window.innerHeight;
-    if (cam.aspect !== aspect) { cam.aspect = aspect; cam.updateProjectionMatrix(); }
+    cam.aspect = aspect; cam.fov = 45; cam.updateProjectionMatrix(); // juice.punch scales fov every frame
     const th = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     const fitD = Math.max((BH / 2 + 0.06) / th, (BW / 2 + 0.035) / (th * aspect));
     const k = ease(Math.min(1, this.t / 0.75));

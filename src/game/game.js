@@ -633,7 +633,7 @@ export class Game {
     };
     net.toAll('runOver', stats);
     // a lost run is gone (Continue only survives a clean exit or a cleared level)
-    if (!extra.success) { save.clear(); this.continued = false; }
+    if (!extra.success) { save.clear(); this.continued = false; } else this.continued = true; // cleared: the next shift continues
     setTimeout(() => {
       this.runOverPending = false;
       this.run = this._newRun();

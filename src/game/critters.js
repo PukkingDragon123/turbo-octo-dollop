@@ -171,6 +171,26 @@ export class Critters {
     }
   }
 
+  // a blow along a ray squashes the first rat / cockroach it reaches (local: critters are per client)
+  hit(origin, dir, range, sweep = 0.25) {
+    let best = null, bt = range;
+    for (const c of this.list) {
+      if (c.dead || c.state === 'enter') continue;
+      const r = (c.kind === 'rat' ? 0.14 : 0.05) + sweep;
+      _v.set(c.pos.x, 0.08, c.pos.z).sub(origin);
+      const t = _v.dot(dir);
+      if (t < 0 || t > bt || _v.lengthSq() - t * t > r * r) continue;
+      best = c; bt = t;
+    }
+    if (!best) return null;
+    best.dead = true;
+    const p = best.pos.clone().setY(0.06);
+    this.world.fx.blood(p, best.kind === 'rat' ? 12 : 4, null);
+    this.world.fx.chunks(p, best.kind === 'rat' ? 4 : 2, best.kind === 'rat' ? 0x4a3a30 : 0x2a1a10, 0.02, 1.5, 0, 6);
+    audio.play(best.kind === 'rat' ? 'rat_squeak' : 'flesh_hit', { pos: p, volume: 0.7 });
+    return { critter: best, point: p, dist: bt };
+  }
+
   // catching a rat in a sample jar removes it
   catchAt(point) {
     for (const c of this.list) if (c.kind === 'rat' && c.pos.distanceTo(point) < 0.5) { c.dead = true; return true; }

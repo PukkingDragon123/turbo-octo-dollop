@@ -2,7 +2,7 @@
 // under the crosshair in the viewmodel layer, the clone's hands shake and the screen pulses with every hit.
 // Keyboard and touch (a full-screen tap / hold area, or tappable keycaps for sequences).
 //
-//   game.qte.start({ kind: 'mash' | 'sequence' | 'hold', keys, duration, title, onWin, onFail,
+//   game.qte.start({ kind: 'mash' | 'sequence' | 'hold', keys (codes, or a count for random WASD), duration, title, onWin, onFail,
 //                    count (mash presses, 14), hold (seconds for 'hold', 1.6), decay (mash drain/s, 0.2),
 //                    strict (sequence: a wrong key fails), lock (freeze the player, default true), color })
 //     -> handle { cancel(), get progress(), get done } ; a new start replaces the running one.
@@ -48,7 +48,8 @@ export class QTE {
     if (this.active) this._end(null);
     const kind = ['mash', 'sequence', 'hold'].includes(o.kind) ? o.kind : 'mash';
     let keys = Array.isArray(o.keys) && o.keys.length ? o.keys.slice() : null;
-    if (!keys) keys = kind === 'sequence' ? Array.from({ length: 4 }, () => SEQ_KEYS[(Math.random() * 4) | 0]) : ['Space'];
+    // keys: an array of codes, or (sequence) a number of random WASD keys
+    if (!keys) keys = kind === 'sequence' ? Array.from({ length: Math.max(2, Math.min(8, typeof o.keys === 'number' ? o.keys : 4)) }, () => SEQ_KEYS[(Math.random() * 4) | 0]) : ['Space'];
     const q = {
       o, kind, keys, idx: 0, t: 0, progress: 0, done: false, flash: 0, wrong: 0,
       duration: o.duration ?? (kind === 'sequence' ? 1.1 + keys.length * 0.7 : QTE_TUNE.duration),
