@@ -154,7 +154,7 @@ export class CallPanel {
     this.hoverMat = hm;
     // warm lamp over the panel (a real light: the room is dark)
     this.lamp = new THREE.PointLight(0xffc890, 0, 1.6, 2);
-    this.lamp.position.set(0, 0.26, 0.16);
+    this.lamp.position.set(0, 0.3, 0.22);
     this.group.add(this.lamp);
     this.lampK = 0;
     this.setMode('call', true);
@@ -217,7 +217,7 @@ export class CallPanel {
     const f = this.coverF, bounce = this.coverTarget ? Math.sin(Math.min(1, f) * PI * 3) * (1 - f) * 0.12 : 0;
     this.cover.rotation.x = (f * f * (3 - 2 * f)) * PI * 0.9 + bounce;
     this.hoverMat.opacity = 0.55 + Math.sin(time * 9) * 0.3;
-    this.lamp.intensity = this.lampK * 0.55 * (0.96 + Math.random() * 0.04);
+    this.lamp.intensity = this.lampK * 0.32 * (0.96 + Math.random() * 0.04);
     this.lampMat.color.setRGB(0.15 + this.lampK * 0.85, 0.1 + this.lampK * 0.62, 0.06 + this.lampK * 0.34);
   }
 
@@ -236,7 +236,8 @@ export class HQElevator extends Device {
     super(world, id, opts);
     this.lobby = lobby;
     this.range = 2.4;
-    this.state = { ph: 'idle', dur: 0, k: 0, riders: null, code: '', line: '' };
+    // a host coming back from a run keeps its line open: the code stays on the board
+    this.state = { ph: 'idle', dur: 0, k: 0, riders: null, code: net.mode === 'host' ? net.roomCode || '' : '', line: '' };
     this.phT = 0;
     this.gateF = 0; this.doorF = 0;
     this.car = new ElevatorCar();
@@ -474,8 +475,8 @@ export class HQElevator extends Device {
         audio.play(left <= 3 ? 'elevator_ding' : 'countdown_tick', { pos: this.root.localToWorld(_v.set(0, 2.4, 0.2)), volume: left <= 3 ? 0.35 : 0.7, pitch: left <= 3 ? 1.5 : 1 });
       }
     } else if (ph === 'depart') txt = 'DOWN';
-    else if (ph === 'exit') txt = Math.floor(t * 1.4) % 2 ? 'BURN' : 'RECYCL';
-    else if (this.state.line === 'dead') txt = Math.floor(t / 1.2) % 2 ? 'DEAD' : 'LINE';
+    else if (ph === 'exit') txt = Math.floor(t / 2.6) % 2 ? 'BURN' : 'RECYCL';
+    else if (this.state.line === 'dead') txt = Math.floor(t / 2.8) % 2 ? 'DEAD' : 'LINE';
     else if (this.state.code) txt = this.state.code;
     else txt = 'B4';
     this.board.set(txt);

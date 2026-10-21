@@ -1,4 +1,4 @@
-// Backrooms fauna (host AI on the shared Agent base; models in entities/monsters/fauna_models.js).
+// Backrooms fauna (host AI on the shared Agent base; sculpted models in entities/stilllife/{mole,moth,dcrawler,fungal}.js).
 //  MOLE      passive. A mole that tunnelled into Level 0 and mutated: star-nose of pink feelers, milky eyes, huge
 //            claws. Snuffles over the carpet, bolts from footsteps / light / noise and BURROWS under the carpet
 //            (a hump racing away). Killable, drops raw meat. Tame it by leaving fungus for it (three meals).

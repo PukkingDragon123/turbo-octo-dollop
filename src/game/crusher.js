@@ -234,8 +234,6 @@ export class Crusher extends Device {
     this.beaconMat = emis(0xffa020, 0.4);
     cyl(0.12, 0.06, dark, -1.4, 4.48, 0.4, g, 16);
     this.beacon = cyl(0.1, 0.2, this.beaconMat, -1.4, 4.61, 0.4, g, 16);
-    this.beaconLight = new THREE.PointLight(0xffa030, 0, 9, 2);
-    this.beaconLight.position.set(-1.4, 4.7, 0.6); R.add(this.beaconLight);
     // pressure dial on the left column
     const dial = new THREE.Mesh(new THREE.CircleGeometry(0.2, 32), new THREE.MeshStandardMaterial({ color: 0xece6d4, roughness: 0.5 }));
     dial.position.set(-(CX + 0.5), 2.95, 0.472); g.add(dial);
@@ -579,7 +577,8 @@ export class Crusher extends Device {
     this.coilMat.emissiveIntensity = this.beams.length ? 4 : busy ? 1.5 : this.online ? 0.5 : 0.05;
     const flash = busy && Math.floor(this.t * 6) % 2 === 0;
     this.beaconMat.emissiveIntensity = flash ? 5 : 0.3;
-    this.beaconLight.intensity = flash ? 6 : 0;
+    if (flash && !this._flashOn) w.fx.flashLight(this.beacon.getWorldPosition(_v), 0xffa030, 5, 0.12, 9); // pooled fx light: no extra scene light
+    this._flashOn = flash;
     this.beacon.rotation.y += dt * (busy ? 9 : 0);
     this.btnPress = Math.max(0, (this.btnPress || 0) - dt * 4);
     this.btnCap.position.y = 0.03 - this.btnPress * 0.02;

@@ -319,7 +319,8 @@ export class Dial {
 // is a static top half, a static bottom half and a flap hinged on the split: set(text) makes every cell
 // rattle through the glyph drum to its character (the old flap falls over and shows the next bottom half).
 // Glyphs live in one shared atlas, also used for key caps (glyphUV).
-export const FLAP_GLYPHS = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-?!/:.+#>';
+// drum order: digits descend (a countdown flips one step per second), '-' sits just before the letters
+export const FLAP_GLYPHS = ' 9876543210-ABCDEFGHIJKLMNOPQRSTUVWXYZ?!/:.+#>';
 let FLAP = null;
 export function flapAtlas() {
   if (FLAP) return FLAP;
@@ -420,7 +421,9 @@ export class FlipBoard {
         c.t = 0;
       }
       c.t += dt;
-      const k = Math.min(1, c.t / this.flipDur);
+      // a long way round the drum rattles faster
+      const dist = (c.target - c.cur + N) % N;
+      const k = Math.min(1, c.t / (this.flipDur * (dist > 8 ? 0.4 : 1)));
       c.pivot.rotation.x = k * k * PI; // gravity: the flap accelerates over
       if (k >= 1) {
         c.cur = c.next;

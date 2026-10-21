@@ -246,7 +246,7 @@ export class Healthity {
     if (it.voice) this._speak(it.voice);
     const ps = this._ps();
     this.bubble?.close();
-    this.bubble = floatText.say(it.t, { at: this._bot.root, speaker: 'HEALTHITY', color: alert ? ALERT_COL : VOICE_COL, offset: new THREE.Vector3(0, 0.21, 0), size: 0.62 * ps, duration: this.talkT + 1.6 });
+    this.bubble = floatText.say(it.t, { at: this._bot.root, speaker: 'HEALTHITY', color: alert ? ALERT_COL : VOICE_COL, offset: new THREE.Vector3(0, 0.24, 0), size: 0.8 * ps, duration: this.talkT + 1.6 });
     audio.play(alert ? 'healthity_alert' : it.key === 'pet' ? 'healthity_happy' : 'healthity_talk', { pos: this.pos, length: this.talkT, volume: 0.42, pitch: 0.8 });
   }
   // narrow (portrait) screens: smaller bubble, the bot closer to the centre

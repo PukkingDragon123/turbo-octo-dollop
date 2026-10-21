@@ -7,11 +7,11 @@
 //   a full-screen capture layer maps the pointer onto the board. [Esc] / [G] / [Backspace] / LEAVE tag quit.
 //   repair.open({ onDone, onCancel, title }), repair.close(), repair.update(dt), repair.active
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { engine } from '../core/engine.js';
 import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
 import { juice } from '../gfx/juice.js';
-import { floatText } from '../ui/floattext.js';
 
 const BW = 0.38, BH = 0.25;             // board size (m)
 const RING = 0.235;                     // chassis opening radius
@@ -120,7 +120,6 @@ export class RepairGame {
     audio.play('ui_boot', { volume: 0.35, bus: 'ui' });
     audio.play('spark', { volume: 0.6, bus: 'ui' });
     this._overlay(true);
-    this.notes = [];
     this.notice = this._note('RECONNECT THE WIRES. DRAG EACH END TO THE POST OF ITS COLOUR.', { color: '#ffe7a8', speaker: 'REPAIR', duration: 6 });
   }
 
@@ -131,18 +130,35 @@ export class RepairGame {
     if (l.terminal === this.session) l.terminal = null;
     this._overlay(false);
     if (engine.view?.scene === this.scene) { if (this.prevView && this.prevView.scene !== this.scene) engine.setView(this.prevView.scene, this.prevView.camera); else engine.resetView(); }
-    for (const n of this.notes || []) n.close();
-    this.notes = [];
     this._dispose();
     if (ok) this.o.onDone?.(); else this.o.onCancel?.();
   }
 
-  _note(text, o) { const h = floatText.notice(text, { ...o, scene: this.scene }); this.notes.push(h); return h; }
+  // instructions: a plate pinned to the bottom of the view that pops in and types itself out
+  _note(text, o = {}) {
+    // a temporary message (short circuit) falls back to the standing instruction afterwards
+    if (o.temp) this.hintRevert = { text: this.hintBase, col: this.hintBaseCol, t: o.temp };
+    else { this.hintBase = text; this.hintBaseCol = o.color; this.hintRevert = null; }
+    this.hintText = text; this.hintCol = o.color || '#ffe7a8'; this.hintT = 0; this.hintShown = -1;
+    return { close: () => {} };
+  }
+  _updateHint(dt, hw, hh, zt) {
+    if (!this.hintMesh || !this.hintText) return;
+    this.hintT += dt;
+    if (this.hintRevert && (this.hintRevert.t -= dt) <= 0 && this.hintRevert.text) { const r = this.hintRevert; this._note(r.text, { color: r.col }); }
+    const n = Math.min(this.hintText.length, Math.floor(this.hintT * 52));
+    if (n !== this.hintShown) { this.hintShown = n; this.hintTex.userData.paint(this.hintText, n, this.hintCol); }
+    const k = Math.min(1, this.hintT / 0.3), e = 1 + 2.9 * (k - 1) ** 3 + 1.9 * (k - 1) ** 2;
+    const w = Math.min(hw * 1.8, 0.2);
+    this.hintMesh.scale.setScalar(w * e);
+    this.hintMesh.position.set(0, -hh + w * 0.16, -zt);
+  }
 
   // ---------------------------------------------------------------- scene
   _build(seed) {
     const rnd = rng(seed);
     const sc = (this.scene = new THREE.Scene());
+    sc.userData.noNotices = true; // world notices wait on the viewmodel layer; the board has its own hint plate
     sc.background = new THREE.Color(0x030302);
     sc.environment = engine.defaultEnv || null;
     sc.environmentIntensity = 0.25;
@@ -151,8 +167,8 @@ export class RepairGame {
     this.disposables = [];
     const keep = (o) => { this.disposables.push(o); return o; };
     // lights: the clone's flashlight (warm spot from the camera side) + dim fill + a red glow from inside
-    sc.add(new THREE.HemisphereLight(0x8a8f80, 0x15100a, 0.5));
-    const spot = new THREE.SpotLight(0xfff0d0, 7, 3, 0.55, 0.5, 1.2);
+    sc.add(new THREE.HemisphereLight(0x8a8f80, 0x15100a, 0.32));
+    const spot = new THREE.SpotLight(0xfff0d0, 2.4, 3, 0.62, 0.6, 1.2);
     spot.position.set(0.12, 0.16, 0.7); spot.target.position.set(0, -0.02, 0); spot.castShadow = true;
     spot.shadow.mapSize.set(1024, 1024); spot.shadow.bias = -0.0004;
     sc.add(spot, spot.target);
@@ -164,13 +180,13 @@ export class RepairGame {
     this.right = right; // right[row] = wire index whose post sits on that row
     // board
     this.rowOf = [0, 1, 2, 3].map((wi) => right.indexOf(wi)); // wire -> row of its target post
-    const board = new THREE.Mesh(keep(new THREE.BoxGeometry(BW, BH, 0.004)), keep(new THREE.MeshStandardMaterial({ map: keep(boardCanvas(this.rowOf, rnd)), roughness: 0.55, metalness: 0.1 })));
+    const board = new THREE.Mesh(keep(new RoundedBoxGeometry(BW, BH, 0.004, 2, 0.0015)), keep(new THREE.MeshStandardMaterial({ map: keep(boardCanvas(this.rowOf, rnd)), roughness: 0.55, metalness: 0.1 })));
     board.position.z = -0.002; board.receiveShadow = true; sc.add(board);
     // dark cavity behind
     const cav = new THREE.Mesh(keep(new THREE.CylinderGeometry(RING + 0.02, RING * 0.7, 0.12, 40, 1, true)), keep(new THREE.MeshStandardMaterial({ color: 0x0b0906, roughness: 0.9, side: THREE.BackSide })));
     cav.rotation.x = Math.PI / 2; cav.position.z = -0.06; sc.add(cav);
     // the yellowed shell around the opening, with screw holes, the removed panel hanging at the side
-    const shellMat = keep(new THREE.MeshStandardMaterial({ color: 0xd2c194, roughness: 0.55 }));
+    const shellMat = keep(new THREE.MeshStandardMaterial({ color: 0xc9b98c, roughness: 0.55, side: THREE.DoubleSide }));
     const prof = [[RING, 0.03], [RING + 0.008, 0.036], [RING + 0.03, 0.034], [RING + 0.12, 0.0], [RING + 0.22, -0.09]].map(([r, h]) => new THREE.Vector2(r, h));
     const shell = new THREE.Mesh(keep(new THREE.LatheGeometry(prof, 64)), shellMat);
     shell.rotation.x = Math.PI / 2; shell.receiveShadow = true; shell.castShadow = true; sc.add(shell);
@@ -188,7 +204,7 @@ export class RepairGame {
     const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(keep(geo), mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; sc.add(m); return m; };
     for (const [x, y, w] of [[-0.115, 0.095, 0.06], [-0.04, 0.095, 0.045], [0.12, 0.0, 0.04]]) {
       const vert = x > 0.1;
-      add(new THREE.BoxGeometry(vert ? 0.014 : w, vert ? w : 0.014, 0.006), chip, x, y, 0.004);
+      add(new RoundedBoxGeometry(vert ? 0.014 : w, vert ? w : 0.014, 0.006, 2, 0.0012), chip, x, y, 0.004);
       for (let k = 0; k < 6; k++) { const o = (k / 5 - 0.5) * (w - 0.008); if (vert) { add(new THREE.BoxGeometry(0.004, 0.0015, 0.002), pin, x - 0.009, y + o, 0.002); add(new THREE.BoxGeometry(0.004, 0.0015, 0.002), pin, x + 0.009, y + o, 0.002); } else { add(new THREE.BoxGeometry(0.0015, 0.004, 0.002), pin, x + o, y - 0.009, 0.002); add(new THREE.BoxGeometry(0.0015, 0.004, 0.002), pin, x + o, y + 0.009, 0.002); } }
     }
     const capMat = keep(new THREE.MeshStandardMaterial({ color: 0x1d3f7a, roughness: 0.4 })), capTop = keep(new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.9 }));
@@ -262,7 +278,7 @@ export class RepairGame {
     this.title = labelTex(512, 96, (x, w, h, txt, sub) => {
       x.fillStyle = 'rgba(8,10,8,0.62)'; x.beginPath(); x.roundRect(4, 4, w - 8, h - 8, 12); x.fill();
       x.strokeStyle = 'rgba(255,231,168,0.4)'; x.lineWidth = 2; x.stroke();
-      x.fillStyle = '#ffe7a8'; x.font = 'bold 30px "Courier New", monospace'; x.textBaseline = 'middle'; x.fillText(txt, 22, 34);
+      x.fillStyle = '#ffe7a8'; x.font = 'bold 26px "Courier New", monospace'; x.textBaseline = 'middle'; x.fillText(txt, 22, 34, w - 44);
       x.fillStyle = 'rgba(255,231,168,0.75)'; x.font = '22px "Courier New", monospace'; x.fillText(sub, 22, 68);
     });
     this.leaveTex = labelTex(256, 80, (x, w, h, hot) => {
@@ -274,7 +290,24 @@ export class RepairGame {
     this.titleMesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(1, 96 / 512)), keep(new THREE.MeshBasicMaterial({ map: this.title, transparent: true, depthTest: false, toneMapped: false })));
     this.leaveMesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(1, 80 / 256)), keep(new THREE.MeshBasicMaterial({ map: this.leaveTex, transparent: true, depthTest: false, toneMapped: false })));
     this.titleMesh.renderOrder = this.leaveMesh.renderOrder = 998;
-    cam.add(this.titleMesh, this.leaveMesh);
+    this.hintTex = labelTex(1024, 200, (x, w, h, txt, n, col) => {
+      x.font = 'bold 38px "Courier New", monospace';
+      const words = txt.split(' '), lines = []; let ln = '';
+      for (const wd of words) { const t = ln ? ln + ' ' + wd : wd; if (x.measureText(t).width > w - 90 && ln) { lines.push(ln); ln = wd; } else ln = t; }
+      lines.push(ln);
+      const ph = 34 + lines.length * 50, y0 = (h - ph) / 2;
+      x.fillStyle = 'rgba(8,10,8,0.66)'; x.beginPath(); x.roundRect(8, y0, w - 16, ph, 16); x.fill();
+      x.strokeStyle = col; x.globalAlpha = 0.45; x.lineWidth = 3; x.stroke(); x.globalAlpha = 1;
+      x.fillStyle = 'rgba(0,0,0,0.2)'; for (let yy = y0 + 2; yy < y0 + ph; yy += 4) x.fillRect(10, yy, w - 20, 1);
+      x.fillStyle = col; x.shadowColor = col; x.shadowBlur = 8; x.textAlign = 'center'; x.textBaseline = 'middle';
+      let left = n;
+      lines.forEach((l, i) => { const part = l.slice(0, Math.max(0, left)); left -= l.length + 1; x.textAlign = 'left'; x.fillText(part, (w - x.measureText(l).width) / 2, y0 + 17 + 25 + i * 50); });
+      x.shadowBlur = 0;
+    });
+    keep(this.hintTex);
+    this.hintMesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(1, 200 / 1024)), keep(new THREE.MeshBasicMaterial({ map: this.hintTex, transparent: true, depthTest: false, toneMapped: false })));
+    this.hintMesh.renderOrder = 998;
+    cam.add(this.titleMesh, this.leaveMesh, this.hintMesh);
     this._paintTitle();
     this.leaveTex.userData.paint(false);
     for (const w of this.wires) this._shapeWire(w);
@@ -283,7 +316,7 @@ export class RepairGame {
   _paintTitle() {
     const n = this.wires.filter((w) => w.soldered).length;
     const c = this.wires.filter((w) => w.post >= 0).length;
-    this.title.userData.paint(this.o.title || 'HEALTHITY MK-VII // MAIN LOGIC', n >= 4 ? 'POWER RESTORED' : `WIRES ${c}/4   JOINTS ZAPPED ${n}/4`);
+    this.title.userData.paint(this.o.title || 'HEALTHITY MK-VII  MAIN LOGIC', n >= 4 ? 'POWER RESTORED' : `WIRES ${c}/4   JOINTS ZAPPED ${n}/4`);
   }
 
   _dispose() {
@@ -385,7 +418,7 @@ export class RepairGame {
     juice.shake(0.35);
     juice.flash(0.18);
     this.flicker = 0.5;
-    this._note(`SHORT CIRCUIT! ${WIRES[w.i].name} DOES NOT GO THERE.`, { color: '#ff8a6a', speaker: 'REPAIR', duration: 2.6 });
+    this._note(`SHORT CIRCUIT! ${WIRES[w.i].name} DOES NOT GO THERE.`, { color: '#ff8a6a', temp: 2.6 });
     w.vel.set((w.rest.x - w.pos.x) * 9, (w.rest.y - w.pos.y) * 9, 0);
     w.spring = 1;
   }
@@ -412,6 +445,7 @@ export class RepairGame {
     this.titleMesh.scale.setScalar(sz * 1.4); this.titleMesh.position.set(-hw + sz * 0.72, hh - sz * 0.19, -zt);
     this.leaveMesh.scale.setScalar(sz * 0.62); this.leaveMesh.position.set(hw - sz * 0.33, hh - sz * 0.13, -zt);
     { const x0 = (hw - sz * 0.64) / hw, x1 = 1, y1 = 1, y0 = (hh - sz * 0.26) / hh; this._leaveRect = [x0, y0, x1, y1]; }
+    this._updateHint(dt, hw, hh, zt);
     if (this.done) { this._finish(dt); this._fx(dt); return; }
     const ui = g.ui;
     if (ui?.menuOpen) { this._fx(dt); return; }

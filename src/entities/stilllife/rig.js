@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { fbm3, noise3, smoothstep, clamp, lin, PAL } from './core.js';
 import { meshRaw, finishMesh, clusterBoxes } from './mesher.js';
 import { bodyMaterial, clothMaterial, partsMaterial } from './materials.js';
+import { faunaMaterial } from './fauna_mat.js';
 
 // Bones are authored in model space (feet at y=0, creature faces -Z) with identity rest rotations.
 export class BoneSpec {
@@ -139,9 +140,11 @@ export function instantiate(tpl, into = null) {
     m.castShadow = true; m.receiveShadow = true;
     root.add(m); meshes.push(m);
   };
-  mk(tpl.body, bodyMaterial(), 'sl_body');
+  // living fauna (meta.mat 'fauna'): flesh / fur / chitin / fungus textures instead of the clones' shell + hazmat
+  const fauna = tpl.meta?.mat === 'fauna';
+  mk(tpl.body, fauna ? faunaMaterial(false) : bodyMaterial(), 'sl_body');
   mk(tpl.parts, partsMaterial(), 'sl_parts');
-  mk(tpl.cloth, clothMaterial(), 'sl_cloth');
+  mk(tpl.cloth, fauna ? faunaMaterial(true) : clothMaterial(), 'sl_cloth');
   // rest local positions for animation resets
   const rest = bones.map((b) => b.position.clone());
   // geometry/materials are shared per variant; only the skeleton's bone texture is per instance

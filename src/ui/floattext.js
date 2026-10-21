@@ -138,7 +138,8 @@ class Bubble {
 class FloatText {
   constructor() { this.items = []; }
   _add(b, scene) {
-    (scene || engine.view?.scene || engine.scene).add(b.mesh);
+    b.fixedScene = scene || null;
+    (scene || (b.notice ? noticeLayer().scene : null) || engine.view?.scene || engine.scene).add(b.mesh);
     this.items.push(b);
     return { set: (t) => b.set(t), close: () => b.close(), bubble: b };
   }
@@ -158,9 +159,17 @@ class FloatText {
     for (let i = this.items.length - 1; i >= 0; i--) {
       const b = this.items[i];
       const y = b.notice ? stack : 0;
-      if (!b.update(dt, cam, y)) { b.dispose(); this.items.splice(i, 1); continue; }
+      // notices ride the viewmodel layer (drawn over hands and the raised watch) unless a view is active
+      let c = cam;
+      if (b.notice && !b.fixedScene) { const L = noticeLayer(); if (b.mesh.parent !== L.scene) L.scene.add(b.mesh); c = L.camera; }
+      if (!b.update(dt, c, y)) { b.dispose(); this.items.splice(i, 1); continue; }
       if (b.notice) stack += 0.075 * (b.lines.length * 0.55 + 0.6) * (b.o.size || 1);
     }
   }
+}
+// where screen notices live: the active view's scene (menu, minigames) or the viewmodel overlay
+function noticeLayer() {
+  if (engine.view && !engine.view.scene?.userData?.noNotices) return { scene: engine.view.scene, camera: engine.view.camera };
+  return { scene: engine.vmScene || engine.scene, camera: engine.vmCamera || engine.camera };
 }
 export const floatText = new FloatText();

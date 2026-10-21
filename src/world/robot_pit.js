@@ -324,6 +324,7 @@ export class RobotPit {
     if (this.S && engine.view?.scene === this.S.scene) engine.resetView();
     const pp = engine.post.params;
     for (const k in this.saved || {}) { const v = this.saved[k]; if (v?.isColor || v?.isVector3) pp[k].value.copy(v); else pp[k].value = v; }
+    pp.uGlitch.value = 0; pp.uFade.value = 0; pp.uFadeColor.value.setRGB(0, 0, 0);
     const vm = engine.post?.vmPass; if (vm) vm.enabled = !engine.view;
   }
 }

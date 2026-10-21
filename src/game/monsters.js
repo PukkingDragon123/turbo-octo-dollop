@@ -28,7 +28,6 @@ import { isLitState } from './itemfx.js';
 import { itemName } from './itemdefs.js';
 import { Combat, initCombat } from './creatures/combat.js';
 import { FAUNA_AI } from './creatures/fauna.js';
-import { buildFauna } from '../entities/monsters/fauna_models.js';
 import { Bio } from './bio.js';
 
 const _v = new THREE.Vector3();
@@ -459,11 +458,8 @@ class MonsterView {
     } else if (this.type === 'smiler') {
       this.sm = buildSmiler(snap.id);
       this.root = this.sm.root;
-    } else if (FAUNA_AI[this.type]) {
-      this.fm = buildFauna(this.type, snap.id);
-      this.root = this.fm.root;
     } else {
-      // Still Lifes, Hounds and Partygoers share the sculpted / skinned creature pipeline
+      // Still Lifes, Hounds, Partygoers and the Level 0 fauna share the sculpted / skinned creature pipeline
       this.sl = buildStillLife(this.type === 'still' ? this.variant || 'watcher' : this.type, snap.id);
       this.root = this.sl.root;
     }
@@ -471,13 +467,14 @@ class MonsterView {
     mgr.world.group.add(this.root);
     mgr.world.registerDynamic(this.root);
     // collision proxy so the local player can't walk through monsters
-    const fr = this.fm ? Math.min(0.42, this.fm.radius) : 0;
-    const r = this.type === 'bacteria' ? 0.38 : this.type === 'smiler' ? 0.24 : this.type === 'hound' ? 0.34 : this.fm ? fr : this.sl?.radius || 0.35;
-    const hh = this.type === 'bacteria' ? 0.75 : this.type === 'smiler' ? 0.5 : this.type === 'hound' ? 0.14 : this.fm ? Math.max(0.03, this.fm.height / 2 - fr) : Math.max(0.2, (this.sl?.height || 1.2) / 2 - r);
+    this.fauna = !!FAUNA_AI[this.type];
+    const fr = this.fauna ? Math.min(0.42, this.sl.radius) : 0;
+    const r = this.type === 'bacteria' ? 0.38 : this.type === 'smiler' ? 0.24 : this.type === 'hound' ? 0.34 : this.fauna ? fr : this.sl?.radius || 0.35;
+    const hh = this.type === 'bacteria' ? 0.75 : this.type === 'smiler' ? 0.5 : this.type === 'hound' ? 0.14 : this.fauna ? Math.max(0.03, this.sl.height / 2 - fr) : Math.max(0.2, (this.sl?.height || 1.2) / 2 - r);
     this.colHalf = hh + r;
     // hit capsule for applyHit on clients / gore scale
     this.hitR = r;
-    this.hitH = this.type === 'bacteria' ? 2.3 : this.type === 'smiler' ? 1.9 : this.type === 'hound' ? 0.8 : this.fm ? this.fm.height : this.sl?.height || 1.2;
+    this.hitH = this.type === 'bacteria' ? 2.3 : this.type === 'smiler' ? 1.9 : this.type === 'hound' ? 0.8 : this.sl?.height || 1.2;
     this.fy = snap.fy || 0;
     this.flyY = this.fy;
     this.tilt = new THREE.Vector2();
@@ -536,7 +533,7 @@ class MonsterView {
     _q.setFromAxisAngle(this.fallAxis, this.fallA);
     _q2.setFromAxisAngle(UP, this.yaw);
     this.root.quaternion.multiplyQuaternions(_q, _q2);
-    if (this.fm) this.fm.update(dt, { dead: true, state: 'dead', speed: 0 });
+    if (this.fauna) this.sl.update(dt, { dead: true, mode: 'dead', speed: 0 });
     return this.deadT < 60;
   }
 
@@ -590,17 +587,14 @@ class MonsterView {
       st.speed = sp; st.moving = sp > 0.1; st.attacking = s.a; st.lookTarget = look; st.frozen = !!s.f; st.mode = s.s; st.intensity = s.i;
       st.alert = s.s === 'chase' || s.s === 'hunt' || s.s === 'run' || s.s === 'pounce' || s.s === 'follow' || s.s === 'grab' ? 1 : s.s === 'flinch' || s.s === 'flee' || s.s === 'hurt' || s.s === 'stagger' ? 0.8 : 0.3;
       if (s.s === 'grab') st.attacking = Math.max(st.attacking || 0, 0.6);
+      st.dead = false;
       this.sl.update(dt, st);
+      if (this.type === 'mole' && s.s === 'burrow' && sp > 0.5 && Math.random() < dt * 8) this.mgr.world.fx.dustBurst(_v.copy(this.pos).setY(0.05), 1, [0.55, 0.47, 0.28], 0.4);
       if (this.type === 'hound' && sp > 0.4) {
         // padding gallop: soft quick steps, louder at speed
         this.stepT -= dt * (1.2 + sp * 0.9);
         if (this.stepT <= 0) { this.stepT = 1; audio.play('hound_step', { pos: _v.copy(this.pos).setY(0.2), volume: Math.min(1, 0.25 + sp * 0.12), intensity: Math.min(1, sp / 6) }); }
       }
-    } else if (this.fm) {
-      const st = this._st;
-      st.speed = sp; st.state = s.s; st.attackT = s.a; st.look = look; st.intensity = s.i; st.dead = false;
-      this.fm.update(dt, st);
-      if (this.type === 'mole' && s.s === 'burrow' && sp > 0.5 && Math.random() < dt * 8) this.mgr.world.fx.dustBurst(_v.copy(this.pos).setY(0.05), 1, [0.55, 0.47, 0.28], 0.4);
     }
     this.collider?.setTranslation({ x: this.pos.x, y: this.pos.y + this.colHalf, z: this.pos.z });
   }
@@ -609,7 +603,7 @@ class MonsterView {
     if (this.body?.getHeadWorldPosition) return this.body.getHeadWorldPosition(out);
     if (this.sm) return out.copy(this.pos).setY(this.pos.y + 1.6);
     if (this.type === 'hound') return out.copy(this.pos).setY(this.pos.y + 0.6);
-    if (this.fm) return out.copy(this.pos).setY(this.pos.y + (this.fy || 0) + this.fm.height * 0.8);
+    if (this.fauna) return out.copy(this.pos).setY(this.pos.y + (this.fy || 0) + this.sl.height * 0.8);
     return out.copy(this.pos).setY(this.pos.y + (this.sl?.height || 1.2) * 0.85);
   }
 
@@ -620,7 +614,6 @@ class MonsterView {
     this.root.userData.dispose?.(); // Still Life instance resources (shared geometry/materials stay cached)
     this.body?.dispose?.();
     this.sm?.dispose?.();
-    this.fm?.dispose?.();
     if (this.collider) { try { this.mgr.world.physics.removeCollider(this.collider); } catch (e) { /* freed */ } }
   }
 }

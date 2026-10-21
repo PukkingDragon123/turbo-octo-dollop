@@ -586,8 +586,9 @@ function colorOf(v, fallback) {
 }
 
 function readTarget(r, rt, size) {
-  const buf = new Uint8Array(size * size * 4);
-  r.readRenderTargetPixels(rt, 0, 0, size, size, buf);
+  const w = size || rt.width, h = size || rt.height;
+  const buf = new Uint8Array(w * h * 4);
+  r.readRenderTargetPixels(rt, 0, 0, w, h, buf);
   return buf;
 }
 
@@ -656,6 +657,8 @@ export function pbr(name, o = {}) {
     meters: o.meters ?? d.meters ?? 1,
     metal: !!(o.metal ?? d.metal),
   };
+  // pixel-art pass hints (src/gfx/pixeltex.js): recipe family, tile metres, slot role
+  for (const [k, kind] of [['map', 'color'], ['orm', 'data'], ['normalMap', 'normal']]) res[k].userData.px = { recipe: name, meters: res.meters, kind };
   cache.set(key, res);
   return res;
 }
@@ -744,6 +747,67 @@ vec3 triNormalWorld(sampler2D t, vec2 ns){ vec3 n = normalize(vTriNrm); vec3 w =
   };
   material.needsUpdate = true;
   return material;
+}
+
+// GPU box-filter resample for the pixel-art pass (src/gfx/pixeltex.js): uploads `tex` into the private synthesis
+// context with mipmaps (box averages; sRGB textures average in linear), reads one mip-matched level back at w x h.
+// role 'color' -> sRGB bytes (alpha-weighted), 'normal' -> renormalized, 'data' -> plain average.
+// Rows come back bottom-up (v = 0 first), i.e. ready for a flipY = false DataTexture. Returns null on failure.
+let rsMat = null;
+export function gpuResample(tex, w, h, role) {
+  const r = synthRenderer();
+  if (!rsMat) {
+    rsMat = new THREE.ShaderMaterial({
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `precision highp float; varying vec2 vUv; uniform sampler2D tSrc; uniform float uLod; uniform int uMode;
+        vec3 toSrgb(vec3 c){ c = clamp(c, 0.0, 1.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c)); }
+        void main(){
+          vec4 c = textureLod(tSrc, vUv, uLod);
+          if (uMode == 0) { if (c.a > 0.0005) c.rgb /= c.a; c.rgb = toSrgb(c.rgb); }
+          else if (uMode == 1) { vec3 n = c.xyz * 2.0 - 1.0; n = length(n) > 1e-4 ? normalize(n) : vec3(0.0, 0.0, 1.0); c = vec4(n * 0.5 + 0.5, 1.0); }
+          else if (uMode == 3) { if (c.a > 0.0005) c.rgb /= c.a; }
+          gl_FragColor = c;
+        }`,
+      uniforms: { tSrc: { value: null }, uLod: { value: 0 }, uMode: { value: 0 } },
+      depthTest: false, depthWrite: false,
+    });
+  }
+  if (!quad) {
+    quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), null);
+    quad.frustumCulled = false;
+    quadScene = new THREE.Scene();
+    quadScene.add(quad);
+    quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  }
+  const img = tex.image, W = img.width || img.naturalWidth, H = img.height || img.naturalHeight;
+  // a private view of the same source: mipmapped, premultiplied (alpha-weighted averages), no uv transform
+  const t = tex.isDataTexture ? new THREE.DataTexture() : new THREE.Texture();
+  t.source = tex.source;
+  t.format = tex.format; t.type = tex.type; t.flipY = tex.flipY; t.unpackAlignment = tex.unpackAlignment;
+  t.colorSpace = role === 'color' ? tex.colorSpace : THREE.NoColorSpace;
+  t.premultiplyAlpha = role === 'color' || role === 'data';
+  t.wrapS = tex.wrapS; t.wrapT = tex.wrapT;
+  t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+  t.version = 1; // upload without bumping the shared source version
+  const rt = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false, stencilBuffer: false, generateMipmaps: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+  const U = rsMat.uniforms;
+  U.tSrc.value = t;
+  U.uLod.value = Math.max(0, Math.log2(Math.max(W / w, H / h)));
+  U.uMode.value = role === 'color' ? 0 : role === 'normal' ? 1 : 3;
+  quad.material = rsMat;
+  let buf = null;
+  try {
+    r.setRenderTarget(rt);
+    r.render(quadScene, quadCam);
+    buf = readTarget(r, rt, 0) || null;
+  } finally {
+    r.setRenderTarget(null);
+    rt.dispose();
+    U.tSrc.value = null;
+    // free only this context's copy (the shared source stays; other renderers never saw this view)
+    t.dispose();
+  }
+  return buf;
 }
 
 // Generate a list of recipes up front (e.g. during a loading screen); yields between items.

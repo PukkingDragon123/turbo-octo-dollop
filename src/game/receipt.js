@@ -291,6 +291,7 @@ export class Receipts {
       back.position.z = -0.9; back.renderOrder = 50;
       this.readBack = back;
       const mat = new THREE.MeshBasicMaterial({ map: this.tex, alphaTest: 0.5, toneMapped: false, side: THREE.DoubleSide });
+      mat.color.setRGB(1.2, 1.18, 1.12); // held up to the light: paper reads bright through the grade
       this.readMat = mat;
       this.readMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 1, 12), mat);
       this.readMesh.renderOrder = 51;
@@ -344,7 +345,7 @@ export class Receipts {
     if (!this.reading && k <= 0) { g.removeFromParent(); return; }
     const e = 1 - (1 - k) ** 3;
     const fov = THREE.MathUtils.degToRad(cam.fov / 2), H = this.readH || 0.2;
-    const dist = Math.max((H * 0.56) / Math.tan(fov), (0.08 * 0.62) / (Math.tan(fov) * cam.aspect));
+    const dist = Math.max((H * 0.6) / Math.tan(fov), (0.08 * 0.62) / (Math.tan(fov) * cam.aspect));
     const t = this.readT || 0;
     this.readMesh.position.set(Math.sin(t * 0.7) * 0.002, -0.32 * (1 - e) + Math.sin(t * 1.1) * 0.0015, -dist);
     this.readMesh.rotation.set(-0.9 * (1 - e) - 0.04, Math.sin(t * 0.5) * 0.03, 0.04 * (1 - e) + Math.sin(t * 0.8) * 0.01);

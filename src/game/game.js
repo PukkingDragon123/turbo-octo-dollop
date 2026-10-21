@@ -508,7 +508,12 @@ export class Game {
     if (this.world !== world) { this.loading = false; return; }
     this.loading = false;
     this.ui.setLoading(false);
-    if (!this.menuBackdrop) this.ui.onWorldLoaded(desc, fromType);
+    if (!this.menuBackdrop) {
+      // the waiting room greets in-world (lobby director): skip the HUD's generic lobby feed line
+      const feed = this.ui.feed;
+      if (desc.type === 'lobby') this.ui.feed = () => {};
+      try { this.ui.onWorldLoaded(desc, fromType); } finally { this.ui.feed = feed; }
+    }
     if (arrival && !Elevator.ownsArrival(this)) this._arrivalSequence(sp);
     if (this.pendingWorld) {
       const pw = this.pendingWorld;

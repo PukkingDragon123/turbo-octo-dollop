@@ -155,6 +155,9 @@ export class LobbyDirector {
     this.t += dt;
     this.inputLock = Math.max(0, this.inputLock - dt);
     this._grab(this.live);
+    // a click on the call panel zooms in too (E / tap go through the device's interact())
+    const f = g.local.focus;
+    if (!this.mode && f?.kind === 'device' && f.target === this.el && input.mouseHit(0) && this.el.state.ph === 'idle') this.openPanel();
     if (this.mode === 'drop') this._drop(dt);
     else if (this.mode === 'panel') this._panelInput(dt);
     else if (this.mode === 'joinfall') this._joinFall(dt);
@@ -212,7 +215,8 @@ export class LobbyDirector {
     const u = this.dropT - this.landT;
     const up = sstep(2.5, 4.0, u);
     const slump = sstep(0, 0.16, u);
-    const eye = 0.22 + (EYE - 0.22) * up - (1 - slump) * 0 + Math.sin(up * PI) * 0.06;
+    const base = EYE - (EYE - 0.22) * slump;
+    const eye = base + (EYE - base) * up + Math.sin(up * PI) * 0.06;
     const roll = (1.2 * slump) * (1 - up) + Math.sin(up * PI * 2) * 0.12 * up * (1 - up) * 4;
     const pitch = -0.15 * (1 - up) + Math.sin(u * 0.7) * 0.04 * (1 - up) - 0.05 * up;
     o.p.copy(l.pos).setY(l.pos.y + eye);
@@ -286,6 +290,7 @@ export class LobbyDirector {
     this.goTo((dt, o) => this._panelPose(o), 0.95);
     this.cursor.set(this.panelMode === 'host' ? -0.066 : -0.066, 0.11);
     this.handPos.set(0.25, -0.35, 0.5);
+    this.mx = input.mouse.x; this.my = input.mouse.y;
     this.hand.visible = true;
     this.inputLock = 0.45;
     audio.play('suit_rustle', { volume: 0.5 });
@@ -315,7 +320,9 @@ export class LobbyDirector {
     if (input.locked || input.touch) {
       const lk = input.look();
       this.cursor.x += lk.x * 0.2; this.cursor.y -= lk.y * 0.2;
-    } else if (this.to !== 'player') {
+    } else if (this.to !== 'player' && this.pressT < 0 && (input.mouse.x !== this.mx || input.mouse.y !== this.my)) {
+      // unlocked: the fingertip follows the mouse pointer (only when it moves: typed keys keep the hand)
+      this.mx = input.mouse.x; this.my = input.mouse.y;
       const c = engine.camera;
       _ndc.set((input.mouse.x / innerWidth) * 2 - 1, -(input.mouse.y / innerHeight) * 2 + 1);
       _ray.setFromCamera(_ndc, c);
@@ -361,7 +368,8 @@ export class LobbyDirector {
     this.handPos.z += (z - this.handPos.z) * Math.min(1, dt * 40);
     if (this.mode !== 'panel' && this.mode !== 'dial') { this.handPos.y -= dt * 0.8; this.handPos.z += dt * 0.6; if (this.handPos.z > 0.6) this.hand.visible = false; }
     this.hand.position.copy(this.handPos);
-    this.hand.rotation.set(0.42 + k * 0.08 + (this.cursor.y - 0.05) * 0.6, 0.48 - this.cursor.x * 1.2, 0.1, 'YXZ');
+    // the forearm dives in from below-right, so the hand never covers what it is about to press
+    this.hand.rotation.set(0.78 + k * 0.06 + (this.cursor.y - 0.05) * 0.5, 0.55 - this.cursor.x * 1.1, 0.12, 'YXZ');
   }
 
   _action(t) {
@@ -445,7 +453,7 @@ export class LobbyDirector {
     this.mode = 'pull';
     this.holdT = 99;
     P.readout.set('DIAL');
-    el.flash(['DIAL', 'DIAL.', 'DIAL..', 'DIAL...'], 30, 0.32);
+    el.flash(['DIAL', 'DIAL..'], 30, 1.6);
     audio.play('radio_beep', { volume: 0.6 });
     audio.play('pull_cord', { volume: 0.4, delay: 0.3 });
     this.goTo((dt, o) => this._boardPose(o), 1.7);
@@ -495,7 +503,7 @@ export class LobbyDirector {
       if (this.disposed || this.mode === 'joinfall') return;
       this.dialing = false;
       P.readout.set(SOLO_ONLY ? 'DEAD' : 'NONE?');
-      el.flash(SOLO_ONLY ? ['LINE', 'DEAD'] : ['NO', 'SHIFT'], 4, 0.8);
+      el.flash(SOLO_ONLY ? ['LINE', 'DEAD'] : ['NO', 'SHIFT'], 6, 2.6);
       audio.play('buzzer', { volume: 0.7 });
       juice.shake(0.1);
       floatText.say(SOLO_ONLY ? 'LINE DEAD' : String(msg || 'NO SHIFT ON THAT CODE').toUpperCase(), { at: P.group, offset: new THREE.Vector3(0, 0.45, 0), size: 0.6, color: '#ff6a4a', duration: 3.5 });
@@ -511,7 +519,7 @@ export class LobbyDirector {
     g.lobbyJoin(code).then(() => {
       if (this.disposed || this.mode === 'joinfall') return;
       P.readout.set('LINK!');
-      el.flash(['LINK', 'OK'], 6, 0.5);
+      el.flash(['LINK', 'OK'], 6, 2.4);
     }).catch((e) => fail(e?.message));
   }
 
@@ -524,7 +532,7 @@ export class LobbyDirector {
     this.jt = 0;
     this.joinCb = cb;
     this.panel?.readout.set('LINK!');
-    this.el?.flash(['LINK', 'OK'], 6, 0.5);
+    this.el?.flash(['LINK', 'OK'], 6, 2.4);
     audio.play('elevator_ding', { volume: 0.7 });
     audio.play('robo_clunk', { volume: 0.8, delay: 0.25 });
   }
@@ -544,6 +552,7 @@ export class LobbyDirector {
     if (t >= 0.55 && !this.trapped) {
       this.trapped = true;
       this.lobby.openTrap('join');
+      this.game.local.arrivalGrace = 1e3;
       juice.shake(0.55); juice.hitstop(80);
       audio.play('door_heavy_open', { volume: 1, pitch: 0.8 });
       audio.play('_boom', { volume: 0.5 });
@@ -584,6 +593,8 @@ export class LobbyDirector {
     if (input.textCapture === this._onKey) input.textCapture = null;
     const g = this.game;
     g.exiting = true;
+    // nobody dies of the fall itself (that is the furnace's job)
+    if (g.local) g.local.arrivalGrace = 1e3;
     if (!this.active) this._grab(this.cur);
     this.mode = 'exit';
     this.et = 0;
@@ -632,7 +643,7 @@ export class LobbyDirector {
       this.pit.start();
       // keep the clone safe up here while the view is in the pit
       this.lobby.closeTrapCollider();
-      if (l.world) l.teleport(this.lobby.trapCenter.clone().setY(0.05));
+      if (l.world) { l.teleport(this.lobby.trapCenter.clone().setY(0.05)); l.fallSpeed = 0; }
     }
   }
 

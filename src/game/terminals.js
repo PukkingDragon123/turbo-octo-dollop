@@ -177,7 +177,6 @@ export class ShopKiosk extends Kiosk {
     this.disp = new THREE.Group(); this.disp.position.set(X, 1.34, 0); this.root.add(this.disp);
     this.models = new Map();
     this.shown = null;
-    this.dispLight = new THREE.PointLight(0x9fefff, 0.0, 1.6, 2); this.dispLight.position.set(X, 1.5, 0.15); this.root.add(this.dispLight);
   }
 
   // the 3D model in the display case
@@ -280,7 +279,6 @@ export class ShopKiosk extends Kiosk {
     this.coneMat.opacity = on ? 0.1 + 0.04 * Math.sin(this.t * 9) : 0;
     this.projMat.emissiveIntensity = on ? 1.6 : 0.1;
     this.scanRing.position.y = 1.1 + ((this.t * 0.35) % 1) * 0.55;
-    this.dispLight.intensity = on && piv ? 0.9 : 0;
   }
 
   drawIdle(ctx, w, h, pal, t) {

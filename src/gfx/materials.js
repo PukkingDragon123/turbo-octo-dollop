@@ -190,6 +190,7 @@ function build(name, overrides = {}) {
   }
   const m = d.physical ? new THREE.MeshPhysicalMaterial(params) : new THREE.MeshStandardMaterial(params);
   m.name = name;
+  if (d.world) m.userData.pxWorld = true; // pixel-art pass: world texel density
   if (d.side) m.side = d.side;
   return m;
 }

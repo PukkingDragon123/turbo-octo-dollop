@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { instantiate, BoneSpec } from './rig.js';
 import { installTextureData } from './textures.js';
 import { atlasTextures } from './atlas.js';
+import { faunaTextures } from './fauna_mat.js';
 import * as watcher from './watcher.js';
 import * as tall from './tall.js';
 import * as twin from './twin.js';
@@ -12,12 +13,17 @@ import * as crawler from './crawler.js';
 import * as mass from './mass.js';
 import * as hound from './hound.js';
 import * as partygoer from './partygoer.js';
+import * as mole from './mole.js';
+import * as moth from './moth.js';
+import * as dcrawler from './dcrawler.js';
+import * as fungal from './fungal.js';
+import * as smiler from './smiler.js';
 import * as BL from '../../gfx/bakedlight.js';
 
 export const STILL_LIFE_VARIANTS = ['watcher', 'crawler', 'twin', 'mass', 'tall'];
 // other creatures built with the same sculpt / skin / animate pipeline (game/creatures/*)
-export const CREATURE_VARIANTS = ['hound', 'partygoer'];
-const BUILDERS = { watcher, tall, twin, crawler, mass, hound, partygoer };
+export const CREATURE_VARIANTS = ['hound', 'partygoer', 'mole', 'moth', 'dcrawler', 'fungal', 'smiler'];
+const BUILDERS = { watcher, tall, twin, crawler, mass, hound, partygoer, mole, moth, dcrawler, fungal, smiler };
 const templates = new Map();
 export const buildStats = {};
 if (typeof window !== 'undefined') window.__slStats = buildStats;
@@ -42,7 +48,7 @@ export function getTemplate(variant) {
 }
 
 // collider dimensions per variant (known before the template exists)
-const DIMS = { watcher: [1.58, 0.32], tall: [2.38, 0.35], twin: [1.36, 0.36], crawler: [0.62, 0.34], mass: [1.45, 0.55], hound: [0.78, 0.34], partygoer: [1.72, 0.3] };
+const DIMS = { watcher: [1.58, 0.32], tall: [2.38, 0.35], twin: [1.36, 0.36], crawler: [0.62, 0.34], mass: [1.45, 0.55], hound: [0.78, 0.34], partygoer: [1.72, 0.3], mole: [0.22, 0.18], moth: [0.16, 0.3], dcrawler: [0.78, 0.5], fungal: [2.15, 0.4], smiler: [1.85, 0.24] };
 const waiters = new Map();
 let workerBusy = false;
 
@@ -104,7 +110,8 @@ function liveInstance(key, tpl, seed, into = null) {
   const anim = BUILDERS[key].animator(inst, tpl, (seed | 0) || 1);
   inst.root.name = 'StillLife_' + key;
   inst.root.userData.stillLife = key;
-  const step = brokenMotion(key, inst, anim, (seed | 0) || 1);
+  // living fauna animate smoothly every frame; the broken robot clones keep their stop-motion layer
+  const step = tpl.meta?.smooth ? (dt, st) => anim.update(Math.min(dt || 0, 0.1), st) : brokenMotion(key, inst, anim, (seed | 0) || 1);
   const update = (dt, state) => step(dt, state || {});
   update(0, {});
   return { root: inst.root, update, height: tpl.height, radius: tpl.radius };
@@ -163,11 +170,11 @@ export function prewarmStillLifes() {
   const idle = window.requestIdleCallback || ((f) => setTimeout(f, 30));
   prewarmPromise = new Promise((resolve) => {
     // most likely spawns first (day 1-2 spawns watchers, talls and twins)
-    const todo = ['watcher', 'tall', 'twin', 'hound', 'partygoer', 'crawler', 'mass'].filter((v) => !templates.has(v));
+    const todo = ['watcher', 'tall', 'twin', 'hound', 'partygoer', 'crawler', 'mass', 'mole', 'moth', 'dcrawler', 'smiler', 'fungal'].filter((v) => !templates.has(v));
     const finish = () => {
       workerBusy = false;
       for (const k of [...waiters.keys()]) flushWaiters(k); // anything the worker could not deliver
-      idle(() => { try { atlasTextures(); } catch (e) { /* no canvas */ } resolve(); });
+      idle(() => { try { atlasTextures(); faunaTextures(); } catch (e) { /* no canvas */ } resolve(); });
     };
     let worker = null;
     try { worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' }); } catch (e) { worker = null; }

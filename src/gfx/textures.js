@@ -627,11 +627,23 @@ gens.noise = () => {
 
 // ---------------------------------------------------------------------------
 
+// pixel-art pass hints (src/gfx/pixeltex.js): family name, tile size, slot role; shader data textures opt out
+const NO_PIXEL = new Set(['noise']);
+function tagPixel(set, name) {
+  for (const [k, kind] of [['map', 'color'], ['normalMap', 'normal'], ['roughnessMap', 'data']]) {
+    const t = set[k];
+    if (!t) continue;
+    if (NO_PIXEL.has(name)) t.userData.noPixel = true;
+    else t.userData.px = { name, meters: set.size ?? 1, kind };
+  }
+  return set;
+}
+
 export function get(name, repeat = 1) {
   if (!cache.has(name)) {
     const g = gens[name];
     if (!g) throw new Error(`Unknown texture '${name}'`);
-    cache.set(name, g());
+    cache.set(name, tagPixel(g(), name));
   }
   const base = cache.get(name);
   if (repeat === 1) return base;

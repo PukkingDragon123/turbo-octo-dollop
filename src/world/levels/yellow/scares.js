@@ -24,62 +24,10 @@ import { buildStillLife } from '../../../entities/optional.js';
 const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
 const rand = (a, b) => a + Math.random() * (b - a);
 
-// --- figures (shared geometry / materials, built once) ---------------------------------------------------------
-let G = null;
-function geo() {
-  if (G) return G;
-  G = {
-    limb: new THREE.CapsuleGeometry(0.045, 0.75, 3, 6),
-    torso: new THREE.CapsuleGeometry(0.13, 0.62, 3, 8),
-    head: new THREE.SphereGeometry(0.13, 10, 8),
-    body: new THREE.CapsuleGeometry(0.29, 0.5, 4, 10),
-    dollHead: new THREE.SphereGeometry(0.26, 14, 10),
-    stub: new THREE.CapsuleGeometry(0.09, 0.32, 3, 8),
-    face: new THREE.SphereGeometry(0.17, 14, 10),
-    eye: new THREE.SphereGeometry(0.035, 8, 6),
-    dark: new THREE.MeshStandardMaterial({ color: 0x070605, roughness: 0.95 }),
-    pale: new THREE.MeshStandardMaterial({ color: 0xd9ccb5, roughness: 0.55 }),
-    skin: new THREE.MeshStandardMaterial({ color: 0xe8ddd0, roughness: 0.6, emissive: 0x3a332c, emissiveIntensity: 0.6 }),
-    void: new THREE.MeshBasicMaterial({ color: 0x000000 }),
-  };
-  return G;
-}
-const mesh = (g, m, x, y, z, rx = 0, ry = 0, rz = 0) => { const o = new THREE.Mesh(g, m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); o.castShadow = true; return o; };
-
-// tall, too-thin dark figure (front +z): jointed at hips / shoulders so poses stay connected
-function joint(parent, x, y, z, rx, rz, len, g, m) {
-  const j = new THREE.Group();
-  j.position.set(x, y, z);
-  j.rotation.set(rx, 0, rz);
-  j.add(mesh(g, m, 0, -len / 2, 0));
-  parent.add(j);
-  return j;
-}
-function silhouette(pose = 'stand') {
-  const g = geo(), r = new THREE.Group();
-  const run = pose === 'run';
-  const hips = new THREE.Group();
-  hips.position.y = 0.92;
-  r.add(hips);
-  const body = new THREE.Group();
-  body.rotation.x = run ? 0.38 : 0.04;
-  hips.add(body);
-  body.add(mesh(g.torso, g.dark, 0, 0.5, 0));
-  body.add(mesh(g.head, g.dark, 0, 1.08, 0.04, 0, 0, run ? 0 : 0.28));
-  for (const s of [-1, 1]) joint(body, s * 0.19, 0.88, 0, run ? s * 0.95 : 0.05, s * 0.1, 0.84, g.limb, g.dark);
-  for (const s of [-1, 1]) joint(hips, s * 0.09, 0, 0, run ? -s * 0.75 : 0, s * 0.03, 0.84, g.limb, g.dark);
-  return r;
-}
-// a pale face with empty eyes and a slack open mouth (front +z)
-function face() {
-  const g = geo(), r = new THREE.Group();
-  const f = mesh(g.face, g.skin, 0, 0, 0);
-  f.scale.set(0.85, 1.15, 0.55);
-  r.add(f);
-  for (const s of [-1, 1]) { const e = mesh(g.eye, g.void, s * 0.055, 0.04, 0.085); e.scale.set(1, 1.3, 0.5); r.add(e); }
-  const m = mesh(g.eye, g.void, 0, -0.08, 0.085); m.scale.set(1.2, 2.2, 0.5); r.add(m);
-  return r;
-}
+// --- figures: sculpted, rigged creatures from the Still Life pipeline (templates are built in the background
+// worker at startup, so a scare never hitches on geometry). Models face -Z.
+const faceYaw = (dx, dz) => Math.atan2(-dx, -dz);
+const seedOf = () => 1 + ((Math.random() * 997) | 0);
 
 export class Scares {
   constructor(level) {
@@ -203,10 +151,12 @@ export class Scares {
       const c = this.level.cell(px, pz);
       if (!c || c.ceil < 2.2 || c.special?.pit) continue;
       if (!this._sees(cam.x, cam.z, px, pz, Math.min(cam.y, 1.3))) continue;
-      const fig = this._addFigure(silhouette('run'));
+      // a hound (clone stretched into a dog) gallops across the corridor
+      const sl = buildStillLife('hound', seedOf());
+      const fig = this._addFigure(sl.root);
       const dir = Math.random() < 0.5 ? 1 : -1;
       const A = new THREE.Vector3(dir > 0 ? ax : bx, 0, dir > 0 ? az : bz), B = new THREE.Vector3(dir > 0 ? bx : ax, 0, dir > 0 ? bz : az);
-      fig.rotation.y = Math.atan2(B.x - A.x, B.z - A.z);
+      fig.rotation.y = faceYaw(B.x - A.x, B.z - A.z);
       let t = 0;
       audio.play('scare_whoosh', { pos: new THREE.Vector3(px, 1.2, pz), volume: 1 });
       audio.play('scare_sting', { volume: 0.9 });
@@ -216,11 +166,11 @@ export class Scares {
           t += dt;
           const u = Math.min(1, t / 0.42);
           fig.position.lerpVectors(A, B, u);
-          fig.position.y = Math.abs(Math.sin(u * Math.PI * 4)) * 0.06;
           fig.updateMatrixWorld(true);
+          sl.update(dt, { speed: 11, moving: true, mode: 'chase', alert: 1, attacking: 0 });
           return u < 1;
         },
-        dispose: () => this._removeFigure(fig),
+        dispose: () => { this._removeFigure(fig); sl.root.userData.dispose?.(); },
       };
     }
     return null;
@@ -243,17 +193,20 @@ export class Scares {
     const { p, v } = best;
     // vents sit on wall bases facing into the cell: put the face just behind the grille, looking out
     const inside = v.inside || v.into;
-    const fc = this._addFigure(face());
+    // a broken clone (sculpted Still Life) crammed into the duct: only its face shows behind the grille,
+    // the rest of it is under the floor / inside the wall
+    const sl = buildStillLife('watcher', seedOf());
+    const fc = this._addFigure(sl.root);
     const out = inside ? new THREE.Vector3(p.x - inside.x, 0, p.z - inside.z).normalize() : new THREE.Vector3(cam.x - p.x, 0, cam.z - p.z).normalize();
-    fc.position.set(p.x + out.x * 0.03, 0.17, p.z + out.z * 0.03);
-    fc.rotation.y = Math.atan2(out.x, out.z);
-    fc.scale.setScalar(0.62);
+    fc.position.set(p.x - out.x * 0.16, 0.2 - (sl.height || 1.58) * 0.9, p.z - out.z * 0.16);
+    fc.rotation.y = faceYaw(out.x, out.z);
+    sl.update(0.016, { alert: 1, mode: 'chase' });
     fc.updateMatrixWorld(true);
     audio.play('scare_sting', { volume: 0.85 });
     audio.play('scare_shriek', { pos: fc.position, volume: 0.45 });
     this._hit(0.7);
     let t = 0;
-    return { update: (dt) => { t += dt; return t < 0.75; }, dispose: () => this._removeFigure(fc) };
+    return { update: (dt) => { t += dt; sl.update(dt, { alert: 1, mode: 'chase' }); return t < 0.75; }, dispose: () => { this._removeFigure(fc); sl.root.userData.dispose?.(); } };
   }
 
   _blackout() {
@@ -303,7 +256,7 @@ export class Scares {
         // keep it at arm's length behind, always facing the clone
         const p = l.pos;
         const dx = p.x - d.position.x, dz = p.z - d.position.z, dist = Math.hypot(dx, dz);
-        d.rotation.y = Math.atan2(dx, dz);
+        d.rotation.y = faceYaw(dx, dz);
         sl.update(dt, {});
         d.updateMatrixWorld(true);
         if (seen < 0) {
@@ -408,9 +361,12 @@ export class Scares {
       const c = this.level.cell(px, pz);
       if (!c || c.ceil < 2.2 || c.special || c.landmark || !this.level.isChunkLoaded(px, pz)) continue;
       if (!this._sees(cam.x, cam.z, px, pz, Math.min(cam.y, 1.5))) continue;
-      const fig = this._addFigure(silhouette('stand'));
+      // one of the too-tall ones, standing still, facing you
+      const sl = buildStillLife('tall', seedOf());
+      const fig = this._addFigure(sl.root);
       fig.position.set(px, 0, pz);
-      fig.rotation.y = Math.atan2(cam.x - px, cam.z - pz);
+      fig.rotation.y = faceYaw(cam.x - px, cam.z - pz);
+      sl.update(0.016, { mode: 'idle', alert: 0.3 });
       fig.updateMatrixWorld(true);
       let t = 0, away = 0;
       return {
@@ -420,9 +376,10 @@ export class Scares {
           const vx = px - cp.x, vz = pz - cp.z, dist = Math.hypot(vx, vz);
           const dot = (vx * fw.x + vz * fw.z) / Math.max(dist, 1e-3);
           away = dot < 0.55 ? away + dt : 0;
+          sl.update(dt, { mode: 'idle', alert: 0.3 });
           return !(dist < 10 || away > 0.6 || t > 28);
         },
-        dispose: () => this._removeFigure(fig),
+        dispose: () => { this._removeFigure(fig); sl.root.userData.dispose?.(); },
       };
     }
     return null;

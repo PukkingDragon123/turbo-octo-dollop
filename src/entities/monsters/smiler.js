@@ -1,11 +1,12 @@
 // THE SMILER — what you see of it: two pale slanted eyes and an impossibly wide grin of glowing teeth
 // hanging at head height in the dark, in front of a smoky black silhouette that is mostly suggestion.
-// Two draw calls: the silhouette (alpha-blended black smoke shader) and the face (additive, bloom-hot).
-// Both turn to face the viewer. The grin widens with `intensity`, stretches when charging, and the whole
+// The body is a sculpted, rigged figure (stilllife/smiler.js: gaunt, hunched, slick black skin), wrapped in a
+// faint smoke aura; the face (additive, bloom-hot) rides on its head bone and turns to face the viewer. The grin widens with `intensity`, stretches when charging, and the whole
 // thing glitches out when light hits it.
 //   buildSmiler(seed) -> { root, update(dt, {state, intensity, attacking, frozen, speed}), dispose() }
 import * as THREE from 'three';
 import { engine } from '../../core/engine.js';
+import { buildStillLife } from '../optional.js';
 
 let _faceTex = null, _faceGeo = null, _bodyGeo = null;
 
@@ -166,6 +167,11 @@ export function buildSmiler(seed = 1) {
   const pivot = new THREE.Group(); // turns toward the viewer
   pivot.add(body, face);
   root.add(pivot);
+  // the sculpted body (filled in when its template arrives from the background builder)
+  const sl = buildStillLife('smiler', seed);
+  root.add(sl.root);
+  let headBone = null;
+  const _hp = new THREE.Vector3();
   for (const m of [face, body]) { m.castShadow = false; m.receiveShadow = false; m.userData.noProbe = true; m.userData.noShadow = true; }
   let t = seed * 1.7, vis = 0, open = 0, glitch = 0, blinkT = 3;
   function update(dt, s = {}) {
@@ -188,18 +194,31 @@ export function buildSmiler(seed = 1) {
     const ang = Math.atan2(_cam.x - _wp.x, _cam.z - _wp.z);
     pivot.rotation.y = ang - root.rotation.y;
     const lunge = st === 'charge' ? 0.12 : 0;
-    face.position.y = 1.62 + Math.sin(t * 1.3) * 0.03 - lunge * 0.3;
-    face.position.z = lunge;
-    face.scale.set(1 + open * 0.06, 1 + open * 0.04, 1);
+    // body: animate, then sink / shudder away while light is on it
+    sl.update(dt, { mode: st, speed: s.speed || 0, attacking: s.attacking || 0, frozen: !!s.frozen });
+    sl.root.position.set(glitch > 0.3 ? (Math.random() - 0.5) * 0.08 * glitch : 0, -(1 - vis) * 1.3, 0);
+    sl.root.visible = vis > 0.03;
+    if (!headBone) headBone = sl.root.getObjectByName('head') || null;
+    if (headBone) {
+      headBone.updateWorldMatrix(true, false);
+      pivot.updateMatrixWorld(true);
+      pivot.worldToLocal(_hp.setFromMatrixPosition(headBone.matrixWorld));
+      face.position.set(_hp.x, _hp.y + 0.03 + Math.sin(t * 1.3) * 0.01, _hp.z + 0.11 + lunge);
+    } else {
+      face.position.y = 1.62 + Math.sin(t * 1.3) * 0.03 - lunge * 0.3;
+      face.position.z = lunge;
+    }
+    face.scale.set((1 + open * 0.06) * 0.78, (1 + open * 0.04) * 0.78, 1);
     fu.uT.value = t;
     fu.uOpen.value = open;
     fu.uGlitch.value = glitch;
     fu.uAlpha.value = vis * blink * (s.frozen ? 1 : 0.92);
     fu.uGlow.value = 1.6 + I * 1.8 + (st === 'charge' ? 1.5 : 0);
     bu.uT.value = t;
-    bu.uAlpha.value = vis * 0.85;
+    bu.uAlpha.value = vis * 0.3; // a faint smoke aura around the body
   }
   function dispose() {
+    sl.root.userData.dispose?.();
     face.material.dispose();
     body.material.dispose();
   }

@@ -7,9 +7,14 @@ import * as crawler from './crawler.js';
 import * as mass from './mass.js';
 import * as hound from './hound.js';
 import * as partygoer from './partygoer.js';
+import * as mole from './mole.js';
+import * as moth from './moth.js';
+import * as dcrawler from './dcrawler.js';
+import * as fungal from './fungal.js';
+import * as smiler from './smiler.js';
 import { textureData, TEX_NAMES } from './textures.js';
 
-const BUILDERS = { watcher, tall, twin, crawler, mass, hound, partygoer };
+const BUILDERS = { watcher, tall, twin, crawler, mass, hound, partygoer, mole, moth, dcrawler, fungal, smiler };
 
 function geoData(g, transfer) {
   if (!g) return null;

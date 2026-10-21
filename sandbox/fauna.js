@@ -1,6 +1,8 @@
-// Level 0 fauna + bio props viewer: mole, moth, damp crawler, fungal; meat / fungi / camp stove / camp gear.
-//   /sandbox/?m=fauna&v=mole,moth,dcrawler,fungal&mode=<state>&move=1&speed=2&props=1&dead=1
-import { buildFauna } from '../src/entities/monsters/fauna_models.js';
+// Level 0 fauna + bio props viewer (sculpted SDF creatures): mole, moth, damp crawler, fungal, smiler;
+// meat / fungi / camp stove / camp gear.
+//   /sandbox/?m=fauna&v=mole,moth,dcrawler,fungal,smiler&mode=<state>&move=1&speed=2&props=1&dead=1
+import { buildStillLife, getTemplate } from '../src/entities/stilllife/index.js';
+import { buildSmiler } from '../src/entities/monsters/smiler.js';
 import { buildModel } from '../src/entities/catalog.js';
 
 export default async function (ctx) {
@@ -8,8 +10,9 @@ export default async function (ctx) {
   const q = new URLSearchParams(location.search);
   window.__cam = (p, t) => { camera.position.set(...p); controls.target.set(...t); controls.update(); };
   const list = (q.get('v') || 'mole,moth,dcrawler,fungal').split(',').filter(Boolean);
+  for (const n of list) if (n !== 'smilerfx') getTemplate(n); // synchronous build (no worker in the viewer)
   const mons = list.map((name, i) => {
-    const m = buildFauna(name, 1 + i);
+    const m = name === 'smilerfx' ? buildSmiler(1 + i) : buildStillLife(name, 1 + i);
     const x = (i - (list.length - 1) / 2) * +(q.get('gap') ?? 1.5);
     m.root.position.set(x, name === 'moth' ? 1.2 : 0, 0);
     m.root.rotation.y = Math.PI * 0.8;
@@ -38,7 +41,7 @@ export default async function (ctx) {
         o.m.root.rotation.y = -a + Math.PI;
         sp = S.speed;
       }
-      o.m.update(dt, { speed: sp, state: S.mode, attackT: S.attackT, dead: S.dead });
+      o.m.update(dt, { speed: sp, moving: sp > 0.1, mode: S.mode, state: S.mode, attacking: S.attackT, dead: S.dead, intensity: 0.6 });
     }
   };
   window.__advance = (sec) => { for (let i = 0; i < sec * 60; i++) step(1 / 60); };

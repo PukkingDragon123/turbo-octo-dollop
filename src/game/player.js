@@ -369,7 +369,7 @@ export class LocalPlayer {
     if (this.grounded) {
       this.airTime = 0;
       if (canControl && input.hit('jump') && !s.fracture && s.stamina > 3 && !this.crouching) {
-        this.vel.y = JUMP_V;
+        this.vel.y = JUMP_V * (this.hands.layout.armful ? 0.72 : 1);
         this.grounded = false;
         s.stamina -= 4;
         this.stats.jumps++;
@@ -1349,10 +1349,16 @@ export class LocalPlayer {
       g: this.grounded ? 1 : 0, c: +this.crouch.toFixed(2), sp: this.sprinting ? 1 : 0,
       h: this.grab ? 1 : 0, ht: this.grab?.target ? this.grab.target.toArray().map((x) => +x.toFixed(2)) : null,
       tk: +this.talking.toFixed(2), em: s.sleeping ? 'sleep' : this.combat.swing ? 'point' : this.emote, ex: this._expression(),
-      fl: this.flashOn ? 1 : 0, it: this.hands.R.type || null, il: this.hands.L.type || null, d: this.dead ? 1 : 0,
+      fl: this.flashOn ? 1 : 0, it: this.hands.R.type || this._pileItem(-1), il: this.hands.L.type || this._pileItem(-2), d: this.dead ? 1 : 0,
       ko: this.combat.poseFlag || 0,
       hs: s.summary(), lp: s.fracture ? 1 : 0,
     });
+  }
+
+  // teammates see the top of an armful in the clone's hands
+  _pileItem(k) {
+    const L = this.hands.layout;
+    return L.armful ? this.inv.slots[L.pile[L.pile.length + k]]?.type || null : null;
   }
 
   // a teammate is pulling us (physics grab)

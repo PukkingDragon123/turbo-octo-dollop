@@ -25,7 +25,7 @@ const LOW_COL = new THREE.Color(0x9cff2a), CALM = new THREE.Color(0x5ff8ff), MID
 // heart shape: a deformed sphere (two lobes and a cleft on top, a point at the bottom, flattened front-back)
 function deform(p) {
   let { x, y, z } = p;
-  if (y < 0) { const k = 1 + y * 0.72; x *= k; z *= k; y *= 1.22; } else { x *= 1 + 0.3 * y; y -= 0.42 * y * Math.exp(-x * x * 10); }
+  if (y < 0) { const k = 1 + y * 0.8; x *= k * (1 + 0.15 * (1 + y)); z *= k; y *= 1.3; } else { x *= 1 + 0.45 * y; y -= 0.55 * y * Math.exp(-x * x * 12); }
   z *= 0.78;
   return p.set(x, y, z);
 }
@@ -484,12 +484,12 @@ export class VitalsHUD {
     let fill = this.disp.health / 100;
     if (this.patch && this.patch.inj > 0) fill = Math.min(1, fill + this.patch.inj * 0.25);
     const sway = ctx.sway || { x: 0, y: 0 };
-    this.tiltV.x += (-clamp(sway.x, -0.2, 0.2) * 6 + (ctx.accel?.x || 0) * 0.08 + (lub > 0.9 ? (Math.random() - 0.5) * 0.3 : 0)) ;
-    this.tiltV.y += (clamp(sway.y, -0.2, 0.2) * 3 + (ctx.accel?.z || 0) * 0.08);
+    this.tiltV.x += (-clamp(sway.x, -0.2, 0.2) * 6 + (ctx.accel?.x || 0) * 0.03 + (lub > 0.9 ? (Math.random() - 0.5) * 0.3 : 0)) ;
+    this.tiltV.y += (clamp(sway.y, -0.2, 0.2) * 3 + (ctx.accel?.z || 0) * 0.03);
     this.tiltV.addScaledVector(this.tilt, -60 * dt).multiplyScalar(Math.exp(-3.5 * dt));
     this.tilt.addScaledVector(this.tiltV, dt).clampLength(0, 0.8);
     const L = this.liquidMat.uniforms;
-    L.uLevel.value = -1.1 + fill * 1.85 + (lub + dub) * 0.04;
+    L.uLevel.value = -1.28 + fill * 2.05 + (lub + dub) * 0.04;
     L.uTilt.value.copy(this.tilt);
     L.uTime.value = this.t;
     const low = 1 - fill;
