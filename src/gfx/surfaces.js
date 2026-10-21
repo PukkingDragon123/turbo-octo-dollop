@@ -171,10 +171,10 @@ registerRecipe('lv_carpet', {
       col = mix(uC1, uC0, sat(0.55 + (shade - 0.5) * uP0.z * 1.5 + (shade2 - 0.5) * 0.4 + (tone - 0.5) * 0.3));
     } else {
       // loop pile: staggered rows of yarn loops; each loop a small raised ring with a dark core between loops
-      float rows = floor(uP1.w + 0.5);
-      vec2 lp = uv * vec2(rows * 1.3, rows); float row = floor(lp.y);
+      float rows = floor(uP1.w * 0.5 + 0.5) * 2.0, lc = floor(rows * 1.3 + 0.5);
+      vec2 lp = uv * vec2(lc, rows); float row = floor(lp.y);
       lp.x += mod(row, 2.0) * 0.5;
-      vec2 lf = fract(lp) - 0.5; vec2 lid = mod(floor(lp), vec2(rows * 1.3, rows));
+      vec2 lf = fract(lp) - 0.5; vec2 lid = mod(floor(lp), vec2(lc, rows));
       vec3 lh = h32(lid + 0.5);
       float lr = length(lf * vec2(1.0, 1.25));
       float loop = (1.0 - smoothstep(0.16, 0.42, abs(lr - 0.22))) * (0.75 + 0.25 * lh.x);
