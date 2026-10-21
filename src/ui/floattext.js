@@ -10,6 +10,7 @@ import { engine } from '../core/engine.js';
 const W = 1024, H = 256;
 const BODY = '600 44px "IBM Plex Mono", monospace';
 const LABEL = '30px "VT323", monospace';
+const NOTICE_BASE = -0.86; // bottom of the notice stack, in screen half-heights below centre
 export const FLOAT = { typeRate: 48, popTime: 0.32, fade: 0.45, bobAmp: 0.012, worldScale: 0.0011, noticeScale: 0.00052 };
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
@@ -90,6 +91,11 @@ class Bubble {
     c.shadowBlur = 0;
     this.tex.needsUpdate = true;
   }
+  // visible plate height as a fraction of the screen half-height (FOV-independent)
+  plateNdc() {
+    const ph = (this.o.speaker ? 62 : 26) + this.lines.length * 54 + 22;
+    return ph * FLOAT.noticeScale * (this.o.size || 1) / (Math.tan(Math.PI / 6) * 1.2);
+  }
   set(text) { this.text = String(text); this.shown = 0; this.t = Math.min(this.t, FLOAT.popTime); this._layout(); }
   close() { if (this.closing < 0) this.closing = 0; }
   update(dt, cam, stackY) {
@@ -111,13 +117,16 @@ class Bubble {
     this.mat.opacity = a;
     const m = this.mesh;
     if (this.notice) {
-      // camera space: lower centre, stacked
+      // camera space, laid out in screen units (stackY = bottom of this plate, 0..1 of the half-height
+      // above NOTICE_BASE) so the size and spacing hold for any FOV (the watch close-up narrows it)
       cam.updateMatrixWorld();
-      const d = 1.2;
-      _v.set(0, -0.26 + stackY + Math.sin(this.t * 2) * 0.003, -d).applyMatrix4(cam.matrixWorld);
+      const d = 1.2, th = Math.tan(THREE.MathUtils.degToRad((cam.fov || 60) / 2));
+      const k = th / Math.tan(Math.PI / 6);
+      const half = this.plateNdc(cam) / 2;
+      _v.set(0, (NOTICE_BASE + stackY + half) * th * d + Math.sin(this.t * 2) * 0.002, -d).applyMatrix4(cam.matrixWorld);
       m.position.copy(_v);
       m.quaternion.copy(cam.getWorldQuaternion(_q));
-      m.scale.setScalar(FLOAT.noticeScale * (this.o.size || 1) * s);
+      m.scale.setScalar(FLOAT.noticeScale * (this.o.size || 1) * s * k);
     } else {
       const at = this.o.at;
       if (at?.isObject3D) at.getWorldPosition(_v); else if (at) _v.copy(at); else _v.set(0, 0, 0);
@@ -150,7 +159,7 @@ class FloatText {
   }
   notice(text, o = {}) {
     const live = this.items.filter((b) => b.notice && b.closing < 0);
-    if (live.length >= 3) live[0].close();
+    if (live.length >= 2) live[0].close();
     return this._add(new Bubble(text, o, true), o.scene);
   }
   clear() { for (const b of this.items) b.close(); }
@@ -158,12 +167,14 @@ class FloatText {
     let stack = 0;
     for (let i = this.items.length - 1; i >= 0; i--) {
       const b = this.items[i];
-      const y = b.notice ? stack : 0;
+      // slide smoothly when a notice above or below closes
+      if (b.notice) b._sy = b._sy === undefined ? stack : b._sy + (stack - b._sy) * Math.min(1, dt * 10);
+      const y = b.notice ? b._sy : 0;
       // notices ride the viewmodel layer (drawn over hands and the raised watch) unless a view is active
       let c = cam;
       if (b.notice && !b.fixedScene) { const L = noticeLayer(); if (b.mesh.parent !== L.scene) L.scene.add(b.mesh); c = L.camera; }
       if (!b.update(dt, c, y)) { b.dispose(); this.items.splice(i, 1); continue; }
-      if (b.notice) stack += 0.075 * (b.lines.length * 0.55 + 0.6) * (b.o.size || 1);
+      if (b.notice && b.closing < 0) stack += b.plateNdc() + 0.035;
     }
   }
 }
