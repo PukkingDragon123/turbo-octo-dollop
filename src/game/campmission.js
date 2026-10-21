@@ -44,7 +44,6 @@ import { ShopKiosk, QuestKiosk } from './terminals.js';
 import { SideQuests } from './sidequests.js';
 import { Onboarding } from './onboarding.js';
 
-const STARTER_SUPPLIES = ['flashlight', 'protein_bar', 'almond_milk', 'bandage'];
 const CAMP_EXIT_SECONDS = 180;
 const CLONE_DELAY = 7;
 const MAIN_CASH = 1000; // main mission 1: EARN $1,000
@@ -471,16 +470,7 @@ export class CampMission extends Mission {
       const rot = type === 'camp_pole' ? _e.set(Math.PI / 2, this.camp.yaw + i, 0) : type === 'camp_lamp' ? _e.set(0, this.camp.yaw + 1.2, Math.PI / 2) : _e.set(0, this.camp.yaw + i * 0.7, 0);
       w.props.spawn(type, from, new THREE.Quaternion().setFromEuler(rot), { vel, angvel: new THREE.Vector3(0, (Math.random() - 0.5) * 2, 0) });
     });
-    // personal supplies: one set per clone
-    const items = [];
-    for (let k = 0; k < Math.max(1, this.game.roster.size); k++) items.push(...STARTER_SUPPLIES);
-    items.forEach((t, i) => {
-      const a = (i / items.length) * Math.PI * 2 + 0.3;
-      const pos = base.clone().add(_v.set(Math.cos(a) * 0.5, 0.62 + (i % 2) * 0.16, Math.sin(a) * 0.5));
-      w.props.spawn(t, pos, new THREE.Quaternion().setFromEuler(_e.set(Math.random(), Math.random() * 6, 0)), {
-        vel: new THREE.Vector3(Math.cos(a) * 1.4, 2.2 + Math.random(), Math.sin(a) * 1.4), state: t === 'flashlight' ? { charge: 1 } : {},
-      });
-    });
+    // (personal supplies come from the onboarding crate A: game/onboarding.js)
     w.fxAll({ k: 'snd', n: 'locker_open', p: base.toArray(), v: 1 });
     w.fxAll({ k: 'snd', n: 'paper', p: base.toArray(), v: 0.8 });
     w.fxAll({ k: 'dust', p: [base.x, base.y + 0.4, base.z], n: 26 });

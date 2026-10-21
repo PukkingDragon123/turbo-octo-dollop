@@ -241,10 +241,10 @@ export function populateBiome(level, rec) {
   // --- collectible fungus in damp corners (and glowcaps in the dark)
   for (const c of openCells) {
     const damp = isDamp(c);
-    if (!(damp ? rng.chance(0.3) : c.zone === 'dark' && rng.chance(0.07))) continue;
+    if (!(damp ? rng.chance(0.16) : c.zone === 'dark' && rng.chance(0.05))) continue;
     const x0 = x0Of(rec, c.li), z0 = z0Of(rec, c.lj);
     const pool = !damp ? [['fungus_glow', 1]] : c.zone === 'maintenance' ? [['fungus_black', 5], ['fungus_shelf', 3], ['fungus_puff', 2]] : c.zone === 'flooded' ? [['fungus_glow', 4.5], ['fungus_puff', 3], ['fungus_black', 2.5]] : [['fungus_shelf', 4], ['fungus_black', 3], ['fungus_glow', 3]];
-    const n = 1 + (rng.chance(0.35) ? 1 : 0);
+    const n = 1 + (rng.chance(0.2) ? 1 : 0);
     for (let k = 0; k < n; k++) {
       let ox = rng.chance(0.5) ? 0.5 : CELL - 0.5, oz = rng.chance(0.5) ? 0.5 : CELL - 0.5;
       if (ox < 1 && oz < 1 && pillars.has(c.li + ',' + c.lj)) { ox = CELL - 0.5; }

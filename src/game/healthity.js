@@ -67,7 +67,7 @@ const LINES = {
   safe: ['Day one is your probation day. Nothing down here will hunt you today. Probably.'],
   day2: ['Day two. Probation is over. Things will start looking for you now. Stay together and stay quiet.'],
   pickup: ['{item}. Company property, but you may borrow it.', '{item} acquired. I have logged it.', 'Nice find. {item}.'],
-  hq: ['Welcome back to HQ. Your locker has cosmetics. The break room has snacks.', 'Reminder: talk to Gloria at reception when your team is ready.'],
+  hq: ['Welcome back to HQ. Your locker has cosmetics. The break room has snacks.', 'Reminder: the elevator panel takes you down when your team is ready.'],
   // Level 0 camp loop (CampMission._say)
   camp_start: ['Let us build a camp. The TENT KIT crate is by the camp. Press E to open it.'],
   kit_open: ['Tent parts everywhere. Hold the left mouse button to drag a tent pole onto a glowing marker.'],
@@ -111,7 +111,7 @@ const TASK_TIPS = {
 const HQ_TIPS = [
   'Try the terminals in the open office. One has an orientation. It is mandatory. Ish.',
   'Your locker lets you change your look. Cosmetics only. Upgrades are not in the budget.',
-  'When your team is ready, talk to Gloria at reception. She opens the elevator gate.',
+  'When your team is ready, press START on the elevator panel.',
 ];
 function taskKind(text) {
   const t = String(text).toUpperCase();
@@ -262,7 +262,7 @@ export class Healthity {
       no: this.receiptNo,
       tasks,
       vitals: { health: s.health / 100, sanity: s.sanity / 100, hunger: s.needsActive ? s.hunger / 100 : null, thirst: s.needsActive ? s.thirst / 100 : null, battery: typeof tool?.battery === 'number' ? tool.battery : null },
-      tip: kind ? TASK_TIPS[kind][0].replace(/^Your first task is a base\. |^Get food\. |^Earn money\. |^Get out\. /, '') : g.isLobby ? 'Talk to Gloria at reception when your team is ready.' : 'Await further instructions.',
+      tip: kind ? TASK_TIPS[kind][0].replace(/^Your first task is a base\. |^Get food\. |^Earn money\. |^Get out\. /, '') : g.isLobby ? 'Use the elevator panel when your team is ready.' : 'Await further instructions.',
       day: g.day?.day || 1,
       shift: ((g.run?.seed || 0) >>> 0).toString(36).slice(-5).toUpperCase().padStart(5, '0'),
       level: g.isLobby ? 'HQ SUBLEVEL B4' : (g.world?.level?.feedName || 'LEVEL 0: THE YELLOW ROOMS'),
