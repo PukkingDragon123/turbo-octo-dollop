@@ -561,6 +561,7 @@ export class LobbyDirector {
       this.hand.visible = false;
     }
     if (t > 0.6) pp.uGlitch.value = clamp((t - 0.6) * 0.45, 0, 0.7);
+    this._noKillPlane();
     if (t > 1.5) pp.uFade.value = sstep(1.5, 1.95, t);
     if (t > 2.0 && this.joinCb) {
       const cb = this.joinCb;
@@ -637,6 +638,7 @@ export class LobbyDirector {
       this.goTo((d, o) => this._fallPose(o, false), 0.5);
     }
     if (t > 1.6) engine.post.params.uGlitch.value = clamp((t - 1.6) * 0.3, 0, 0.35);
+    this._noKillPlane();
     if (t >= 2.5) {
       this._loop('wind_fall', false);
       this.pit = new RobotPit(g, { yaw: l.yaw });
@@ -645,6 +647,12 @@ export class LobbyDirector {
       this.lobby.closeTrapCollider();
       if (l.world) { l.teleport(this.lobby.trapCenter.clone().setY(0.05)); l.fallSpeed = 0; }
     }
+  }
+
+  // never let a falling clone reach the world's out-of-bounds respawn while the cutscene still follows it
+  _noKillPlane() {
+    const l = this.game.local;
+    if (l.world && l.pos.y < -11) { l.teleport(l.pos.clone().setY(-11)); l.fallSpeed = 0; }
   }
 
   dispose() {

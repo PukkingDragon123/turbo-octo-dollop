@@ -37,7 +37,6 @@ export class LightField {
     this.tex.magFilter = THREE.NearestFilter;
     this.tex.minFilter = THREE.NearestFilter;
     this.tex.generateMipmaps = false;
-    this.tex.userData.noPixel = true;
     this.tex.needsUpdate = true;
     this.lights = new Map(); // texel index -> light record
     this.dirty = true;

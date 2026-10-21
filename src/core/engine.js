@@ -2,7 +2,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { PostFX } from '../gfx/post.js';
-import { pixelPass } from '../gfx/pixeltex.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _o = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 
@@ -189,7 +188,6 @@ class Engine {
     }
     const fov = 60 - 24 * w;
     if (Math.abs(this.vmCamera.fov - fov) > 0.01) { this.vmCamera.fov = fov; this.vmCamera.updateProjectionMatrix(); }
-    pixelPass.update(this); // pixel-art texture pass: swaps in processed textures, time-sliced (src/gfx/pixeltex.js)
     this.post.render(dt, this.time);
   }
 }
