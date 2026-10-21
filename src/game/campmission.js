@@ -4,19 +4,25 @@
 //   camp     BUILD YOUR CAMP. Open the TENT KIT crate, drag each part onto its glowing ghost marker and
 //            attach it with the built-in multitool (empty hand + RMB). The last part pops the tent up.
 //   survive  The stomach growls: hunger & thirst start draining (survival.needsActive). Eat or drink once.
-//   sell     MAKE QUOTA. Drag furniture onto the teleport pads in the pad hall and pull the lever: the items
-//            beam away and their value uploads to the watch as team money (game.run.credits).
-//   exit     Quota met: an exit materialises next to the camp. Get inside before it closes -> back to HQ.
-//   done     Shift complete.
+//   sell     EARN $1,000: drop loot into the CRUSHER in the hall next to the camp (game/crusher.js) and press
+//            its button: the press slams it into a cube that beams away; the value uploads to the watch
+//            (game.run.credits) and fills the level's ESCAPE FUND (game.run.escape). Main mission 1 done ->
+//            side quests open in the quest tree (game/economy.js; FIELD OPS kiosk) and the COMPANY STORE opens.
+//            The stage stays 'sell' while the team works toward the escape fund ($1,000,000 on Level 0).
+//   exit     Escape fund full: an exit materialises next to the camp. Get inside before it closes -> back to HQ.
+//   done     Level cleared.
 // Death: the clone is re-printed at the camp after a few seconds, costing HALF of the team's money.
 //
-// Public API (UI / crafting / monsters build against it):
+// Public API (UI / monsters / Healthity build against it):
 //   mission.objective() -> { title, detail, progress (0..1 | null) }
+//   mission.tasks()     -> [{ id, text, done }]  main mission checklist (+ escape fund and open side quests after it)
 //   mission.stage       -> 'camp' | 'survive' | 'sell' | 'exit' | 'done'
-//   mission.quota       -> { need }            (current money: game.run.credits)
+//   mission.quota       -> { need }            ($1,000 during main mission 1, then 0; current money: game.run.credits)
+//   mission.escape      -> { have, need }      escape fund
+//   mission.econ        -> Economy (quests, shop, scanner, upgrades)    mission.crusher -> Crusher device
 //   mission.camp        -> { pos: Vector3, radius, built, yaw }
-//   mission.padHall     -> { pos: Vector3, w, d, yaw } | null
-//   mission.markers()   -> [{ kind: 'camp' | 'pads' | 'exit', pos: Vector3, label }]
+//   mission.padHall     -> { pos: Vector3, w, d, yaw } | null   (the crusher hall)
+//   mission.markers()   -> [{ kind: 'camp' | 'crusher' | 'store' | 'ops' | 'file' | 'gen' | 'exit', pos: Vector3, label }]
 //   mission.reviveEta(playerId) -> seconds until a dead clone is re-printed (null if not pending)
 //   compatibility: generators = [], linksCount() = 0, radio() = null, state.exit, exitTimeLeft()
 import * as THREE from 'three';
@@ -27,17 +33,22 @@ import { CELL, HEIGHT } from '../world/levels/yellow/layout.js';
 import { LightField } from '../gfx/bakedlight.js';
 import { itemDef, itemName, sellValue } from './itemdefs.js';
 import {
-  CAMP_MARKERS, CAMP_PARTS, PART_LANDING, KIT_POS, REVIVE_SPOTS, SNAP_DIST, TENT_Z, PAD_R,
-  campToWorld, CampKitBehaviour, CampGhosts, CampTent, TelePad, PadLever,
+  CAMP_MARKERS, CAMP_PARTS, PART_LANDING, KIT_POS, REVIVE_SPOTS, SNAP_DIST, TENT_Z,
+  campToWorld, CampKitBehaviour, CampGhosts, CampTent,
 } from './campdevices.js';
 import './campsfx.js';
+import './econsfx.js';
+import { Economy, fmt$ } from './economy.js';
+import { Crusher } from './crusher.js';
+import { ShopKiosk, QuestKiosk } from './terminals.js';
+import { SideQuests } from './sidequests.js';
+import { Onboarding } from './onboarding.js';
 
 const STARTER_SUPPLIES = ['flashlight', 'protein_bar', 'almond_milk', 'bandage'];
 const CAMP_EXIT_SECONDS = 180;
 const CLONE_DELAY = 7;
-const QUOTA_SOLO = 1500, QUOTA_PER_EXTRA = 900;
+const MAIN_CASH = 1000; // main mission 1: EARN $1,000
 const SURVIVE_MIN = 9, SURVIVE_MAX = 45;
-const CHARGE_TIME = 2.6;
 // item types retired from the Level 0 loop (built-in multitool, no research / scanner / radio): swapped at spawn
 const RETIRED = { multitool: 'screws', sample_jar: 'almond_water', water_tester: 'battery', camera_disposable: 'candy_bar', radio: null, clone_pad: null, supply_crate: null };
 const WARM = new THREE.Color(1.0, 0.72, 0.42);
@@ -51,16 +62,16 @@ export class CampMission extends Mission {
   constructor(level) {
     super(level);
     this.autoClone = true;
-    Object.assign(this.state, { stage: 'camp', kit: 0, slots: {}, built: 0, quota: QUOTA_SOLO, sold: 0, clones: {}, half: 0 });
+    Object.assign(this.state, { stage: 'camp', kit: 0, slots: {}, built: 0, quota: MAIN_CASH, sold: 0, clones: {}, half: 0 });
     this.camp = { pos: new THREE.Vector3(), radius: 4, built: false, yaw: 0 };
     this.padHall = null;
-    this.pads = [];
-    this.lever = null;
+    this.crusher = null;
+    this.shopKiosk = null;
+    this.questKiosk = null;
     this.tent = null;
     this.ghosts = null;
-    this.padContents = { count: 0, total: 0, names: [], items: [] };
-    this.padCharge = -1;
-    this.lastSale = 0;
+    this.econ = new Economy(this);
+    this.sideq = new SideQuests(this);
     this.snaps = [];
     this.pendingClones = new Map(); // host: playerId -> world time of re-print
     this._cloneSeen = {};           // every peer: playerId -> { t, left }
@@ -79,9 +90,26 @@ export class CampMission extends Mission {
 
   // ------------------------------------------------------------------ public API
   get stage() { return this.state.stage; }
-  get quota() { return { need: this.state.quota }; }
-  get padsOnline() { const s = this.state.stage; return s === 'sell' || s === 'exit' || s === 'done'; }
+  get quota() { return { need: this.econ.mainDone() ? 0 : MAIN_CASH }; }
+  get escape() { return { have: this.econ.escape, need: this.econ.quota }; }
+  // the crusher runs from the moment the stomach growls (so the first meal and first sale can overlap)
+  get padsOnline() { const s = this.state.stage; return s === 'survive' || s === 'sell' || s === 'exit' || s === 'done'; }
   get showValues() { return this.padsOnline; }
+  get lastSale() { return this.crusher?.lastSale || 0; }
+
+  // main mission checklist (+ escape fund and the open side quests once it is done) for the watch / receipt
+  tasks() {
+    const e = this.econ, out = [];
+    for (const n of e.main) {
+      if (n.id === 'm_escape') continue;
+      out.push({ id: n.id, text: n.task || n.name, done: e.state(n) === 'claimed' });
+    }
+    if (e.mainDone()) {
+      out.push({ id: 'escape', text: `Fill the escape fund (${fmt$(e.escape)} / ${fmt$(e.quota)})`, done: e.escape >= e.quota });
+      for (const n of e.activeSide().slice(0, 4)) out.push({ id: n.id, text: e.state(n) === 'ready' ? `${n.name}: claim at FIELD OPS` : n.name, done: e.state(n) === 'ready' });
+    }
+    return out;
+  }
 
   objective() {
     const st = this.state;
@@ -97,21 +125,26 @@ export class CampMission extends Mission {
       case 'survive':
         return { title: 'STAY FED', detail: 'Your stomach is growling. Eat or drink something (select it, RMB)', progress: null };
       case 'sell': {
-        const c = this.game.run.credits, need = st.quota;
-        return { title: `MAKE $${need}`, detail: `Sell furniture on the teleport pads ($${c} / $${need})`, progress: Math.min(1, c / need) };
+        const e = this.econ;
+        if (!e.mainDone()) {
+          const c = Math.min(e.escape, MAIN_CASH);
+          return { title: 'EARN $1,000', detail: `Drop loot into the CRUSHER in the hall and press its button (${fmt$(c)} / ${fmt$(MAIN_CASH)})`, progress: c / MAIN_CASH };
+        }
+        return { title: 'FILL THE ESCAPE FUND', detail: `Crush loot, finish side quests at FIELD OPS (${fmt$(e.escape)} / ${fmt$(e.quota)})`, progress: Math.min(1, e.escape / e.quota) };
       }
       case 'exit': {
         const open = st.exit && !st.exit.done;
         return { title: 'GET OUT', detail: open ? `The exit is open next to the camp. Get inside! (${Math.ceil(this.exitTimeLeft())}s)` : 'An exit is forming next to the camp...', progress: 1 };
       }
       default:
-        return { title: 'SHIFT COMPLETE', detail: 'Returning to HQ', progress: 1 };
+        return { title: 'LEVEL CLEARED', detail: 'Returning to HQ', progress: 1 };
     }
   }
 
   markers() {
     const out = [{ kind: 'camp', pos: this.camp.pos.clone(), label: 'CAMP' }];
-    if (this.padHall) out.push({ kind: 'pads', pos: this.padHall.pos.clone(), label: 'PADS' });
+    if (this.crusher) out.push({ kind: 'crusher', pos: this.crusher.root.position.clone(), label: 'CRUSHER' });
+    out.push(...this.sideq.markers());
     const e = this.state.exit;
     if (e && !e.done) out.push({ kind: 'exit', pos: new THREE.Vector3(e.x, 0, e.z), label: 'EXIT' });
     return out;
@@ -131,7 +164,22 @@ export class CampMission extends Mission {
   linksCount() { return 0; }
   orderCrate() {}
   requestExtraction() {}
-  onGeneratorRepaired() {}
+  get generators() { return this.sideq?.gens || []; }
+  set generators(v) { void v; } // Mission's constructor assigns []
+
+  // host: a side-quest generator came online (game/generators.js)
+  onGeneratorRepaired(g) {
+    this.econ.bump('gens');
+    this.hq(`${g.label || 'A generator'} is back online. Power restored to the sector. Mind the noise: things heard that.`, 'FIELD OPS');
+  }
+
+  // host: a quest node was claimed (game/economy.js)
+  onQuestClaimed(n) {
+    if (n.id === 'm_cash') {
+      this.hq('MAIN MISSION 1 COMPLETE. The COMPANY STORE is open and FIELD OPS has side quests for you. The level goal: fill the ESCAPE FUND on the crusher gauge.', 'RECEPTION');
+      this.world.fxAll({ k: 'snd', n: 'elevator_ding', p: this.camp.pos.toArray(), v: 0.8 });
+    }
+  }
 
   // ------------------------------------------------------------------ setup
   _bindBehaviours() {
@@ -143,7 +191,7 @@ export class CampMission extends Mission {
 
   _bindNet() {
     net.onClient('mstate', (s) => this._applyState(s));
-    net.onHost('campAte', () => this._hostAte());
+    net.onHost('campAte', (d) => this._hostAte(d));
   }
 
   // Level 0 loot / carried items: swap the retired tool types for something useful
@@ -187,18 +235,23 @@ export class CampMission extends Mission {
   build() {
     this._placeCamp(); // landmarks may only exist once the level finished building
     const hall = this._planPadHall();
-    this.padHall = { pos: new THREE.Vector3(hall.x, this._floorY(hall.x, hall.z), hall.z), w: hall.w, d: hall.d, yaw: hall.lever.yaw };
-    hall.pads.forEach(([x, z], i) => {
-      const pad = new TelePad(this.world, `pad_${i}`, this, x, this._floorY(x, z), z);
-      this.world.addDevice(pad);
-      this.level.prepStatic(pad.root, null);
-      this.pads.push(pad);
-    });
-    const L = hall.lever;
-    this.lever = new PadLever(this.world, this, L.x, this._floorY(L.x, L.z), L.z, L.yaw);
-    this.world.addDevice(this.lever);
-    this.level.prepStatic(this.lever.root, null);
+    this.padHall = { pos: new THREE.Vector3(hall.x, this._floorY(hall.x, hall.z), hall.z), w: hall.w, d: hall.d, yaw: hall.crusher.yaw };
+    // the crusher stands in the hall facing the way in from the camp
+    const C = hall.crusher;
+    this.crusher = new Crusher(this.world, this, C.x, this._floorY(C.x, C.z), C.z, C.yaw);
+    this.world.addDevice(this.crusher);
+    this.level.prepStatic(this.crusher.root, null);
+    // the two kiosks flank the arrival elevator on the camp's elevator wall, facing the camp
+    for (const [K, key, lx] of [[ShopKiosk, 'shopKiosk', 3.9], [QuestKiosk, 'questKiosk', -3.9]]) {
+      const k = this._kioskSpot(lx);
+      const dev = new K(this.world, this, k.x, this._floorY(k.x, k.z), k.z, k.yaw);
+      this.world.addDevice(dev);
+      this.level.prepStatic(dev.root, null);
+      this[key] = dev;
+    }
+    this.sideq.build();
     this.ghosts = new CampGhosts(this.world, this.camp);
+    this.onboarding = new Onboarding(this); // arrival crates: supplies + the broken Healthity (game/onboarding.js)
   }
 
   // teleport pad hall: pads in a row on the far side, the lever between them and the camp
@@ -221,9 +274,21 @@ export class CampMission extends Mission {
         }
       }
       const lo = Math.min(Lu / 2 - 1.0, 2.4);
-      return { x: lm.x, z: lm.z, w: lm.w, d: lm.d, pads, lever: { x: lm.x + u[0] * lo, z: lm.z + u[1] * lo, yaw: Math.atan2(u[0], u[1]) } };
+      // the crusher: a little past the hall centre, its chamber mouth facing the camp
+      const co = Math.min(Lu * 0.12, 2.4);
+      return { x: lm.x, z: lm.z, w: lm.w, d: lm.d, pads, lever: { x: lm.x + u[0] * lo, z: lm.z + u[1] * lo, yaw: Math.atan2(u[0], u[1]) }, crusher: { x: lm.x - u[0] * co, z: lm.z - u[1] * co, yaw: Math.atan2(u[0], u[1]) } };
     }
-    return this._fallbackPadHall();
+    const fb = this._fallbackPadHall();
+    fb.crusher = { x: fb.x, z: fb.z, yaw: fb.lever.yaw };
+    return fb;
+  }
+
+  // kiosk on the camp's elevator wall (camp-local +Z side), lx metres left / right of the alcove, facing the camp
+  _kioskSpot(lx) {
+    const lm = this.level.landmarks?.camp;
+    const lz = lm ? Math.min(lm.w, lm.d) / 2 - 0.7 : 3.4;
+    const p = campToWorld(this.camp, lm ? lx : lx * 0.8, 0, lz);
+    return { x: p.x, z: p.z, yaw: this.camp.yaw + Math.PI };
   }
 
   // no map landmark yet: a 2x2-cell block next to the arrival room, the most open of the four sides
@@ -265,8 +330,7 @@ export class CampMission extends Mission {
 
   hostStart(desc) {
     const w = this.world;
-    const players = Math.max(1, this.game.roster.size);
-    this.state.quota = Math.round((QUOTA_SOLO + (players - 1) * QUOTA_PER_EXTRA) / 100) * 100;
+    this.state.quota = MAIN_CASH;
     // carried items / props from HQ fall in around the camp
     const carry = desc.carry || [];
     carry.forEach((it, i) => {
@@ -291,6 +355,7 @@ export class CampMission extends Mission {
 
   // called on every peer when the arrival elevator's gate opens (world/elevator_ride.js)
   onArrival() {
+    this.onboarding?.onArrival();
     if (!this._brief) return;
     const b = this._brief;
     this._brief = null;
@@ -300,7 +365,7 @@ export class CampMission extends Mission {
   // host: nothing may stand on the pads or the lever (chunk furniture spawned before the mission existed)
   _clearSetPieces() {
     const w = this.world;
-    const spots = [...this.pads.map((p) => [p.root.position, PAD_R + 0.25]), [this.lever.root.position, 1.0], [this.camp.pos, 0]];
+    const spots = [[this.crusher.chamberPos(new THREE.Vector3(), 0), 2.6], [this.crusher.root.position, 2.4], [this.shopKiosk.root.position, 1.4], [this.questKiosk.root.position, 1.0], [this.camp.pos, 0]];
     for (const p of [...w.props.props.values()]) {
       if (p.dead || p.type.startsWith('camp_')) continue;
       for (const [c, r] of spots) {
@@ -472,6 +537,7 @@ export class CampMission extends Mission {
     }
     this.snaps.length = 0;
     this.state.built = 1;
+    this.econ.bump('built');
     w.fxAll({ k: 'camp', e: 'pop' }); // builds + animates the tent on every peer
     this.pushState();
     this.stageAt = { stage: 'survive', t: w.time + 5.5 }; // let the pop + cheer land, then the stomach growls
@@ -491,11 +557,12 @@ export class CampMission extends Mission {
   // ------------------------------------------------------------------ survive -> sell
   onItemUsed(type) {
     const u = itemDef(type).use;
-    if (this.state.stage === 'survive' && (u === 'eat' || u === 'drink')) net.toHost('campAte', {});
+    if (u === 'eat' || u === 'drink' || u === 'heal') net.toHost('campAte', { u });
   }
 
-  _hostAte() {
-    if (this.state.stage !== 'survive' || this._ate) return;
+  _hostAte(d) {
+    this.econ.bump(d?.u === 'heal' ? 'heal' : 'eat');
+    if (this.state.stage !== 'survive' || this._ate || d?.u === 'heal') return;
     this._ate = true;
     const t = Math.max(this.world.time + 1.5, (this.surviveAt ?? 0) + SURVIVE_MIN);
     if (!this.stageAt || this.stageAt.t > t) this.stageAt = { stage: 'sell', t };
@@ -511,68 +578,7 @@ export class CampMission extends Mission {
       this.stageAt = { stage: 'sell', t: this.world.time + SURVIVE_MAX };
       setTimeout(() => { if (!this.disposed) this.hq('Hunger and thirst monitoring is now ACTIVE. Please eat or drink something before you faint on company time.', 'RECEPTION'); }, 1200);
     } else if (stage === 'sell') {
-      this.hq(`Your quota for this shift: $${st.quota}. Furniture is money. Drag it onto the TELEPORT PADS in the pad hall and pull the lever. Payment uploads to your watch. Reach the quota and you may go home.`, 'RECEPTION');
-    }
-    this.pushState();
-  }
-
-  // ------------------------------------------------------------------ teleport pads
-  _scanPads() {
-    const out = { count: 0, total: 0, names: [], items: [] };
-    for (const pad of this.pads) pad.loaded = 0;
-    if (!this.padHall) return out;
-    const hc = this.padHall.pos, R2 = (Math.max(this.padHall.w, this.padHall.d) * 0.75 + 2) ** 2;
-    for (const p of this.world.props.props.values()) {
-      if (p.dead || p.frozen) continue;
-      const pp = p.root.position;
-      if ((pp.x - hc.x) ** 2 + (pp.z - hc.z) ** 2 > R2) continue;
-      const pad = this.pads.find((pd) => pd.contains(pp));
-      if (!pad) continue;
-      const v = sellValue(p.type, p.mass, p.state);
-      if (v <= 0) continue;
-      out.count++;
-      out.total += v;
-      out.names.push(itemName(p.type));
-      out.items.push(p);
-      pad.loaded += v;
-    }
-    return out;
-  }
-
-  hostPullLever(from) {
-    if (!this.padsOnline || this.charging) return;
-    const c = this._scanPads();
-    if (!c.count) {
-      net.toPeer(from, 'mtMsg', { text: 'The pads are empty. Drag furniture onto them first.' });
-      return;
-    }
-    this.charging = { end: this.world.time + CHARGE_TIME };
-    this.world.fxAll({ k: 'camp', e: 'charge' });
-    this.world.noise.emit(this.lever.root.position, 26, 'pads'); // it's loud: things hear it
-  }
-
-  _hostSend() {
-    const w = this.world;
-    this.charging = null;
-    const c = this._scanPads();
-    let total = 0;
-    for (const p of c.items) {
-      if (p.dead) continue;
-      total += sellValue(p.type, p.mass, p.state);
-      w.grab.releaseAllFor(p.id);
-      this.game.tools.unweld(p);
-      const pos = p.root.position;
-      w.props.despawn(p.id, { k: 'camp', e: 'zap', p: [pos.x, pos.y, pos.z] });
-    }
-    if (total > 0) {
-      this.game.addCredits(total);
-      this.state.sold += total;
-    }
-    w.fxAll({ k: 'camp', e: 'sent', v: total, n: c.count });
-    const st = this.state;
-    if (!st.half && st.stage === 'sell' && this.game.run.credits >= st.quota / 2 && this.game.run.credits < st.quota) {
-      st.half = 1;
-      this.hq(`Halfway to quota ($${this.game.run.credits} of $${st.quota}). HQ is mildly impressed.`, 'RECEPTION');
+      this.hq(`Final step of your first mission: EARN $${st.quota}. Furniture is money. Drop it into the CRUSHER in the hall next to camp and press the red button. Payment uploads to your watch.`, 'RECEPTION');
     }
     this.pushState();
   }
@@ -635,7 +641,7 @@ export class CampMission extends Mission {
     });
     this.pushState();
     this.world.fxAll({ k: 'snd', n: 'exit_door_appear', p: [spot.x, 1.2, spot.z], v: 1 });
-    this.hq(`QUOTA MET ($${this.game.run.credits}). An EXIT has opened next to your camp. Everyone inside within ${CAMP_EXIT_SECONDS} seconds. Thank you for your service.`, 'RECEPTION');
+    this.hq(`ESCAPE FUND FULL (${fmt$(this.econ.escape)}). An EXIT has opened next to your camp. Everyone inside within ${CAMP_EXIT_SECONDS} seconds. Thank you for your service.`, 'RECEPTION');
   }
 
   // exit room: a closed-off corner cell of the camp clearing when the map has one (door facing the camp),
@@ -724,11 +730,13 @@ export class CampMission extends Mission {
     net.toAll('exitClosing', {});
     this.game.unlockAll('escape');
     const n = (survivors || []).length;
-    setTimeout(() => this.game.hostRunOver('QUOTA MET — SHIFT COMPLETE', { success: true, quota: this.state.quota, survivors: n }), 1800);
+    this.game.saveRun?.('escape', { cleared: this.world.type });
+    setTimeout(() => this.game.hostRunOver(`ESCAPE FUND FILLED — ${this.econ.rules.name} CLEARED`, { success: true, quota: this.econ.quota, escape: this.econ.escape, survivors: n }), 1800);
   }
 
   // ------------------------------------------------------------------ fx (every peer)
   playFx(m, p) {
+    if (m.k === 'crusher') return this.crusher?.playFx(m);
     if (m.k !== 'camp') return super.playFx(m, p);
     const w = this.world;
     const pos = m.p ? new THREE.Vector3().fromArray(m.p) : null;
@@ -753,44 +761,13 @@ export class CampMission extends Mission {
         setTimeout(() => { if (!this.disposed) audio.play('credits', { volume: 0.7, bus: 'ui' }); }, 700);
         break;
       }
-      case 'charge':
-        this.padChargeStart = w.time;
-        audio.play('pad_charge', { pos: this.lever?.root.position, volume: 1 });
-        audio.play('lever', { pos: this.lever?.root.position, volume: 0.9 });
-        break;
-      case 'zap':
-        if (pos) {
-          w.fx.sparks(pos, 22, new THREE.Vector3(0, 1, 0), [0.5, 0.9, 1], 4);
-          w.fx.glow(pos, [0.6, 1.4, 2], 1.2, 0.25);
-        }
-        break;
-      case 'sent': {
-        this.padChargeStart = null;
-        this.lastSale = m.v || 0;
-        const lp = this.lever?.root.position;
-        audio.play('teleport_whoosh', { pos: lp, volume: 1 });
-        for (const pad of this.pads) w.fx.flashLight(_v.copy(pad.root.position).setY(pad.root.position.y + 1), 0x8fe8ff, 12, 0.35, 6);
-        if (m.v > 0) {
-          setTimeout(() => {
-            if (this.disposed) return;
-            audio.play('credits', { volume: 0.8, bus: 'ui' });
-            this.game.ui.toast(`+$${m.v} UPLOADED`, 'good');
-          }, 500);
-        }
-        break;
-      }
       default: break;
     }
   }
 
   // ------------------------------------------------------------------ frame
   update(dt) {
-    const w = this.world;
-    // pad charge progress (local clocks; started by the 'charge' fx)
-    this.padCharge = this.padChargeStart != null ? Math.min(1, (w.time - this.padChargeStart) / CHARGE_TIME) : -1;
-    if (this.padChargeStart != null && w.time - this.padChargeStart > CHARGE_TIME + 3) this.padChargeStart = null;
-    this._scanT -= dt;
-    if (this._scanT <= 0) { this._scanT = 0.25; this.padContents = this._scanPads(); }
+    this.econ.update(dt);
     this._updateGhosts(dt);
     this._updateLights(dt);
     this._updateExitClient(dt);
@@ -815,8 +792,9 @@ export class CampMission extends Mission {
     }
     if (this.popAt && w.time >= this.popAt) { this.popAt = null; this._hostPop(); }
     if (this.stageAt && w.time >= this.stageAt.t) this._hostSetStage(this.stageAt.stage);
-    if (this.charging && w.time >= this.charging.end) this._hostSend();
-    if (st.stage === 'sell' && this.game.run.credits >= st.quota) this._hostOpenExit();
+    this.econ.hostTick(dt);
+    this.sideq.hostUpdate(dt);
+    if (st.stage === 'sell' && this.econ.escape >= this.econ.quota) this._hostOpenExit();
     if (st.stage === 'exit' && !st.exit && this.exitRetryAt && w.time >= this.exitRetryAt) { this.exitRetryAt = null; this._hostOpenExit(); }
     this._hostExitTick();
     if (this.pendingClones.size) this._hostClones();
@@ -857,7 +835,10 @@ export class CampMission extends Mission {
       const tc = campToWorld(this.camp, 0, 0, TENT_Z);
       this._forceLight(tc.x, tc.z, WARM, 1.25);
     }
-    if (this.padsOnline && this.padHall) for (const pad of this.pads) this._forceLight(pad.root.position.x, pad.root.position.z, COOL, 1.5);
+    if (this.padsOnline && this.crusher) {
+      const c = this.crusher.chamberPos(_v, 0);
+      this._forceLight(c.x, c.z, COOL, 1.5);
+    }
   }
 
   _forceLight(x, z, color, base) {
@@ -875,6 +856,9 @@ export class CampMission extends Mission {
 
   dispose() {
     this.disposed = true;
+    this.onboarding?.dispose();
+    this.econ.dispose();
+    this.sideq.dispose();
     net.clientHandlers.delete('mstate');
     net.clientHandlers.delete('exitClosing');
     net.hostHandlers.delete('campAte');

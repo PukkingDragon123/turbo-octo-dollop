@@ -8,17 +8,16 @@
 //  - WHEEL TROLLEY prop: one rigid body that only turns about Y, frictionless ball "wheels", grippy deck,
 //    sideways damping like fixed casters, wheels kept on the floor while someone pushes it, and loads on
 //    the deck dragged along with it (with the reaction pushed back into the cart).
-//  - FIELD WORKBENCH prop: the camp's crafting bench (same station as the level's workbenches); one is
-//    put down at the team's camp automatically if the camp has none.
+//  (Crafting is retired: no field workbench is put down at the camp any more; game/crafting.js turns the
+//   level's workbenches into set dressing.)
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
 import { net } from '../net/net.js';
 import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
 import { RAPIER, Q } from '../physics/physics.js';
-import { CrtScreen } from '../ui/crt.js';
 import { zoneAt } from './creatures/agent.js';
-import { CraftStation } from './crafting.js';
+import './crafting.js'; // registers the retired workbench device
 import { modelHalfHeight } from '../entities/catalog.js';
 
 export const SAFE_R = 7;
@@ -461,36 +460,6 @@ class TrolleyBehaviour {
 }
 
 // ---------------------------------------------------------------------------
-class FieldBenchBehaviour {
-  constructor(p, sys) {
-    this.p = p;
-    this.sys = sys;
-    this.scr = new CrtScreen(512, 384, 'amber');
-    this.scr.fps = 2;
-    const sm = p.model.parts?.screen;
-    if (sm) this.scr.attach(sm, 1.4);
-    const top = p.model.anchors?.top ? p.model.anchors.top.clone() : new THREE.Vector3(0, 0.45, 0);
-    this.station = new CraftStation(sys.world, {
-      root: p.root, top, reach: 1.7, front: 1.15, title: 'FIELD WORKBENCH',
-      send: (a, d) => net.toHost('act', { k: 'p', id: p.id, a, d }),
-    });
-  }
-  prompt() { return `[${input.keyName('interact')}] Use field workbench — build from scavenged parts`; }
-  interact() { this.station.open({ prop: this.p, screen: this.scr, mesh: this.p.model.parts?.screen }); }
-  hostAction(a, d, from) { if (a === 'craft') this.station.hostCraft(d, from); }
-  update(dt) {
-    const g = this.sys.game;
-    if (g.terminal.session?.prop === this.p) return;
-    if (this.p.root.position.distanceTo(g.local.pos) > 9) return;
-    this.station.drawIdle(this.scr, dt);
-  }
-  dispose() {
-    this.scr.texture.dispose();
-    this.scr.material?.dispose();
-  }
-}
-
-// ---------------------------------------------------------------------------
 export class BaseSystems {
   constructor(mgr) {
     this.mgr = mgr;
@@ -502,14 +471,11 @@ export class BaseSystems {
     this.world.base = this;
     this.trolleys = new Set();
     this.distorters = new Set();
-    this.benchCamps = new WeakSet();
-    this.campT = 1;
     this.calmMsgT = 0;
     this.wasSafe = false;
     const props = this.world.props;
     props.registerBehaviour('distorter', (p) => new DistorterBehaviour(p, this));
     props.registerBehaviour('trolley', (p) => new TrolleyBehaviour(p, this));
-    props.registerBehaviour('field_bench', (p) => new FieldBenchBehaviour(p, this));
     this._step = (dt) => { if (net.isHost) for (const t of this.trolleys) t.step(dt); };
     this.world.physics.beforeStep.push(this._step);
     net.onClient('dzap', (d) => this._zap(d));
@@ -548,37 +514,6 @@ export class BaseSystems {
       this.wasSafe = !!safe;
       this.calmMsgT -= dt;
     }
-    if (net.isHost) {
-      this.campT -= dt;
-      if (this.campT <= 0) { this.campT = 2; this._campBench(); }
-    }
-  }
-
-  // host: make sure the team's camp has a workbench
-  _campBench() {
-    const camp = this.mgr.camp();
-    if (!camp || this.benchCamps.has(camp) || camp.built === false) return;
-    if (!this.level.isChunkLoaded?.(camp.pos.x, camp.pos.z)) return;
-    let found = false;
-    this.world.props.query(camp.pos, (camp.radius || 6) + 4, (p) => { if (p.type === 'field_bench') found = true; });
-    for (const d of this.world.devices.values()) if (d.key === 'workbench' && d.root.position.distanceTo(camp.pos) < (camp.radius || 6) + 4) found = true;
-    this.benchCamps.add(camp);
-    if (found) return;
-    const R = Math.min(3.4, Math.max(2.2, (camp.radius || 6) * 0.55));
-    const hh = modelHalfHeight('field_bench');
-    let best = null;
-    for (let i = 0; i < 12; i++) {
-      const a = 0.6 + (i / 12) * Math.PI * 2;
-      const x = camp.pos.x + Math.cos(a) * R, z = camp.pos.z + Math.sin(a) * R;
-      let blocked = false;
-      this.world.physics.overlapBox(_v.set(x, 0.5, z), { x: 0.85, y: 0.4, z: 0.55 }, Q.solid, () => { blocked = true; });
-      if (blocked) continue;
-      best = [x, z];
-      break;
-    }
-    if (!best) return;
-    const yaw = Math.atan2(camp.pos.x - best[0], camp.pos.z - best[1]);
-    this.world.props.spawn('field_bench', new THREE.Vector3(best[0], (camp.pos.y || 0) + hh + 0.02, best[1]), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)), { sleep: true });
   }
 
   // ---------------- console helpers (host) ----------------

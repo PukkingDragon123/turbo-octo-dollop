@@ -1,4 +1,8 @@
-// The elevator ride between dimensions (~15 s, first person, look around freely).
+// The elevator ride between dimensions (~15 s, first person, look around freely). Broken and brutal: a
+// cable lets go as it starts, sparks stream off the guide rails, every stop is an emergency-brake slam
+// with the landing doors torn half open on another dimension, the lights die a little more each time,
+// then the main cable snaps and the car freefalls, tilted, into the void. At the bottom (Level 0) the
+// arrival car spins up, flings its riders out onto the floor and implodes (ArrivalElevator).
 //
 // When the HQ gate closes on the riders, each rider's view moves from the HQ car into an identical car in a
 // scene of its own (rendered through engine.setView, so its lights, fog and shaders never depend on the
@@ -22,6 +26,9 @@ import * as Mat from '../gfx/materials.js';
 import { Device } from '../game/devices.js';
 import { ElevatorCar, LandingDoors, GBin, T, CAR, carMaterials } from '../entities/elevator.js';
 import { VLRig, vlPatch } from '../entities/vlights.js';
+import { juice } from '../gfx/juice.js';
+import { floatText } from '../ui/floattext.js';
+import { FX } from '../gfx/particles.js';
 
 const PI = Math.PI, TAU = PI * 2;
 const SEG = 3.6;          // floor-to-floor height in the hoistway
@@ -50,6 +57,7 @@ const FIRST_TRAVEL = 0.85, TRAVEL = 0.6, ST_OPEN = 0.12, ST_OPEN_D = 0.28, ST_HO
   }
 })();
 const T_VOID = STOPS[STOPS.length - 1].depart;
+const GLITCH = ['L3V3L 0 // NOT HERE', 'THE P00LROOMS?', 'SIGNAL LOST', 'ROOM 5 IS OCCUPIED', 'D00RS D00RS D00RS'];
 const T_BRAKE_SND = T_VOID + 1.35, T_SLAM = T_BRAKE_SND + 1.2, T_HANDOFF = T_SLAM + 0.3;
 
 // travel distance (m) at time t
@@ -189,6 +197,8 @@ class RideScene {
     this.M.void = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide, fog: false });
     this._shaft();
     this._dust();
+    this.fx = new FX(this.scene);
+    this.fx.ambientDust = false;
     this.vignettes = {
       yellow: this._yellow(), pool: this._pool(), field: this._field(), hotel: this._hotel(), doors: this._doors(),
     };
@@ -467,6 +477,7 @@ export class ElevatorRide {
     this.saved = null;
     this.ended = false;
     this.lastD = 0;
+    this.tilt = 0; this.tiltT = 0; this.tiltV = 0; this.slip = 0; this.slipV = 0; this.dead = 0;
     game.cutscene = { kind: 'ride', t: 0 };
     if (!this.S) { this.active = false; return; }
     // per-ride state of the shared scene
@@ -475,6 +486,8 @@ export class ElevatorRide {
     for (const s of this.S.segments) { s.g.visible = true; s.doors.set(0); }
     this.S.dust.visible = true;
     this.S.car.gate.set(0);
+    this.S.car.root.position.set(0, 0, 0);
+    this.S.car.root.rotation.set(0, 0, 0);
     this.S.car.dial.setLed('B4');
     this.S.car.dial.setNeedle(PI * 0.85 - (5 / 9) * PI * 0.7, true);
     this.S.root.updateMatrixWorld(true);
@@ -512,8 +525,16 @@ export class ElevatorRide {
       this.pitch = l.pitch;
     } else if (this.me) this.yaw = this.me.yaw;
     engine.setView(this.S.scene, this.S.cam);
+    this.S.fx.setPixelScale(innerHeight);
     this.flicker = 0.18;
   }
+
+  // car-space point -> world, sparks off the guide rails / gate
+  _sparks(x, y, z, n = 8, speed = 6) {
+    const S = this.S;
+    S.fx.sparks(S.car.root.localToWorld(_v.set(x, y, z)), n, _v2.set(0, 1, 0), [1, 0.62, 0.25], speed);
+  }
+  _glitchText(txt, col = '#ff7a5a', dur = 1.3) { floatText.notice(txt, { color: col, duration: dur, size: 0.9 }); }
 
   update(dt) {
     if (!this.active) return;
@@ -538,6 +559,7 @@ export class ElevatorRide {
     this._camera(dt);
     this._proxies(dt);
     this._env(dt);
+    this.S.fx.update(dt);
     if (t >= T_HANDOFF && this.handoffReady && !this.ended) this._handoff();
   }
 
@@ -562,16 +584,46 @@ export class ElevatorRide {
     // ---- sound script
     this._once('motor', T_MOTOR, () => { this._snd('elev_motor', { volume: 1 }); this.shake = 0.6; });
     this._once('cable0', T_MOVE - 0.05, () => this._snd('elev_cable', { volume: 0.9 }));
+    // a cable lets go the moment it moves: the car drops, sparks, the lights cut out
+    this._once('lurch', T_MOVE + 0.12, () => {
+      this._snd('cable_snap', { volume: 1 }); this._snd('metal_scream', { volume: 0.7, delay: 0.1 });
+      this.slipV = -2.6; this.tiltT = 0.05; this.blackout = Math.max(this.blackout, 0.22);
+      juice.shake(0.6); juice.hitstop(70); juice.punch(0.05);
+      for (const sx of [-1.25, 1.25]) this._sparks(sx, 2.4, CAR.FRONT, 26, 7);
+      this._glitchText('CABLE 2 OF 4 SEVERED', '#ffb070');
+    });
     STOPS.forEach((s, i) => {
-      this._once(`brk${i}`, s.arrive - 0.12, () => { this._snd('thunk', { volume: 1, pitch: 0.6 }); this._snd('elevator_ding', { volume: 0.8, pitch: s.ding, delay: 0.1 }); this.jolt = 1; });
-      this._once(`open${i}`, s.open, () => { this._snd('elev_doors', { volume: 0.8, pitch: 1.4 }); this._dimOn(s, true); });
+      this._once(`brk${i}`, s.arrive - 0.12, () => {
+        // emergency brake: slam, sparks off the rails, the lights stutter and come back a little dimmer
+        this._snd('thunk', { volume: 1, pitch: 0.6 }); this._snd('elev_brake', { volume: 0.8, pitch: 1.2 }); this._snd('elevator_ding', { volume: 0.7, pitch: s.ding * 0.9, delay: 0.25 });
+        this.jolt = 1.4; this.slipV = -1.4; this.tiltV += (i % 2 ? 1 : -1) * 0.5;
+        juice.shake(0.45); juice.hitstop(60 + i * 8);
+        this.dead = Math.min(0.55, this.dead + 0.09); this.blackout = Math.max(this.blackout, 0.12);
+        for (const sx of [-1.25, 1.25]) this._sparks(sx, 0.2 + Math.random() * 2, CAR.FRONT, 18, 5);
+      });
+      this._once(`open${i}`, s.open, () => {
+        this._snd('elev_doors', { volume: 0.9, pitch: 1.1 }); this._snd('_tear', { volume: 0.6 }); this._dimOn(s, true);
+        this._glitchText(GLITCH[i], i === 3 ? '#ff4a3a' : '#c8f0ff', 1.1);
+      });
       this._once(`close${i}`, s.close, () => { this._snd('elev_doors', { volume: 0.9, pitch: 1.6 }); this._snd('thunk', { volume: 0.7, pitch: 0.9, delay: ST_CLOSE }); });
       this._once(`gone${i}`, s.close + ST_CLOSE, () => this._dimOn(s, false));
       this._once(`go${i}`, s.depart - 0.05, () => { this._snd('elev_cable', { volume: 0.8, pitch: 0.9 + i * 0.05 }); this.shake = Math.max(this.shake, 0.5); });
     });
+    // the main cable snaps: freefall, tilted, red emergency light
+    this._once('snap', T_VOID - 0.05, () => {
+      this._snd('cable_snap', { volume: 1.2, pitch: 0.8 }); this._snd('metal_scream', { volume: 1, delay: 0.05 }); this._snd('_crack', { volume: 0.8 });
+      this.tiltT = 0.13; this.slipV = -3; juice.shake(0.9); juice.hitstop(120); juice.flash(0.3); juice.punch(0.08);
+      for (let k = 0; k < 4; k++) this._sparks((k % 2 ? 1 : -1) * 1.25, 2.4 - k * 0.3, CAR.FRONT, 30, 9);
+      this._glitchText('MAIN CABLE LOST // FREEFALL', '#ff4a3a', 1.8);
+    });
     this._once('void', T_VOID + 0.3, () => { this._snd('void_drone', { volume: 0.9 }); this._snd('whisper', { volume: 0.7, delay: 0.6 }); this._snd('teleport_whoosh', { volume: 0.6 }); });
-    this._once('brake', T_BRAKE_SND, () => this._snd('elev_brake', { volume: 1.1 }));
-    this._once('slam', T_SLAM, () => { this.jolt = 2.2; this.shake = 1.4; this._snd('collapse_rumble', { volume: 0.5 }); this.blackout = Math.max(this.blackout, 0.45); });
+    this._once('scream2', T_VOID + 0.9, () => this._snd('metal_scream', { volume: 0.8, pitch: 0.7 }));
+    this._once('brake', T_BRAKE_SND, () => { this._snd('elev_brake', { volume: 1.1 }); this.tiltT = 0.04; });
+    this._once('slam', T_SLAM, () => {
+      this.jolt = 2.6; this.shake = 1.6; this.slipV = -4; this._snd('collapse_rumble', { volume: 0.7 }); this._snd('_boom', { volume: 0.9 }); this._snd('crate_land', { volume: 1 });
+      this.blackout = Math.max(this.blackout, 0.6);
+      juice.shake(1); juice.hitstop(200); juice.flash(0.85); juice.punch(0.12);
+    });
     // travel speed -> wind + rattle loops
     const D = travelAt(t), v = (D - this.lastD) / Math.max(dt, 1e-3);
     this.lastD = D;
@@ -579,7 +631,9 @@ export class ElevatorRide {
     this._loop('wind_fall', speed > 0.04, 0.25 + speed * 0.9);
     this.rattleT = (this.rattleT || 0) - dt;
     if (speed > 0.25 && this.rattleT <= 0) { this.rattleT = 1.5; this._snd('elev_rattle', { volume: 0.4 + speed * 0.6 }); }
-    this.shake = Math.max(this.shake - dt * 0.9, speed * 0.55);
+    this.shake = Math.max(this.shake - dt * 0.9, speed * 0.7);
+    if (speed > 0.2 && Math.random() < dt * (t > T_VOID ? 30 : 10)) this._sparks((Math.random() < 0.5 ? -1 : 1) * 1.26, Math.random() * 2.4, CAR.FRONT + 0.02, 5, 4 + speed * 6);
+    if (speed > 0.5 && Math.random() < dt * 0.35) this._snd('metal_scream', { volume: 0.35 + speed * 0.3, pitch: 0.8 + Math.random() * 0.5 });
     // ---- shaft segments around the car
     const inVoid = t > T_VOID + 0.25;
     const n0 = Math.round(D / SEG);
@@ -592,7 +646,10 @@ export class ElevatorRide {
       const st = STOPS.find((s) => s.floor === n);
       let f = 0;
       if (st && t >= st.open && t < st.close + ST_CLOSE) f = t < st.close ? clamp((t - st.open) / ST_OPEN_D, 0, 1) : 1 - clamp((t - st.close) / ST_CLOSE, 0, 1);
-      seg.doors.set(f);
+      if (f > 0 && f < 1) f *= 0.82 + 0.18 * Math.abs(Math.sin(t * 37 + n));
+      seg.doors.set(st && (st.floor % 2) ? Math.min(f, 0.72) : f);
+      seg.doors.leafR.rotation.z = st && (st.floor % 2) ? f * 0.07 : 0;
+      seg.doors.leafL.rotation.z = st && st.floor === 18 ? -f * 0.05 : 0;
       // cage lamps: some are dead, some flicker
       const dead = (n * 7) % 5 === 3, fl = (n * 13) % 4 === 1 && Math.random() < 0.3;
       seg.lamp.visible = !dead && !fl;
@@ -627,6 +684,8 @@ export class ElevatorRide {
     if (t > T_MOTOR && t < T_MOTOR + 0.6) k = Math.random() < 0.4 ? 0.15 : 1;
     if (speed > 0.3 && Math.random() < dt * 4) this.flicker = 0.06 + Math.random() * 0.1;
     if (this.flicker > 0) k = 0.12;
+    k *= 1 - this.dead;
+    if (t > T_MOVE && Math.random() < dt * (1.5 + this.dead * 8)) this.flicker = 0.04 + Math.random() * 0.08;
     if (inVoid && t < T_SLAM) { k = 0.32 + 0.1 * Math.sin(t * 5); lc = 0xff2010; }
     if (t >= T_SLAM) { k = this.handoffReady ? 0 : 0.18 + 0.05 * Math.sin(t * 3); lc = 0xff2010; }
     if (this.blackout > 0) { this.blackout -= dt; k = 0; }
@@ -678,7 +737,16 @@ export class ElevatorRide {
     const asp = innerWidth / Math.max(1, innerHeight);
     if (Math.abs(cam.aspect - asp) > 1e-3) { cam.aspect = asp; cam.updateProjectionMatrix(); }
     this.jolt = Math.max(0, this.jolt - dt * 4);
-    const sh = this.shake * 0.012 + this.jolt * 0.02;
+    // the car hangs crooked on what is left of its cables (springy tilt, sudden drops)
+    this.tiltV += ((this.tiltT - this.tilt) * 40 - this.tiltV * 5) * dt;
+    this.tilt += this.tiltV * dt;
+    this.slipV += (-this.slip * 60 - this.slipV * 7) * dt;
+    this.slip += this.slipV * dt;
+    S.car.root.rotation.z = this.tilt + Math.sin(t * 17) * this.shake * 0.004;
+    S.car.root.rotation.x = Math.sin(t * 11) * this.shake * 0.003;
+    S.car.root.position.y = this.slip * 0.12;
+    S.car.syncLights();
+    const sh = this.shake * 0.016 + this.jolt * 0.028;
     const bob = -Math.sin(Math.min(1, this.jolt) * PI) * 0.05 * Math.min(1, this.jolt);
     S.root.updateMatrixWorld(true);
     const p = S.car.root.localToWorld(_v.set(this.rel.x, EYE + bob, this.rel.z));
@@ -770,8 +838,10 @@ export class ElevatorRide {
 
 // ------------------------------------------------------------------------------------------ the arrival car
 // The car standing in the level (Level 0: the elevator alcove next to the camp; landmarks.elevator =
-// { x, z, yaw } is the car floor centre, the gate faces (sin yaw, 0, cos yaw)). Host-authoritative gate:
-// it opens once every rider has arrived (or after a timeout); then the mission gets onArrival().
+// { x, z, yaw } is the car floor centre, the gate faces (sin yaw, 0, cos yaw)). Host-authoritative: once
+// every rider has arrived (or after a timeout) the car shudders, bursts its gate, spins up violently,
+// flings the clones out onto the floor (each peer tumbles its own clone) and implodes into a glitch;
+// then the mission gets onArrival().
 export class ArrivalElevator extends Device {
   constructor(world, at, desc) {
     super(world, 'arrival_elevator');
@@ -786,6 +856,9 @@ export class ArrivalElevator extends Device {
     this.gateF = 0;
     this.t = 0;
     this.notifiedArrival = false;
+    this.base = this.root.position.clone();
+    this.spin = 0; this.spinV = 0;
+    this.fired = new Set();
     this.car.dial.setLed('0');
     this.car.dial.setNeedle(PI * 0.85 - (9 / 9) * PI * 0.7, true);
     this.range = 2.4;
@@ -816,25 +889,120 @@ export class ArrivalElevator extends Device {
     }
   }
   onState(s, fullSync) {
-    if (s.open && fullSync) { this.gateF = 1; this.openT = 99; this.notifiedArrival = true; return; }
-    if (s.open) {
-      this.openT = 0;
-      const p = this.root.localToWorld(_v.set(0, 1.8, 1.2));
-      audio.play('elev_gate', { pos: p, volume: 1, delay: 0.35 });
+    if (s.open && fullSync) { this.openT = 99; this._vanish(true); return; }
+    if (s.open) this.openT = 0;
+  }
+  _once(k, at, fn) { if (this.openT >= at && !this.fired.has(k)) { this.fired.add(k); fn(); } }
+  _inside(p) { return this.car.containsLocal(this.car.root.worldToLocal(_v.copy(p)), -0.15); }
+  _notify() {
+    if (this.notifiedArrival) return;
+    this.notifiedArrival = true;
+    try { this.world.level?.mission?.onArrival?.({ kind: 'elevator', host: net.isHost, riders: this.riderIds.slice() }); } catch (e) { console.error('[arrival] mission.onArrival', e); }
+  }
+  _vanish(quiet) {
+    if (this.gone) return;
+    this.gone = true;
+    this.root.visible = false;
+    for (const c of this.colliders) c?.setEnabled?.(false);
+    this.car.gateCollider?.setEnabled(false);
+    if (!quiet) {
+      const p = this.base.clone().setY(1.2);
+      this.world.fx.sparks(p, 70, null, [0.6, 0.85, 1], 9);
+      this.world.fx.flashLight(p, 0x9fc8ff, 30, 0.25, 12);
+      juice.flash(this._near(10) ? 0.35 : 0.1);
     }
+    this._notify();
+  }
+  _near(d) { const l = this.world.game.local; return l.world && l.pos.distanceTo(this.base) < d; }
+  // spin up, fling, implode (every peer, timed from the open message)
+  _fling(dt) {
+    const u = this.openT, g = this.world.game, l = g.local, R = this.root;
+    const head = () => R.localToWorld(_v.set(0, 2.2, 0)).clone();
+    this._once('wake', 0, () => {
+      audio.play('elevator_ding', { pos: head(), volume: 0.9, pitch: 0.8 });
+      audio.play('collapse_rumble', { pos: head(), volume: 0.6 });
+      audio.play('robo_whir', { pos: head(), volume: 0.8, pitch: 0.6, delay: 0.2 });
+      if (this._near(6)) juice.shake(0.3);
+    });
+    this._once('gate', 0.45, () => { audio.play('elev_gate', { pos: head(), volume: 1.2, pitch: 1.3 }); audio.play('metal_scream', { pos: head(), volume: 0.9 }); });
+    this._once('spin', 0.65, () => { audio.play('elev_motor', { pos: head(), volume: 1, pitch: 1.8 }); audio.play('metal_scream', { pos: head(), volume: 1, pitch: 1.4, delay: 0.2 }); });
+    const sh = u < 0.65 ? sstep(0, 0.65, u) * 0.035 : 0.02;
+    this.gateF = clamp((u - 0.45) / 0.18, 0, 1);
+    this.spinV = u < 0.65 ? 0 : Math.min(19, (u - 0.65) * 34);
+    this.spin += this.spinV * dt;
+    R.position.set(this.base.x + (Math.random() - 0.5) * sh, this.base.y + Math.max(0, (u - 0.8) * 0.4) + (Math.random() - 0.5) * sh, this.base.z + (Math.random() - 0.5) * sh);
+    R.rotation.y = this.yaw + this.spin;
+    R.rotation.z = Math.sin(u * 23) * Math.min(0.06, this.spinV * 0.004);
+    // riding the spin until the floor lets go
+    if (u < 0.95 && l.world && !l.dead && this._inside(l.pos)) { l.yaw += this.spinV * dt; g.cutscene = { kind: 'fling', t: 0 }; }
+    this._once('fling', 0.95, () => {
+      for (const c of this.colliders) c?.setEnabled?.(false);
+      this.car.gateCollider?.setEnabled(false);
+      const gate = _v2.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+      if (l.world && !l.dead && this._inside(l.pos)) {
+        const rad = l.pos.clone().sub(this.base).setY(0);
+        const tan = new THREE.Vector3(-rad.z, 0, rad.x).multiplyScalar(this.spinV * 0.35);
+        const v = gate.clone().multiplyScalar(7.5).addScaledVector(rad, 2.5).add(tan.clampLength(0, 4));
+        l.arrivalGrace = Math.max(l.arrivalGrace || 0, 2.5);
+        l.applyYank([v.x, 4.6, v.z]);
+        this.tumble = { t: 0, land: -1, r: (Math.random() < 0.5 ? -1 : 1) * (2.2 + Math.random() * 1.2), p: 1.4 + Math.random() * 1.2 };
+        g.cutscene = { kind: 'fling', t: 0 };
+        juice.shake(0.7); juice.hitstop(60);
+        audio.play('throw_whoosh', { volume: 1 });
+        audio.play('gasp', { volume: 0.8, delay: 0.1 });
+      }
+      if (net.isHost) {
+        for (const p of this.world.props.props.values()) {
+          if (p.dead || !this._inside(p.root.position)) continue;
+          const rad = p.root.position.clone().sub(this.base).setY(0);
+          const v = gate.clone().multiplyScalar(5 + Math.random() * 3).addScaledVector(rad, 3).setY(3 + Math.random() * 2);
+          this.world.props.teleport(p, p.root.position.clone().setY(p.root.position.y + 0.15), p.root.quaternion, v);
+        }
+      }
+    });
+    // implode into a glitch
+    this._once('implode', 1.5, () => {
+      audio.play('teleport_whoosh', { pos: head(), volume: 1, pitch: 0.7 });
+      audio.play('_boom', { pos: head(), volume: 0.8, delay: 0.3 });
+      if (this._near(14)) engine.post.params.uGlitch.value = Math.max(engine.post.params.uGlitch.value, 0.55);
+    });
+    if (u > 1.5) {
+      const k = sstep(1.5, 1.85, u);
+      R.scale.set(Math.max(0.001, 1 - k), 1 + Math.sin(k * PI) * 0.9, Math.max(0.001, 1 - k * 1.05));
+      R.position.y += k * 1.2;
+    }
+    if (u > 1.85) this._vanish(false);
+  }
+  // this peer's clone, thrown out: the camera tumbles until it hits the floor, then shakes it off
+  _tumble(dt) {
+    const T2 = this.tumble, g = this.world.game, l = g.local;
+    if (!T2) return;
+    T2.t += dt;
+    if (T2.land < 0 && T2.t > 0.25 && (l.grounded || T2.t > 2.5)) {
+      T2.land = T2.t;
+      juice.shake(0.65); juice.hitstop(110); juice.punch(0.05);
+      audio.play('crate_land', { volume: 0.9 }); audio.play('robo_clunk', { volume: 0.7 }); audio.play('hurt', { volume: 0.5, delay: 0.1 });
+      this.world.fx.dustBurst(l.pos.clone().setY(0.1), 26, [0.62, 0.56, 0.36], 1.2);
+    }
+    const flyK = 1 - Math.exp(-T2.t * 3.2);
+    const rec = T2.land < 0 ? 0 : sstep(0.15, 0.9, T2.t - T2.land);
+    const cam = engine.camera;
+    _e.set(T2.p * flyK * (1 - rec) * Math.sin(T2.t * 6.0), 0, T2.r * flyK * (1 - rec) + (T2.land >= 0 ? Math.sin((T2.t - T2.land) * 9) * 0.05 * (1 - rec) : 0), 'YXZ');
+    cam.quaternion.multiply(_q.setFromEuler(_e));
+    if (T2.land >= 0) cam.position.y -= 0.9 * (1 - sstep(0.1, 1.0, T2.t - T2.land));
+    if (rec >= 1) { this.tumble = null; if (g.cutscene?.kind === 'fling') g.cutscene = null; }
   }
   update(dt) {
     dt = Math.min(dt, 0.1);
     this.t += dt;
     if (net.isHost && !this.state.open && this.riderIds.length === 0 && this.t > 2) this.setState({ open: 1 });
     if (net.isHost && !this.state.open && Math.floor(this.t) !== Math.floor(this.t - dt)) this._check();
+    this._tumble(dt);
+    if (this.gone) return;
     if (this.state.open) {
       this.openT = (this.openT ?? 0) + dt;
-      this.gateF = clamp((this.openT - 0.35) / 0.8, 0, 1);
-      if (!this.notifiedArrival && this.openT > 0.6) {
-        this.notifiedArrival = true;
-        try { this.world.level?.mission?.onArrival?.({ kind: 'elevator', host: net.isHost, riders: this.riderIds.slice() }); } catch (e) { console.error('[arrival] mission.onArrival', e); }
-      }
+      this._fling(dt);
+      if (this.gone) return;
     }
     this.car.gate.set(this.gateF);
     this.car.gateCollider?.setEnabled(this.gateF < 0.6);
@@ -844,10 +1012,15 @@ export class ArrivalElevator extends Device {
       this.lightIn += dt;
       k = this.lightIn < 0.15 ? 0 : this.lightIn < 0.3 ? 0.8 : this.lightIn < 0.4 ? 0.1 : Math.min(0.95, (this.lightIn - 0.4) * 2.5);
     }
+    if (this.state.open) k = this.openT > 0.6 ? (Math.random() < 0.4 ? 0.1 : 1.2) : k;
     this.car.setLight(k + (Math.random() < 0.003 ? -0.5 : 0));
+    if (this.state.open) this.car.syncLights();
     this.car.update(dt);
   }
-  dispose() { super.dispose(); this.car.dispose(); }
+  dispose() {
+    if (this.tumble && this.world.game.cutscene?.kind === 'fling') this.world.game.cutscene = null;
+    super.dispose(); this.car.dispose();
+  }
 }
 
 // ------------------------------------------------------------------------------------------ game.js hooks

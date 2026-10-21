@@ -314,6 +314,127 @@ export class Dial {
   dispose() { this.tex.dispose(); this.faceMesh.material.dispose(); }
 }
 
+// ------------------------------------------------------------------------------------------ split-flap board
+// Mechanical split-flap display (the HQ floor indicator / shift-code board, the keypad readout). Each cell
+// is a static top half, a static bottom half and a flap hinged on the split: set(text) makes every cell
+// rattle through the glyph drum to its character (the old flap falls over and shows the next bottom half).
+// Glyphs live in one shared atlas, also used for key caps (glyphUV).
+export const FLAP_GLYPHS = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-?!/:.+#>';
+let FLAP = null;
+export function flapAtlas() {
+  if (FLAP) return FLAP;
+  const cols = 8, rows = Math.ceil(FLAP_GLYPHS.length / cols), cw = 64, ch = 96;
+  const c = canvas(cols * cw, rows * ch), x = c.getContext('2d');
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  for (let i = 0; i < FLAP_GLYPHS.length; i++) {
+    const gx = (i % cols) * cw, gy = Math.floor(i / cols) * ch;
+    const g = x.createLinearGradient(0, gy, 0, gy + ch);
+    g.addColorStop(0, '#24221f'); g.addColorStop(0.48, '#141312'); g.addColorStop(0.52, '#0c0c0b'); g.addColorStop(1, '#1e1c1a');
+    x.fillStyle = g; x.fillRect(gx + 2, gy + 2, cw - 4, ch - 4);
+    x.font = 'bold 76px "Arial Narrow", "Helvetica Neue", Arial';
+    const k = Math.min(1, (cw - 12) / Math.max(1, x.measureText(FLAP_GLYPHS[i]).width));
+    x.save(); x.translate(gx + cw / 2, gy + ch / 2 + 4); x.scale(k, 1);
+    x.fillStyle = '#efe4c8'; x.fillText(FLAP_GLYPHS[i], 0, 0);
+    x.restore();
+  }
+  const tex = ctex(c);
+  tex.anisotropy = 4;
+  FLAP = { tex, cols, rows, cw, ch, W: cols * cw, H: rows * ch };
+  return FLAP;
+}
+export function glyphIndex(ch) { const i = FLAP_GLYPHS.indexOf(String(ch || ' ').toUpperCase()); return i < 0 ? 0 : i; }
+// uv rect of glyph i on a PlaneGeometry; half: 0 full, 1 top, 2 bottom
+export function glyphUV(geo, i, half = 0) {
+  const A = flapAtlas();
+  const gx = (i % A.cols) * A.cw, gy = Math.floor(i / A.cols) * A.ch;
+  const y0 = gy + (half === 2 ? A.ch / 2 : 0), y1 = gy + (half === 1 ? A.ch / 2 : A.ch);
+  const u0 = gx / A.W, u1 = (gx + A.cw) / A.W, vt = 1 - y0 / A.H, vb = 1 - y1 / A.H;
+  const uv = geo.attributes.uv;
+  uv.setXY(0, u0, vt); uv.setXY(1, u1, vt); uv.setXY(2, u0, vb); uv.setXY(3, u1, vb);
+  uv.needsUpdate = true;
+}
+export class FlipBoard {
+  // n cells of w x h (m); opts: { gap, glow, rig, flip (s per flap), onFlip(count) }
+  constructor(n, w, h, opts = {}) {
+    this.n = n; this.w = w; this.h = h;
+    this.flipDur = opts.flip ?? 0.055;
+    this.onFlip = opts.onFlip || null;
+    this.group = new THREE.Group();
+    const A = flapAtlas();
+    this.mat = new THREE.MeshStandardMaterial({ map: A.tex, emissive: 0xffffff, emissiveMap: A.tex, emissiveIntensity: opts.glow ?? 0.3, roughness: 0.5, metalness: 0.1 });
+    if (opts.rig) vlPatch(this.mat, opts.rig);
+    const gap = opts.gap ?? w * 0.1, half = h / 2, sp = 0.0012;
+    const plane = (y, z, rx = 0) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, half - sp), this.mat); m.position.set(0, y, z); m.rotation.x = rx; return m; };
+    this.cells = [];
+    for (let i = 0; i < n; i++) {
+      const g = new THREE.Group();
+      g.position.x = (i - (n - 1) / 2) * (w + gap);
+      const top = plane(half / 2 + sp / 2, 0), bot = plane(-half / 2 - sp / 2, 0);
+      const pivot = new THREE.Group();
+      pivot.position.z = 0.0015;
+      const front = plane(half / 2 + sp / 2, 0.0004), back = plane(half / 2 + sp / 2, -0.0004, PI);
+      pivot.add(front, back);
+      g.add(top, bot, pivot);
+      this.group.add(g);
+      const c = { g, top, bot, pivot, front, back, cur: 0, target: 0, t: -1, delay: 0 };
+      this._show(c, 0);
+      this.cells.push(c);
+    }
+    this.settled = true;
+  }
+  _show(c, i) {
+    glyphUV(c.top.geometry, i, 1); glyphUV(c.bot.geometry, i, 2); glyphUV(c.front.geometry, i, 1);
+    c.pivot.rotation.x = 0; c.back.visible = false;
+  }
+  // text is centred (or left-aligned with opts.left); stagger makes the cells start one after another
+  set(text, opts = {}) {
+    let s = String(text ?? '').toUpperCase().slice(0, this.n);
+    if (opts.left) s = s.padEnd(this.n, ' ');
+    else { const p = Math.floor((this.n - s.length) / 2); s = (' '.repeat(p) + s).padEnd(this.n, ' '); }
+    if (s === this.text) return;
+    this.text = s;
+    this.cells.forEach((c, i) => {
+      const tg = glyphIndex(s[i]);
+      if (tg === c.target) return;
+      c.target = tg;
+      if (c.t < 0) c.delay = (opts.stagger ?? 0.035) * i;
+    });
+    this.settled = false;
+  }
+  update(dt) {
+    if (this.settled) return;
+    let busy = false, flips = 0;
+    const N = FLAP_GLYPHS.length;
+    for (const c of this.cells) {
+      if (c.cur === c.target && c.t < 0) continue;
+      busy = true;
+      if (c.delay > 0) { c.delay -= dt; continue; }
+      if (c.t < 0) {
+        // start one flap: cur -> next
+        const nx = (c.cur + 1) % N;
+        c.next = nx;
+        glyphUV(c.top.geometry, nx, 1);
+        glyphUV(c.front.geometry, c.cur, 1);
+        glyphUV(c.back.geometry, nx, 2);
+        c.back.visible = true;
+        c.t = 0;
+      }
+      c.t += dt;
+      const k = Math.min(1, c.t / this.flipDur);
+      c.pivot.rotation.x = k * k * PI; // gravity: the flap accelerates over
+      if (k >= 1) {
+        c.cur = c.next;
+        c.t = -1;
+        this._show(c, c.cur);
+        flips++;
+      }
+    }
+    if (flips && this.onFlip) this.onFlip(flips);
+    if (!busy) this.settled = true;
+  }
+  dispose() { for (const c of this.cells) c.g.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); this.mat.dispose(); }
+}
+
 // ------------------------------------------------------------------------------------------ scissor gate
 // Brass lazy-tong gate across the car front: 9 channel posts and crossed links in 3 tiers, collapsing to
 // the left jamb. Two InstancedMeshes (bars, rivets).

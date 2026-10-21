@@ -5,8 +5,10 @@ import * as THREE from 'three';
 import { net } from '../net/net.js';
 import { GROUPS } from '../physics/physics.js';
 
-const MAX_FORCE = 340;   // N per player (incl. gravity compensation)
+const MAX_FORCE = 340;   // N per player (incl. gravity compensation) at pull power 1
 const THROW_IMPULSE = 11;
+const FAR_THROW = 1.9;   // [Shift] far-throw multiplier
+// grab messages carry f = pull power (0.5 at the start, ramping to ~1.7 while RMB is held: hold to pull harder)
 
 const _p = new THREE.Vector3();
 const _v = new THREE.Vector3();
@@ -27,7 +29,7 @@ export class GrabServer {
   onGrab(d, from) {
     const prev = this.grabs.get(from);
     if (d.release) {
-      if (prev) this._release(from, prev, d.throw);
+      if (prev) this._release(from, prev, d.throw, d.far ? FAR_THROW * (0.8 + Math.min(1.7, d.f || 1) * 0.25) : 1);
       return;
     }
     const prop = this.world.props.get(d.id);
@@ -46,11 +48,12 @@ export class GrabServer {
       lp: new THREE.Vector3().fromArray(d.lp),
       target: new THREE.Vector3().fromArray(d.tp),
       rot: d.r || null,
+      f: Math.max(0.3, Math.min(1.8, d.f ?? 1)),
       t: performance.now(),
     });
   }
 
-  _release(playerId, g, throwVec) {
+  _release(playerId, g, throwVec, mult = 1) {
     this.grabs.delete(playerId);
     const prop = this.world.props.get(g.id);
     if (!prop) return;
@@ -58,7 +61,7 @@ export class GrabServer {
     if (prop.body && prop.grabbers.size === 0) this.world.physics.setBodyGroups(prop.body, GROUPS.prop);
     if (throwVec && prop.body) {
       const m = prop.body.mass();
-      const imp = Math.min(THROW_IMPULSE * 1.4, Math.max(1.5, m * 9)) * Math.min(1, 14 / Math.max(m, 1) + 0.15);
+      const imp = Math.min(THROW_IMPULSE * 1.4 * mult, Math.max(1.5, m * 9 * mult)) * Math.min(1, 14 / Math.max(m, 1) + 0.15);
       _v.fromArray(throwVec).normalize().multiplyScalar(imp);
       prop.body.applyImpulse(_v, true);
       prop.body.applyTorqueImpulse({ x: (Math.random() - 0.5) * 0.2 * m, y: (Math.random() - 0.5) * 0.2 * m, z: (Math.random() - 0.5) * 0.2 * m }, true);
@@ -98,12 +101,13 @@ export class GrabServer {
       // desired velocity toward target
       const err = _t.subVectors(g.target, _p);
       const dist = err.length();
-      const desired = err.multiplyScalar(Math.min(14, 11 + dist * 4) * Math.min(1, 0.6 + dist));
-      if (desired.length() > 12) desired.setLength(12);
+      const pf = g.f ?? 1;
+      const desired = err.multiplyScalar(Math.min(14, 11 + dist * 4) * Math.min(1, 0.6 + dist) * (0.75 + pf * 0.25));
+      if (desired.length() > 12 * (0.8 + pf * 0.2)) desired.setLength(12 * (0.8 + pf * 0.2));
       _i.subVectors(desired, _v).multiplyScalar(m * 0.5);
       // gravity compensation shared between grabbers
       _i.y += (m * 11.5 * dt) / n;
-      const maxImp = MAX_FORCE * dt;
+      const maxImp = MAX_FORCE * pf * (this.world.carryMul || 1) * dt; // carryMul: CARRY HARNESS upgrade (game/economy.js)
       if (_i.length() > maxImp) _i.setLength(maxImp);
       b.applyImpulseAtPoint(_i, _p, true);
       // stabilise spin while held; rotate on request

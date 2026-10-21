@@ -140,8 +140,8 @@ export class PartygoerAI extends Agent {
 
   _drop() { this.carry = null; }
 
-  onHit(dir) {
-    this.hp--;
+  // combat.js reaction hook (damage / death are handled there)
+  onHurt(dir) {
     this.vel.addScaledVector(dir, 4);
     this._drop();
     this.stunT = 0.8;
@@ -149,7 +149,6 @@ export class PartygoerAI extends Agent {
     this.setState('pose');
     this.cooldown = 6;
     this.mgr.sound('party_giggle', this.pos, 1);
-    return this.hp <= 0;
   }
 
   onFlash() { this.stunT = 2.5; this.vel.set(0, 0, 0); }

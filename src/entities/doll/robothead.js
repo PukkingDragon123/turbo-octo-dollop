@@ -306,9 +306,10 @@ export function buildHead(B, face = {}) {
       const th = bth + t * 0.13 * (kind === 'cyclops' ? 0.8 : 1), ph = bph + 0.022 * (1 - t * t) - 0.012 * t * s * (kind === 'cyclops' ? 1 : -1) * 0.5;
       return headPoint(th, ph, plate(th, ph) + 0.0016, V()).sub(o);
     });
-    const g = tubeR(pts, (t) => 0.0024 * (0.55 + 0.45 * Math.sin(PI * Math.min(1, t * 1.1 + 0.05))), 7);
-    g.scale(1, 0.9, 0.6);
-    B.rigid('brow' + S, 'shell', vcol(g, [0.3, 0.2, 0.15]));
+    // slim moulded ridge under the painted hair-stroke brow (robotface.js)
+    const g = tubeR(pts, (t) => 0.0015 * (0.5 + 0.5 * Math.sin(PI * Math.min(1, t * 1.1 + 0.05))), 7);
+    g.scale(1, 0.9, 0.5);
+    B.rigid('brow' + S, 'shell', vcol(g, [0.2, 0.135, 0.1]));
   }
   // ---- plate screws (corners) + temple screws
   for (const [th, ph] of [[-0.98, 0.56], [0.98, 0.56], [-0.92, -0.72], [0.92, -0.72]]) {

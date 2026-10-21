@@ -124,6 +124,35 @@ export const ITEM = {
   sandbag: { name: 'Sandbag' },
   tire: { name: 'Tire' },
 
+  // --- Level 0 fauna, fungi, cooking & scavenging (game/bio.js, game/cooking.js; models: entities/models_bio.js) ---
+  // raw meat / fungus is edible but risky; cooked in the camp-stove pan it feeds and heals more; burnt is barely food
+  mole_meat: { name: 'Raw Mole Meat', pocket: true, use: 'eat', fx: { hunger: 14, health: -6, sanity: -4, infection: 8 }, sell: 6 },
+  mole_meat_cooked: { name: 'Roast Mole', pocket: true, use: 'eat', fx: { hunger: 50, health: 14, stamina: 15, sanity: 4 }, sell: 14 },
+  mole_meat_burnt: { name: 'Charred Mole', pocket: true, use: 'eat', fx: { hunger: 18, health: -2, thirst: -10, sanity: -3 }, sell: 2 },
+  crawler_meat: { name: 'Crawler Limb', pocket: true, use: 'eat', fx: { hunger: 18, health: -10, sanity: -12, infection: 15 }, sell: 10 },
+  crawler_meat_cooked: { name: 'Fried Crawler Limb', pocket: true, use: 'eat', fx: { hunger: 42, health: 8, sanity: -4 }, sell: 16 },
+  crawler_meat_burnt: { name: 'Burnt Crawler Limb', pocket: true, use: 'eat', fx: { hunger: 14, health: -4, thirst: -8, sanity: -6 }, sell: 3 },
+  fungus_black: { name: 'Black Mold Cap', pocket: true, use: 'eat', fx: { hunger: 6, health: -5, sanity: -8 }, sell: 18 },
+  fungus_black_cooked: { name: 'Fried Mold Caps', pocket: true, use: 'eat', fx: { hunger: 16, health: 4, sanity: 2 }, sell: 10 },
+  fungus_black_burnt: { name: 'Burnt Mold Caps', pocket: true, use: 'eat', fx: { hunger: 6, health: -2, thirst: -8 }, sell: 1 },
+  fungus_glow: { name: 'Glowcap', pocket: true, use: 'eat', fx: { hunger: 5, sanity: -14, stamina: 25 }, sell: 24 },
+  fungus_glow_cooked: { name: 'Toasted Glowcaps', pocket: true, use: 'eat', fx: { hunger: 12, sanity: 8, stamina: 15 }, sell: 12 },
+  fungus_glow_burnt: { name: 'Burnt Glowcaps', pocket: true, use: 'eat', fx: { hunger: 6, health: -2, thirst: -8 }, sell: 1 },
+  fungus_shelf: { name: 'Carpet Bracket', pocket: true, use: 'eat', fx: { hunger: 10, health: -2 }, sell: 12 },
+  fungus_shelf_cooked: { name: 'Seared Bracket', pocket: true, use: 'eat', fx: { hunger: 28, health: 8 }, sell: 8 },
+  fungus_shelf_burnt: { name: 'Burnt Bracket', pocket: true, use: 'eat', fx: { hunger: 6, health: -2, thirst: -8 }, sell: 1 },
+  fungus_puff: { name: 'Spore Puffball', pocket: true, use: 'eat', fx: { hunger: 8, thirst: -4, sanity: -6 }, sell: 14 },
+  fungus_puff_cooked: { name: 'Roasted Puffball', pocket: true, use: 'eat', fx: { hunger: 24, health: 6, sanity: 3 }, sell: 8 },
+  fungus_puff_burnt: { name: 'Burnt Puffball', pocket: true, use: 'eat', fx: { hunger: 6, health: -2, thirst: -8 }, sell: 1 },
+  canned_food_hot: { name: 'Hot Mystery Stew', pocket: true, use: 'eat', fx: { hunger: 70, thirst: -2, health: 10, sanity: 8 }, sell: 6 },
+  camp_stove: { name: 'Camp Stove', sell: 0 },
+  supply_box: { name: 'Supply Crate', breakF: 2600, into: ['plank', 'plank', 'screws'], dismantle: ['plank', 'plank', 'screws', 'metal_scrap'] },
+  sleeping_bag: { name: 'Sleeping Bag', sleep: true, dismantle: ['fabric_scrap', 'fabric_scrap'] },
+  tent_ruin: { name: 'Collapsed Tent', dismantle: ['fabric_scrap', 'fabric_scrap', 'metal_scrap'] },
+  trolley_broken: { name: 'Broken Trolley', dismantle: ['metal_scrap', 'metal_scrap', 'plank', 'screws'] },
+  board: { name: 'Plywood Board', dismantle: ['plank', 'plank'] },
+  note_scribble: { name: 'Scribbled Note', sell: 0 },
+
   // --- mission devices that are physics props ---
   radio: { name: 'Field Radio', mission: true, device: 'radio' },
   supply_crate: { name: 'Supply Crate', device: 'crate' },
@@ -141,7 +170,32 @@ export const ITEM = {
   trolley: { name: 'Wheel Trolley', sell: 0, dismantle: ['plank', 'metal_scrap', 'screws'] },
   distorter: { name: 'Distorter', sell: 0, dismantle: ['wire_spool', 'metal_scrap'] },
   field_bench: { name: 'Field Workbench', sell: 0, dismantle: ['plank', 'plank', 'metal_scrap', 'screws'] },
+
+  // --- player & combat (game/player.js, game/tools.js) ---
+  // plasma syringe: refills the mechanical heart's plasma chamber (first-person heart-patch animation)
+  plasma_syringe: { name: 'Plasma Syringe', pocket: true, use: 'heal', fx: { health: 35, bleed: -1, blood: 400 }, weight: 0.3 },
+  // caster wheel: attach it to a board / crate with the multitool and it spins on a real axle (DIY carts)
+  wheel: { name: 'Caster Wheel', pocket: true, material: true, wheel: true, weight: 1.2, sell: 6 },
+
+  // --- company-store gear & quest items (game/economy.js; models: entities/items/shopitems.js) ---
+  //  weapon: { dmg (hits per swing), range (m), cd (s), knock, ranged }   armor: { slot, mul (damage taken x) }
+  //  shield: damage taken x while held   upgrade: team upgrade installed with [E]   quest: counted by the crusher
+  weapon_pipe: { name: 'Lead Pipe', pocket: true, use: 'swing', weapon: { dmg: 1, range: 2.0, cd: 0.5, knock: 1.3 }, sell: 60 },
+  bat: { name: 'Nail Bat', pocket: true, use: 'swing', weapon: { dmg: 2, range: 2.1, cd: 0.62, knock: 1.7 }, sell: 90 },
+  machete: { name: 'Machete', pocket: true, use: 'swing', weapon: { dmg: 3, range: 2.0, cd: 0.42, knock: 0.8 }, sell: 150 },
+  nailgun: { name: 'Nail Gun', pocket: true, use: 'swing', weapon: { dmg: 2, range: 22, cd: 0.3, ranged: true }, sell: 260 },
+  hard_hat: { name: 'Hard Hat', armor: { slot: 'head', mul: 0.85 }, sell: 60 },
+  padded_vest: { name: 'Padded Vest', armor: { slot: 'body', mul: 0.7 }, sell: 120 },
+  riot_shield: { name: 'Riot Shield', pocket: true, shield: 0.55, sell: 180 },
+  up_battery: { name: 'Tool Battery', upgrade: 'battery', sell: 0 },
+  up_carry: { name: 'Carry Harness', upgrade: 'carry', sell: 0 },
+  up_plasma: { name: 'Plasma Tank', upgrade: 'plasma', sell: 0 },
+  up_sanity: { name: 'Sanity Dampener', upgrade: 'sanity', sell: 0 },
+  case_file: { name: 'Case File', pocket: true, quest: 'file', sell: 800 },
 };
+
+// Level price multiplier (set by the level's mission from LEVEL_RULES; 1 outside the economy loop)
+export const ECON = { priceMul: 1 };
 
 export function itemDef(type) {
   return ITEM[type] || { name: type.replace(/_/g, ' ') };
@@ -187,7 +241,7 @@ export function sellValue(type, mass = 5, state = null) {
   else if (d?.pocket) v = d.use === 'eat' || d.use === 'drink' || d.use === 'heal' ? 5 : 8;
   else v = Math.round(Math.min(120, Math.max(4, mass * 3)));
   const cond = state?.cond ?? 1;
-  return Math.round(v * Math.min(1, Math.max(0.3, cond)));
+  return Math.round(v * Math.min(1, Math.max(0.3, cond)) * ECON.priceMul);
 }
 
 // Crafting recipes (workbench)

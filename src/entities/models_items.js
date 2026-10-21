@@ -25,6 +25,7 @@ import './items/gear.js';
 import './items/craft.js';
 import './items/basecraft.js';
 import './items/pool.js';
+import './items/shopitems.js';
 
 // Catalogue order (kept from the original library: UI lists and debug galleries iterate it)
 const ORDER = [

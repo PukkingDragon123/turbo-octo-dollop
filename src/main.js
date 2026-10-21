@@ -84,7 +84,8 @@ async function boot() {
   game.menuBackdrop = true;
   await game.loadWorld({ type: 'lobby', seed: 1234 }, false);
   // the lobby is not shown behind the menu any more: render it once (faded out) so its shaders are warm,
-  // then the break-room set (world/menu_scene.js) takes over the screen while the menu is up
+  // then the clone factory (world/menu_scene.js) takes over the screen while the menu is up. It is the
+  // whole main menu: 3D panels, customizer, settings, continue, commendations; no HTML on screen.
   try {
     engine.camera.position.set(0, 1.5, 12.5);
     engine.camera.lookAt(0, 1.1, 9.6);
@@ -115,7 +116,7 @@ async function boot() {
     if (!(dt > 0)) dt = 1 / 60;
     dt = juice.scaleDt(Math.min(dt, 0.1));
     try {
-      // main menu: the break-room set renders through the post stack (engine.setView) and handles the wardrobe
+      // main menu: the factory set renders through the post stack (engine.setView) and handles all menu input
       if (menuScene && (game.state === 'menu' || game.state === 'joining')) menuScene.update(dt);
       else menuScene?.deactivate();
       if (game.menuBackdrop && game.state === 'menu') { if (!menuScene) menuCamera(game, dt); }

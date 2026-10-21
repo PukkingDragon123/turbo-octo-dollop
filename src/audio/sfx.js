@@ -1588,6 +1588,75 @@ def('healthity_happy', 0.8, (S, o) => {
   for (let k = 0; k < 5; k++) S.part(o, 0.26 + k * 0.035, base * 4 * 2 ** (S.pick([0, 4, 7]) / 12), 0.2, 0.05);
 }, { db: -7, clean: true, jit: 10 });
 
+// Healthity MK-VII (old unit): thermal receipt printer, CRT boot, repair minigame, tool charging
+def('hl_print', 2.7, (S, o) => {
+  const d = 2.4;
+  // stepper motor: a buzzy pulse train that stutters line by line
+  const m = S.osc(d, (t) => 210 + 30 * Math.sin(TAU * 1.3 * t), 'pulse', { pw: 0.18 });
+  S.bp(m, 1400, 1.2);
+  S.mul(m, rsteps(S, d, 0.045, 0.25, 1, 400));
+  S.mul(m, S.env(d, [[0, 0], [0.04, 1], [d - 0.08, 1], [d, 0]]));
+  S.norm(m, 0.5);
+  S.add(o, m, 0.02);
+  const h = S.noise(d); S.bp(h, 5200, 2); S.mul(h, S.env(d, [[0, 0], [0.1, 1], [d - 0.1, 1], [d, 0]])); S.norm(h, 0.12); S.add(o, h, 0.02);
+  for (let t = 0.05; t < d; t += S.rr(0.07, 0.12)) click(S, o, t, S.rr(2500, 4200), S.rr(0.15, 0.35), 0.002, 1.4);
+}, { db: -9, vars: 2 });
+def('hl_tear', 0.5, (S, o) => {
+  const d = S.rr(0.22, 0.32), x = S.noise(d);
+  S.mul(x, rsteps(S, d, 0.004, 0.1, 1, 700));
+  S.bp(x, S.env(d, [[0, 1800], [d, 4200, 'e']]), 0.8);
+  S.mul(x, S.env(d, [[0, 0], [0.015, 1], [d, 0, 0.5]]));
+  S.norm(x, 1);
+  S.add(o, x, 0.005);
+  click(S, o, d, 3000, 0.5, 0.003);
+}, { db: -9, vars: 3 });
+def('hl_boot', 3.2, (S, o) => {
+  // relay clunk, degauss "bwong", 15 kHz-ish CRT whine, fan spin-up, an old detuned three-note chime
+  thud(S, o, 0, 140, 55, 0.07, 1);
+  click(S, o, 0.002, 1800, 0.6, 0.004);
+  const dg = S.osc(1.6, 50, 'saw'); S.lp(dg, 500);
+  S.mul(dg, S.env(1.6, [[0, 0], [0.04, 1], [1.6, 0.001, 'e']]));
+  S.mul(dg, (t) => 1 + 0.5 * Math.sin(TAU * 9 * t));
+  S.add(o, dg, 0.05, 0.6);
+  const w = S.osc(2.8, S.env(2.8, [[0, 2000], [0.8, 9400, 'e'], [2.8, 9800]]));
+  S.mul(w, S.env(2.8, [[0, 0], [0.5, 0.25], [2.4, 0.2], [2.8, 0]]));
+  S.add(o, w, 0.2, 0.06);
+  const f = S.noise(2.6); S.bp(f, S.env(2.6, [[0, 150], [1.6, 900, 'e'], [2.6, 1000]]), 1.5);
+  S.mul(f, S.env(2.6, [[0, 0], [1.2, 1], [2.6, 0.6]])); S.mul(f, (t) => 0.8 + 0.2 * Math.sin(TAU * 31 * t)); S.norm(f, 0.25); S.add(o, f, 0.3);
+  [0, 7, 4].forEach((s, k) => S.tone(o, 1.5 + k * 0.22, { f: 523 * 2 ** (s / 12) * S.j(1, 0.012), wave: 'sq', att: 0.004, hold: 0.12, tau: 0.12, a: 0.22, lp: 2200 }));
+}, { db: -6, vars: 1 });
+def('hl_short', 0.9, (S, o) => {
+  S.add(o, arc(S, 0.32, 2.4), 0, 1);
+  const b = S.osc(0.4, 100, 'sq'); S.lp(b, 900); S.mul(b, S.env(0.4, [[0, 1], [0.4, 0, 0.5]])); S.norm(b, 0.6); S.add(o, b);
+  S.nz(o, 0, { tau: 0.02, hp: 1200, a: 1 });
+  thud(S, o, 0, 220, 70, 0.04, 0.7);
+  for (let k = 0; k < 4; k++) click(S, o, 0.32 + k * S.rr(0.04, 0.09), S.rr(2000, 5000), S.rr(0.2, 0.5), 0.002);
+}, { db: -5, vars: 3 });
+def('hl_zap', 0.3, (S, o) => {
+  const x = arc(S, S.rr(0.12, 0.2), 1.4); S.add(o, x, 0, 0.8);
+  const s = S.noise(0.2); S.hp(s, 4000); S.mul(s, S.env(0.2, [[0, 0], [0.01, 1], [0.2, 0, 0.6]])); S.norm(s, 0.3); S.add(o, s);
+}, { db: -10, vars: 5 });
+def('hl_charge', 2.2, (S, o) => {
+  const d = 1.9, h = S.osc(d, S.env(d, [[0, 120], [d, 520, 'e']]), 'saw');
+  S.lp(h, 1800); S.mul(h, (t) => 0.75 + 0.25 * Math.sin(TAU * 60 * t));
+  S.mul(h, S.env(d, [[0, 0], [0.2, 0.8], [d - 0.15, 1], [d, 0]])); S.norm(h, 0.45); S.add(o, h);
+  const c = S.crackle(d, S.env(d, [[0, 80], [d, 500]]), { w: 0.0003, hp: 3000 }); S.norm(c, 0.25); S.add(o, c);
+  S.tone(o, d - 0.05, { f: 1568, wave: 'tri', att: 0.003, tau: 0.25, a: 0.5 });
+  S.tone(o, d + 0.07, { f: 2093, wave: 'tri', att: 0.003, tau: 0.3, a: 0.4 });
+}, { db: -8, vars: 2 });
+def('hl_knock', 1.2, (S, o) => {
+  // something knocking from inside a crate: two or three muffled knocks
+  const n = S.ri(2, 3);
+  for (let k = 0; k < n; k++) { const t = k * S.rr(0.16, 0.28); thud(S, o, t, S.rr(120, 160), 70, 0.05, 1); impact(S, o, t, 'wood', 0.35, 1.4, 0.4); }
+  S.lp(o, 1400);
+}, { db: -6, vars: 3 });
+def('hl_dying', 1.6, (S, o) => {
+  const d = 1.3, w = S.osc(d, S.env(d, [[0, 900], [d, 90, 'e']]), 'sq');
+  S.lp(w, 1600); S.mul(w, S.env(d, [[0, 0], [0.02, 1], [d, 0, 0.7]])); S.mul(w, rsteps(S, d, 0.03, 0.3, 1, 200)); S.norm(w, 0.4); S.add(o, w);
+  S.crush(o, 6, 3);
+  S.add(o, arc(S, 0.15, 1), 0.02, 0.4);
+}, { db: -8, vars: 2 });
+
 // ======================================================================
 // Internal event material for loops (names start with '_', not listed publicly)
 // ======================================================================
@@ -1876,6 +1945,132 @@ def('hound_bite', 0.7, (S, o) => {
   S.scatter(S.ri(3, 6), 0.02, 0.2, (t) => S.bubble(o, t, S.rr(400, 900), S.rr(0.1, 0.3), { rise: 0.6 }));
 }, { db: -2, vars: 3 });
 
+// ---- creatures & cooking (game/creatures/combat.js, fauna.js, game/cooking.js, game/bio.js) ----
+// wet blow into flesh
+def('flesh_hit', 0.6, (S, o) => {
+  impact(S, o, 0.001, 'flesh', 1, S.rr(0.8, 1.2), 1);
+  thud(S, o, 0.002, S.rr(90, 130), 50, 0.06, 0.8);
+  S.nz(o, 0.01, { dur: 0.25, env: [[0, 0], [0.01, 1], [0.25, 0]], bp: S.env(0.25, [[0, 1600], [0.25, 500]]), q: 1.1, a: 0.4 });
+  S.scatter(S.ri(2, 5), 0.02, 0.25, (t) => S.bubble(o, t, S.rr(300, 800), S.rr(0.1, 0.25), { rise: 0.5 }));
+}, { db: -3, vars: 4 });
+// a body bursting: splat, crunch, gurgle
+def('gore_splat', 1.4, (S, o) => {
+  thud(S, o, 0, 70, 35, 0.18, 1);
+  impact(S, o, 0.002, 'flesh', 1, 1.6, 1);
+  S.nz(o, 0.005, { dur: 0.5, env: [[0, 0], [0.008, 1], [0.12, 0.5], [0.5, 0]], bp: S.env(0.5, [[0, 2400], [0.5, 400]]), q: 0.8, a: 0.8 });
+  const c = S.crackle(0.3, 900, { w: 0.0005, ap: 2 });
+  S.bp(c, 2200, 0.7); S.norm(c, 1); S.mul(c, S.env(0.3, [[0, 0], [0.01, 1], [0.3, 0]]));
+  S.add(o, c, 0.02, 0.5);
+  S.scatter(S.ri(10, 18), 0.05, 1.2, (t, u) => S.bubble(o, t, S.rr(200, 700), S.rr(0.1, 0.35) * (1 - u * 0.7), { rise: 0.4 }), 1.5);
+  S.scatter(S.ri(4, 8), 0.2, 1.1, (t) => impact(S, o, t, 'flesh', S.rr(0.2, 0.5), S.rr(0.4, 0.8), S.rr(0.15, 0.35)));
+}, { db: -1, vars: 3 });
+def('bone_crack', 0.5, (S, o) => {
+  for (let k = 0, n = S.ri(2, 4); k < n; k++) {
+    const t = 0.003 + k * S.rr(0.015, 0.04);
+    click(S, o, t, S.rr(1800, 3200), 1 - k * 0.2, 0.004, 1.3);
+    modalHit(S, o, t, [[S.rr(900, 1400), 0.02, 1], [S.rr(2200, 3000), 0.012, 0.6]], 0.0005, 6000, 0.7 - k * 0.12);
+  }
+  thud(S, o, 0, 160, 80, 0.03, 0.5);
+}, { db: -3, vars: 3 });
+// mole: snuffly chirps
+def('mole_squeak', 0.6, (S, o) => {
+  let t = 0.005;
+  for (let k = 0, n = S.ri(1, 3); k < n; k++) {
+    const d = S.rr(0.05, 0.1), f = S.rr(1900, 2800);
+    S.tone(o, t, { f, f1: f * S.rr(0.75, 1.15), gt: d * 0.4, wave: 'tri', dur: d, env: [[0, 0], [0.008, 1], [d * 0.7, 0.6], [d, 0]], vib: [S.rr(30, 55), 0.05] });
+    t += d + S.rr(0.04, 0.09);
+  }
+  for (let k = 0; k < 3; k++) S.nz(o, t + k * 0.06, { att: 0.005, tau: 0.02, bp: S.rr(2500, 4000), q: 0.8, a: 0.25 });
+}, { db: -11, vars: 4 });
+def('mole_alarm', 1.1, (S, o) => {
+  for (let k = 0; k < 4; k++) {
+    const t = k * 0.22, d = 0.14, f = S.rr(2600, 3100);
+    S.tone(o, t, { f: f * 0.8, f1: f * 1.2, gt: d * 0.3, wave: 'saw', dur: d, env: [[0, 0], [0.01, 1], [d, 0]], vib: [45, 0.04], a: 0.6 });
+  }
+}, { db: -8, vars: 2 });
+// digging / scratching inside the walls or under the carpet
+def('mole_dig', 1.0, (S, o) => {
+  let t = 0.01;
+  while (t < 0.85) {
+    const d = S.rr(0.04, 0.09), c = S.crackle(d, S.rr(500, 1200), { w: 0.0003, ap: 1.5 });
+    S.bp(c, S.rr(1800, 3800), 0.8); S.norm(c, 1); S.mul(c, S.env(d, [[0, 0], [0.006, 1], [d, 0]]));
+    S.add(o, c, t, S.rr(0.4, 1));
+    t += d + S.rr(0.03, 0.12);
+  }
+  S.nz(o, 0, { dur: 0.9, env: [[0, 0], [0.1, 1], [0.9, 0]], lp: 500, a: 0.15 });
+}, { db: -10, vars: 3 });
+// damp crawler: wet teeth clicks and a rattle of breath
+def('crawler_chitter', 1.2, (S, o) => {
+  let t = 0.01;
+  for (let k = 0, n = S.ri(5, 11); k < n; k++) {
+    click(S, o, t, S.rr(1200, 2600), S.rr(0.4, 1), 0.003, 1.6);
+    if (S.chance(0.4)) S.bubble(o, t + 0.005, S.rr(400, 900), 0.2, { rise: 0.6 });
+    t += S.rr(0.03, 0.11);
+  }
+  const v = S.vox(0.9, { f0: S.rr(70, 95), jit: 0.2, voice: 0.4, breath: 0.9, vow: [[0, 'uh'], [0.9, 'er']], scale: 0.8, tilt: 1800 });
+  S.mul(v, S.env(0.9, [[0, 0], [0.2, 0.6], [0.9, 0]]));
+  S.add(o, v, 0.02, 0.4);
+}, { db: -7, vars: 3 });
+def('crawler_screech', 1.1, (S, o) => {
+  const d = S.rr(0.6, 0.85), f0 = S.rr(380, 520);
+  const v = S.vox(d, { f0: S.env(d, [[0, f0 * 0.7], [0.08, f0 * 1.4, 0.5], [d, f0 * 0.6]]), jit: 0.12, voice: 1, breath: 0.6, vow: [[0, 'a'], [d * 0.5, 'e'], [d, 'i']], scale: 1.3, tilt: 5000 });
+  S.drive(v, 3.5);
+  S.mul(v, S.env(d, [[0, 0], [0.02, 1], [d * 0.6, 0.7], [d, 0]]));
+  S.add(o, v, 0);
+  S.nz(o, 0, { dur: d, env: [[0, 0], [0.03, 1], [d, 0]], bp: 3500, q: 0.7, a: 0.35 });
+}, { db: -2, vars: 3 });
+// the fungal: a deep, wet, wordless groan
+def('fungal_groan', 2.4, (S, o) => {
+  const d = S.rr(1.4, 2.1), f0 = S.rr(52, 68);
+  const v = S.vox(d, { f0: S.env(d, [[0, f0], [d * 0.5, f0 * 1.25, 's'], [d, f0 * 0.8, 's']]), jit: 0.18, voice: 0.8, breath: 0.7, vow: [[0, 'o'], [d * 0.5, 'u'], [d, 'uh']], scale: 0.7, tilt: 900 });
+  S.drive(v, 1.8);
+  S.mul(v, S.env(d, [[0, 0], [0.3, 1], [d * 0.7, 0.8], [d, 0]]));
+  S.add(o, v, 0.02);
+  S.scatter(S.ri(8, 14), 0.1, d, (t) => S.bubble(o, t, S.rr(150, 420), S.rr(0.08, 0.2), { rise: 0.3 }));
+}, { db: -4, vars: 3 });
+def('spore_puff', 1.3, (S, o) => {
+  S.nz(o, 0, { dur: 1.1, env: [[0, 0], [0.03, 1], [0.25, 0.5], [1.1, 0]], lp: S.env(1.1, [[0, 3000], [1.1, 500]]), a: 0.9, color: 'p' });
+  thud(S, o, 0, 80, 40, 0.1, 0.4);
+}, { db: -6, vars: 2 });
+// moth wings: a soft papery flutter
+def('moth_flutter', 0.9, (S, o) => {
+  const d = S.rr(0.4, 0.75), x = S.noise(d), rate = S.rr(22, 32);
+  S.mul(x, S.env(d, [[0, 0], [0.05, 1], [d * 0.7, 0.8], [d, 0]]));
+  for (let i = 0; i < x.length; i++) x[i] *= 0.35 + 0.65 * Math.max(0, Math.sin((TAU * rate * i) / S.sr));
+  S.lp(x, 1100); S.norm(x, 1);
+  S.add(o, x, 0.005);
+}, { db: -12, vars: 3 });
+// fat sizzling in a hot pan
+def('sizzle', 1.5, (S, o, p) => {
+  const d = 1.4;
+  const c = S.crackle(d, S.env(d, [[0, 2600 * p.i + 600], [d, 1600 * p.i + 400]]), { w: 0.00015, ap: 1.6, min: 0.15 });
+  S.hp(c, 2500); S.norm(c, 1); S.mul(c, S.env(d, [[0, 0], [0.04, 1], [d - 0.2, 0.8], [d, 0]]));
+  S.add(o, c, 0, 0.8);
+  S.nz(o, 0, { dur: d, env: [[0, 0], [0.05, 1], [d - 0.15, 0.7], [d, 0]], hp: 4500, a: 0.35 });
+}, { db: -10, vars: 3, tiers: [0.3, 1] });
+def('pan_flip', 0.9, (S, o) => {
+  impact(S, o, 0.001, 'metal', 0.6, 1.2, 0.8);
+  S.nz(o, 0.02, { dur: 0.5, env: [[0, 0], [0.02, 1], [0.5, 0]], hp: 3000, a: 0.5 });
+  impact(S, o, S.rr(0.38, 0.46), 'flesh', 0.5, 0.6, 0.6);
+}, { db: -6, vars: 3 });
+def('stove_ignite', 1.2, (S, o) => {
+  click(S, o, 0.01, 3500, 1, 0.003, 1.2);
+  click(S, o, 0.09, 3800, 0.8, 0.003, 1.2);
+  S.nz(o, 0.12, { dur: 0.5, env: [[0, 0], [0.04, 1], [0.5, 0]], lp: 600, a: 0.8, color: 'p' });
+  S.nz(o, 0.15, { dur: 1.0, env: [[0, 0], [0.2, 1], [1.0, 0.6]], bp: 2200, q: 0.5, a: 0.3 });
+}, { db: -7, vars: 2 });
+def('cough', 1.0, (S, o) => {
+  let t = 0.01;
+  for (let k = 0, n = S.ri(2, 3); k < n; k++) {
+    const d = S.rr(0.12, 0.2), f0 = S.rr(130, 170);
+    const v = S.vox(d, { f0, jit: 0.08, voice: 0.5, breath: 1, vow: [[0, 'a'], [d, 'uh']], scale: 1.05, tilt: 2500 });
+    S.mul(v, S.env(d, [[0, 0], [0.008, 1], [d, 0, 2]]));
+    S.add(o, v, t, 1 - k * 0.2);
+    S.nz(o, t, { att: 0.003, tau: 0.05, bp: 1200, q: 0.6, a: 0.4 });
+    t += d + S.rr(0.08, 0.16);
+  }
+}, { db: -6, vars: 3 });
+
 // soft padded footfall on carpet (hand / boot)
 def('hound_step', 0.3, (S, o, p) => {
   thud(S, o, 0.002, 95, 55, 0.03, 0.8 * (0.5 + p.i * 0.5));
@@ -2149,3 +2344,144 @@ export function renderShot(name, intensity = 1, len) {
   R.fn(S, o, p);
   return { chs: master(R.stereo ? o : [o], sr, { db: R.db, clean: R.clean, norm: R.norm }), sr };
 }
+
+// ---------------------------------------------------------------------- player & combat (game/combat.js, qte.js, ui/vitals3d.js)
+// a fist (ABS knuckles) landing: meaty low thud + plastic clack, harder at high intensity
+def('punch_hit', 0.5, (S, o, p) => {
+  thud(S, o, 0.001, lerp(140, 110, p.i), 50, lerp(0.05, 0.09, p.i), 1);
+  impact(S, o, 0.002, 'plastic', lerp(0.5, 1, p.i), 0.8, 0.6);
+  click(S, o, 0, S.rr(1800, 2600), lerp(0.4, 0.9, p.i), 0.003, 0.8);
+  S.nz(o, 0, { tau: lerp(0.02, 0.05, p.i), lp: 900, a: 0.6 });
+}, { tiers: [0.3, 1], vars: 3, db: -3, max: 4 });
+// short fast swing
+def('punch_swing', 0.3, (S, o, p) => {
+  const d = lerp(0.14, 0.24, p.i), env = [[0, 0], [d * 0.4, 1, 2], [d, 0, 0.6]];
+  S.nz(o, 0, { dur: d, env, bp: S.env(d, [[0, 700], [d * 0.4, lerp(1800, 2800, p.i), 's'], [d, 800, 's']]), q: 2, a: 1, color: 'p' });
+}, { tiers: [0.3, 1], vars: 3, db: -9 });
+// the heart's glass chamber cracking
+def('glass_crack', 0.6, (S, o) => {
+  click(S, o, 0, S.rr(5000, 7000), 0.8, 0.002, 0.6);
+  S.scatter(S.ri(6, 12), 0.002, 0.12, (t, u) => tink(S, o, t, S.rr(3000, 8000), S.rr(0.1, 0.4) * (1 - u * 0.5)), 2);
+  const c = S.crackle(0.25, [[0, 900], [0.25, 40]], { w: 0.0002, hp: 3000 });
+  S.norm(c, 0.4);
+  S.add(o, c, 0.003);
+}, { db: -8, vars: 3, sr: 44100 });
+// QTE key hit: a stiff mechanical click with a bright blip
+def('qte_hit', 0.18, (S, o) => {
+  click(S, o, 0, S.rr(2600, 3400), 0.9, 0.002, 1);
+  S.tone(o, 0.002, { f: S.rr(1180, 1260), f1: 1500, gt: 0.03, att: 0.002, tau: 0.04, a: 0.35 });
+  thud(S, o, 0, 220, 140, 0.012, 0.4);
+}, { db: -8, vars: 4, max: 6 });
+// fully charged multitool discharge
+def('mt_zap', 0.9, (S, o) => {
+  S.scatter(S.ri(18, 28), 0.0, 0.3, (t, u) => S.nz(o, t, { tau: S.rr(0.002, 0.01), bp: S.rr(1200, 8000), q: 1.5, a: (1 - u) * S.rr(0.5, 1) }));
+  thud(S, o, 0.0, 180, 45, 0.1, 1);
+  const z = S.fm(0.5, S.env(0.5, [[0, 3200], [0.5, 200, 'e']]), 2.01, 5);
+  S.mul(z, S.env(0.5, [[0, 1], [0.5, 0, 1.2]]));
+  S.add(o, z, 0, 0.4);
+}, { db: -2, vars: 3, sr: 44100 });
+
+// ======================================================================
+// Factory main menu (world/menu_scene.js): brutal outfitting arms, light banks, the hook and the drop
+// metal panel torn off by a hydraulic clamp: shriek + crunch + scattering fasteners
+def('metal_rip', 1.5, (S, o) => {
+  impact(S, o, 0.002, 'metal', 1, 1.6, 0.9);
+  thud(S, o, 0.0, 150, 55, 0.08, 0.9);
+  const cr = S.crackle(0.5, S.env(0.5, [[0, 5200], [0.5, 700]]), { w: 0.0004, ap: 2.2 });
+  S.bp(cr, 2600, 0.7); S.norm(cr, 0.7); S.add(o, cr, 0.01);
+  friction(S, o, 0.0, 0.45, S.env(0.45, [[0, S.rr(160, 240)], [0.45, S.rr(60, 90), 's']]), [[S.rr(900, 1200), 0.05, 1], [S.rr(2100, 2600), 0.03, 0.8], [S.rr(3800, 4600), 0.02, 0.6], [S.rr(6000, 7000), 0.012, 0.4]], 0.9, 0.2);
+  S.scatter(S.ri(4, 7), 0.18, 1.2, (t) => tink(S, o, t, S.rr(2400, 5200), S.rr(0.1, 0.3)));
+  S.drive(o, 1.5);
+}, { db: -1, vars: 3, max: 3 });
+// a bank of factory floodlights slamming on: contactor thunk, transformer surge, ballast buzz
+def('lights_slam', 1.8, (S, o) => {
+  thud(S, o, 0.0, 120, 38, 0.2, 1);
+  click(S, o, 0.0, 1600, 1, 0.008, 0.6);
+  impact(S, o, 0.002, 'metal', 1, 2.4, 0.7);
+  const d = 1.6, w = S.osc(d, 100, 'saw');
+  S.bp(w, 900, 1.2);
+  S.mul(w, S.env(d, [[0, 0], [0.02, 1], [0.25, 0.45], [d, 0, 1.5]]));
+  S.add(o, w, 0.01, 0.35);
+  const h = S.osc(d, 50, 'sq'); S.lp(h, 300); S.mul(h, S.env(d, [[0, 0], [0.03, 1], [d, 0, 1.2]])); S.add(o, h, 0.0, 0.3);
+  S.verb(o, 1.8, 0.35, 0.4, 1.6);
+}, { db: 0, vars: 3, max: 3 });
+// hook clamp springs open
+def('hook_release', 1.2, (S, o) => {
+  ratchetClick(S, o, 0.0, 0.8, 3200);
+  impact(S, o, 0.01, 'metal', 1, 1.1, 0.9);
+  thud(S, o, 0.0, 160, 90, 0.04, 0.6);
+  modalHit(S, o, 0.02, [[S.rr(520, 600), 0.4, 1], [S.rr(1300, 1450), 0.25, 0.6], [S.rr(2700, 3000), 0.12, 0.35]], 0.001, 7000, 0.5);
+  S.nz(o, 0.0, { tau: 0.18, hp: 2500, a: 0.25 });
+}, { db: -2, vars: 2, max: 2 });
+// a heavy android body slamming onto concrete
+def('body_impact', 2.4, (S, o) => {
+  thud(S, o, 0, 90, 30, 0.35, 1);
+  thud(S, o, 0.004, 55, 28, 0.5, 0.7);
+  impact(S, o, 0.002, 'heavy', 1, 1.2, 1);
+  impact(S, o, 0.006, 'metal', 1, 1.6, 0.6);
+  impact(S, o, 0.003, 'plastic', 1, 1.4, 0.5);
+  S.scatter(12, 0.04, 0.9, (t, u) => impact(S, o, t, S.pick(['metal', 'plastic']), S.rr(0.2, 0.6), S.rr(0.4, 0.9), S.rr(0.1, 0.35) * (1 - u * 0.6)), 1.6);
+  S.nz(o, 0, { dur: 1.6, env: [[0, 0], [0.03, 1], [1.6, 0, 2]], lp: 180, a: 0.5, color: 'b' });
+  S.drive(o, 1.3);
+}, { db: 0, vars: 2, max: 2 });
+// knob detent / rotary switch click
+def('knob_tick', 0.12, (S, o) => {
+  ratchetClick(S, o, 0.0, 0.6, S.rr(3600, 4600));
+}, { db: -10, vars: 4, max: 6 });
+// heavy toggle switch throw
+def('toggle_clack', 0.35, (S, o) => {
+  click(S, o, 0.0, S.rr(2600, 3400), 1, 0.003, 0.7);
+  thud(S, o, 0.0, 240, 140, 0.02, 0.5);
+  click(S, o, S.rr(0.012, 0.02), 5200, 0.3, 0.001);
+}, { db: -6, vars: 3, max: 4 });
+// crowbar prying a crate lid
+def('crate_pry', 1.2, (S, o) => {
+  creak(S, o, 0.0, 0.5, 70, 180, 0.8, 1.2);
+  impact(S, o, 0.5, 'wood', 1, 1.2, 1);
+  S.scatter(5, 0.52, 0.9, (t) => impact(S, o, t, 'wood', S.rr(0.2, 0.5), S.rr(0.3, 0.6), S.rr(0.1, 0.3)));
+  tink(S, o, 0.55, S.rr(3000, 4200), 0.3);
+}, { db: -3, vars: 3, max: 3 });
+
+// ======================================================================
+// HQ waiting room, elevator ride, robot pit (lobby & elevator)
+// ======================================================================
+// one split-flap flap falling over (the board re-triggers it while it rattles)
+def('flap_clack', 0.08, (S, o) => {
+  click(S, o, 0.001, S.rr(2600, 3800), 0.6, 0.002, 1.4);
+  modalHit(S, o, 0.002, [[S.rr(1800, 2400), 0.012, 1], [S.rr(4200, 5200), 0.006, 0.5]], 0.0008, 7000, 0.5);
+  thud(S, o, 0.003, 420, 200, 0.01, 0.25);
+}, { vars: 6, db: -8, max: 6, jit: 60 });
+// an android clone burning: a voice that climbs, buzzes through its speaker grille and distorts
+def('clone_scream', 2.0, (S, o) => {
+  const d = S.rr(1.4, 1.8), f0 = S.rr(330, 460);
+  const v = S.vox(d, { f0: S.env(d, [[0, f0 * 0.7], [0.12, f0 * 1.35], [0.5, f0 * 1.2], [d, f0 * 0.55, 's']]), jit: 0.08, breath: 0.35, vow: [[0, 'a'], [0.5, 'e'], [d, 'o']], scale: 1.05, tilt: 4500 });
+  S.ring(v, S.rr(60, 90), 0.35);
+  S.mul(v, S.env(d, [[0, 0], [0.05, 1], [d * 0.7, 0.8], [d, 0]]));
+  S.drive(v, 2.2);
+  S.norm(v, 1);
+  S.add(o, v, 0.02);
+}, { vars: 3, db: -4, sr: 22050, max: 4 });
+// the furnace under HQ: low roar, gusts, crackling slag
+def('furnace_roar', 4.2, (S, o) => {
+  const d = 4.0;
+  S.nz(o, 0, { dur: d, env: [[0, 0], [0.5, 1], [d - 0.8, 0.9], [d, 0]], lp: 380, a: 0.9, color: 'b' });
+  S.nz(o, 0, { dur: d, env: [[0, 0], [0.3, 0.6], [1.6, 0.25], [2.4, 0.7], [d, 0]], bp: 900, q: 0.8, a: 0.25 });
+  S.scatter(70, 0.1, d - 0.2, (t) => click(S, o, t, S.rr(1500, 5000), S.rr(0.1, 0.4), 0.002, 1));
+  S.drive(o, 1.3);
+}, { vars: 2, db: -5 });
+// a hoist cable letting go: whip crack, twang, the rope screaming through the sheave
+def('cable_snap', 2.2, (S, o) => {
+  click(S, o, 0, 3500, 1, 0.006, 0.8);
+  S.nz(o, 0, { tau: 0.04, bp: 2500, q: 0.7, a: 1 });
+  impact(S, o, 0.01, 'metal', 1, 2.0, 0.9);
+  S.tone(o, 0.02, { f: 220, f1: 70, gt: 0.6, att: 0.002, tau: 0.5, a: 0.5 });
+  friction(S, o, 0.05, 1.1, S.env(1.1, [[0, 1800], [1.1, 600, 's']]), [[S.rr(2400, 3000), 0.02, 1], [S.rr(4100, 4800), 0.012, 0.6]], 0.4, 0.06);
+  S.drive(o, 1.6);
+}, { db: -2, vars: 2 });
+// steel on steel at speed: guide shoes, a buckling car frame
+def('metal_scream', 2.6, (S, o) => {
+  const d = S.rr(1.6, 2.3);
+  friction(S, o, 0, d, S.env(d, [[0, S.rr(500, 800)], [d * 0.5, S.rr(1100, 1500)], [d, S.rr(400, 700), 's']]), [[S.rr(1900, 2600), 0.03, 1], [S.rr(3300, 4200), 0.02, 0.7], [S.rr(5600, 6800), 0.012, 0.4], [S.rr(900, 1200), 0.04, 0.5]], 1, 0.08);
+  S.nz(o, 0, { dur: d, env: [[0, 0], [0.1, 0.5], [d, 0]], bp: 3200, q: 3, a: 0.15 });
+  S.drive(o, 1.5);
+}, { db: -4, vars: 3, max: 3 });

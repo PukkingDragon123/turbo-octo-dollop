@@ -1,24 +1,30 @@
-// The R.O.O.M. Corporate Wrist Terminal: a chunky retro watch on the clone's left wrist.
-// Three tabs: STATUS (health, food, water, stamina + EKG) · MAP · TASK (objective, money vs quota).
-// The face is pixel art: drawn at 160x120 with the kit's bitmap font and sprites, scaled x3 onto the
-// canvas that is mapped onto the 3D watch screen, with a phosphor glow and an LCD dot grid.
-// Notices (HQ radio, pickups, warnings, achievements) make the watch beep and the clone glances at
-// the wrist for a moment, showing the notice in big type.
+// The R.O.O.M. Corporate Wrist Terminal: a chunky retro watch on the clone's left wrist with APPS.
+//   HOME     launcher grid: every app, installed or locked (how to get it)
+//   STATUS   health, food, water, stamina + EKG          TASKS   main mission checklist + side quests
+//   BANK     credits, ESCAPE FUND gauge, level rules     MAP     explored cells, camp, crusher, exit, quest pins
+//   SCANNER  point the crosshair at creatures / fungus / loot: identify, appraise, study for research money
+//   RADIO    HQ comms log on the R.O.O.M. band            FLASH+  flashlight overdrive status
+// Apps come from game/economy.js WATCH_APPS; HOME, STATUS, TASKS and BANK are built in, the rest are installed
+// by quests or bought at the company store (levels without an economy show STATUS / MAP / TASKS).
+// Q / E cycle the installed apps while the watch is up. The face is pixel art: drawn at 160x120 with the kit's
+// bitmap font, scaled x3 onto the canvas mapped onto the 3D watch screen, with a phosphor glow and LCD grid.
+// Notices (HQ radio, pickups, warnings, achievements) make the watch beep and the clone glances at the wrist.
 import * as THREE from 'three';
 import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
+import { engine } from '../core/engine.js';
 import { CrtScreen } from './crt.js';
 import { itemName } from '../game/itemdefs.js';
+import { WATCH_APPS, short$, fmt$ } from '../game/economy.js';
+import { Q, G, groups } from '../physics/physics.js';
 import { CELL, wallN, wallW, W } from '../world/levels/yellow/layout.js';
 import { Pix, text, textWidth, wrapText, FONT3, FONT5, bitmap } from './pixelart.js';
 
-const TABS = ['status', 'map', 'task'];
-const TAB_NAMES = ['STATUS', 'MAP', 'TASK'];
-const TAB_ICON = ['pulse', 'map', 'task'];
+const LEGACY = ['status', 'map', 'tasks'];
 const AW = 160, AH = 120, K = 3;
 
 // phosphor palette (green terminal)
-const P = { bg: '#020f05', fg: '#4dff7a', dim: '#1f9a40', faint: '#0c3a1a', hi: '#d8ffe0', bad: '#ff5a4a', badDim: '#7a1e18', warn: '#ffd060', cyan: '#9fd8ff' };
+const P = { bg: '#020f05', fg: '#4dff7a', dim: '#1f9a40', faint: '#0c3a1a', hi: '#d8ffe0', bad: '#ff5a4a', badDim: '#7a1e18', warn: '#ffd060', cyan: '#9fd8ff', red: '#ff3a2a' };
 
 const MINI = {
   heart: ['.#.#.', '#####', '#####', '.###.', '..#..'],
@@ -29,7 +35,22 @@ const MINI = {
   pulse: ['..#...', '..#...', '.#.#.#', '##..#.', '......'],
   map: ['##.##', '#.#.#', '#.#.#', '#.#.#', '##.##'],
   task: ['.###.', '#...#', '#.#.#', '#...#', '#####'],
+  lock: ['.###.', '#...#', '#####', '##.##', '#####'],
+  check: ['....#', '...#.', '#.#..', '.#...', '.....'],
 };
+// 9x9 app icons
+const ICON = {
+  home: ['....#....', '...###...', '..#####..', '.#######.', '#########', '.##...##.', '.##.#.##.', '.##.#.##.', '.#######.'],
+  pulse: ['.........', '....#....', '....#....', '...#.#...', '#.##..#.#', '.#....##.', '.........', '.........', '.........'],
+  task: ['.#######.', '.#.....#.', '.#.##..#.', '.#.....#.', '.#.###.#.', '.#.....#.', '.#.##..#.', '.#.....#.', '.#######.'],
+  coin: ['..#####..', '.##...##.', '##..#..##', '#..###..#', '#...#...#', '#..###..#', '##..#..##', '.##...##.', '..#####..'],
+  map: ['###.###..', '#.#.#.###', '#.###.#.#', '#.#.#.#.#', '#.#.###.#', '###.#.#.#', '..#.#.###', '..###.#..', '......#..'],
+  scan: ['##.....##', '#.......#', '...###...', '..#...#..', '..#.#.#..', '..#...#..', '...###...', '#.......#', '##.....##'],
+  radio: ['......#..', '.....#...', '#########', '#.......#', '#.###.#.#', '#.###...#', '#.###.#.#', '#.......#', '#########'],
+  bolt: ['....###..', '...###...', '..###....', '.######..', '...###...', '..###....', '.##......', '.#.......', '.........'],
+};
+
+const _fwd = new THREE.Vector3();
 
 export class Watch {
   constructor(game) {
@@ -39,7 +60,7 @@ export class Watch {
     this.art = new Pix(AW, AH);
     this.artCv = document.createElement('canvas');
     this.artCv.width = AW; this.artCv.height = AH;
-    this.tabIdx = 0;
+    this.app = 'status';
     this.messages = [];
     this.ekg = new Float32Array(90);
     this.ekgPhase = 0;
@@ -50,16 +71,30 @@ export class Watch {
     this._exitPeekT = 0;
     this._hurtPeekT = 0;
     this._lastSel = -1;
+    this._known = null;
+    this.scan = { target: null, kind: null, prog: 0, sent: null, sweep: 0, beepT: 0 };
     this.attach(game.local.arms);
   }
 
-  get tab() { return TABS[this.tabIdx]; }
-  get tabs() { return TAB_NAMES; }
+  get econ() { const m = this.game.world?.level?.mission; return m?.econ && !m.econ.disposed ? m.econ : null; }
+
+  // installed app ids in launcher order
+  installed() {
+    const e = this.econ;
+    if (!e) return LEGACY;
+    return WATCH_APPS.filter((a) => e.appInstalled(a.id)).map((a) => a.id);
+  }
+
+  get tab() { return this.app; }
+  get tabs() { return this.installed().map((id) => WATCH_APPS.find((a) => a.id === id)?.name || id.toUpperCase()); }
+  get tabIdx() { return Math.max(0, this.installed().indexOf(this.app)); }
+  set tabIdx(i) { const list = this.installed(); this.app = list[((i % list.length) + list.length) % list.length]; }
 
   setTab(i) {
-    i = ((i % TABS.length) + TABS.length) % TABS.length;
-    if (i === this.tabIdx) return;
-    this.tabIdx = i;
+    const list = this.installed();
+    i = ((i % list.length) + list.length) % list.length;
+    if (list[i] === this.app) return;
+    this.app = list[i];
     this.screen.lastDraw = -1;
     if (audio.ready) audio.play('watch_beep', { volume: 0.3, bus: 'ui' });
   }
@@ -101,11 +136,14 @@ export class Watch {
     this.peekT = Math.max(0, this.peekT - dt);
     this._beepT -= dt;
     this._autoNotices(dt);
-    // tab switching (Q / E while the watch is up)
+    this._appsChanged();
+    if (!this.installed().includes(this.app)) this.app = this.installed()[this.econ ? 1 : 0] || 'status';
+    // app switching (Q / E while the watch is up)
     if (l.watchOpen && !l.dead && !g.terminal.active) {
       if (input.hit('tabPrev')) this.setTab(this.tabIdx - 1);
       if (input.pressed.has('KeyE')) this.setTab(this.tabIdx + 1);
     }
+    if (this.app === 'scanner') this._scanUpdate(dt);
     // EKG
     const hr = l.survival.heartRate || 72;
     this.ekgPhase += dt * hr / 60;
@@ -123,6 +161,21 @@ export class Watch {
     // draw
     if (l.watchRaised > 0.05 || Math.random() < 0.05) this.screen.draw(dt, (ctx, w, h, pal, t) => this._present(ctx, w, h, t));
     else this.screen.time += dt;
+  }
+
+  // a quest or a purchase installed an app: tell the clone about it
+  _appsChanged() {
+    if (!this.econ) { this._known = null; return; }
+    const list = this.installed();
+    if (this._known) {
+      for (const id of list) {
+        if (this._known.includes(id)) continue;
+        const a = WATCH_APPS.find((x) => x.id === id);
+        this.notify(`APP INSTALLED: ${a?.name || id.toUpperCase()}. Raise the watch, Q/E to switch.`, 'good', 'WATCH OS');
+        if (audio.ready) audio.play('radio_beep', { volume: 0.4, bus: 'ui' });
+      }
+    }
+    this._known = list;
   }
 
   _autoNotices(dt) {
@@ -156,6 +209,44 @@ export class Watch {
     }
   }
 
+  // ------------------------------------------------------------------ SCANNER logic
+  _scanUpdate(dt) {
+    const g = this.game, l = g.local, e = this.econ, sc = this.scan;
+    sc.sweep += dt;
+    if (!e || !l.watchOpen || l.dead) { sc.prog = Math.max(0, sc.prog - dt); return; }
+    const cam = engine.camera;
+    _fwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    // creatures and fungus: the bestiary study API (game/bio.js); its completion calls game.onStudy -> research pay
+    const mon = g.world.monsters;
+    let bio = null;
+    try { bio = mon?.study ? mon.study({ origin: cam.position, dir: _fwd, range: 14 }, dt) : null; } catch (err) { bio = null; }
+    if (bio) {
+      const kind = 'sp_' + bio.species;
+      if (kind !== sc.kind) { sc.kind = kind; sc.sent = null; }
+      sc.target = { kind, label: String(bio.name || bio.species).toUpperCase(), cat: bio.kind === 'fungus' ? 'bio' : 'mon', info: bio.hostile ? 'HOSTILE ENTITY' : bio.kind === 'fungus' ? 'FUNGUS' : bio.tame ? 'TAMEABLE FAUNA' : 'FAUNA', bio: true, studiedBio: !!bio.studied };
+      sc.prog = bio.progress ?? 0;
+      sc.dist = bio.dist || 0;
+      if (bio.done) { sc.sent = kind; if (audio.ready) audio.play('radio_beep', { volume: 0.4, bus: 'ui' }); }
+      else if (!bio.studied) { sc.beepT -= dt; if (sc.beepT <= 0 && audio.ready) { sc.beepT = 0.18; audio.play('watch_beep', { volume: 0.12, bus: 'ui', pitch: 1 + sc.prog * 0.8 }); } }
+      return;
+    }
+    const hit = g.world.physics.raycast(cam.position, _fwd, 14, Q.all & ~groups(0, G.PLAYER), null, (c) => c !== l.collider && !l._isGrabbedCollider?.(c));
+    const t = e.identify(hit);
+    sc.dist = hit ? hit.dist ?? hit.toi ?? 0 : 0;
+    if (!t) { sc.target = null; sc.prog = Math.max(0, sc.prog - dt * 1.5); return; }
+    if (t.kind !== sc.kind) { sc.kind = t.kind; sc.prog = 0; }
+    sc.target = t;
+    if (e.studied(t.kind) || sc.sent === t.kind) return;
+    sc.prog += dt / t.time;
+    sc.beepT -= dt;
+    if (sc.beepT <= 0 && audio.ready) { sc.beepT = 0.18; audio.play('watch_beep', { volume: 0.12, bus: 'ui', pitch: 1 + sc.prog * 0.8 }); }
+    if (sc.prog >= 1) {
+      sc.sent = t.kind;
+      e.requestScan(t);
+      if (audio.ready) audio.play('radio_beep', { volume: 0.4, bus: 'ui' });
+    }
+  }
+
   // ------------------------------------------------------------------ presentation
   _present(ctx, w, h, t) {
     const a = this.art;
@@ -179,18 +270,22 @@ export class Watch {
     const glance = this.peeking && !l.watchOpen;
     // faint background raster
     for (let y = 22; y < AH; y += 4) for (let x = 2; x < AW; x += 4) a.set(x, y, P.faint);
-    // tab strip
-    const tw = Math.floor((AW - 4) / TABS.length);
-    TABS.forEach((_, i) => {
-      const sel = i === this.tabIdx && !glance;
-      const x = 2 + i * tw;
-      if (sel) { a.rect(x, 1, tw - 2, 10, P.fg); a.hline(x, x + tw - 3, 11, P.fg); }
-      else { a.frame(x, 1, tw - 2, 10, P.faint); a.hline(x, x + tw - 3, 10, P.dim); }
-      const lw = 6 + 2 + textWidth(TAB_NAMES[i], FONT5);
-      const lx = Math.round(x + (tw - 2 - lw) / 2);
-      glyphMini(a, TAB_ICON[i], lx, 4, sel ? P.bg : P.dim);
-      text(a, TAB_NAMES[i], lx + 8, 3, sel ? P.bg : P.dim);
-    });
+    // title bar: < APP > and page dots
+    const list = this.installed();
+    const meta = WATCH_APPS.find((x) => x.id === this.app);
+    const name = glance ? 'NOTICE' : meta?.name || this.app.toUpperCase();
+    a.rect(2, 1, AW - 4, 10, glance ? P.dim : P.fg);
+    if (!glance) {
+      glyphMini(a, 'pulse', 4, 4, P.bg);
+      text(a, '<', 12, 3, P.bg);
+      const nw = textWidth(name, FONT5);
+      text(a, name, 20, 3, P.bg);
+      text(a, '>', 22 + nw, 3, P.bg);
+      list.forEach((id, i) => {
+        const x = AW - 6 - (list.length - 1 - i) * 5;
+        if (id === this.app) a.rect(x - 1, 4, 3, 3, P.bg); else a.set(x, 5, P.dim);
+      });
+    } else text(a, name, 5, 3, P.bg);
     // day + clock
     const day = g.day?.active ? `DAY ${g.day.day}/7` : 'HQ  B4';
     text(a, day, 4, 14, P.hi);
@@ -199,10 +294,15 @@ export class Watch {
     a.hline(2, AW - 3, 22, P.dim);
     const y0 = 25;
     if (glance) { this._notice(a, t, y0); return; }
-    switch (this.tab) {
+    switch (this.app) {
+      case 'home': this._home(a, t, y0); break;
       case 'status': this._status(a, t, y0); break;
       case 'map': this._map(a, t, y0); break;
-      case 'task': this._task(a, t, y0); break;
+      case 'tasks': this._tasks(a, t, y0); break;
+      case 'bank': this._bank(a, t, y0); break;
+      case 'scanner': this._scanner(a, t, y0); break;
+      case 'radio': this._radio(a, t, y0); break;
+      case 'flash': this._flash(a, t, y0); break;
       default: break;
     }
     // a notice that arrives while the watch is up runs as a banner along the bottom
@@ -222,7 +322,7 @@ export class Watch {
     const n = this.notices[0];
     if (!n) return;
     const bad = n.kind === 'bad' || n.kind === 'warn';
-    const col = bad ? P.bad : n.kind === 'good' || n.kind === 'healthity' ? P.hi : P.hi;
+    const col = P.hi;
     if (Math.floor(t * 4) % 2 || !bad) { a.rect(4, y0 + 1, 5, 5, bad ? P.bad : P.fg); a.set(5, y0 + 2, P.hi); }
     text(a, `${(n.from || 'NOTICE').toUpperCase()}${n.n > 1 ? ' X' + n.n : ''}`, 12, y0, bad ? P.bad : P.fg);
     // big type: the glance is short and the watch face small on a phone
@@ -236,7 +336,31 @@ export class Watch {
     glyphMini(a, 'heart', 4, AH - 8, s.health < 30 ? P.bad : P.fg);
     segBar(a, 11, AH - 9, 50, 7, s.health / 100, s.health < 30 ? P.bad : P.fg);
     glyphMini(a, 'coin', AW - 8, AH - 8, P.warn);
-    text(a, `${this.game.run?.credits ?? 0}`, AW - 11, AH - 9, P.hi, { align: 'right' });
+    text(a, short$(this.game.run?.credits ?? 0), AW - 11, AH - 9, P.hi, { align: 'right' });
+  }
+
+  // ------------------------------------------------------------------ HOME: launcher grid
+  _home(a, t, y0) {
+    const e = this.econ;
+    const apps = WATCH_APPS.filter((x) => x.id !== 'home');
+    const cols = 4, tw = 38, th = 30, x0 = 3;
+    const next = this.installed()[(this.tabIdx + 1) % this.installed().length];
+    apps.forEach((app, i) => {
+      const x = x0 + (i % cols) * (tw + 1), y = y0 + Math.floor(i / cols) * (th + 2);
+      const on = e ? e.appInstalled(app.id) : LEGACY.includes(app.id);
+      const hl = app.id === next && Math.floor(t * 2) % 2;
+      a.frame(x, y, tw, th, on ? (hl ? P.hi : P.dim) : P.faint);
+      bitmap(ICON[app.icon] || ICON.home, { '#': on ? (hl ? P.hi : P.fg) : P.faint }, a, x + 15, y + 4);
+      if (!on) bitmap(MINI.lock, { '#': P.dim }, a, x + tw - 7, y + 2);
+      const nm = app.name.slice(0, 7);
+      text(a, nm, x + Math.round((tw - textWidth(nm, FONT3)) / 2), y + 18, on ? P.hi : P.dim, { font: FONT3 });
+      if (!on && app.via) { const v = app.via.slice(0, 9); text(a, v, x + Math.round((tw - textWidth(v, FONT3)) / 2), y + 24, P.faint, { font: FONT3 }); }
+    });
+    const by = y0 + 2 * (th + 2) + 2;
+    a.hline(2, AW - 3, by, P.faint);
+    glyphMini(a, 'coin', 4, by + 4, P.warn);
+    text(a, fmt$(this.game.run?.credits ?? 0), 12, by + 3, P.hi);
+    text(a, 'Q/E APPS', AW - 4, by + 3, P.dim, { align: 'right', font: FONT3 });
   }
 
   _status(a, t, y0) {
@@ -351,22 +475,26 @@ export class Watch {
     text(a, 'N', AW - 10, top + 2, P.hi);
   }
 
-  // a mission marker (camp / pads / exit): an icon + label on the map, or an arrow on the frame edge
+  // a mission marker (camp / crusher / kiosk / file / gen / exit): an icon + label, or an arrow on the frame edge
   _marker(a, t, mk, [x, y], mx, my, top, bot) {
-    const col = mk.kind === 'exit' ? P.warn : mk.kind === 'pads' ? P.cyan : P.hi;
+    const col = mk.kind === 'exit' ? P.warn : mk.kind === 'pads' || mk.kind === 'crusher' ? P.cyan : mk.kind === 'file' || mk.kind === 'gen' ? P.warn : P.hi;
     const label = String(mk.label || mk.kind).toUpperCase();
     const L = 4, R = AW - 5, T = top + 2, B = bot - 3;
     if (x >= L + 3 && x <= R - 3 && y >= T + 3 && y <= B - 3) {
       if (mk.kind === 'camp') a.poly([[x - 4, y + 3], [x, y - 4], [x + 4, y + 3]], col);
-      else if (mk.kind === 'pads') { a.frame(x - 3, y - 3, 7, 7, col); a.rect(x - 1, y - 1, 3, 3, col); }
+      else if (mk.kind === 'pads' || mk.kind === 'crusher') { a.frame(x - 3, y - 3, 7, 7, col); a.rect(x - 1, y - 1, 3, 3, col); }
+      else if (mk.kind === 'file') { a.rect(x - 2, y - 2, 5, 4, col); a.set(x - 2, y - 3, col); a.set(x - 1, y - 3, col); }
+      else if (mk.kind === 'gen') { a.frame(x - 2, y - 2, 5, 5, col); if (Math.floor(t * 2) % 2) a.set(x, y, col); }
       else if (Math.floor(t * 3) % 2) a.disc(x + 0.5, y + 0.5, 3.2, col);
       else a.ring(x + 0.5, y + 0.5, 3.6, col);
+      if (mk.kind === 'file' || mk.kind === 'gen') return; // small pins: no label clutter
       const lw = textWidth(label, FONT3);
       const lx = x + 5 + lw < R ? x + 5 : x - 5 - lw;
       a.rect(lx - 1, y - 7, lw + 2, 7, P.bg);
       text(a, label, lx, y - 6, col, { font: FONT3 });
       return;
     }
+    if (mk.kind === 'file' || mk.kind === 'gen') return;
     // off the map: pin an arrow to the frame, pointing toward it
     const dx = x - mx, dy = y - my;
     const k = Math.min((dx > 0 ? R - mx : L - mx) / (dx || 1e-6), (dy > 0 ? B - my : T - my) / (dy || 1e-6));
@@ -381,13 +509,13 @@ export class Watch {
     text(a, label, lx, ly, col, { font: FONT3 });
   }
 
-  _task(a, t, y0) {
+  // ------------------------------------------------------------------ TASKS
+  _tasks(a, t, y0) {
     const g = this.game;
     const m = g.world.level?.mission;
-    let obj = null;
-    try { obj = m?.objective?.() || null; } catch (e) { obj = null; }
-    let y = y0;
+    const e = this.econ;
     if (!m) {
+      let y = y0;
       text(a, 'HQ ORIENTATION', 4, y, P.hi);
       y += 11;
       for (const s of ['VISIT YOUR LOCKER', 'GRAB SNACKS: BREAK ROOM', 'READ THE ORIENTATION', 'HOST: START SHIFT', 'STEP INTO THE ELEVATOR']) {
@@ -397,6 +525,56 @@ export class Watch {
       }
       return;
     }
+    if (!e || !m.tasks) { this._legacyTask(a, t, y0); return; }
+    let y = y0;
+    const obj = m.objective?.();
+    const main = e.main.filter((n) => n.id !== 'm_escape');
+    const mainDone = e.mainDone();
+    text(a, mainDone ? 'SIDE QUESTS' : 'MAIN MISSION 1', 4, y, P.hi);
+    if (obj && !mainDone) text(a, obj.title.slice(0, 14), AW - 4, y, P.warn, { align: 'right', font: FONT3 });
+    y += 10;
+    if (!mainDone) {
+      for (const n of main) {
+        const st = e.state(n), done = st === 'claimed', cur = st === 'active';
+        a.frame(4, y + 1, 6, 6, done ? P.fg : cur ? P.hi : P.dim);
+        if (done) bitmap(MINI.check, { '#': P.hi }, a, 5, y + 2);
+        else if (cur && Math.floor(t * 3) % 2) a.rect(6, y + 3, 2, 2, P.hi);
+        text(a, (n.task || n.name).toUpperCase().slice(0, 26), 13, y, done ? P.dim : cur ? P.hi : P.fg);
+        y += 10;
+      }
+      if (obj?.detail) {
+        wrapText(obj.detail.toUpperCase(), AW - 8, FONT3).slice(0, 4).forEach((ln, i) => text(a, ln, 4, y + 2 + i * 7, P.fg, { font: FONT3 }));
+        y += 30;
+      }
+      if (typeof obj?.progress === 'number') segBar(a, 4, Math.min(y, AH - 22), AW - 8, 7, obj.progress, P.fg);
+    } else {
+      const side = e.activeSide().slice(0, 5);
+      if (!side.length) text(a, 'ALL QUESTS DONE. FILL THE FUND!', 4, y, P.fg, { font: FONT3 });
+      for (const n of side) {
+        const st = e.state(n), pr = e.progress(n);
+        const ready = st === 'ready';
+        text(a, n.short.slice(0, 13), 4, y, ready ? (Math.floor(t * 3) % 2 ? P.hi : P.warn) : P.fg);
+        if (ready) text(a, 'CLAIM AT CAMP', AW - 4, y + 1, P.warn, { align: 'right', font: FONT3 });
+        else { segBar(a, 76, y, 60, 7, pr.frac, P.fg); text(a, `${Math.round(pr.frac * 100)}`, AW - 3, y + 1, P.dim, { align: 'right', font: FONT3 }); }
+        y += 10;
+      }
+    }
+    // escape fund strip
+    const by = AH - 20;
+    a.hline(2, AW - 3, by - 3, P.faint);
+    glyphMini(a, 'coin', 4, by + 1, P.warn);
+    text(a, `${short$(e.escape)} / ${short$(e.quota)}`, 12, by, P.hi);
+    text(a, 'ESCAPE', AW - 4, by, P.dim, { align: 'right', font: FONT3 });
+    segBar(a, 4, by + 10, AW - 8, 7, e.escape / e.quota, e.escape >= e.quota ? P.hi : P.red);
+  }
+
+  // older dimensions (generator / radio mission): objective + checklist + money vs quota
+  _legacyTask(a, t, y0) {
+    const g = this.game;
+    const m = g.world.level?.mission;
+    let obj = null;
+    try { obj = m?.objective?.() || null; } catch (e) { obj = null; }
+    let y = y0;
     if (obj) {
       a.rect(3, y, 6, 7, P.fg); a.set(5, y + 2, P.bg); a.set(6, y + 3, P.bg); a.set(5, y + 4, P.bg);
       const title = wrapText(obj.title || 'OBJECTIVE', AW - 16);
@@ -413,9 +591,7 @@ export class Watch {
         y += 11;
       }
     } else {
-      // fallback checklist from the generator mission
-      const gens = m.generators || [];
-      for (const gen of gens) {
+      for (const gen of m.generators || []) {
         const done = gen.running;
         a.frame(4, y + 1, 5, 5, done ? P.fg : P.dim);
         if (done) { a.set(5, y + 3, P.hi); a.set(6, y + 4, P.hi); a.set(7, y + 2, P.hi); }
@@ -435,7 +611,6 @@ export class Watch {
         }
       }
     }
-    // money vs quota
     const q = m.quota?.need;
     const cr = g.run?.credits ?? 0;
     const by = AH - 20;
@@ -447,7 +622,112 @@ export class Watch {
       text(a, met ? 'QUOTA MET' : 'QUOTA', AW - 4, by, met ? P.hi : P.dim, { align: 'right', font: FONT3 });
       segBar(a, 4, by + 10, AW - 8, 7, cr / q, met ? P.hi : P.warn);
     }
-    void t;
+  }
+
+  // ------------------------------------------------------------------ BANK
+  _bank(a, t, y0) {
+    const e = this.econ, run = this.game.run || {};
+    text(a, 'CREDITS', 4, y0, P.dim, { font: FONT3 });
+    text(a, fmt$(run.credits), 4, y0 + 7, P.hi, { scale: 2 });
+    if (!e) return;
+    const f = Math.min(1, e.escape / e.quota);
+    // escape fund: a horizontal thermometer with a bulb
+    const gy = y0 + 28;
+    text(a, 'ESCAPE FUND', 4, gy, P.warn);
+    text(a, `${Math.floor(f * 100)}%`, AW - 4, gy, f >= 1 ? (Math.floor(t * 3) % 2 ? P.hi : P.warn) : P.hi, { align: 'right' });
+    const bx = 14, bw = AW - 20, by = gy + 10;
+    a.disc(9, by + 4, 5, P.red);
+    a.frame(bx, by, bw, 9, P.dim);
+    a.rect(bx + 1, by + 2, Math.round((bw - 2) * f), 5, P.red);
+    for (let i = 1; i < 4; i++) a.vline(bx + Math.round(bw * i / 4), by + 9, by + 11, P.dim);
+    text(a, `${fmt$(e.escape)} / ${short$(e.quota)}`, 4, by + 13, P.fg, { font: FONT3 });
+    // level rules
+    const r = e.rules, ry = by + 22;
+    a.hline(2, AW - 3, ry, P.faint);
+    text(a, `${r.name}: ${r.title}`.slice(0, 30), 4, ry + 3, P.hi, { font: FONT3 });
+    text(a, `PRICES X${r.priceMul}  HAZARDS: ${r.hazards.slice(0, 2).join(', ')}`.slice(0, 38), 4, ry + 10, P.dim, { font: FONT3 });
+    text(a, 'PURCHASES DO NOT DRAIN THE FUND', 4, ry + 17, P.dim, { font: FONT3 });
+    const last = this.game.world?.level?.mission?.crusher?.lastSale;
+    if (last) text(a, `LAST UPLOAD +${short$(last)}`, 4, AH - 9, P.fg);
+  }
+
+  // ------------------------------------------------------------------ SCANNER
+  _scanner(a, t, y0) {
+    const sc = this.scan, e = this.econ, tg = sc.target;
+    const cx = AW / 2, cy = y0 + 30;
+    // reticle brackets + sweeping line
+    const R = 22;
+    const isDone = (x) => !!x && (e?.studied(x.kind) || x.studiedBio);
+    const col = tg ? (isDone(tg) ? P.dim : P.hi) : P.dim;
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      a.hline(Math.min(cx + sx * R, cx + sx * (R - 6)), Math.max(cx + sx * R, cx + sx * (R - 6)), cy + sy * R, col);
+      a.vline(cx + sx * R, Math.min(cy + sy * R, cy + sy * (R - 6)), Math.max(cy + sy * R, cy + sy * (R - 6)), col);
+    }
+    if (!tg) {
+      const ly = cy - R + Math.round(((sc.sweep * 30) % (R * 2)));
+      a.hline(cx - R + 2, cx + R - 2, ly, P.faint);
+      a.set(cx, cy, P.dim);
+      text(a, 'NO TARGET', cx, cy + R + 4, P.dim, { align: 'center' });
+      text(a, 'AIM THE CROSSHAIR AT A THING', cx, cy + R + 14, P.faint, { align: 'center', font: FONT3 });
+    } else {
+      const studied = isDone(tg);
+      // a progress ring
+      const segs = 24, done = studied ? segs : Math.floor(Math.min(1, sc.prog) * segs);
+      for (let i = 0; i < segs; i++) {
+        const ang = -Math.PI / 2 + (i / segs) * Math.PI * 2;
+        a.set(Math.round(cx + Math.cos(ang) * 12), Math.round(cy + Math.sin(ang) * 12), i < done ? P.hi : P.faint);
+      }
+      a.disc(cx + 0.5, cy + 0.5, 2, studied ? P.fg : Math.floor(t * 6) % 2 ? P.hi : P.dim);
+      text(a, tg.label.slice(0, 22), cx, cy + R + 3, P.hi, { align: 'center' });
+      text(a, tg.info.slice(0, 30), cx, cy + R + 12, tg.cat === 'mon' ? P.bad : P.fg, { align: 'center', font: FONT3 });
+      const v = e?.scanValue(tg.cat) || 0;
+      text(a, studied ? 'IN DATABASE' : sc.sent === tg.kind ? 'UPLOADING...' : `STUDY: +${short$(v)}`, cx, cy + R + 19, studied ? P.dim : P.warn, { align: 'center', font: FONT3 });
+    }
+    text(a, `STUDIED ${Object.keys(this.game.run?.scans || {}).length}`, 4, AH - 9, P.dim, { font: FONT3 });
+    text(a, `RNG ${sc.dist ? sc.dist.toFixed(1) : '--'}M`, AW - 4, AH - 9, P.dim, { font: FONT3, align: 'right' });
+  }
+
+  // ------------------------------------------------------------------ RADIO
+  _radio(a, t, y0) {
+    // tuner strip
+    a.frame(2, y0, AW - 4, 12, P.dim);
+    for (let x = 6; x < AW - 6; x += 6) a.vline(x, y0 + 7, y0 + 10, P.faint);
+    const nx = 40 + Math.round(Math.sin(t * 0.3) * 3);
+    a.vline(nx, y0 + 1, y0 + 10, P.bad);
+    text(a, 'R.O.O.M. BAND 98.6', AW - 6, y0 + 3, P.hi, { align: 'right', font: FONT3 });
+    // spectrum
+    for (let i = 0; i < 18; i++) {
+      const h = Math.round(2 + Math.abs(Math.sin(t * (3 + i * 0.7) + i)) * 6);
+      a.rect(4 + i * 3, y0 + 21 - h, 2, h, P.dim);
+    }
+    text(a, 'HQ COMMS LOG', 64, y0 + 14, P.fg);
+    let y = y0 + 24;
+    for (const msg of this.messages.slice(0, 6)) {
+      const line = `${(msg.from || '').slice(0, 9)}: ${msg.msg}`.toUpperCase();
+      text(a, line.slice(0, 38), 3, y, msg.from === 'HQ' || msg.from === 'RECEPTION' ? P.hi : P.fg, { font: FONT3 });
+      y += 8;
+      if (y > AH - 8) break;
+    }
+    if (!this.messages.length) text(a, '...STATIC...', AW / 2, y0 + 40, P.dim, { align: 'center' });
+  }
+
+  // ------------------------------------------------------------------ FLASH+
+  _flash(a, t, y0) {
+    const l = this.game.local;
+    const fi = l.inv?.find('flashlight') ?? -1;
+    const ch = fi >= 0 ? (l.inv.slots[fi].state.charge ?? 1) : 0;
+    text(a, 'FLASHLIGHT OVERDRIVE', 4, y0, P.hi);
+    const on = l.flashOn && fi >= 0;
+    // beam diagram
+    const bx = 20, by = y0 + 26;
+    a.rect(bx - 12, by - 4, 12, 8, on ? P.fg : P.dim);
+    if (on) for (let i = 0; i < 9; i++) { const yy = by - 2 - i, y2 = by + 2 + i; a.line(bx, by - 2, bx + 110, yy - i * 1.4, i % 2 ? P.faint : P.dim); a.line(bx, by + 2, bx + 110, y2 + i * 1.4, i % 2 ? P.faint : P.dim); }
+    text(a, on ? 'BOOST ACTIVE +45%' : fi >= 0 ? 'TORCH OFF [F]' : 'NO FLASHLIGHT', AW / 2 + 10, by - 3, on ? (Math.floor(t * 3) % 2 ? P.hi : P.fg) : P.dim, { align: 'center' });
+    text(a, 'CELL', 4, y0 + 48, P.dim);
+    segBar(a, 28, y0 + 48, AW - 50, 7, ch, ch < 0.2 ? P.bad : P.fg);
+    text(a, `${Math.round(ch * 100)}%`, AW - 3, y0 + 49, P.dim, { align: 'right', font: FONT3 });
+    const bat = this.econ?.has('up:battery');
+    text(a, bat ? 'TOOL BATTERY: RUNTIME X2' : 'TIP: TOOL BATTERY UPGRADE', 4, y0 + 62, bat ? P.fg : P.dim, { font: FONT3 });
   }
 
   dispose() {}
@@ -472,4 +752,3 @@ function segBar(a, x, y, w, h, f, c) {
     else a.set(sx, y + Math.floor(h / 2), P.faint);
   }
 }
-

@@ -76,6 +76,7 @@ const BONE_DEFS = [
 ];
 export const BONE_NAMES = BONE_DEFS.map((d) => d[0]);
 export const BI = Object.fromEntries(BONE_NAMES.map((n, i) => [n, i]));
+export const BONE_PARENT = BONE_DEFS.map((d) => (d[1] ? BI[d[1]] : -1));
 export const HEAD_BONES = new Set(['head', 'jaw', 'eyeL', 'eyeR', 'ledL', 'ledR', 'lidUL', 'lidUR', 'lidDL', 'lidDR', 'browL', 'browR', 'hat', 'hatA', 'hatB']);
 
 const _e = new THREE.Euler(), _s1 = new THREE.Vector3(1, 1, 1);

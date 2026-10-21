@@ -4,6 +4,9 @@
 // receives the watch UI canvas). Camera space: forearms point along -Z.
 //
 // buildFirstPersonArms(cosmetics, opts) -> { root, rightHand, leftHand, watchScreen, update(dt, st), dispose }
+//   st (all optional): bob, speed, sprint, watchRaised, grab, use, throwCharge, holdingItem, holdL (left hand item),
+//   armful, cradle, reach (0..1 two-handed poses), windR/jabR/windL/jabL (punch wind-up / extension),
+//   tremble (QTE shake), grabPower (strained pull), sway, landing, phase
 import * as THREE from 'three';
 import { clamp, lerp, smooth, damp, Spring } from './kit.js';
 import { labelTexture } from '../../gfx/textures.js';
@@ -232,7 +235,19 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
     throw: { h: V(0.2, 0.0, -0.3), d: V(0.12, 0.85, 0.45), u: V(-0.2, -0.45, 0.85) },
     release: { h: V(0.06, -0.15, -0.58), d: V(-0.15, 0.1, -0.98), u: V(0, 1, 0) },
     lowR: { h: V(0.24, -0.38, -0.32), d: V(-0.1, 0.4, -0.9), u: V(-0.3, 0.9, 0.3) },
+    // punches: wind-up (pulled back, low) and full extension (knuckles forward), per side
+    windR: { h: V(0.22, -0.17, -0.22), d: V(-0.12, 0.38, -0.92), u: V(-0.35, 0.88, 0.3) },
+    jabR: { h: V(0.045, -0.075, -0.6), d: V(-0.1, 0.1, -0.99), u: V(-0.62, 0.74, 0.1) },
+    // both hands cradling something in front of the chest, palms up (the heart patch-up)
+    cradleR: { h: V(0.05, -0.14, -0.22), d: V(-0.38, 0.28, -0.88), u: V(0.35, -0.92, -0.1) },
+    // reaching into the chest cavity (both hands drop out of view)
+    reachR: { h: V(0.08, -0.36, -0.1), d: V(-0.4, 0.75, -0.5), u: V(-0.2, 0.5, 0.85) },
+    // hugging an armful of items from beneath
+    armR: { h: V(0.12, -0.26, -0.3), d: V(-0.55, 0.22, -0.8), u: V(0.3, -0.92, 0.1) },
   };
+  const mirror = (p) => ({ h: V(-p.h.x, p.h.y, p.h.z), d: V(-p.d.x, p.d.y, p.d.z), u: V(-p.u.x, p.u.y, p.u.z) });
+  for (const k of ['wind', 'jab', 'cradle', 'reach', 'arm']) POSE[k + 'L'] = mirror(POSE[k + 'R']);
+  POSE.holdL = mirror(POSE.hold);
   const Wc = V(-0.005, -0.014, -0.13);
   const wd = V(1, 0.12, 0.08).normalize(), wu = V(0, 0.08, 1).normalize();
   POSE.watch = { h: Wc.clone().addScaledVector(wd, L + WZ).sub(wu.clone().multiplyScalar(WY + 0.0134)), d: wd, u: wu };
@@ -258,7 +273,7 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
     phase: 0, t: 0, prevCharge: 0, release: 0,
     sR: { x: POSE.R.h.clone(), v: V(0, 0, 0) }, sL: { x: POSE.L.h.clone(), v: V(0, 0, 0) },
     sway: V(0, 0, 0), swayV: V(0, 0, 0), land: new Spring(160, 9, 0), curl: 0, bob: 0,
-    w: { watch: 0, grab: 0, use: 0, thr: 0, hold: 0 },
+    w: { watch: 0, grab: 0, use: 0, thr: 0, hold: 0, holdL: 0, armful: 0, cradle: 0, reach: 0 },
   };
   const tmp = { h: V(0, 0, 0), d: V(0, 0, 0), u: V(0, 0, 0) };
   const blendPose = (out, bP, w) => { out.h.lerp(bP.h, w); out.d.lerp(bP.d, w); out.u.lerp(bP.u, w); };
@@ -277,6 +292,13 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
     w.use = damp(w.use, clamp(s.use || 0, 0, 1), 9, dt);
     w.thr = damp(w.thr, clamp(s.throwCharge || 0, 0, 1), 12, dt);
     w.hold = damp(w.hold, s.holdingItem ? 1 : 0, 10, dt);
+    w.holdL = damp(w.holdL, s.holdL ? 1 : 0, 10, dt);
+    w.armful = damp(w.armful, clamp(s.armful || 0, 0, 1), 8, dt);
+    w.cradle = damp(w.cradle, clamp(s.cradle || 0, 0, 1), 14, dt);
+    w.reach = damp(w.reach, clamp(s.reach || 0, 0, 1), 14, dt);
+    const windR = clamp(s.windR || 0, 0, 1), jabR = clamp(s.jabR || 0, 0, 1), windL = clamp(s.windL || 0, 0, 1), jabL = clamp(s.jabL || 0, 0, 1);
+    const both = Math.max(w.armful, w.cradle, w.reach);
+    const shakeAmt = (s.tremble || 0) * 0.006 + (s.grabPower || 0) * 0.0025 + (windR + windL > 0.9 ? 0.002 : 0);
     const charge = s.throwCharge || 0;
     if (st.prevCharge > 0.25 && charge < 0.05) st.release = 1;
     st.prevCharge = charge;
@@ -298,26 +320,44 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
     blendPose(tmp, POSE.lowR, w.watch * 0.8 * (1 - w.grab) * (1 - w.use));
     blendPose(tmp, POSE.grab, w.grab);
     blendPose(tmp, POSE.use, w.use);
+    blendPose(tmp, POSE.armR, w.armful);
+    blendPose(tmp, POSE.cradleR, w.cradle);
+    blendPose(tmp, POSE.reachR, w.reach);
+    blendPose(tmp, POSE.windR, windR * (1 - jabR));
+    blendPose(tmp, POSE.jabR, jabR);
     blendPose(tmp, POSE.throw, w.thr);
     if (st.release > 0) blendPose(tmp, POSE.release, Math.sin(st.release * PI));
-    const tremble = w.thr > 0.85 ? (Math.random() - 0.5) * 0.004 : 0;
+    const tremble = (w.thr > 0.85 ? (Math.random() - 0.5) * 0.004 : 0) + (Math.random() - 0.5) * shakeAmt;
+    tmp.h.y += (Math.random() - 0.5) * shakeAmt;
     tmp.h.x += bobX + st.sway.x + tremble; tmp.h.y += bobY + st.sway.y - land * 0.05 + Math.sin(ph) * 0.035 * run + Math.sin(st.t * 1.6) * 0.004;
     tmp.h.z += Math.cos(ph) * 0.05 * run;
     if (w.use > 0.5) tmp.h.y += Math.sin(st.t * 9) * 0.008 * w.use;
-    placeArm('R', stepSpring(st.sR, tmp.h, dt, 140, 0.45), tmp.d, tmp.u);
+    const snapR = Math.max(jabR, windR * 0.6);
+    placeArm('R', stepSpring(st.sR, tmp.h, dt, lerp(140, 900, snapR), lerp(0.45, 0.72, snapR)), tmp.d, tmp.u);
     tmp.h.copy(POSE.L.h); tmp.d.copy(POSE.L.d); tmp.u.copy(POSE.L.u);
+    blendPose(tmp, POSE.holdL, w.holdL);
+    blendPose(tmp, POSE.armL, w.armful);
+    blendPose(tmp, POSE.cradleL, w.cradle);
+    blendPose(tmp, POSE.reachL, w.reach);
+    blendPose(tmp, POSE.windL, windL * (1 - jabL));
+    blendPose(tmp, POSE.jabL, jabL);
+    tmp.h.x += (Math.random() - 0.5) * shakeAmt; tmp.h.y += (Math.random() - 0.5) * shakeAmt;
     blendPose(tmp, POSE.watch, smooth(w.watch));
     const ww = 1 - w.watch * 0.85;
     tmp.h.x += (bobX + st.sway.x) * ww; tmp.h.y += (bobY + st.sway.y - land * 0.05) * ww + Math.sin(st.t * 1.6 + 1) * 0.004 * ww - Math.sin(ph) * 0.035 * run * ww;
     tmp.h.z -= Math.cos(ph) * 0.05 * run * ww;
-    tmp.h.y -= (w.thr * 0.08 + w.use * 0.06) * (1 - w.watch);
-    placeArm('L', stepSpring(st.sL, tmp.h, dt, lerp(140, 260, w.watch), lerp(0.45, 0.8, w.watch)), tmp.d, tmp.u);
-    const curl = clamp(w.hold * 0.9 + w.use * 0.5 - w.grab * 0.6 + w.thr * 0.6, -0.5, 1);
+    tmp.h.y -= (w.thr * 0.08 + w.use * 0.06) * (1 - w.watch) * (1 - both);
+    const snapL = Math.max(jabL, windL * 0.6);
+    placeArm('L', stepSpring(st.sL, tmp.h, dt, lerp(lerp(140, 260, w.watch), 900, snapL), lerp(lerp(0.45, 0.8, w.watch), 0.72, snapL)), tmp.d, tmp.u);
+    const fistR = Math.max(windR, jabR), fistL = Math.max(windL, jabL);
+    const curl = clamp(Math.max(w.hold * 0.9 + w.use * 0.5 - w.grab * 0.6 + w.thr * 0.6, fistR * 1.0, (w.cradle + w.armful) * 0.4), -0.5, 1);
     st.curl = damp(st.curl, curl, 12, dt);
     bones.fingR.rotation.x = -0.15 - st.curl * 1.1; bones.fingTR.rotation.x = -0.12 - st.curl * 1.0; bones.ixR.rotation.x = -0.1 - st.curl * 1.15;
     bones.thumbR.rotation.z = (w.grab * 0.5) - st.curl * 0.2;
-    bones.fingL.rotation.x = -0.3 - w.watch * 0.1; bones.fingTL.rotation.x = -0.28; bones.ixL.rotation.x = -0.22 - w.watch * 0.08;
-    bones.wrR.rotation.set(-0.15 * w.grab + 0.1 * w.hold, 0, 0);
+    const curlL = clamp(Math.max(w.holdL * 0.9, fistL, (w.cradle + w.armful) * 0.4), 0, 1) * (1 - w.watch);
+    st.curlL = damp(st.curlL || 0, curlL, 12, dt);
+    bones.fingL.rotation.x = -0.3 - w.watch * 0.1 - st.curlL * 0.95; bones.fingTL.rotation.x = -0.28 - st.curlL * 0.9; bones.ixL.rotation.x = -0.22 - w.watch * 0.08 - st.curlL * 1.0;
+    bones.wrR.rotation.set(-0.15 * w.grab + 0.1 * w.hold + 0.25 * jabR, 0, 0);
     bones.wrL.rotation.set(-0.1 * w.watch, 0, 0);
   }
   update(0, {});

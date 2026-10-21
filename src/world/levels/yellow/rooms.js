@@ -7,7 +7,7 @@ import { CELL, CHUNK, HEIGHT } from './layout.js';
 import { modelHalfHeight } from '../../../entities/catalog.js';
 import { RNG, hash3 } from '../../../core/rng.js';
 import { makeDevice } from '../../../game/devicekinds.js';
-import { CRATE_LOOT } from '../../../game/itemdefs.js';
+import { CRATE_LOOT, ITEM } from '../../../game/itemdefs.js';
 import { EnvGeo } from '../../env/builder.js';
 import { bakeInto, roomBounds, placeStatic, sp, spPlaced } from './roomkit.js';
 import { WEIRD, decorateWeird, populateWeird } from './weird.js';
@@ -55,7 +55,6 @@ export function decorateRoom(level, room, rec) {
       break;
     }
     case 'workshop': {
-      addDevice(level, rec, 'workbench', `wb:${rid}`, new THREE.Vector3(b.cx, 0, b.z0 + 0.55), 0);
       pipeExit(level, placeStatic(level, rec, 'pipe_cluster', b.x1 - 0.15, 0, b.cz, -Math.PI / 2, { useHalf: false }));
       break;
     }
@@ -421,9 +420,13 @@ export function populateRoom(level, room, rec, rng) {
       for (const t of ['plank', 'plank', 'screws', 'metal_scrap', 'fabric_scrap', 'wire_spool']) sp(level, t, b.cx + r(1.2), 0, b.z0 + 1.4 + r(0.4), rng.next() * 6);
       // against the south wall between the two door slots (arches can open anywhere but the north wall)
       sp(level, 'toolbox', b.cx - 0.2, 0, b.z1 - 0.32, 0.1);
-      // on the workbench top (0.92 m)
-      sp(level, 'welder', b.cx + 0.4, 0.921, b.z0 + 0.5, 0, { state: { fuel: 1 } });
-      sp(level, 'sample_jar', b.cx - 0.5, 0.921, b.z0 + 0.5, 0);
+      // (no crafting bench any more) a folding table against the north wall with the welder on it, wheels and a
+      // board to build a cart from
+      sp(level, 'table_folding', b.cx, 0, b.z0 + 0.55, 0);
+      sp(level, 'welder', b.cx + 0.3, 0.762, b.z0 + 0.5, 0, { state: { fuel: 1 } });
+      sp(level, 'sample_jar', b.cx - 0.4, 0.762, b.z0 + 0.5, 0);
+      if (ITEM.wheel) for (let k = 0; k < 2; k++) sp(level, 'wheel', b.cx - 1.0 + k * 0.4, 0, b.z1 - 0.9, rng.next() * 6);
+      sp(level, 'board', b.cx + 0.9, 0, b.z1 - 1.0, 0.3);
       break;
     }
     case 'vent_room': {

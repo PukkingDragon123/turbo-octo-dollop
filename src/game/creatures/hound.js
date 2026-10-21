@@ -204,15 +204,14 @@ export class HoundAI extends Agent {
     if (this.pantT <= 0) { this.pantT = 1.6 + this.rng.range(0, 1.2); this.mgr.sound('hound_pant', this.pos, sp > 3 ? 0.9 : 0.5); }
   }
 
-  onHit(dir) {
-    this.hp--;
+  // combat.js reaction hook (damage / death are handled there)
+  onHurt(dir) {
     this.vel.addScaledVector(dir, 5);
     this.setState('flee');
     this.fleeFrom.copy(this.pos).addScaledVector(dir, -2);
     this.waryT = 6;
     this.mgr.sound('hound_yelp', this.pos, 1);
     if (this.raid) this.endRaid();
-    return this.hp <= 0;
   }
 
   onFlash(p) {

@@ -13,6 +13,7 @@ import { buildChunk, cellLightSpec, makeOccluder, makeAO } from './chunkbuilder.
 import { decorateRoom, populateRoom } from './rooms.js';
 import { Placer } from './placement.js';
 import { weirdPhotoSubject } from './weird.js';
+import { decorateBiome, populateBiome } from './biome.js';
 import { Scares } from './scares.js';
 import { registerLootables } from '../../../entities/lootables.js';
 import { modelHalfHeight } from '../../../entities/catalog.js';
@@ -260,6 +261,8 @@ export class YellowLevel {
     for (const room of rec.layout.specials) {
       decorateRoom(this, room, rec);
     }
+    // damp-zone growth, drag trails, torn clones, abandoned camps (biome.js)
+    try { decorateBiome(this, rec); } catch (e) { console.error('biome decor', e); }
     this.decoMs = (this.decoMs || 0) * 0.8 + (performance.now() - t1) * 0.2;
     if (net.isHost) this._populate(key);
     return rec;
@@ -369,6 +372,7 @@ export class YellowLevel {
     }
     const rng = new RNG(hash3(rec.cx, rec.cz, 991, this.seed));
     for (const room of rec.layout.specials) populateRoom(this, room, rec, rng);
+    try { populateBiome(this, rec); } catch (e) { console.error('biome populate', e); }
     this._tagSpawns(id0);
     this.popMs = (this.popMs || 0) * 0.8 + (performance.now() - t0) * 0.2;
   }

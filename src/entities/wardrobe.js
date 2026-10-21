@@ -792,3 +792,482 @@ export class Sparks {
     this.geo.attributes.color.needsUpdate = true;
   }
 }
+
+// =====================================================================================================
+// FACTORY KIT — props of the main-menu clone factory (world/menu_scene.js): materials, hanging menu
+// panels, the floor hatch + drop shaft, panel controls (knob / toggle / fader / selector), crates,
+// debris (bolts, oil, ripped parts), steam and dust motes. All procedural.
+// =====================================================================================================
+export const PLEX = "'IBM Plex Mono', monospace", VT = "'VT323', monospace";
+export { mesh as kitMesh, rbox as kitRbox, M4 as kitM4 };
+
+let _F = null;
+export function factoryMats() {
+  if (_F) return _F;
+  const W = wardrobeMats();
+  const concrete = canvasTex(512, 512, (g, w, h) => {
+    g.fillStyle = '#6f6d68'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 2600; i++) { const v = 90 + Math.random() * 40 | 0; g.fillStyle = `rgba(${v},${v - 2},${v - 6},0.18)`; g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 3, 1 + Math.random() * 3); }
+    for (let i = 0; i < 9; i++) {
+      const x = Math.random() * w, y = Math.random() * h, r = 20 + Math.random() * 70;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(18,14,10,0.55)'); gr.addColorStop(1, 'rgba(18,14,10,0)');
+      g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    g.strokeStyle = 'rgba(30,28,26,0.6)'; g.lineWidth = 2; g.strokeRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(25,22,20,0.45)'; g.lineWidth = 1;
+    for (let i = 0; i < 5; i++) { let x = Math.random() * w, y = Math.random() * h; g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 7; k++) { x += (Math.random() - 0.5) * 40; y += Math.random() * 25; g.lineTo(x, y); } g.stroke(); }
+    grime(g, w, h, 0.5, 21);
+  }, { repeat: [8, 8] });
+  const corr = canvasTex(256, 256, (g, w, h) => {
+    for (let x = 0; x < w; x++) { const s = 0.5 + 0.5 * Math.sin((x / w) * Math.PI * 16); const v = 52 + s * 30 | 0; g.fillStyle = `rgb(${v},${v + 3},${v + 6})`; g.fillRect(x, 0, 1, h); }
+    for (let i = 0; i < 14; i++) { const x = Math.random() * w, y = Math.random() * h * 0.6, l = 40 + Math.random() * 140; const gr = g.createLinearGradient(0, y, 0, y + l); gr.addColorStop(0, 'rgba(110,54,24,0.5)'); gr.addColorStop(1, 'rgba(110,54,24,0)'); g.fillStyle = gr; g.fillRect(x, y, 2 + Math.random() * 6, l); }
+    grime(g, w, h, 0.8, 5);
+  }, { repeat: [10, 1] });
+  const wood = canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#9a7448'; g.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 2) { g.fillStyle = `rgba(${60 + Math.random() * 30 | 0},40,20,${0.08 + Math.random() * 0.1})`; g.fillRect(0, y, w, 1 + Math.random() * 2); }
+    for (let k = 0; k < 4; k++) { g.fillStyle = 'rgba(40,26,14,0.7)'; g.fillRect(0, k * 64, w, 3); }
+    for (let k = 0; k < 8; k++) { g.fillStyle = 'rgba(30,30,30,0.8)'; g.beginPath(); g.arc(10 + (k % 2) * (w - 20), 14 + (k >> 1) * 64, 3, 0, Math.PI * 2); g.fill(); }
+    grime(g, w, h, 0.6, 9);
+  });
+  const cash = canvasTex(256, 128, (g, w, h) => {
+    g.fillStyle = '#7f9a72'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#3e5638'; g.lineWidth = 4; g.strokeRect(6, 6, w - 12, h - 12);
+    g.fillStyle = '#3e5638'; g.font = `bold 44px ${PLEX}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('100', w / 2, h / 2);
+    g.beginPath(); g.arc(46, h / 2, 26, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(w - 46, h / 2, 26, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = '#c9b88a'; g.fillRect(w / 2 - 22, 0, 44, h);
+    g.fillStyle = '#5b4a2a'; g.font = `bold 16px ${PLEX}`; g.fillText('$10K', w / 2, h / 2);
+  });
+  const straw = canvasTex(128, 128, (g, w, h) => {
+    g.fillStyle = '#6e5a2e'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 500; i++) { g.strokeStyle = `rgba(${190 + Math.random() * 50 | 0},${150 + Math.random() * 50 | 0},70,0.8)`; g.lineWidth = 1; const x = Math.random() * w, y = Math.random() * h, a = Math.random() * Math.PI; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * 14, y + Math.sin(a) * 14); g.stroke(); }
+  }, { repeat: [2, 2] });
+  _F = {
+    ...W,
+    floor: new THREE.MeshStandardMaterial({ map: concrete, color: 0x8b8a86, roughness: 0.86, metalness: 0.05 }),
+    wall: new THREE.MeshStandardMaterial({ map: corr, color: 0x8a9096, roughness: 0.62, metalness: 0.55 }),
+    beam: new THREE.MeshStandardMaterial({ color: 0x34383c, roughness: 0.55, metalness: 0.6 }),
+    yellow: new THREE.MeshStandardMaterial({ color: 0xd49a12, roughness: 0.5, metalness: 0.3 }),
+    rust: new THREE.MeshStandardMaterial({ color: 0x5b3a26, roughness: 0.8, metalness: 0.4 }),
+    wood: new THREE.MeshStandardMaterial({ map: wood, roughness: 0.82, metalness: 0 }),
+    cash: new THREE.MeshStandardMaterial({ map: cash, roughness: 0.75 }),
+    straw: new THREE.MeshStandardMaterial({ map: straw, roughness: 1 }),
+    brass: new THREE.MeshStandardMaterial({ color: 0xb08a48, roughness: 0.32, metalness: 1 }),
+    gunmetal: new THREE.MeshStandardMaterial({ color: 0x24262a, roughness: 0.5, metalness: 0.8 }),
+    cabinet: new THREE.MeshStandardMaterial({ color: 0x556058, roughness: 0.6, metalness: 0.5 }),
+    knob: new THREE.MeshStandardMaterial({ color: 0x18181a, roughness: 0.35, metalness: 0.2 }),
+    redPaint: new THREE.MeshStandardMaterial({ color: 0xb01c14, roughness: 0.4, metalness: 0.1 }),
+    oil: new THREE.MeshStandardMaterial({ color: 0x0b0806, roughness: 0.05, metalness: 0.3 }),
+    lampWarm: new THREE.MeshBasicMaterial({ color: new THREE.Color(4.2, 3.2, 2.0) }),
+    lampCold: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 3.2, 3.6) }),
+    lampRed: new THREE.MeshBasicMaterial({ color: new THREE.Color(3.4, 0.25, 0.12) }),
+    black: new THREE.MeshBasicMaterial({ color: 0x000000 }),
+  };
+  return _F;
+}
+
+// draws into a canvas texture that can be redrawn later (signs, CRTs, tags)
+export class LiveTex {
+  constructor(w, h, draw) {
+    this.c = document.createElement('canvas'); this.c.width = w; this.c.height = h;
+    this.g = this.c.getContext('2d'); this.w = w; this.h = h;
+    this.tex = new THREE.CanvasTexture(this.c); this.tex.colorSpace = THREE.SRGBColorSpace; this.tex.anisotropy = 4;
+    if (draw) this.draw(draw);
+  }
+  draw(fn) { fn(this.g, this.w, this.h); this.tex.needsUpdate = true; return this; }
+}
+// fit text into a width by shrinking the font
+export function fitText(g, s, x, y, maxW, size, font, align = 'center') {
+  let sz = size;
+  g.font = font.replace('{s}', sz);
+  while (g.measureText(s).width > maxW && sz > 8) { sz -= 2; g.font = font.replace('{s}', sz); }
+  g.textAlign = align; g.fillText(s, x, y);
+  return sz;
+}
+export function wrapLines(g, text, maxW) {
+  const out = []; let line = '';
+  for (const w of String(text).split(' ')) { const t = line ? line + ' ' + w : w; if (g.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; }
+  if (line) out.push(line);
+  return out;
+}
+
+// a heavy backlit sign box hanging from two chains (pivot = ceiling point). The face is a LiveTex used as
+// map + emissiveMap so only the painted letters glow. Hover brightens it; kick() makes it swing.
+export class HangPanel {
+  constructor({ w = 1.5, h = 0.42, accent = '#ffb43a' } = {}) {
+    const F = factoryMats();
+    this.w = w; this.h = h; this.accent = accent;
+    this.root = new THREE.Group(); this.root.rotation.order = 'YXZ';
+    this.body = new THREE.Group(); this.root.add(this.body);
+    mesh(rbox(w + 0.1, h + 0.1, 0.12, 0.025), F.dark, this.body, 0, 0, -0.01);
+    const hz = mesh(new THREE.BoxGeometry(w + 0.1, 0.035, 0.125), F.hazard, this.body, 0, -h / 2 - 0.068, -0.01);
+    hz.material = F.hazard;
+    const ch = Math.round(1024 * h / w);
+    this.face = new LiveTex(1024, ch);
+    this.mat = new THREE.MeshStandardMaterial({ map: this.face.tex, emissiveMap: this.face.tex, emissive: 0xffffff, emissiveIntensity: 1, roughness: 0.32, metalness: 0.1 });
+    this.hit = mesh(new THREE.PlaneGeometry(w, h), this.mat, this.body, 0, 0, 0.052);
+    this.hit.castShadow = false;
+    // glass sheen
+    mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.06, roughness: 0.05, metalness: 0, clearcoat: 1, depthWrite: false }), this.body, 0, 0, 0.058).castShadow = false;
+    for (const s of [-1, 1]) {
+      mesh(new THREE.TorusGeometry(0.025, 0.007, 6, 12), F.steel, this.body, s * (w / 2 - 0.12), h / 2 + 0.08, 0);
+    }
+    const cg = cyl(0.007, 1, 'y', 6).translate(0, 0.5, 0);
+    this.chains = [-1, 1].map((s) => { const m = mesh(cg, F.steel, this.body, s * (w / 2 - 0.12), h / 2 + 0.1, 0); m.castShadow = false; return m; });
+    this.glow = 0; this.on = 1; this.base = 1;
+    this.sw = { x: 0, z: 0, vx: 0, vz: 0 };
+    this.t = Math.random() * 10;
+  }
+  setText(title, sub = '', { dim = false, tag = '' } = {}) {
+    const acc = dim ? '#6a5a40' : this.accent;
+    this.face.draw((g, w, h) => {
+      g.fillStyle = '#070605'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = dim ? '#2a241c' : '#3a2c18'; g.lineWidth = 6; g.strokeRect(14, 14, w - 28, h - 28);
+      g.fillStyle = acc; g.shadowColor = acc; g.shadowBlur = dim ? 0 : 22; g.textBaseline = 'middle';
+      fitText(g, title, w / 2, h * (sub ? 0.4 : 0.5), w - 120, Math.round(h * 0.42), `bold {s}px ${PLEX}`);
+      g.shadowBlur = dim ? 0 : 8;
+      if (sub) { g.fillStyle = dim ? '#5a4c38' : '#e9c98a'; fitText(g, sub, w / 2, h * 0.76, w - 140, Math.round(h * 0.2), `{s}px ${VT}`); }
+      g.shadowBlur = 0;
+      if (tag) { g.fillStyle = acc; g.font = `${Math.round(h * 0.14)}px ${VT}`; g.textAlign = 'left'; g.fillText(tag, 34, 44); }
+      for (const [x, y] of [[30, 30], [w - 30, 30], [30, h - 30], [w - 30, h - 30]]) { g.fillStyle = '#4a4a46'; g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2); g.fill(); }
+    });
+    this.base = dim ? 0.45 : 1;
+  }
+  // pivot at (x, ceilY, z), panel centre at height y
+  place(x, y, z, ceilY, yaw = 0) {
+    this.root.position.set(x, ceilY, z);
+    this.root.rotation.y = yaw;
+    const drop = ceilY - y;
+    this.body.position.set(0, -drop, 0);
+    for (const c of this.chains) c.scale.y = Math.max(0.05, drop - this.h / 2 - 0.1);
+  }
+  kick(a = 1) { this.sw.vx += (Math.random() - 0.5) * 0.5 * a; this.sw.vz += (Math.random() - 0.5) * 0.9 * a; }
+  update(dt, hover = false) {
+    this.t += dt;
+    this.glow += ((hover ? 1 : 0) - this.glow) * (1 - Math.exp(-10 * dt));
+    const fl = this.on < 1 ? (Math.random() < 0.5 ? 0.1 : 1) * this.on : 1;
+    this.mat.emissiveIntensity = this.base * fl * (0.75 + 0.95 * this.glow + 0.04 * Math.sin(this.t * 31) * Math.sin(this.t * 7));
+    const s = this.sw, L = Math.max(0.5, -this.body.position.y);
+    const k = 9.8 / L;
+    s.vx += (-k * s.x - 1.2 * s.vx) * dt; s.vz += (-k * s.z - 1.2 * s.vz) * dt;
+    s.x += s.vx * dt; s.z += s.vz * dt;
+    this.root.rotation.x = s.x + Math.sin(this.t * 0.7) * 0.004;
+    this.root.rotation.z = s.z + Math.sin(this.t * 0.53 + 1) * 0.006;
+    this.body.position.z = this.glow * 0.02;
+  }
+}
+
+// floor hatch with two hinged doors over a deep shaft that ends in a dark concrete cell
+export class Hatch {
+  constructor(w = 1.7, depth = 16) {
+    const F = factoryMats();
+    this.w = w; this.depth = depth;
+    this.root = new THREE.Group();
+    const B = new Batch();
+    const fw = 0.12;
+    for (const s of [-1, 1]) {
+      B.box(w + fw * 2, 0.04, fw, F.hazard, 0, 0.02, s * (w / 2 + fw / 2));
+      B.box(fw, 0.04, w, F.hazard, s * (w / 2 + fw / 2), 0.02, 0);
+    }
+    // shaft walls + ribs + lamps
+    const sw = w + 0.04;
+    const sd = depth - 3;   // the shaft opens into the cell's ceiling
+    for (const [x, z, ry] of [[0, -sw / 2, 0], [0, sw / 2, Math.PI], [-sw / 2, 0, Math.PI / 2], [sw / 2, 0, -Math.PI / 2]]) {
+      B.add(new THREE.PlaneGeometry(sw, sd), F.wall, M4(x, -sd / 2, z, 0, ry, 0));
+    }
+    for (let y = -1.2; y > -sd; y -= 1.6) {
+      for (const s of [-1, 1]) { B.box(sw, 0.08, 0.06, F.beam, 0, y, s * (sw / 2 - 0.03)); B.box(0.06, 0.08, sw, F.beam, s * (sw / 2 - 0.03), y, 0); }
+    }
+    // the cell at the bottom
+    const cw = 4.2, cy = -depth;
+    B.box(cw, 0.1, cw, F.floor, 0, cy - 0.05, 0);
+    B.box(cw, 3, 0.1, F.wall, 0, cy + 1.5, -cw / 2); B.box(cw, 3, 0.1, F.wall, 0, cy + 1.5, cw / 2);
+    B.box(0.1, 3, cw, F.wall, -cw / 2, cy + 1.5, 0); B.box(0.1, 3, cw, F.wall, cw / 2, cy + 1.5, 0);
+    const rw = (cw - sw) / 2;
+    B.box(cw, 0.1, rw, F.beam, 0, cy + 3, -(sw + rw) / 2); B.box(cw, 0.1, rw, F.beam, 0, cy + 3, (sw + rw) / 2);
+    B.box(rw, 0.1, sw, F.beam, -(sw + rw) / 2, cy + 3, 0); B.box(rw, 0.1, sw, F.beam, (sw + rw) / 2, cy + 3, 0);
+    B.build(this.root);
+    this.lamps = [];
+    const lg = new THREE.BoxGeometry(0.06, 0.1, 0.03);
+    for (let y = -2.0, i = 0; y > -sd + 0.5; y -= 3.2, i++) {
+      const m = mesh(lg, F.lampRed, this.root, (i % 2 ? 1 : -1) * (sw / 2 - 0.02), y, 0, 0, Math.PI / 2, 0);
+      m.castShadow = false; this.lamps.push(m);
+    }
+    this.bulb = mesh(new THREE.SphereGeometry(0.05, 10, 8), F.lampWarm, this.root, 0.6, cy + 2.6, 0.4);
+    this.bulb.castShadow = false;
+    // doors (hinged on the x edges, opening downward)
+    this.doors = [];
+    const dg = new THREE.BoxGeometry(w / 2 - 0.01, 0.05, w - 0.01);
+    for (const s of [-1, 1]) {
+      const piv = new THREE.Group(); piv.position.set(s * w / 2, 0.0, 0); this.root.add(piv);
+      const d = mesh(dg, F.yellow, piv, -s * (w / 4), 0.025, 0);
+      const st = mesh(new THREE.PlaneGeometry(w / 2 - 0.04, w - 0.06), F.hazard, piv, -s * (w / 4), 0.051, 0, -Math.PI / 2, 0, 0);
+      st.castShadow = false;
+      void d;
+      this.doors.push({ piv, s, a: 0, v: 0 });
+    }
+    this.open = 0;
+  }
+  update(dt) {
+    for (const d of this.doors) {
+      const tgt = this.open * 1.62;
+      d.v += ((tgt - d.a) * 70 - d.v * 9) * dt;
+      d.a += d.v * dt;
+      if (d.a < 0) { d.a = 0; d.v = Math.abs(d.v) * 0.2; }
+      d.piv.rotation.z = d.s * d.a;
+    }
+  }
+}
+
+// ---- panel controls (all built facing +Z on a panel; `hit` meshes carry userData.ctl)
+export class Knob {
+  constructor(r = 0.045, color = 0x18181a) {
+    const F = factoryMats();
+    this.root = new THREE.Group();
+    const skirt = mesh(cyl(r * 1.35, 0.008, 'z', 28), F.steel, this.root, 0, 0, 0.004);
+    void skirt;
+    this.cap = new THREE.Group(); this.root.add(this.cap);
+    const capMat = color === 0x18181a ? F.knob : new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.2 });
+    this.hit = mesh(cyl(r, r * 0.9, 'z', 20, r * 0.86), capMat, this.cap, 0, 0, r * 0.45 + 0.008);
+    for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; mesh(new THREE.BoxGeometry(r * 0.12, r * 0.12, r * 0.8), capMat, this.cap, Math.cos(a) * r * 0.97, Math.sin(a) * r * 0.97, r * 0.45 + 0.008); }
+    mesh(new THREE.BoxGeometry(r * 0.14, r * 0.7, 0.004), F.glowWhite, this.cap, 0, r * 0.45, r * 0.9 + 0.01).castShadow = false;
+    this.v = 0; this.shown = 0; this.min = -2.35; this.max = 2.35;
+  }
+  set(v01) { this.v = clamp(v01, 0, 1); }
+  update(dt) { this.shown += (this.v - this.shown) * (1 - Math.exp(-22 * dt)); this.cap.rotation.z = -(this.min + (this.max - this.min) * this.shown); }
+}
+export class Toggle {
+  constructor() {
+    const F = factoryMats();
+    this.root = new THREE.Group();
+    mesh(rbox(0.07, 0.11, 0.015, 0.006), F.steel, this.root, 0, 0, 0.0075);
+    mesh(cyl(0.018, 0.02, 'z', 16), F.dark, this.root, 0, 0, 0.02);
+    this.lever = new THREE.Group(); this.lever.position.set(0, 0, 0.03); this.root.add(this.lever);
+    this.hit = mesh(cyl(0.0075, 0.075, 'y', 10, 0.005).translate(0, 0.0375, 0), F.chrome, this.lever);
+    mesh(new THREE.SphereGeometry(0.011, 10, 8), F.chrome, this.lever, 0, 0.075, 0);
+    // big invisible hit pad for fingers
+    this.pad = mesh(new THREE.BoxGeometry(0.09, 0.14, 0.06), new THREE.MeshBasicMaterial({ visible: false }), this.root, 0, 0, 0.04);
+    this.lampMat = new THREE.MeshBasicMaterial({ color: 0x220a04 });
+    mesh(new THREE.SphereGeometry(0.012, 10, 8), this.lampMat, this.root, 0, 0.075, 0.012).castShadow = false;
+    this.on = false; this.a = 0.5; this.av = 0;
+  }
+  set(on) { this.on = !!on; }
+  update(dt) {
+    const tgt = this.on ? -0.55 : 0.55;
+    this.av += ((tgt - this.a) * 900 - this.av * 30) * dt; this.a += this.av * dt;
+    this.lever.rotation.x = this.a;
+    this.lampMat.color.setRGB(this.on ? 0.4 : 0.15, this.on ? 3 : 0.04, this.on ? 0.6 : 0.02);
+  }
+}
+export class Fader {
+  constructor(len = 0.5) {
+    const F = factoryMats();
+    this.len = len;
+    this.root = new THREE.Group();
+    mesh(new THREE.BoxGeometry(len + 0.04, 0.03, 0.01), F.black, this.root, 0, 0, 0.005);
+    for (let i = 0; i <= 10; i++) mesh(new THREE.BoxGeometry(0.003, i % 5 ? 0.012 : 0.022, 0.002), F.glowWhite, this.root, -len / 2 + (len * i) / 10, 0.032, 0.006).castShadow = false;
+    this.cap = new THREE.Group(); this.root.add(this.cap);
+    this.hit = mesh(rbox(0.045, 0.07, 0.04, 0.008), F.knob, this.cap, 0, 0, 0.025);
+    mesh(new THREE.BoxGeometry(0.046, 0.006, 0.002), F.glowAmber, this.cap, 0, 0, 0.046).castShadow = false;
+    this.track = mesh(new THREE.BoxGeometry(len + 0.08, 0.1, 0.05), new THREE.MeshBasicMaterial({ visible: false }), this.root, 0, 0, 0.03);
+    this.v = 0; this.shown = 0;
+  }
+  set(v01) { this.v = clamp(v01, 0, 1); }
+  update(dt) { this.shown += (this.v - this.shown) * (1 - Math.exp(-24 * dt)); this.cap.position.x = -this.len / 2 + this.len * this.shown; }
+}
+export class Selector {
+  constructor(n = 3, r = 0.05) {
+    const F = factoryMats();
+    this.n = n;
+    this.root = new THREE.Group();
+    mesh(cyl(r * 1.5, 0.01, 'z', 28), F.dark, this.root, 0, 0, 0.005);
+    this.cap = new THREE.Group(); this.root.add(this.cap);
+    this.hit = mesh(new THREE.BoxGeometry(r * 0.55, r * 2.2, r * 0.7), F.redPaint, this.cap, 0, 0, r * 0.35 + 0.01);
+    mesh(cyl(r * 0.7, r * 0.5, 'z', 20), F.redPaint, this.cap, 0, 0, r * 0.25 + 0.01);
+    mesh(new THREE.BoxGeometry(r * 0.12, r * 0.9, 0.004), F.glowWhite, this.cap, 0, r * 0.55, r * 0.72 + 0.01).castShadow = false;
+    this.i = 0; this.a = 0;
+  }
+  angle(i) { return this.n <= 1 ? 0 : -0.9 + (1.8 * i) / (this.n - 1); }
+  set(i) { this.i = clamp(i | 0, 0, this.n - 1); }
+  update(dt) { this.a += (this.angle(this.i) - this.a) * (1 - Math.exp(-26 * dt)); this.cap.rotation.z = -this.a; }
+}
+
+// open-top wooden crate with a separate lid (pop() flings it off)
+export class Crate {
+  constructor(w = 0.62, h = 0.46, d = 0.5) {
+    const F = factoryMats();
+    this.w = w; this.h = h; this.d = d;
+    this.root = new THREE.Group();
+    const B = new Batch(), t = 0.025;
+    B.box(w, t, d, F.wood, 0, t / 2, 0);
+    B.box(w, h, t, F.wood, 0, h / 2, d / 2 - t / 2); B.box(w, h, t, F.wood, 0, h / 2, -d / 2 + t / 2);
+    B.box(t, h, d, F.wood, w / 2 - t / 2, h / 2, 0); B.box(t, h, d, F.wood, -w / 2 + t / 2, h / 2, 0);
+    for (const y of [0.04, h - 0.04]) B.box(w + 0.012, 0.05, d + 0.012, F.wood, 0, y, 0);
+    B.add(new THREE.PlaneGeometry(w - t * 2, d - t * 2), F.straw, M4(0, h * 0.55, 0, -Math.PI / 2));
+    this.meshes = B.build(this.root);
+    this.lid = new THREE.Group(); this.root.add(this.lid);
+    const lb = new Batch();
+    lb.box(w + 0.02, 0.03, d + 0.02, F.wood, 0, 0.015, 0);
+    lb.box(0.06, 0.012, d * 1.1, F.wood, 0, 0.035, 0, 0, 0.9, 0);
+    lb.build(this.lid);
+    this.lid.position.y = h;
+    this.lidV = null;
+    this.label = null;
+  }
+  setLabel(tex) {
+    if (!this.label) { this.label = mesh(new THREE.PlaneGeometry(this.w * 0.8, this.h * 0.45), new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.9 }), this.root, 0, this.h * 0.5, this.d / 2 + 0.002); this.label.castShadow = false; }
+    else { this.label.material.map = tex; this.label.material.needsUpdate = true; }
+  }
+  closeLid() { this.lidV = null; this.lid.position.set(0, this.h, 0); this.lid.rotation.set(0, 0, 0); this.opened = false; }
+  pop(side = 1) {
+    if (this.opened) return;
+    this.opened = true;
+    this.lidV = { v: new THREE.Vector3(side * 0.9, 2.6, -0.4), w: new THREE.Vector3(-1.5, 0.6, side * -4.2), floor: 0.016 - this.root.position.y };
+  }
+  update(dt) {
+    const L = this.lidV;
+    if (!L) return;
+    L.v.y -= 9.8 * dt;
+    this.lid.position.addScaledVector(L.v, dt);
+    this.lid.rotation.x += L.w.x * dt; this.lid.rotation.y += L.w.y * dt; this.lid.rotation.z += L.w.z * dt;
+    if (this.lid.position.y < L.floor) {
+      this.lid.position.y = L.floor;
+      if (L.v.y < -0.5) { L.v.y *= -0.25; L.v.x *= 0.5; L.v.z *= 0.5; L.w.multiplyScalar(0.3); this.onLand?.(); }
+      else { L.v.set(0, 0, 0); L.w.set(0, 0, 0); this.lid.rotation.x = Math.round(this.lid.rotation.x / Math.PI) * Math.PI; this.lid.rotation.z = Math.round(this.lid.rotation.z / Math.PI) * Math.PI; this.lidV = null; }
+    }
+  }
+}
+
+// bolts, nuts, oil droplets and ripped-off parts with gravity and a floor
+export class Junk {
+  constructor(scene, max = 60) {
+    const F = factoryMats();
+    this.scene = scene;
+    this.bolts = new THREE.InstancedMesh(cyl(0.012, 0.03, 'y', 6), F.steel, max);
+    this.bolts.count = max; this.bolts.frustumCulled = false; this.bolts.castShadow = true;
+    this.b = []; for (let i = 0; i < max; i++) { this.b.push({ p: new THREE.Vector3(0, -99, 0), v: new THREE.Vector3(), r: new THREE.Euler(), w: new THREE.Vector3(), life: 0, floor: 0 }); }
+    this.bi = 0;
+    scene.add(this.bolts);
+    this.oilN = 160;
+    this.op = new Float32Array(this.oilN * 3).fill(-99); this.ov = new Float32Array(this.oilN * 3); this.ol = new Float32Array(this.oilN); this.of = new Float32Array(this.oilN);
+    const og = new THREE.BufferGeometry(); og.setAttribute('position', new THREE.BufferAttribute(this.op, 3).setUsage(THREE.DynamicDrawUsage));
+    this.oil = new THREE.Points(og, new THREE.PointsMaterial({ color: 0x0c0906, size: 0.022, sizeAttenuation: true, transparent: true, opacity: 0.92, depthWrite: false }));
+    this.oil.frustumCulled = false;
+    scene.add(this.oil);
+    this.oi = 0;
+    this.chunks = [];
+    this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new THREE.Vector3(1, 1, 1);
+    this.onBounce = null;
+  }
+  burstBolts(p, dir, n = 6, floor = 0) {
+    for (let k = 0; k < n; k++) {
+      const b = this.b[this.bi]; this.bi = (this.bi + 1) % this.b.length;
+      b.p.copy(p); b.v.set((Math.random() - 0.5) * 2.4, 1 + Math.random() * 2, (Math.random() - 0.5) * 2.4).addScaledVector(dir, 1.6);
+      b.w.set(Math.random() * 20, Math.random() * 20, Math.random() * 20); b.life = 5 + Math.random() * 3; b.floor = floor + 0.012;
+    }
+  }
+  spray(p, dir, n = 40, speed = 3, floor = 0) {
+    for (let k = 0; k < n; k++) {
+      const i = this.oi; this.oi = (this.oi + 1) % this.oilN;
+      this.op[i * 3] = p.x; this.op[i * 3 + 1] = p.y; this.op[i * 3 + 2] = p.z;
+      const s = speed * (0.4 + Math.random() * 0.8);
+      this.ov[i * 3] = dir.x * s + (Math.random() - 0.5) * 1.6; this.ov[i * 3 + 1] = dir.y * s + Math.random() * 1.2; this.ov[i * 3 + 2] = dir.z * s + (Math.random() - 0.5) * 1.6;
+      this.ol[i] = 1.2 + Math.random(); this.of[i] = floor + 0.004;
+    }
+  }
+  // obj is detached into the scene (world transform kept) and thrown
+  fling(obj, v, w, floor = 0, life = 4) {
+    obj.updateWorldMatrix(true, false);
+    this.scene.attach(obj);
+    this.chunks.push({ obj, v: v.clone(), w: w.clone(), floor, life, s0: obj.scale.clone(), r: 0.08 });
+  }
+  update(dt) {
+    let bn = 0;
+    for (let i = 0; i < this.b.length; i++) {
+      const b = this.b[i];
+      if (b.life <= 0) { this._m.makeScale(0, 0, 0); this.bolts.setMatrixAt(i, this._m); continue; }
+      b.life -= dt; b.v.y -= 9.8 * dt; b.p.addScaledVector(b.v, dt);
+      if (b.p.y < b.floor) { b.p.y = b.floor; if (b.v.y < -1) this.onBounce?.(b.p, 'bolt'); b.v.y *= -0.35; b.v.x *= 0.6; b.v.z *= 0.6; b.w.multiplyScalar(0.5); }
+      b.r.x += b.w.x * dt; b.r.y += b.w.y * dt; b.r.z += b.w.z * dt;
+      this._q.setFromEuler(b.r); this._s.setScalar(Math.min(1, b.life * 2));
+      this._m.compose(b.p, this._q, this._s); this.bolts.setMatrixAt(i, this._m); bn++;
+    }
+    this.bolts.instanceMatrix.needsUpdate = true;
+    for (let i = 0; i < this.oilN; i++) {
+      if (this.ol[i] <= 0) continue;
+      this.ol[i] -= dt;
+      const j = i * 3;
+      if (this.op[j + 1] > this.of[i]) { this.ov[j + 1] -= 9.8 * dt; this.op[j] += this.ov[j] * dt; this.op[j + 1] += this.ov[j + 1] * dt; this.op[j + 2] += this.ov[j + 2] * dt; }
+      else this.op[j + 1] = this.of[i];
+      if (this.ol[i] <= 0) this.op[j + 1] = -99;
+    }
+    this.oil.geometry.attributes.position.needsUpdate = true;
+    for (let i = this.chunks.length - 1; i >= 0; i--) {
+      const c = this.chunks[i];
+      c.life -= dt; c.v.y -= 9.8 * dt;
+      c.obj.position.addScaledVector(c.v, dt);
+      c.obj.rotation.x += c.w.x * dt; c.obj.rotation.y += c.w.y * dt; c.obj.rotation.z += c.w.z * dt;
+      if (c.obj.position.y < c.floor + c.r) { c.obj.position.y = c.floor + c.r; if (c.v.y < -1.2) this.onBounce?.(c.obj.position, 'chunk'); c.v.y *= -0.3; c.v.x *= 0.55; c.v.z *= 0.55; c.w.multiplyScalar(0.45); }
+      if (c.life < 0.5) c.obj.scale.copy(c.s0).multiplyScalar(Math.max(0.001, c.life * 2));
+      if (c.life <= 0) { c.obj.removeFromParent(); this.chunks.splice(i, 1); }
+    }
+    void bn;
+  }
+}
+
+// soft steam / dust puffs (sprites)
+export class Puffs {
+  constructor(scene, max = 40, color = 0xd8d8d0) {
+    const M = wardrobeMats();
+    this.items = [];
+    for (let i = 0; i < max; i++) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: M.glowTex, color, transparent: true, opacity: 0, depthWrite: false }));
+      s.visible = false; scene.add(s); this.items.push({ s, v: new THREE.Vector3(), life: 0, max: 1, size: 0.3 });
+    }
+    this.i = 0;
+  }
+  puff(p, dir, n = 6, size = 0.35, speed = 0.8, life = 1.6, alpha = 0.22) {
+    for (let k = 0; k < n; k++) {
+      const it = this.items[this.i]; this.i = (this.i + 1) % this.items.length;
+      it.s.position.copy(p); it.v.copy(dir).multiplyScalar(speed * (0.5 + Math.random())).add(new THREE.Vector3((Math.random() - 0.5) * 0.3, Math.random() * 0.2, (Math.random() - 0.5) * 0.3));
+      it.life = it.max = life * (0.7 + Math.random() * 0.6); it.size = size * (0.6 + Math.random() * 0.8); it.a = alpha;
+      it.s.visible = true;
+    }
+  }
+  update(dt) {
+    for (const it of this.items) {
+      if (it.life <= 0) { if (it.s.visible) it.s.visible = false; continue; }
+      it.life -= dt;
+      it.s.position.addScaledVector(it.v, dt); it.v.multiplyScalar(1 - 1.2 * dt); it.v.y += 0.25 * dt;
+      const k = 1 - it.life / it.max;
+      it.s.scale.setScalar(it.size * (0.5 + k * 1.6));
+      it.s.material.opacity = it.a * Math.sin(Math.min(1, k * 1.2) * Math.PI) ;
+    }
+  }
+}
+
+// dust motes drifting inside a light cone (apex at top, pointing down)
+export class Motes {
+  constructor(n = 220, r = 1.2, h = 3.2) {
+    const M = wardrobeMats();
+    this.n = n; this.r = r; this.h = h;
+    this.p = new Float32Array(n * 3); this.ph = new Float32Array(n);
+    for (let i = 0; i < n; i++) { this._seed(i); this.p[i * 3 + 1] = Math.random() * h; }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.p, 3).setUsage(THREE.DynamicDrawUsage));
+    this.mat = new THREE.PointsMaterial({ map: M.glowTex, color: 0xffe8c0, size: 0.018, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending });
+    this.points = new THREE.Points(g, this.mat); this.points.frustumCulled = false;
+    this.t = 0;
+  }
+  _seed(i) { const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * this.r; this.p[i * 3] = Math.cos(a) * rr; this.p[i * 3 + 2] = Math.sin(a) * rr; this.ph[i] = Math.random() * 10; }
+  update(dt, level = 1) {
+    this.t += dt;
+    for (let i = 0; i < this.n; i++) {
+      const j = i * 3, ph = this.ph[i];
+      this.p[j] += Math.sin(this.t * 0.3 + ph) * 0.02 * dt; this.p[j + 2] += Math.cos(this.t * 0.27 + ph * 1.3) * 0.02 * dt;
+      this.p[j + 1] -= (0.02 + 0.015 * Math.sin(ph)) * dt;
+      if (this.p[j + 1] < 0) { this._seed(i); this.p[j + 1] = this.h; }
+    }
+    this.points.geometry.attributes.position.needsUpdate = true;
+    this.mat.opacity = 0.55 * level;
+  }
+}

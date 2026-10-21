@@ -23,6 +23,9 @@ export const LOOT_TABLES = {
   drinks: [['soda_can', 5], ['energy_drink', 3], ['almond_water', 2]],
   trash: [['paper_cup', 3], ['soda_can', 1], ['chips', 1], ['metal_scrap', 1], ['fabric_scrap', 1], ['battery', 0.5]],
   medical: [['bandage', 4], ['painkillers', 3], ['antibiotics', 1.5], ['medkit', 1], ['splint', 1.5], ['almond_water', 1]],
+  // abandoned camps of earlier clones / R.O.O.M. field supply crates (world/levels/yellow/biome.js)
+  camp: [['battery', 3], ['canned_food', 3], ['almond_water', 2.5], ['flare', 1.5], ['glowstick', 1.5], ['tape_roll', 2], ['screws', 2], ['metal_scrap', 2], ['wire_spool', 1.5], ['bandage', 2], ['wheel', 1.5], ['fungus_shelf', 1], ['wrench', 0.6], ['crowbar', 0.5], ['flashlight', 0.6], ['lighter', 0.8]],
+  supply: [['battery', 3], ['medkit', 1.5], ['bandage', 2.5], ['canned_food', 3], ['almond_water', 3], ['flare', 2], ['wheel', 2], ['welder', 0.6], ['flashlight', 1], ['painkillers', 1.5], ['energy_drink', 1.5], ['tape_roll', 1.5]],
 };
 
 // part: animated sub-mesh that opens (furniture 'drawer0' slides along z, 'door' swings about y; device lockers /
@@ -47,6 +50,9 @@ export const CONTAINERS = {
   vending_drink: { table: 'drinks', n: [1, 3], verb: 'Shake' },
   photocopier: { table: 'office', n: [0, 1], verb: 'Search' },
   water_cooler: { table: 'kitchen', n: [0, 1], verb: 'Search' },
+  supply_box: { table: 'supply', n: [2, 4], verb: 'Pry open' },
+  sleeping_bag: { table: 'camp', n: [0, 2], verb: 'Search' },
+  tent_ruin: { table: 'camp', n: [1, 3], verb: 'Search' },
 };
 
 const SND = { drawer0: 'scrape_short', door: 'door_creak', box: 'paper', crate: 'dismantle', vend: 'vending_drop', trash: 'paper' };
@@ -109,7 +115,7 @@ class LootBehaviour {
         state: t === 'flashlight' ? { charge: 0.6 } : {},
       });
     });
-    const kind = this.spec.part === 'drawer0' ? 'drawer0' : this.spec.part === 'door' ? 'door' : p.type.startsWith('box_') ? 'box' : p.type === 'crate_wood' ? 'crate' : p.type.startsWith('vending') ? 'vend' : 'trash';
+    const kind = this.spec.part === 'drawer0' ? 'drawer0' : this.spec.part === 'door' ? 'door' : p.type.startsWith('box_') ? 'box' : p.type === 'crate_wood' || p.type === 'supply_box' ? 'crate' : p.type.startsWith('vending') ? 'vend' : 'trash';
     w.fxAll({ k: 'snd', n: SND[kind] || 'paper', p: r.position.toArray(), v: 0.8 });
     if (kind === 'box' || kind === 'crate') w.fxAll({ k: 'dust', p: r.position.toArray(), n: 8 });
     w.noise?.emit?.(r.position, 4, 'loot');

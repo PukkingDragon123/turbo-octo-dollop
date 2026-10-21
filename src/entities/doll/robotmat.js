@@ -29,10 +29,12 @@ export const RM = {
       });
     });
   },
-  face(entry, hex) {
-    return cached('rm_face_' + (entry?.id || 'dots') + '_' + hex, () => new THREE.MeshPhysicalMaterial({
-      name: 'robot_face', color: hex, vertexColors: true, map: faceTexture(entry || {}),
-      roughness: 0.3, metalness: 0, clearcoat: 0.65, clearcoatRoughness: 0.16, specularIntensity: 0.75, envMapIntensity: 1.15,
+  // the painted human face on a satin porcelain plate (a soft sheen, not a glaze: skin-like but too even)
+  face(entry, hex, frame = 'neutral') {
+    return cached('rm_face_' + (entry?.id || 'dots') + '_' + hex + '_' + frame, () => new THREE.MeshPhysicalMaterial({
+      name: 'robot_face', color: hex, vertexColors: true, map: faceTexture(entry || {}, frame),
+      roughness: 0.46, metalness: 0, clearcoat: 0.32, clearcoatRoughness: 0.34, specularIntensity: 0.55, envMapIntensity: 0.9,
+      sheen: 0.35, sheenRoughness: 0.6, sheenColor: new THREE.Color(0xffd8c8),
     }));
   },
 };
@@ -40,7 +42,7 @@ export const RM = {
 export function robotMaterial(key, cos) {
   switch (key) {
     case 'shell': return RM.shell(toneOf(cos));
-    case 'face': return RM.face(cos.faceEntry, toneOf(cos));
+    case 'face': return RM.face(cos.faceEntry, toneOf(cos), cos.frame || 'neutral');
     case 'suit': return DM.suit(cos.suit, cos.suitEntry, { torsoK: COVERALL_TORSO_K });
     default: {
       const f = DM[key];

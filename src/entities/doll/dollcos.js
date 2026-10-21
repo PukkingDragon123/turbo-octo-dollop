@@ -2,6 +2,10 @@
 // reference them). Every 'suit' entry is a colourway / finish of the R.O.O.M. work coverall the
 // clone androids wear (the old hazmat colourways); 'skin' is the finish of the android's ABS shell
 // and porcelain face plate; 'face' picks the painted face (and the eye hardware).
+// Body plan (robotmorph.js deforms the cached geometry): 'frame' (masc / fem / neutral proportions),
+// 'skull' (head shape: s = head scale, jaw = extra jaw scale), 'build' (body shape) and 'eyes'
+// (s = eyeball scale, iris colour, led = 'red' swaps the LED pupil, pupil = LED disc scale).
+// Entries with `unlock` are commendation rewards (ids in core/profile.js ACHIEVEMENTS).
 import { RNG, hashString } from '../../core/rng.js';
 
 export const COSMETICS = {
@@ -21,6 +25,13 @@ export const COSMETICS = {
     { id: 'black', name: 'Disposable', outfit: 'hazmat', color: 0x2b2b31, unlock: 'disposable' },
     { id: 'camo', name: 'Survivor Camo', outfit: 'hazmat', color: 0x6e7444, pattern: 'camo', unlock: 'survivor7' },
     { id: 'gold', name: 'Golden Employee', outfit: 'hazmat', color: 0xe8b43e, gloss: true, unlock: 'quota' },
+    { id: 'chrome', name: 'Chrome Plated', outfit: 'hazmat', color: 0xc9ced6, gloss: true, unlock: 'generators' },
+    // hard-quest rewards (game/economy.js quest tree -> profile.js ACHIEVEMENTS)
+    { id: 'liquidator', name: 'Liquidator', outfit: 'hazmat', color: 0x3b3f46, gloss: true, unlock: 'asset_stripper' },
+    { id: 'ironclad', name: 'Ironclad', outfit: 'hazmat', color: 0x8c9096, gloss: true, unlock: 'ironclad' },
+    { id: 'basher', name: 'Bacteria Basher', outfit: 'hazmat', color: 0x6a1418, unlock: 'bacteria_basher' },
+    { id: 'archivist', name: 'Archivist Manila', outfit: 'hazmat', color: 0xc9a868, unlock: 'dossier' },
+    { id: 'lineman', name: 'Lineman Teal', outfit: 'hazmat', color: 0x1f6f5c, unlock: 'grid_restored' },
   ],
   skin: [
     { id: 'tan', name: 'Yellowed ABS', color: 0xe0d2b0, unlock: null },
@@ -28,6 +39,7 @@ export const COSMETICS = {
     { id: 'dark', name: 'Walnut Bakelite', color: 0x7c5a40, unlock: null },
     { id: 'grey', name: 'Primer Grey', color: 0xa3a19b, unlock: null },
     { id: 'rose', name: 'Dusty Rose', color: 0xe6bcae, unlock: 'night_owl' },
+    { id: 'gilded', name: 'Gilded Shell', color: 0xd9b04a, unlock: 'escape_fund' },
   ],
   hat: [
     { id: 'none', name: 'No Hat', unlock: null },
@@ -87,7 +99,38 @@ export const COSMETICS = {
     { id: 'badge', name: 'Employee of the Month', unlock: 'quota' },
   ],
 };
-export const DEFAULT_COSMETICS = { suit: 'yellow', skin: 'tan', hat: 'none', visor: 'none', face: 'dots', backpack: 'tank', accessory: 'none' };
+COSMETICS.frame = [
+  { id: 'neutral', name: 'Unisex Frame', unlock: null },
+  { id: 'masc', name: 'Frame M-1 Broad', unlock: null },
+  { id: 'fem', name: 'Frame F-1 Fine', unlock: null },
+];
+COSMETICS.skull = [
+  { id: 'std', name: 'Standard Skull', s: [1, 1, 1], unlock: null },
+  { id: 'round', name: 'Round', s: [1.07, 0.95, 1.04], jaw: [1.04, 0.95, 1], unlock: null },
+  { id: 'long', name: 'Long', s: [0.93, 1.11, 0.98], jaw: [0.95, 1.08, 1], unlock: null },
+  { id: 'wide', name: 'Wide Jaw', s: [1.12, 0.97, 1.02], jaw: [1.14, 1.06, 1.08], unlock: null },
+  { id: 'narrow', name: 'Narrow', s: [0.89, 1.04, 0.97], jaw: [0.88, 1, 0.95], unlock: null },
+  { id: 'egg', name: 'Egghead', s: [0.95, 1.17, 1.05], jaw: [0.84, 0.94, 0.94], unlock: null },
+  { id: 'bobble', name: 'Bobblehead', s: [1.3, 1.3, 1.3], jaw: [1, 1, 1], unlock: 'hydrated' },
+];
+COSMETICS.build = [
+  { id: 'std', name: 'Standard Build', unlock: null },
+  { id: 'slim', name: 'Slim', unlock: null },
+  { id: 'stocky', name: 'Stocky', unlock: null },
+  { id: 'tall', name: 'Tall', unlock: null },
+  { id: 'heavy', name: 'Heavy Lifter', unlock: 'teamlift' },
+];
+COSMETICS.eyes = [
+  { id: 'glass', name: 'Grey Glass', iris: [0.12, 0.16, 0.2], s: 1, unlock: null },
+  { id: 'hazel', name: 'Hazel', iris: [0.26, 0.15, 0.06], s: 1, unlock: null },
+  { id: 'green', name: 'Bottle Green', iris: [0.07, 0.2, 0.1], s: 1, unlock: null },
+  { id: 'doll', name: 'Doll Eyes', iris: [0.08, 0.2, 0.42], s: 1.22, unlock: null },
+  { id: 'beady', name: 'Beady', iris: [0.03, 0.03, 0.03], s: 0.78, pupil: 0.8, unlock: null },
+  { id: 'red', name: 'Red Alert', iris: [0.22, 0.03, 0.02], led: 'red', s: 1, unlock: 'ratcatcher' },
+  { id: 'void', name: 'Pinprick Void', iris: [0, 0, 0], s: 1.05, pupil: 0.38, unlock: 'photo_bacteria' },
+  { id: 'gold', name: 'Gilded Optics', iris: [0.55, 0.38, 0.06], s: 1.05, unlock: 'researcher' },
+];
+export const DEFAULT_COSMETICS = { suit: 'yellow', skin: 'tan', hat: 'none', visor: 'none', face: 'dots', backpack: 'tank', accessory: 'none', frame: 'neutral', skull: 'std', build: 'std', eyes: 'glass' };
 
 export function cosmeticEntry(slot, id) {
   const list = COSMETICS[slot];
@@ -108,8 +151,13 @@ export function resolveCos(c) {
   out.faceEntry = cosmeticEntry('face', out.face);
   out.packEntry = cosmeticEntry('backpack', out.backpack);
   out.accEntry = cosmeticEntry('accessory', out.accessory);
+  out.frameEntry = cosmeticEntry('frame', out.frame);
+  out.skullEntry = cosmeticEntry('skull', out.skull);
+  out.buildEntry = cosmeticEntry('build', out.build);
+  out.eyesEntry = cosmeticEntry('eyes', out.eyes);
   // canonical ids (unknown ids fall back to defaults)
   out.suit = out.suitEntry.id; out.skin = out.skinEntry.id; out.hat = out.hatEntry.id; out.visor = out.visorEntry.id;
   out.face = out.faceEntry.id; out.backpack = out.packEntry.id; out.accessory = out.accEntry.id;
+  out.frame = out.frameEntry.id; out.skull = out.skullEntry.id; out.build = out.buildEntry.id; out.eyes = out.eyesEntry.id;
   return out;
 }

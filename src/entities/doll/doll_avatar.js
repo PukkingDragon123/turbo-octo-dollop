@@ -36,6 +36,7 @@ import { robotMaterial, ROBOT_MAT_FLAGS } from './robotmat.js';
 import { Hose } from './gear.js';
 import { DM } from './dollmat.js';
 import { resolveCos, DEFAULT_COSMETICS } from './dollcos.js';
+import { makeMorph, shapeKey } from './robotmorph.js';
 
 const PI = Math.PI, TAU = PI * 2;
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
@@ -67,7 +68,7 @@ export function partsFor(cos) {
     getPart('racc:' + cos.accessory, () => buildAccPart(cos.accEntry)),
   ];
 }
-export function cosKey(cos) { return [cos.suit, headKind(cos.faceEntry), cos.backpack, cos.hat, cos.visor, cos.accessory].join('|'); }
+export function cosKey(cos) { const sk = shapeKey(cos); return [cos.suit, headKind(cos.faceEntry), cos.backpack, cos.hat, cos.visor, cos.accessory].join('|') + (sk ? '|' + sk : ''); }
 
 // merged per-material geometry for a cosmetics combination (shared, ref-counted)
 const MERGED = new Map();
@@ -78,11 +79,20 @@ function acquireMerged(cos) {
     const parts = partsFor(cos);
     const by = new Map();
     for (const p of parts) for (const [mat, g] of p.geos) { if (!by.has(mat)) by.set(mat, []); by.get(mat).push(g); }
-    const geos = new Map();
+    let geos = new Map();
     for (const [mat, list] of by) geos.set(mat, list.length === 1 ? list[0] : mergeGeometries(list, false));
-    const over = {}, springs = {}, info = {};
+    let over = {};
+    const springs = {}, info = {};
     for (const p of parts) { Object.assign(over, p.over); Object.assign(springs, p.springs); Object.assign(info, p.info); }
-    const owned = new Set(); for (const [mat, list] of by) if (list.length > 1) owned.add(geos.get(mat));
+    let owned = new Set(); for (const [mat, list] of by) if (list.length > 1) owned.add(geos.get(mat));
+    // body plan (frame / skull / build / eyes): deform a copy of the merged rest geometry
+    const mo = makeMorph(cos, over);
+    if (mo) {
+      const g2 = new Map();
+      for (const [mat, g] of geos) g2.set(mat, mo.geo(g, mat));
+      for (const g of owned) g.dispose();
+      geos = g2; over = mo.over; owned = new Set(g2.values());
+    }
     e = { key, geos, over, springs, info, owned, refs: 0, used: 0 };
     MERGED.set(key, e);
     sweepMerged();
@@ -231,7 +241,7 @@ export class Avatar {
   setCosmetics(c) {
     const cos = resolveCos(c);
     this.cos = cos;
-    this.cosmetics = { suit: cos.suit, skin: cos.skin, hat: cos.hat, visor: cos.visor, face: cos.face, backpack: cos.backpack, accessory: cos.accessory };
+    this.cosmetics = { suit: cos.suit, skin: cos.skin, hat: cos.hat, visor: cos.visor, face: cos.face, backpack: cos.backpack, accessory: cos.accessory, frame: cos.frame, skull: cos.skull, build: cos.build, eyes: cos.eyes };
     this._disposeParts();
     const M = acquireMerged(cos);
     this._merged = M;
@@ -518,6 +528,8 @@ export class Avatar {
 
     this._faceApply(dt, st, t);
     if (this.fpHidden) b.head.scale.setScalar(0.0001);
+    // optional external pose pass (menu puppeteering: hanging on a hook, falling) — bones are final after it
+    if (s.poseFn) s.poseFn(b, dt, this);
 
     if (this.spinBone) { st.spin += dt * (4 + st.speed * 9 + st.air * 20); this.spinBone.rotation.y = st.spin; }
     if (this.haloBone) { this.haloBone.position.y += Math.sin(t * 2.2) * 0.012; this.haloBone.rotation.y = t * 0.6; }

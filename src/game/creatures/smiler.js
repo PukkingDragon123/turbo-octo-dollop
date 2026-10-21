@@ -23,7 +23,6 @@ export class SmilerAI extends Agent {
     this.giggleT = 4 + this.rng.range(0, 6);
     this.intensity = 0.2;
     this.stunT = 0;
-    this.hp = 99;
   }
 
   get idleState() { return 'lurk'; }
@@ -121,11 +120,11 @@ export class SmilerAI extends Agent {
     this.integrate(dt);
   }
 
-  onHit(dir) {
+  // combat.js reaction hook (damage / death are handled there)
+  onHurt(dir) {
     this.setState('flee');
     this.fleeFrom.copy(this.pos).addScaledVector(dir, -2);
     this.mgr.sound('smiler_hiss', this.pos, 1);
-    return false;
   }
 
   onFlash(p) {

@@ -5,7 +5,9 @@ const DEFAULT_BINDS = {
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   jump: ['Space'],
-  sprint: ['ShiftLeft', 'ShiftRight'],
+  sprint: ['ShiftLeft', 'ShiftRight', 'TouchSprint'],
+  throw: ['ShiftLeft', 'ShiftRight', 'TouchThrow'], // while carrying: throw far
+  tool: ['KeyQ'], // draw / holster the built-in multitool
   crouch: ['ControlLeft', 'KeyC'],
   interact: ['KeyE'],
   drop: ['KeyG'],
@@ -156,6 +158,10 @@ class Input {
   mouseDown(btn = 0) { return this.enabled && (this.mouse.buttons & (1 << btn)) !== 0; }
   mouseHit(btn = 0) { return this.enabled && (this.mouse.pressed & (1 << btn)) !== 0; }
   mouseUp(btn = 0) { return (this.mouse.released & (1 << btn)) !== 0; }
+  // raw key codes (QTEs): 'LMB' / 'RMB' map to the mouse buttons
+  codeHit(code) { return code === 'LMB' ? this.mouseHit(0) : code === 'RMB' ? this.mouseHit(2) : this.pressed.has(code); }
+  codeDown(code) { return code === 'LMB' ? this.mouseDown(0) : code === 'RMB' ? this.mouseDown(2) : this.keys.has(code); }
+  anyPressed() { return [...this.pressed]; }
   consumeWheel() { const w = this.mouse.wheel; this.mouse.wheel = 0; return this.enabled ? w : 0; }
   look() {
     const s = 0.0022 * this.sensitivity;

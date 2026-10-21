@@ -116,7 +116,9 @@ export class RemotePlayer {
     const p = this.pose;
     this.avatar.root.position.copy(this.pos);
     this.avatar.root.rotation.y = this.yaw;
-    this.avatar.root.visible = this.inWorld;
+    // knocked out: a physics ragdoll stands in (ko 1, hidden) or the avatar just lies down (ko 2)
+    this.ko = p.ko || 0;
+    this.avatar.root.visible = this.inWorld && this.ko !== 1;
     this.vel.fromArray(p.v);
     const lv = _v.set(this.vel.x, 0, this.vel.z).applyAxisAngle(UP, -this.yaw);
     const sp = Math.hypot(lv.x, lv.z);
@@ -125,11 +127,11 @@ export class RemotePlayer {
       grounded: !!p.g, vy: this.vel.y, crouch: p.c || 0, sprint: !!p.sp, pitch: this.pitch,
       talking: Math.max(p.tk || 0, this.voiceLevel), holding: p.h ? 1 : 0,
       holdTarget: p.ht ? new THREE.Vector3().fromArray(p.ht) : null,
-      emote: p.em || null, expression: p.ex || 'neutral', limp: !!p.lp, dead: !!p.d,
+      emote: p.em || null, expression: p.ko ? 'dead' : p.ex || 'neutral', limp: !!p.lp, dead: !!p.d || this.ko === 2,
     });
     if (this.collider) {
       this.collider.setTranslation({ x: this.pos.x, y: this.pos.y + 0.68 - (p.c || 0) * 0.26, z: this.pos.z });
-      this.collider.setEnabled(!p.d && this.inWorld);
+      this.collider.setEnabled(!p.d && !this.ko && this.inWorld);
     }
     // flashlight
     this.flash.intensity = p.fl && !p.d && this.inWorld ? 26 : 0; // never hidden: keeps the light count stable
@@ -137,20 +139,16 @@ export class RemotePlayer {
     root.updateMatrix();
     this.flash.position.set(0.15, 1.0, -0.2).applyMatrix4(root.matrix);
     this.flashTarget.position.set(0, 1.0 + Math.sin(this.pitch) * 5, -5 * Math.cos(this.pitch)).applyMatrix4(root.matrix);
-    // held item
+    // held items (right hand, left hand)
     if (p.it !== this.heldType) {
-      if (this.heldModel) this.heldModel.removeFromParent();
-      this.heldModel = null;
+      this.heldModel?.removeFromParent();
       this.heldType = p.it;
-      if (p.it) {
-        const m = buildModel(p.it, { seed: 1 });
-        this.heldModel = m.object;
-        const anchor = this.avatar.getHandAnchor('right');
-        if (anchor) {
-          if (m.hold) { m.object.position.fromArray(m.hold.pos); m.object.rotation.set(...m.hold.rot); }
-          anchor.add(m.object);
-        }
-      }
+      this.heldModel = this._hold(p.it, 'right');
+    }
+    if ((p.il || null) !== (this.heldTypeL || null)) {
+      this.heldModelL?.removeFromParent();
+      this.heldTypeL = p.il || null;
+      this.heldModelL = this._hold(p.il, 'left');
     }
     // talking is noise for the host's monsters
     if (net.isHost && (p.tk || 0) > 0.3 && !p.d) {
@@ -170,6 +168,19 @@ export class RemotePlayer {
         if (net.isHost) this.world.noise.emit(this.pos, (p.c || 0) > 0.5 ? 2 : p.sp ? 13 : 6, 'step', this.id);
       }
     }
+  }
+
+  _hold(type, side) {
+    if (!type) return null;
+    const m = buildModel(type === '__tool' ? 'multitool' : type, { seed: 1 });
+    const anchor = this.avatar.getHandAnchor(side);
+    if (!anchor) return m.object;
+    if (m.hold) {
+      m.object.position.fromArray(m.hold.pos); m.object.rotation.set(...m.hold.rot);
+      if (side === 'left') { m.object.position.x *= -1; m.object.rotation.y *= -1; m.object.rotation.z *= -1; }
+    }
+    anchor.add(m.object);
+    return m.object;
   }
 
   dispose() {

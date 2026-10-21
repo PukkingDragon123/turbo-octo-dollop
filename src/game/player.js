@@ -1,5 +1,10 @@
 // The local clone: first-person controller, camera feel, physics grabbing, interaction,
 // inventory & item use, flashlight, sleeping, death & spectating, pose replication.
+// Controls: RMB = interact (tap) / grab-and-pull (hold; the pull gets stronger the longer it is held),
+// Shift while carrying = throw far, LMB = punch (hold to wind up) / use the right-hand item / the drawn
+// multitool ([Q]; hold to charge power), E = interact, G = drop (hold: drop everything).
+// Carried items live in the hands (game/hands.js), vitals on the mechanical heart + brain (ui/vitals3d.js),
+// fists / knock-outs / gore in game/combat.js, quick-time events in game/qte.js (game.qte).
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
 import { input } from '../core/input.js';
@@ -9,17 +14,23 @@ import { audio } from '../audio/audio.js';
 import { Survival } from './survival.js';
 import { Inventory } from './inventory.js';
 import { itemDef, itemName } from './itemdefs.js';
-import { buildModel } from '../entities/catalog.js';
-import { applyItemVisual } from './itemfx.js';
 import { Avatar, buildFirstPersonArms, DEFAULT_COSMETICS } from '../entities/avatar.js';
 import { clamp, damp } from '../core/rng.js';
 import { profile } from '../core/profile.js';
+import { Hands } from './hands.js';
+import { Combat, COMBAT } from './combat.js';
+import { QTE } from './qte.js';
+import { VitalsHUD } from '../ui/vitals3d.js';
+import { juice } from '../gfx/juice.js';
+import { floatText } from '../ui/floattext.js';
 
 const STAND_HH = 0.38, CROUCH_HH = 0.12, RADIUS = 0.3;
 const EYE_STAND = 1.36, EYE_CROUCH = 0.8; // matches the robot clone's eyes (doll/robotrig.js)
 const WALK = 2.9, SPRINT = 5.1, CROUCH_SPEED = 1.45;
 const GRAVITY = 15.5, JUMP_V = 4.9;
 const REACH = 2.7, GRAB_REACH = 3.4;
+export const CONTROLS = { tapTime: 0.22, pullStart: 0.5, pullMax: 1.7, pullRamp: 0.8, dropAllTime: 0.6, mtReserve: 0.25, mtTrickle: 0.002 };
+const PATCH_TIME = { bandage: 2.6, medkit: 3.4, plasma_syringe: 2.4 };
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -88,8 +99,22 @@ export class LocalPlayer {
     this.avatar.root.visible = false;
     this.arms = buildFirstPersonArms(this.cosmetics);
     engine.vmScene.add(this.arms.root);
-    this.heldModel = null;
-    this.heldType = null;
+    this.hands = new Hands(this);
+    this.combat = new Combat(this);
+    this.vitals = new VitalsHUD();
+    this.qte = game.qte = new QTE(game);
+    this.toolOut = false; // built-in multitool drawn ([Q])
+    const self = this;
+    // the built-in multitool's battery: hold-to-charge power drains it; Healthity (or a battery item) charges it
+    this.tool = {
+      battery: 1, power: 0, sputter: 0,
+      get mode() { return self.mtMode; },
+      set mode(v) { self.mtMode = v === 'dismantle' ? 'dismantle' : 'attach'; },
+      charge(amount = 1) { this.battery = clamp(this.battery + amount, 0, 1); return this.battery; },
+    };
+    this.grabPower = CONTROLS.pullStart;
+    this.rmbPending = null;
+    this.dropHold = 0;
 
     // viewmodel lighting follows the local light level
     this.vmHemi = new THREE.HemisphereLight(0xfff2d0, 0x3a3020, 0.6);
@@ -147,11 +172,9 @@ export class LocalPlayer {
     this.cosmetics = { ...this.cosmetics, ...c };
     this.avatar.setCosmetics(this.cosmetics);
     engine.vmScene.remove(this.arms.root);
-    const oldHeld = this.heldType;
     this.arms = buildFirstPersonArms(this.cosmetics);
     engine.vmScene.add(this.arms.root);
-    this.heldType = null;
-    if (oldHeld) this._refreshHeld(true);
+    this.hands?.reattach();
     this.game.watch?.attach(this.arms);
   }
 
@@ -214,12 +237,24 @@ export class LocalPlayer {
     const ui = this.game.ui;
     const s = this.survival;
     if (this.dead) {
+      this.qte.update(dt);
       this._updateSpectate(dt);
       this._updateViewmodel(dt);
       this._sendPose(dt);
       return;
     }
+    // knocked out: the camera hangs over the ragdoll until the clone gets back up
+    if (this.combat.ko) {
+      this.combat.updateKO(dt);
+      this._updateSurvival(dt);
+      this._updateViewmodel(dt);
+      this._updateAvatar(dt);
+      this._sendPose(dt);
+      return;
+    }
+    this.qte.update(dt);
     const canControl = !this.terminal && !ui.menuOpen && !this.game.cutscene && !ui.customizing;
+    const qteLock = this.qte.locking;
     input.enabled = true;
 
     // look
@@ -250,17 +285,19 @@ export class LocalPlayer {
       if ((canControl && (input.hit('jump') || input.hit('interact') || input.mouseHit(0))) || s.rest >= 100 || s.stress > 0.5) this.wake();
     }
 
-    this._updateMovement(dt, canControl && !s.sleeping);
+    this._updateMovement(dt, canControl && !s.sleeping && !qteLock);
     this._updateCamera(dt);
     this._updateSurvival(dt);
     if (this.dead) return;
-    if (canControl && !s.sleeping) {
+    this.combat.updateKO(dt); // daze decay / get-up
+    if (canControl && !s.sleeping && !qteLock) {
       this._updateInteraction(dt);
       this._updateGrab(dt);
       this._updateItems(dt);
       this._updateEmotes(dt);
     } else {
       if (this.grab && !this.terminal) this.releaseGrab(false);
+      if (qteLock) { this._endHold(); this.combat.cancel(); }
       this.focus = null;
     }
     this._updateFlashlight(dt);
@@ -296,7 +333,8 @@ export class LocalPlayer {
     if (len > 1) { ix /= len; iz /= len; }
     this.moving = len > 0.05;
     const canSprint = !s.fracture && s.stamina > 1 && !this.crouching && iz < 0.2;
-    this.sprinting = canControl && input.down('sprint') && this.moving && canSprint && (this.sprinting || s.stamina > 6);
+    // (Shift is the far throw while carrying a prop, so no sprinting with one)
+    this.sprinting = canControl && input.down('sprint') && this.moving && canSprint && (this.sprinting || s.stamina > 6) && !(this.grab && !this.grab.remote);
     let speed = this.crouching ? CROUCH_SPEED : this.sprinting ? SPRINT : WALK;
     if (s.fracture) speed *= 0.62;
     if (s.rest < 15) speed *= 0.85;
@@ -312,6 +350,7 @@ export class LocalPlayer {
       if (p) speed *= clamp(1.15 - p.mass / 70, 0.45, 1);
     }
     if (this.watchOpen) speed *= 0.75;
+    speed *= this.hands.speedFactor; // an armful of stuff is heavy
 
     // wish direction in world
     _fwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
@@ -427,7 +466,7 @@ export class LocalPlayer {
   _updateCamera(dt) {
     const cam = engine.camera;
     const s = this.survival;
-    const eye = EYE_STAND + (EYE_CROUCH - EYE_STAND) * this.crouch;
+    const eye = (EYE_STAND + (EYE_CROUCH - EYE_STAND) * this.crouch) * (1 - this.combat.getUp * 0.9);
     const moveAmt = this.grounded ? clamp(this.realSpeed / SPRINT, 0, 1) : 0;
     this.bob = damp(this.bob, moveAmt, 8, dt);
     const bobY = Math.abs(Math.sin(this.stepPhase * Math.PI)) * 0.045 * this.bob;
@@ -478,7 +517,7 @@ export class LocalPlayer {
       } else if (ud.kind === 'prop' && ud.prop && !ud.prop.dead) {
         const p = ud.prop;
         let pr = p.custom?.prompt?.(this, hit) ?? null;
-        if (!pr && p.def.pocket && (!p.frozen || p.type === 'dart')) pr = `[${input.keyName('interact')}] Pick up ${itemName(p.type)}`;
+        if (!pr && p.def.pocket && (!p.frozen || p.type === 'dart')) pr = `[RMB] Pick up ${itemName(p.type)}${this.hands.layout.n >= 2 ? ' (armful)' : ''}`;
         if (!pr && p.def.sleep && this.survival.advanced) pr = this.survival.insomnia ? 'Can\'t sleep... something is watching' : `[${input.keyName('interact')}] Sleep`;
         if (!pr && p.def.use === 'drink' && !p.def.pocket) pr = `[${input.keyName('interact')}] Drink from ${itemName(p.type)}`;
         if (pr) focus = { kind: 'prop', target: p, prompt: pr, hit };
@@ -486,7 +525,7 @@ export class LocalPlayer {
       } else if (ud.kind === 'remote' && ud.remote) {
         focus = { kind: 'remote', target: ud.remote, prompt: ud.remote.dead ? null : ud.remote.name, hit };
       } else if (ud.kind === 'healthity') {
-        focus = { kind: 'healthity', target: ud.bot, prompt: `[${input.keyName('interact')}] Pat Healthity`, hit };
+        focus = { kind: 'healthity', target: ud.bot, prompt: this.game.healthity?.promptText?.() || `[${input.keyName('interact')}] Pat Healthity`, hit };
       }
     }
     // Healthity has no collider: simple ray-sphere test
@@ -495,10 +534,10 @@ export class LocalPlayer {
       const c = bot.root.position;
       const oc = _v.subVectors(c, origin);
       const tca = oc.dot(_fwd);
-      if (tca > 0 && tca < 2.2 && oc.lengthSq() - tca * tca < 0.05) focus = { kind: 'healthity', target: bot, prompt: `[${input.keyName('interact')}] Pat Healthity`, hit: null };
+      if (tca > 0 && tca < 2.2 && oc.lengthSq() - tca * tca < 0.05) focus = { kind: 'healthity', target: bot, prompt: this.game.healthity?.promptText?.() || `[${input.keyName('interact')}] Pat Healthity`, hit: null };
     }
-    // empty hand: furniture shows its name, pad value and what the built-in multitool would do
-    if (!this._handItemUse()) {
+    // furniture shows its name, pad value and what the built-in multitool would do
+    {
       if (focus && focus.kind === 'propinfo') focus.prompt = this.game.tools.mtPrompt(focus.target, this);
       else if (!focus || !focus.prompt) {
         const part = this.game.tools._campPartNearRay(hit ? hit.dist : REACH); // thin tent parts are easy to miss
@@ -526,7 +565,7 @@ export class LocalPlayer {
         t.custom.interact(this, focus.hit);
       } else if (t.def.pocket) {
         if (!this.inv.hasFree()) {
-          this.game.ui.toast('Inventory full', 'warn');
+          floatText.notice("Can't carry any more — [G] drop something", { duration: 1.6, color: '#ffb040' });
           audio.play('ui_error', { volume: 0.4, bus: 'ui' });
           return;
         }
@@ -555,9 +594,8 @@ export class LocalPlayer {
       return;
     }
     audio.play('grab', { volume: 0.5 });
-    this.game.ui.toast(`+ ${itemName(item.type)}`);
+    this.arms.throwKick = Math.max(this.arms.throwKick || 0, 0.3); // the hand snatches it
     this.game.healthity?.onPickup(item.type, itemName(item.type));
-    this.game.ui.flyToWrist?.(item.type);
     this.game.onItemPicked?.(item);
   }
 
@@ -581,59 +619,55 @@ export class LocalPlayer {
     this.sleepT = 0;
   }
 
-  // ---------------- physics grab ----------------
+  // ---------------- physics grab (RMB) ----------------
+  // RMB tap on something usable = interact (pick up, search, press); RMB hold = grab and pull. The pull
+  // power ramps up while the button stays down; Shift throws far, LMB throws.
   _updateGrab(dt) {
+    const armful = this.hands.layout.armful;
+    if (!this.grab && !this.rmbPending && input.mouseHit(2) && !this.watchOpen) {
+      const f = this.focus;
+      if (f && f.prompt && (f.kind === 'device' || f.kind === 'prop' || f.kind === 'healthity')) {
+        const p = f.kind === 'prop' ? f.target : null;
+        const draggable = p && p.body && !p.frozen && !p.def.static && !armful;
+        if (draggable) this.rmbPending = { t: 0, focus: f }; // tap = use it, hold = drag it
+        else this._interact(f);
+      } else if (armful) this._armsFull();
+      else this._startGrab();
+    }
+    if (this.rmbPending) {
+      const pd = this.rmbPending;
+      pd.t += dt;
+      if (!input.mouseDown(2)) { this.rmbPending = null; if (pd.t < CONTROLS.tapTime + 0.1) this._interact(pd.focus); }
+      else if (pd.t >= CONTROLS.tapTime) { this.rmbPending = null; this._startGrab(); }
+    }
+    // hold-RMB devices (cranks) work like holding E
+    const fo = this.focus;
+    if (!this.grab && fo && fo.kind === 'device' && input.mouseDown(2) && fo.target.holdTime > 0 && !this.watchOpen) fo.target.interactHold?.(this, dt);
+    if (!this.grab) { this.grabPower = CONTROLS.pullStart; return; }
     const cam = engine.camera;
     _fwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
-    if (!this.grab && input.mouseHit(0)) {
-      const hit = this.world.physics.raycast(cam.position, _fwd, GRAB_REACH, Q.grab, null, (c) => c !== this.collider);
-      if (hit && hit.ud) {
-        if (hit.ud.kind === 'prop' && hit.ud.prop.body && !hit.ud.prop.frozen && !hit.ud.prop.def.static) {
-          const p = hit.ud.prop;
-          const inv = p.root.quaternion.clone().invert();
-          const lp = hit.point.clone().sub(p.root.position).applyQuaternion(inv);
-          this.grab = { id: p.id, lp, dist: clamp(hit.dist, 0.9, GRAB_REACH), sendT: 0, t: 0 };
-          audio.play('grab', { volume: 0.4, pos: hit.point });
-        } else if (hit.ud.kind === 'remote' && hit.ud.remote && !hit.ud.remote.dead) {
-          this.grab = { remote: hit.ud.remote.id, dist: clamp(hit.dist, 1.0, 2.5), sendT: 0, t: 0 };
-          audio.play('grab', { volume: 0.4, pos: hit.point });
-        }
-      }
-      if (!this.grab) {
-        // thin tent parts are easy to miss: grab one the ray passes close to by its centre
-        const part = this.game.tools._campPartNearRay(hit ? hit.dist : GRAB_REACH);
-        if (part?.body) {
-          this.grab = { id: part.id, lp: new THREE.Vector3(), dist: clamp(part.root.position.distanceTo(cam.position), 0.9, GRAB_REACH), sendT: 0, t: 0 };
-          audio.play('grab', { volume: 0.4, pos: part.root.position });
-        }
-      }
-    }
-    if (!this.grab) return;
     this.grab.t += dt;
-    // check the throw first so a quick RMB+LMB release in one frame still throws
-    // (a carried camp part is attached with the multitool instead: see _updateMultitool)
-    if (input.mouseHit(2) && !this._mtOwnsRmb()) {
-      this.releaseGrab(true);
-      return;
-    }
-    if (!input.mouseDown(0)) {
-      this.releaseGrab(false);
-      return;
-    }
+    // hold to pull harder
+    const was = this.grabPower;
+    this.grabPower = Math.min(CONTROLS.pullMax, CONTROLS.pullStart + this.grab.t * CONTROLS.pullRamp);
+    if (was < 1.2 && this.grabPower >= 1.2) audio.play('android_servo', { volume: 0.3 });
+    if (input.hit('throw')) { this.releaseGrab(true, true); return; }
+    if (!input.mouseDown(2)) { this.releaseGrab(false); return; }
     const w = input.consumeWheel();
     if (w) this.grab.dist = clamp(this.grab.dist - w * 0.25, 0.8, GRAB_REACH);
     const target = _v.copy(cam.position).addScaledVector(_fwd, this.grab.dist);
     this.grab.target = target.clone();
     if (this.grab.remote) {
-      // pulling a teammate: send a gentle yank toward the target
+      // pulling a teammate: a yank toward the target, harder the longer it is held
       const r = this.game.remotes.get(this.grab.remote);
-      if (!r) { this.grab = null; return; }
+      if (!r || r.dead) { this.grab = null; return; }
       this.grab.sendT -= dt;
       if (this.grab.sendT <= 0) {
         this.grab.sendT = 0.1;
         const chest = r.pos.clone().add(_v2.set(0, 0.7, 0));
-        const pull = target.clone().sub(chest).multiplyScalar(2.2);
-        if (pull.length() > 4) pull.setLength(4);
+        const gp = this.grabPower;
+        const pull = target.clone().sub(chest).multiplyScalar(2.2 * gp);
+        if (pull.length() > 4 * gp) pull.setLength(4 * gp);
         net.toHost('yank', { to: r.id, v: [pull.x, pull.y * 0.6, pull.z] });
       }
       return;
@@ -643,7 +677,7 @@ export class LocalPlayer {
     // stop if the object is far away from where we're pulling (stuck / too heavy)
     const gp = this.grab.lp.clone().applyQuaternion(p.root.quaternion).add(p.root.position);
     this.grab.point = gp;
-    if (gp.distanceTo(cam.position) > GRAB_REACH + 1.6) {
+    if (gp.distanceTo(cam.position) > GRAB_REACH + 1.6 + (this.grabPower - 1) * 0.6) {
       this.releaseGrab(false);
       return;
     }
@@ -653,16 +687,46 @@ export class LocalPlayer {
       _right.set(1, 0, 0).applyQuaternion(cam.quaternion);
       const rot = this._rotDelta ? [this._rotDelta[0], this._rotDelta[1], _right.x, _right.z] : null;
       this._rotDelta = null;
-      net.toHost('grab', { id: this.grab.id, lp: this.grab.lp.toArray(), tp: target.toArray(), r: rot });
+      net.toHost('grab', { id: this.grab.id, lp: this.grab.lp.toArray(), tp: target.toArray(), r: rot, f: +this.grabPower.toFixed(2) });
     }
   }
 
-  releaseGrab(doThrow) {
+  _startGrab() {
+    const cam = engine.camera;
+    _fwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    const hit = this.world.physics.raycast(cam.position, _fwd, GRAB_REACH, Q.grab, null, (c) => c !== this.collider);
+    if (hit && hit.ud) {
+      if (hit.ud.kind === 'prop' && hit.ud.prop.body && !hit.ud.prop.frozen && !hit.ud.prop.def.static) {
+        const p = hit.ud.prop;
+        const inv = p.root.quaternion.clone().invert();
+        const lp = hit.point.clone().sub(p.root.position).applyQuaternion(inv);
+        this.grab = { id: p.id, lp, dist: clamp(hit.dist, 0.9, GRAB_REACH), sendT: 0, t: 0 };
+        audio.play('grab', { volume: 0.4, pos: hit.point });
+      } else if (hit.ud.kind === 'remote' && hit.ud.remote && !hit.ud.remote.dead) {
+        this.grab = { remote: hit.ud.remote.id, dist: clamp(hit.dist, 1.0, 2.5), sendT: 0, t: 0 };
+        audio.play('grab', { volume: 0.4, pos: hit.point });
+      }
+    }
+    if (!this.grab) {
+      // thin tent parts are easy to miss: grab one the ray passes close to by its centre
+      const part = this.game.tools._campPartNearRay(hit ? hit.dist : GRAB_REACH);
+      if (part?.body) {
+        this.grab = { id: part.id, lp: new THREE.Vector3(), dist: clamp(part.root.position.distanceTo(cam.position), 0.9, GRAB_REACH), sendT: 0, t: 0 };
+        audio.play('grab', { volume: 0.4, pos: part.root.position });
+      }
+    }
+    if (this.grab) { this.grabPower = CONTROLS.pullStart; this.combat.cancel(); }
+  }
+
+  releaseGrab(doThrow, far = false) {
     if (!this.grab) return;
     if (this.grab.remote) {
       if (doThrow) {
         _fwd.set(0, 0, -1).applyQuaternion(engine.camera.quaternion);
-        net.toHost('yank', { to: this.grab.remote, v: [_fwd.x * 6, 3, _fwd.z * 6] });
+        const k = far ? 10 : 6;
+        net.toHost('yank', { to: this.grab.remote, v: [_fwd.x * k, far ? 4.5 : 3, _fwd.z * k] });
+        audio.play('throw_whoosh', { volume: 0.6 });
+        this.arms.throwKick = 1;
       }
       this.grab = null;
       return;
@@ -670,12 +734,13 @@ export class LocalPlayer {
     let thr = null;
     if (doThrow) {
       _fwd.set(0, 0, -1).applyQuaternion(engine.camera.quaternion);
-      thr = [_fwd.x, _fwd.y + 0.12, _fwd.z];
+      thr = [_fwd.x, _fwd.y + (far ? 0.2 : 0.12), _fwd.z];
       this.stats.thrown++;
-      audio.play('throw_whoosh', { volume: 0.5 });
+      audio.play('throw_whoosh', { volume: far ? 0.8 : 0.5, intensity: far ? 1 : 0.5 });
       this.arms.throwKick = 1;
+      if (far) { juice.punch(0.03); juice.shake(0.12); }
     } else audio.play('release', { volume: 0.25 });
-    if (this.world) net.toHost('grab', { release: true, id: this.grab.id, throw: thr });
+    if (this.world) net.toHost('grab', { release: true, id: this.grab.id, throw: thr, far: far ? 1 : 0, f: +this.grabPower.toFixed(2) });
     this.grab = null;
   }
 
@@ -715,7 +780,8 @@ export class LocalPlayer {
       if (n1.lengthSq() < 1e-4) n1.set(1, 0, 0);
       n1.normalize();
       n2.crossVectors(tan, n1).normalize();
-      const r = 0.012 + Math.sin((i / SEG) * Math.PI) * 0.012 + Math.sin(t0 * 20 + i) * 0.003;
+      const gpw = 0.6 + (this.grabPower - 0.5) * 0.8;
+      const r = (0.012 + Math.sin((i / SEG) * Math.PI) * 0.012) * gpw + Math.sin(t0 * 20 + i) * 0.003 * gpw;
       for (let j = 0; j < RAD; j++) {
         const ang = (j / RAD) * Math.PI * 2;
         const k = (i * RAD + j) * 3;
@@ -730,52 +796,149 @@ export class LocalPlayer {
     this.beamGlow.scale.setScalar(0.8 + Math.sin(t0 * 30) * 0.25);
   }
 
-  // ---------------- inventory & items ----------------
+  // ---------------- hands, items & tools ----------------
   _updateItems(dt) {
-    const inv = this.inv;
-    for (let i = 0; i < 5; i++) if (input.hit('slot' + (i + 1))) { inv.select(i); this._cancelUse(); }
+    const inv = this.inv, H = this.hands;
+    let L = H.compute();
+    for (let i = 0; i < 5; i++) if (input.hit('slot' + (i + 1))) this._selectSlot(i);
     if (!this.grab && !this.watchOpen) {
       const w = input.consumeWheel();
-      if (w) { inv.cycle(w > 0 ? 1 : -1); this._cancelUse(); audio.play('ui_blip', { volume: 0.2, bus: 'ui' }); }
+      if (w) this._cycleHands(w > 0 ? 1 : -1);
     }
     if (input.hit('flashlight')) this.toggleFlashlight();
-    if (input.hit('drop') && inv.current && !this.useAction) {
-      const it = inv.remove();
-      this.dropItem(it, false);
+    if (input.hit('tool') && !this.watchOpen) this.toggleTool();
+    this._updateDrop(dt);
+    L = H.compute();
+    // two items: both hands are full, so the right hand always holds one; the drawn multitool needs a free hand
+    if (L.n >= 2 && !inv.current) { const i = inv.slots.findIndex(Boolean); if (i >= 0) inv.select(i); }
+    if (this.toolOut && (L.n >= 2)) { this.toolOut = false; this._endHold(); }
+    if (this.toolOut && L.n === 1 && inv.current) { const f = inv.firstFree(); if (f >= 0) inv.select(f); }
+    if (!this.toolOut && !this.holdAction?.multitool) {
+      // a little trickle keeps an emergency reserve in the battery (camp building never soft-locks)
+      if (this.tool.battery < CONTROLS.mtReserve) this.tool.charge(dt * CONTROLS.mtTrickle);
     }
-    this._refreshHeld();
-    const cur = inv.current;
-    // use action in progress
+    if (this.game.isLobby) this.tool.charge(dt * 0.05);
+    this.tool.sputter = Math.max(0, this.tool.sputter - dt);
+    // use action in progress (eat / drink / heal)
     if (this.useAction) {
       this.useAction.t += dt;
       if (this.useAction.t >= this.useAction.dur) this._finishUse();
       return;
     }
-    // built-in multitool: an empty hand (or a held item without an RMB use)
-    if (!this._handItemUse()) { this._updateMultitool(dt); return; }
-    if (this.grab) {
-      this._endHold();
+    if (this.vitals.busy) return;
+    L = H.compute();
+    const cur = H.rightItem();
+    const def = cur ? itemDef(cur.type) : null;
+    // an armful: no punching, no using
+    if (L.armful) {
+      this._endHold(); this.combat.cancel();
+      if (input.mouseHit(0) && !this.grab) this._armsFull();
+      if (this.grab && input.mouseHit(0)) this.releaseGrab(true);
       return;
     }
-    const def = itemDef(cur.type);
-    if (input.mouseHit(2)) this._startUse(cur, def);
-    if (this.holdAction) {
-      if (!input.mouseDown(2)) this._endHold();
-      else this.holdAction.tick(dt);
+    if (this.grab) {
+      // carrying a camp part: LMB attaches it with the multitool; anything else: LMB throws it
+      if (this._mtOwnsLmb()) { this._updateMultitool(dt); return; }
+      this._endHold();
+      this.combat.cancel();
+      if (input.mouseHit(0)) this.releaseGrab(true);
+      return;
     }
+    if (this.toolOut || def?.use === 'multitool') { this._updateMultitool(dt); return; }
+    if (cur && def.use && def.use !== 'swing') {
+      if (input.mouseHit(0) && !this.holdAction) this._startUse(cur, def);
+      if (this.holdAction) {
+        if (!input.mouseDown(0)) this._endHold();
+        else this.holdAction.tick(dt);
+      }
+      return;
+    }
+    // fists, or a swing weapon in the right hand (not while reading the watch)
+    if (this.watchOpen) { this.combat.cancel(); return; }
+    this.combat.input(dt, { weapon: def?.use === 'swing' ? cur : null, sides: { R: !cur, L: !H.leftItem() } });
   }
 
-  // the selected item's RMB use (null = the hand is free for the built-in multitool)
+  _armsFull() {
+    if (engine.time - (this._fullT || -9) < 1.6) return;
+    this._fullT = engine.time;
+    floatText.notice(`ARMS FULL — [${input.keyName('drop')}] drop`, { duration: 1.4, color: '#ffb040' });
+    audio.play('suit_rustle', { volume: 0.5 });
+  }
+
+  // [1-5]: hold that item in the right hand (an empty slot frees the right hand when carrying one item)
+  _selectSlot(i) {
+    const inv = this.inv, L = this.hands.compute();
+    if (inv.slots[i]) { inv.select(i); if (this.toolOut) this.toolOut = false; }
+    else if (L.n <= 1) inv.select(i);
+    else return;
+    this._cancelUse();
+    audio.play('ui_blip', { volume: 0.2, bus: 'ui' });
+  }
+
+  // wheel / NEXT: swap hands (one item: right <-> left; two: swap; armful: shuffle the pile)
+  _cycleHands(d) {
+    const inv = this.inv, L = this.hands.compute();
+    if (!L.n) return;
+    const occ = inv.slots.map((x, i) => (x ? i : -1)).filter((i) => i >= 0);
+    if (L.n === 1) {
+      const it = occ[0];
+      if (inv.selected === it) { const f = inv.firstFree(); if (f >= 0) inv.select(f); } else { inv.select(it); this.toolOut = false; }
+    } else {
+      const k = occ.indexOf(inv.selected);
+      inv.select(occ[(k + (d > 0 ? 1 : -1) + occ.length) % occ.length]);
+    }
+    this._cancelUse();
+    audio.play('ui_blip', { volume: 0.2, bus: 'ui' });
+  }
+
+  // [G]: tap drops one item (right hand, else left, else the top of the armful); hold drops everything
+  _updateDrop(dt) {
+    if (this.useAction) { this.dropHold = 0; return; }
+    if (input.down('drop')) {
+      this.dropHold += dt;
+      if (this.dropHold >= CONTROLS.dropAllTime && !this._droppedAll) {
+        this._droppedAll = true;
+        let k = 0;
+        for (let i = 0; i < this.inv.slots.length; i++) if (this.inv.slots[i]) this.dropItem(this.inv.remove(i), false, k++);
+        if (k) audio.play('suit_rustle', { volume: 0.6 });
+      }
+      return;
+    }
+    if (this.dropHold > 0 && !this._droppedAll) {
+      const L = this.hands.compute();
+      const i = L.armful ? L.pile[L.pile.length - 1] : L.right >= 0 ? L.right : L.left;
+      if (i >= 0 && i != null) this.dropItem(this.inv.remove(i), false);
+    }
+    this.dropHold = 0;
+    this._droppedAll = false;
+  }
+
+  // [Q]: draw / holster the built-in multitool (needs a free right hand)
+  toggleTool() {
+    if (this.toolOut) { this.toolOut = false; this._endHold(); audio.play('ui_back', { volume: 0.35, bus: 'ui' }); return; }
+    const L = this.hands.compute();
+    if (L.armful || L.n >= 2) { floatText.notice('Hands full', { duration: 1.2, color: '#ffb040' }); audio.play('ui_error', { volume: 0.35, bus: 'ui' }); return; }
+    if (L.n === 1 && this.inv.current) { const f = this.inv.firstFree(); if (f >= 0) this.inv.select(f); }
+    this.toolOut = true;
+    this.combat.cancel();
+    audio.play('android_servo', { volume: 0.4 });
+  }
+
+  // the selected item's use (null = the hand is free); kept for touch / other systems
   _handItemUse() {
-    const cur = this.inv.current;
+    const cur = this.hands.rightItem();
     return cur ? itemDef(cur.type).use || null : null;
   }
 
-  // RMB belongs to the multitool while carrying a camp part (attach it instead of throwing it)
-  _mtOwnsRmb() {
-    if (this._handItemUse() || !this.grab || this.grab.id == null || !this.world) return false;
+  // the old multitool item in the right hand works like the built-in one
+  _mtItem() { return this._handItemUse() === 'multitool'; }
+
+  // LMB belongs to the multitool while carrying a camp part (attach it instead of throwing it)
+  _mtOwnsLmb() {
+    if (!this.grab || this.grab.id == null || !this.world) return false;
     return !!this.world.props.get(this.grab.id)?.def.camp;
   }
+  _mtOwnsRmb() { return this._mtOwnsLmb(); } // legacy name (touch controls)
 
   _endHold() {
     if (!this.holdAction) return;
@@ -785,23 +948,22 @@ export class LocalPlayer {
 
   toggleMultitoolMode() {
     this.mtMode = this.mtMode === 'attach' ? 'dismantle' : 'attach';
-    this.game.ui.toast(`MULTITOOL: ${this.mtMode === 'attach' ? 'ATTACH' : 'DISMANTLE'} MODE`);
+    floatText.notice(`MULTITOOL: ${this.mtMode === 'attach' ? 'ATTACH' : 'DISMANTLE'}`, { duration: 1.2, color: this.mtMode === 'attach' ? '#6fe0ff' : '#ff9a50' });
     audio.play('ui_select', { volume: 0.5, bus: 'ui' });
   }
 
-  // hold RMB: attach / detach / dismantle what is aimed at (or the carried camp part)
+  // hold LMB: charge + attach / detach / dismantle what is aimed at (or the carried camp part); [R] mode
   _updateMultitool(dt) {
     const tools = this.game.tools;
     if (!this.grab && input.hit('rotate')) this.toggleMultitoolMode();
-    if (this.grab && !this._mtOwnsRmb()) { this._endHold(); return; } // RMB throws (see _updateGrab)
     if (this.grab) {
       const p = this.world.props.get(this.grab.id);
       const pr = p && tools.mtPrompt(p, this);
-      if (pr) this.focus = { kind: 'mt', target: p, prompt: pr, hit: null };
+      if (pr) this.focus = { kind: 'mt', target: p, prompt: pr.replace(/^.*· /, ''), hit: null };
     }
-    if (input.mouseHit(2) && !this.holdAction) this.holdAction = tools.begin('multitool', null, this);
+    if (input.mouseHit(0) && !this.holdAction) this.holdAction = tools.begin('multitool', null, this);
     if (this.holdAction) {
-      if (!input.mouseDown(2)) this._endHold();
+      if (!input.mouseDown(0)) this._endHold();
       else this.holdAction.tick(dt);
     }
   }
@@ -811,8 +973,11 @@ export class LocalPlayer {
       case 'eat':
       case 'drink':
       case 'heal': {
-        const dur = item.type === 'bandage' || item.type === 'splint' ? 2.4 : item.type === 'medkit' ? 3.2 : 1.3;
-        this.useAction = { type: item.type, t: 0, dur, slot: this.inv.selected, def };
+        const patch = PATCH_TIME[item.type];
+        const dur = patch || (item.type === 'splint' ? 2.4 : 1.3);
+        this.useAction = { type: item.type, t: 0, dur, slot: this.inv.slots.indexOf(item), def, patch: !!patch };
+        // patching the mechanical heart: pull it out of the chest, tape / inject it, push it back
+        if (patch) this.vitals.startPatch(item.type, dur);
         const snd = def.use === 'eat' ? 'eat' : def.use === 'drink' ? 'drink' : 'bandage';
         audio.play(snd, { volume: 0.7 });
         this.world.noise.emit(this.pos, 3, 'use');
@@ -820,12 +985,12 @@ export class LocalPlayer {
       }
       case 'flashlight': this.toggleFlashlight(); break;
       case 'battery': {
+        // charges the flashlight, or (no flashlight / it is full) the multitool
         const fi = this.inv.find('flashlight');
-        if (fi < 0) { this.game.ui.toast('No flashlight to charge'); break; }
-        this.inv.slots[fi].state.charge = 1;
-        this.inv.remove(this.inv.selected);
+        const fl = fi >= 0 ? this.inv.slots[fi].state : null;
+        if (fl && (fl.charge ?? 1) < 0.95) { fl.charge = 1; floatText.notice('Flashlight recharged', { duration: 1.4 }); } else { this.tool.charge(0.6); floatText.notice(`Multitool charged ${Math.round(this.tool.battery * 100)}%`, { duration: 1.4, color: '#6fe0ff' }); }
+        this.inv.remove(this.inv.slots.indexOf(item));
         audio.play('fuse_insert', { volume: 0.6 });
-        this.game.ui.toast('Flashlight recharged');
         break;
       }
       case 'glowstick':
@@ -846,7 +1011,7 @@ export class LocalPlayer {
         break;
       }
       case 'throw': {
-        const it = this.inv.remove();
+        const it = this.inv.remove(this.inv.slots.indexOf(item));
         this.dropItem(it, true);
         audio.play('dart_throw', { volume: 0.6 });
         break;
@@ -875,21 +1040,24 @@ export class LocalPlayer {
     if (ua.def.use === 'eat') this.stats.eaten++;
     if (ua.def.use === 'drink') this.stats.drank++;
     this.game.onItemUsed?.(ua.type, wasBleeding);
-    if (ua.type === 'bandage' || ua.type === 'medkit') this.game.healthity?.say('bandaged');
+    if (ua.type === 'bandage' || ua.type === 'medkit' || ua.type === 'plasma_syringe') this.game.healthity?.say('bandaged');
     if (ua.type === 'splint') this.game.healthity?.say('splinted');
   }
 
   _cancelUse() {
+    if (this.useAction?.patch) this.vitals.cancelPatch();
     this.useAction = null;
     this._endHold();
+    this.combat?.cancel();
   }
 
-  dropItem(item, thrown) {
-    if (!item) return;
+  dropItem(item, thrown, k = 0) {
+    if (!item || !this.world) return;
     const cam = engine.camera;
     _fwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
     const pos = cam.position.clone().addScaledVector(_fwd, 0.6);
     pos.y = Math.max(pos.y - 0.25, this.pos.y + 0.3);
+    if (k) { _right.set(1, 0, 0).applyQuaternion(cam.quaternion); pos.addScaledVector(_right, ((k % 3) - 1) * 0.2).add(_v2.set(0, Math.floor(k / 3) * 0.16, 0)); }
     // don't drop into walls
     const hit = this.world.physics.raycast(cam.position, _fwd, 0.8, Q.world);
     if (hit) pos.copy(cam.position).addScaledVector(_fwd, Math.max(0.1, hit.dist - 0.25));
@@ -963,58 +1131,49 @@ export class LocalPlayer {
       bounce = (inten / 36) * 0.45 / Math.max(0.7, this._bounceD);
     }
     this.vmFlash.intensity = damp(this.vmFlash.intensity, bounce, 10, dt);
-    const held = this.inv.current?.type === 'flashlight';
+    const held = this.hands.R.type === 'flashlight' || this.hands.L.type === 'flashlight';
     // pocketed flashlight sits on the chest: wider, dimmer
     this.flashlight.angle = held ? 0.5 : 0.62;
     if (!held) this.flashlight.intensity *= 0.65;
   }
 
-  _refreshHeld(force = false) {
-    const cur = this.inv.current;
-    const type = cur ? cur.type : null;
-    if (type === this.heldType && !force) {
-      if (cur && this.heldBuilt && this._heldVer !== this.inv.version) {
-        this._heldVer = this.inv.version;
-        applyItemVisual(cur.type, cur.state, this.heldBuilt);
-      }
-      if (type === 'flashlight') this.heldModel?.userData.setOn?.(this.flashOn);
-      return;
-    }
-    if (this.heldModel) this.heldModel.removeFromParent();
-    this.heldModel = null;
-    this.heldType = type;
-    if (!type) return;
-    const m = buildModel(type, { seed: 1 });
-    const o = m.object;
-    if (m.hold) {
-      o.position.fromArray(m.hold.pos);
-      o.rotation.set(...m.hold.rot);
-    }
-    o.traverse((c) => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; } });
-    this.heldModel = o;
-    this.heldParts = m.parts;
-    this.heldBuilt = m;
-    applyItemVisual(type, cur.state, m);
-    this.arms.rightHand.add(o);
-  }
+  _refreshHeld(force = false) { if (force) this.hands.reattach(); }
 
   // ---------------- viewmodel ----------------
   _updateViewmodel(dt) {
     const s = this.survival;
     const ua = this.useAction;
     let use = 0;
-    if (ua) use = Math.sin(Math.min(1, ua.t / ua.dur) * Math.PI);
+    if (ua && !ua.patch) use = Math.sin(Math.min(1, ua.t / ua.dur) * Math.PI);
     this.arms.throwKick = damp(this.arms.throwKick || 0, 0, 8, dt);
+    const H = this.hands, V = this.vitals, ko = !!this.combat.ko;
+    H.hidden = V.busy;
+    const cs = this.combat.armState();
+    const sway = new THREE.Vector2(this.lookDelta?.x || 0, this.lookDelta?.y || 0);
     const st = {
       bob: this.bob, speed: this.realSpeed || 0, sprint: this.sprinting,
-      watchRaised: this.watchRaised,
+      watchRaised: V.busy ? 0 : this.watchRaised,
       grab: this.grab ? 1 : 0, use, throwCharge: this.arms.throwKick,
-      holdingItem: !!this.inv.current,
-      sway: new THREE.Vector2(this.lookDelta?.x || 0, this.lookDelta?.y || 0),
-      landing: this.landKick, phase: this.stepPhase,
+      holdingItem: !!H.R.type, holdL: !!H.L.type, armful: H.layout.armful ? 1 : 0,
+      cradle: V.patchCradle, reach: V.patchReach,
+      windR: cs.windR, jabR: cs.jabR, windL: cs.windL, jabL: cs.jabL,
+      tremble: this.qte.active ? this.qte.intensity : 0,
+      grabPower: this.grab ? clamp((this.grabPower - 0.9) / 0.8, 0, 1) : (this.arms.mtPower || 0) * 0.6,
+      sway, landing: this.landKick, phase: this.stepPhase,
     };
-    this.arms.root.visible = !this.dead && !this.thirdPerson && !s.sleeping && !this.terminal && !this.game.ui.customizing;
+    const armsOn = !this.dead && !ko && !this.thirdPerson && !s.sleeping && !this.terminal && !this.game.ui.customizing;
+    this.arms.root.visible = armsOn;
     this.arms.update(dt, st);
+    H.update(dt, { bob: this.bob, phase: this.stepPhase, sway, landing: this.landKick, visible: armsOn });
+    const ui = this.game.ui;
+    const aim = this.vel;
+    const acc = { x: (aim.x - (this._pvx || 0)) / Math.max(dt, 1e-3), z: (aim.z - (this._pvz || 0)) / Math.max(dt, 1e-3) };
+    this._pvx = aim.x; this._pvz = aim.z;
+    _v.set(acc.x, 0, acc.z).applyAxisAngle(_v2.set(0, 1, 0), -this.yaw);
+    V.update(dt, {
+      survival: s, dead: this.dead, insaneT: s.insaneT, sway, accel: { x: clamp(_v.x, -30, 30), z: clamp(_v.z, -30, 30) },
+      visible: !this.dead && !s.sleeping && !this.terminal && !ui.customizing && !ui.menuOpen && !!this.world && this.game.state === 'playing',
+    });
     // viewmodel lighting
     const lc = this.lightColor || new THREE.Color(0.6, 0.55, 0.45);
     this.vmHemi.color.copy(lc).multiplyScalar(1.1);
@@ -1027,7 +1186,7 @@ export class LocalPlayer {
     const a = this.avatar;
     a.root.position.copy(this.pos);
     a.root.rotation.y = this.yaw;
-    const show = this.thirdPerson || !!this.game.ui.customizing;
+    const show = (this.thirdPerson || !!this.game.ui.customizing) && !(this.combat.ko?.rag);
     a.root.visible = show;
     if (this._fpHidden !== !show) { this._fpHidden = !show; a.setVisibleFirstPerson?.(!show); }
     const lv = _v.set(this.vel.x, 0, this.vel.z).applyAxisAngle(new THREE.Vector3(0, 1, 0), -this.yaw);
@@ -1037,7 +1196,7 @@ export class LocalPlayer {
       moveDir: new THREE.Vector2(sp > 0.01 ? lv.x / sp : 0, sp > 0.01 ? -lv.z / sp : 0),
       grounded: this.grounded, vy: this.vel.y, crouch: this.crouch, sprint: this.sprinting,
       pitch: this.pitch, talking: this.talking, holding: this.grab ? 1 : 0, holdTarget: this.grab?.target || null,
-      emote: this.survival.sleeping ? 'sleep' : this.emote, expression: this._expression(), limp: this.survival.fracture, dead: this.dead,
+      emote: this.survival.sleeping ? 'sleep' : this.combat.swing ? 'point' : this.emote, expression: this._expression(), limp: this.survival.fracture, dead: this.dead || !!this.combat.ko,
     });
   }
 
@@ -1080,7 +1239,30 @@ export class LocalPlayer {
       dayPressure: lobby ? 0 : this.game.day?.instability?.() || 0,
       safeDay: !lobby && this.game.day?.active && this.game.day.day <= 1,
     });
-    if (s.dead && !this.dead) this.onDeath(s.deathCause || 'injuries');
+    if (s.dead && !this.dead) { this.onDeath(s.deathCause || 'injuries'); return; }
+    // the stomach growls when hunger crosses a threshold (the old sleeve patch did this)
+    if (!lobby && s.needsActive !== false) {
+      this._growlCool = (this._growlCool || 0) - dt;
+      const h = s.hunger, lh = this._lastHunger ?? h;
+      if (([50, 30, 15].some((th) => lh > th && h <= th) || (h < 20 && this._growlCool <= 0)) && this._growlCool <= 0) {
+        this._growlCool = 22;
+        audio.play('_gurgle', { volume: 0.5, pitch: 0.5 });
+      }
+      this._lastHunger = h;
+    }
+    // losing it: on top of the level's own hallucinations, very low sanity makes them come thick and fast
+    if (!lobby && s.sanity < 22 && !(this.game.day?.day <= 1)) {
+      this._halluT = (this._halluT ?? 4) - dt;
+      if (this._halluT <= 0) {
+        this._halluT = 4 + Math.random() * 5 * (s.sanity / 22 + 0.3);
+        this.world.level?.anomalies?._hallucinate?.(1 - s.sanity / 100);
+      }
+    }
+    if (s.insaneT > 0) {
+      const P = engine.post?.params;
+      if (P) P.uGlitch.value = Math.max(P.uGlitch.value, Math.min(0.6, s.insaneT * 0.07));
+      if (Math.random() < dt * 2) juice.shake(0.15);
+    }
   }
 
   // ---------------- death & spectating ----------------
@@ -1102,6 +1284,15 @@ export class LocalPlayer {
       p: this.pos.toArray(), yaw: this.yaw,
       v: this.vel.toArray(), items,
     });
+    // torn apart: a huge killing blow breaks the clone into robot parts (host snaps the ragdoll apart)
+    const lh = this.survival.lastHit;
+    if (lh && lh.amount >= COMBAT.goreDamage && this.survival.time - lh.time < 0.6) {
+      net.toHost('gore', { p: this.pos.toArray(), v: this.vel.toArray(), n: Math.min(2, lh.amount / 45) });
+    }
+    if ((this.survival.deathCause || cause) === 'insanity') { audio.play('scare_shriek', { volume: 0.8 }); juice.flash(0.5); }
+    this.combat.cancel();
+    if (this.combat.ko) { net.toHost('koEnd', {}); this.combat.ko = null; }
+    this.toolOut = false;
     if (this.collider) this.collider.setEnabled(false);
     this.game.onLocalDeath?.(cause);
   }
@@ -1109,6 +1300,9 @@ export class LocalPlayer {
   revive(spawn) {
     this.dead = false;
     this.survival.reset();
+    this.combat.ko = null;
+    this.combat.getUp = 0.6;
+    this.vitals.patch = null;
     if (this.collider) this.collider.setEnabled(true);
     this.teleport(spawn.pos, spawn.yaw);
     this.arrivalGrace = 1;
@@ -1154,15 +1348,16 @@ export class LocalPlayer {
       v: [+this.vel.x.toFixed(2), +this.vel.y.toFixed(2), +this.vel.z.toFixed(2)],
       g: this.grounded ? 1 : 0, c: +this.crouch.toFixed(2), sp: this.sprinting ? 1 : 0,
       h: this.grab ? 1 : 0, ht: this.grab?.target ? this.grab.target.toArray().map((x) => +x.toFixed(2)) : null,
-      tk: +this.talking.toFixed(2), em: s.sleeping ? 'sleep' : this.emote, ex: this._expression(),
-      fl: this.flashOn ? 1 : 0, it: this.inv.current?.type || null, d: this.dead ? 1 : 0,
+      tk: +this.talking.toFixed(2), em: s.sleeping ? 'sleep' : this.combat.swing ? 'point' : this.emote, ex: this._expression(),
+      fl: this.flashOn ? 1 : 0, it: this.hands.R.type || null, il: this.hands.L.type || null, d: this.dead ? 1 : 0,
+      ko: this.combat.poseFlag || 0,
       hs: s.summary(), lp: s.fracture ? 1 : 0,
     });
   }
 
   // a teammate is pulling us (physics grab)
   applyYank(v) {
-    if (this.dead) return;
+    if (this.dead || this.combat.ko) return;
     this.yank.set(v[0], v[1], v[2]);
     if (v[1] > 0.5) this.grounded = false;
   }
@@ -1173,5 +1368,7 @@ export class LocalPlayer {
     this.beam.removeFromParent();
     this.beamTube.removeFromParent();
     this.beamGlow.removeFromParent();
+    this.hands.dispose();
+    this.vitals.dispose();
   }
 }

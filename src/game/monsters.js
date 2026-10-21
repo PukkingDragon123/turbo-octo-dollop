@@ -26,12 +26,19 @@ import { PartygoerAI } from './creatures/partygoer.js';
 import { BaseSystems } from './basecamp.js';
 import { isLitState } from './itemfx.js';
 import { itemName } from './itemdefs.js';
+import { Combat, initCombat } from './creatures/combat.js';
+import { FAUNA_AI } from './creatures/fauna.js';
+import { buildFauna } from '../entities/monsters/fauna_models.js';
+import { Bio } from './bio.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _f = new THREE.Vector3();
 const _c = new THREE.Color();
 const _frustum = new THREE.Frustum();
+const _q = new THREE.Quaternion();
+const _q2 = new THREE.Quaternion();
+const _e = new THREE.Euler();
 const _m4 = new THREE.Matrix4();
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -46,7 +53,17 @@ const PARTY_BY_DAY = [0, 0, 1, 1, 1, 1, 2, 2];
 const RAID_GAP = [0, 0, 150, 130, 115, 100, 90, 75];
 const RAIDERS = [0, 0, 1, 1, 2, 2, 2, 3];
 const STAGE_RAIDS = new Set(['survive', 'sell', 'exit']);
-const LABEL = { bacteria: 'THE BACTERIA', hound: 'HOUND', smiler: 'SMILER', partygoer: 'PARTYGOER' };
+const LABEL = { bacteria: 'THE BACTERIA', hound: 'HOUND', smiler: 'SMILER', partygoer: 'PARTYGOER', mole: 'BACKROOMS MOLE', moth: 'PALE MOTH', dcrawler: 'DAMP CRAWLER', fungal: 'THE FUNGAL' };
+// Level 0 fauna (creatures/fauna.js) by day: passive moles / moths from Day 1, damp-zone hostiles from Day 2
+const FAUNA_BY_DAY = { mole: [0, 2, 2, 3, 3, 3, 3, 3], moth: [0, 1, 2, 2, 2, 3, 3, 3], dcrawler: [0, 0, 1, 1, 2, 2, 3, 3], fungal: [0, 0, 0, 1, 1, 1, 2, 2] };
+const FAUNA_RANGE = { mole: [9, 22], moth: [10, 24], dcrawler: [16, 30], fungal: [20, 34] };
+const damp = (c) => c && !c.pit && (c.wet > 0 || c.zone === 'flooded' || c.zone === 'maintenance');
+const FAUNA_CELL = {
+  mole: (c) => c && !c.water && !c.pit && !c.crawl && c.floor !== 'concrete',
+  moth: (c) => c && !c.water && !c.pit,
+  dcrawler: damp,
+  fungal: (c) => damp(c) || (c && !c.pit && c.zone === 'dark'),
+};
 
 class BacteriaAI extends Agent {
   constructor(mgr, id, pos) {
@@ -209,7 +226,9 @@ class BacteriaAI extends Agent {
         if (this.attackT >= 0.55 && !this.hit) {
           this.hit = true;
           if (this.target && !this.target.dead && this.pos.distanceTo(this.target.pos) < 2.2) {
-            mgr.damagePlayer(this.target, 34 + aggro * 14, 'slash', this.pos, 'the Bacteria');
+            // it either rakes you or seizes you (break free or take the full blow)
+            const grabbed = this.rng.chance(0.45) && mgr.combat.tryGrab(this, this.target, { dmg: 40 + aggro * 14, chip: 3, kind: 'slash', cause: 'the Bacteria', title: 'BREAK FREE', dur: 2.6 - aggro * 0.4, snd: 'bacteria_screech' });
+            if (!grabbed) mgr.damagePlayer(this.target, 34 + aggro * 14, 'slash', this.pos, 'the Bacteria');
             this.mgr.dropResidue(this.pos);
           }
         }
@@ -300,7 +319,6 @@ class StillLifeAI extends Agent {
     super(mgr, id, 'still', pos, variant === 'tall' ? 0.9 : variant === 'crawler' ? 0.15 : 0.4, variant === 'mass' ? 0.5 : 0.32);
     this.variant = variant;
     this.rng = new RNG(id * 31337);
-    this.hp = variant === 'mass' ? 5 : 3;
     this.state = variant === 'watcher' || variant === 'tall' || variant === 'twin' ? 'idle' : 'roam';
     this.unseenT = 0;
     this.cooldown = 0;
@@ -380,7 +398,7 @@ class StillLifeAI extends Agent {
           this.moveTo(dt, near.pos, 1.3);
           if (nd < 1.6 && this.cooldown <= 0) {
             this.cooldown = 2.5;
-            mgr.damagePlayer(near, 22, 'slash', this.pos, 'a Still Life', { heavy: false });
+            if (!mgr.combat.tryGrab(this, near, { dmg: 26, chip: 2, kind: 'blunt', cause: 'a Still Life', title: 'BREAK FREE', dur: 2.6 })) mgr.damagePlayer(near, 22, 'slash', this.pos, 'a Still Life', { heavy: false });
             this.attackT = 1;
           }
         } else this._wander(dt, 0.8);
@@ -441,6 +459,9 @@ class MonsterView {
     } else if (this.type === 'smiler') {
       this.sm = buildSmiler(snap.id);
       this.root = this.sm.root;
+    } else if (FAUNA_AI[this.type]) {
+      this.fm = buildFauna(this.type, snap.id);
+      this.root = this.fm.root;
     } else {
       // Still Lifes, Hounds and Partygoers share the sculpted / skinned creature pipeline
       this.sl = buildStillLife(this.type === 'still' ? this.variant || 'watcher' : this.type, snap.id);
@@ -450,11 +471,20 @@ class MonsterView {
     mgr.world.group.add(this.root);
     mgr.world.registerDynamic(this.root);
     // collision proxy so the local player can't walk through monsters
-    const r = this.type === 'bacteria' ? 0.38 : this.type === 'smiler' ? 0.24 : this.type === 'hound' ? 0.34 : this.sl?.radius || 0.35;
-    const hh = this.type === 'bacteria' ? 0.75 : this.type === 'smiler' ? 0.5 : this.type === 'hound' ? 0.14 : Math.max(0.2, (this.sl?.height || 1.2) / 2 - r);
+    const fr = this.fm ? Math.min(0.42, this.fm.radius) : 0;
+    const r = this.type === 'bacteria' ? 0.38 : this.type === 'smiler' ? 0.24 : this.type === 'hound' ? 0.34 : this.fm ? fr : this.sl?.radius || 0.35;
+    const hh = this.type === 'bacteria' ? 0.75 : this.type === 'smiler' ? 0.5 : this.type === 'hound' ? 0.14 : this.fm ? Math.max(0.03, this.fm.height / 2 - fr) : Math.max(0.2, (this.sl?.height || 1.2) / 2 - r);
     this.colHalf = hh + r;
+    // hit capsule for applyHit on clients / gore scale
+    this.hitR = r;
+    this.hitH = this.type === 'bacteria' ? 2.3 : this.type === 'smiler' ? 1.9 : this.type === 'hound' ? 0.8 : this.fm ? this.fm.height : this.sl?.height || 1.2;
+    this.fy = snap.fy || 0;
+    this.flyY = this.fy;
+    this.tilt = new THREE.Vector2();
+    this.tiltV = new THREE.Vector2();
+    this.dead = false;
     this.collider = null;
-    if (!net.isHost) {
+    if (!net.isHost && snap.s !== 'dead') {
       // (the host already has the AI agent's own collider)
       const desc = RAPIER.ColliderDesc.capsule(hh, r).setCollisionGroups(groups(G.MONSTER, G.PLAYER)).setTranslation(this.pos.x, this.pos.y + hh + r, this.pos.z);
       this.collider = mgr.world.physics.world.createCollider(desc);
@@ -468,8 +498,51 @@ class MonsterView {
     this.snap = snap;
   }
 
+  // hit recoil: the top of the body is thrown along d ([dx, dz]); d null = a stagger shudder
+  kick(d, i = 0.5) {
+    if (d) { this.tiltV.x += d[1] * i * 7; this.tiltV.y += -d[0] * i * 7; } else { this.tiltV.x += (Math.random() - 0.5) * 5 * i; this.tiltV.y += (Math.random() - 0.5) * 5 * i; }
+  }
+
+  // the creature died: topple over along the blow and lie there (MonsterManager.corpses)
+  die(d) {
+    this.dead = true;
+    this.deadT = 0;
+    this.pos.fromArray(d.p);
+    this.yaw = d.y;
+    let fx = d.d[0], fz = d.d[1];
+    const l = Math.hypot(fx, fz) || 1;
+    fx /= l; fz /= l;
+    this.fallAxis = new THREE.Vector3(fz, 0, -fx);
+    this.fallA = 0;
+    this.fallV = 0.8 + Math.random() * 0.6;
+    this.fallMax = this.type === 'moth' ? 2.6 : this.hitH < 0.9 ? 1.65 : 1.45;
+    this.fallFy = this.fy;
+    this.presence?.stop(0.3);
+    this.presence = null;
+    if (this.collider) { try { this.mgr.world.physics.removeCollider(this.collider); } catch (e) { /* freed */ } this.collider = null; }
+    if (this.body) this.body.update(0.016, { velocity: new THREE.Vector3(), state: 'hurt', lookTarget: null, attackT: 0, ceilingY: HEIGHT, intensity: 0, frozen: true });
+  }
+
+  _corpse(dt) {
+    this.deadT += dt;
+    if (this.fallA < this.fallMax) {
+      this.fallV += (7 + Math.sin(this.fallA + 0.2) * 9) * dt;
+      this.fallA += this.fallV * dt;
+      if (this.fallA >= this.fallMax) { this.fallA = this.fallMax; this.fallV = -this.fallV * 0.22; if (Math.abs(this.fallV) < 0.4) this.fallV = 0; else this.fallA -= 0.001; }
+    }
+    if (this.fallFy > 0) { this.fallFy = Math.max(0, this.fallFy - dt * (1 + this.deadT * 9)); }
+    this.root.position.copy(this.pos);
+    this.root.position.y += this.fallFy + Math.sin(Math.min(this.fallA, 1.5)) * this.hitR * 0.7 - Math.max(0, this.deadT - 50) * 0.04;
+    _q.setFromAxisAngle(this.fallAxis, this.fallA);
+    _q2.setFromAxisAngle(UP, this.yaw);
+    this.root.quaternion.multiplyQuaternions(_q, _q2);
+    if (this.fm) this.fm.update(dt, { dead: true, state: 'dead', speed: 0 });
+    return this.deadT < 60;
+  }
+
   update(dt) {
     this.time += dt;
+    if (this.dead) return this._corpse(dt);
     const rt = this.time - 0.13;
     let a = null, b = null;
     for (let i = this.buffer.length - 1; i >= 0; i--) if (this.buffer[i].t <= rt) { a = this.buffer[i]; b = this.buffer[i + 1] || null; break; }
@@ -485,13 +558,25 @@ class MonsterView {
     }
     while (this.buffer.length > 3 && this.buffer[1].t < rt) this.buffer.shift();
     const vel = this._vel.subVectors(this.pos, this.prevPos).divideScalar(Math.max(dt, 1e-3));
-    this.root.position.copy(this.pos);
-    this.root.rotation.y = this.yaw;
     const s = this.snap;
+    this.fy += ((s.fy || 0) - this.fy) * Math.min(1, dt * 6);
+    this.flyY = this.fy;
+    this.root.position.copy(this.pos);
+    this.root.position.y += this.fy;
+    // hit recoil spring (+ a drunken sway while staggered)
+    if (s.s === 'stagger' && Math.random() < dt * 3) this.kick(null, 0.35);
+    this.tiltV.x += (-this.tilt.x * 60 - this.tiltV.x * 9) * dt;
+    this.tiltV.y += (-this.tilt.y * 60 - this.tiltV.y * 9) * dt;
+    this.tilt.x = THREE.MathUtils.clamp(this.tilt.x + this.tiltV.x * dt, -0.6, 0.6);
+    this.tilt.y = THREE.MathUtils.clamp(this.tilt.y + this.tiltV.y * dt, -0.6, 0.6);
+    _e.set(this.tilt.x, 0, this.tilt.y, 'ZXY');
+    _q.setFromEuler(_e);
+    _q2.setFromAxisAngle(UP, this.yaw);
+    this.root.quaternion.multiplyQuaternions(_q, _q2);
     const look = s.l ? this._look.fromArray(s.l) : null;
     const sp = Math.hypot(vel.x, vel.z);
     if (this.body) {
-      const st = s.s === 'flinch' ? 'hurt' : s.s;
+      const st = s.s === 'flinch' || s.s === 'stagger' || s.s === 'hurt' ? 'hurt' : s.s === 'grab' ? 'attack' : s.s;
       this.body.update(dt, { velocity: vel, state: st, lookTarget: look, attackT: s.a, ceilingY: HEIGHT, intensity: s.i, frozen: !!s.f });
       this.presence?.setPosition(_v.copy(this.pos).setY(1.7));
       this.presence?.setParam?.('intensity', s.s === 'chase' ? 1 : 0.3);
@@ -503,13 +588,19 @@ class MonsterView {
     } else if (this.sl) {
       const st = this._st;
       st.speed = sp; st.moving = sp > 0.1; st.attacking = s.a; st.lookTarget = look; st.frozen = !!s.f; st.mode = s.s; st.intensity = s.i;
-      st.alert = s.s === 'chase' || s.s === 'hunt' || s.s === 'run' || s.s === 'pounce' || s.s === 'follow' ? 1 : s.s === 'flinch' || s.s === 'flee' ? 0.8 : 0.3;
+      st.alert = s.s === 'chase' || s.s === 'hunt' || s.s === 'run' || s.s === 'pounce' || s.s === 'follow' || s.s === 'grab' ? 1 : s.s === 'flinch' || s.s === 'flee' || s.s === 'hurt' || s.s === 'stagger' ? 0.8 : 0.3;
+      if (s.s === 'grab') st.attacking = Math.max(st.attacking || 0, 0.6);
       this.sl.update(dt, st);
       if (this.type === 'hound' && sp > 0.4) {
         // padding gallop: soft quick steps, louder at speed
         this.stepT -= dt * (1.2 + sp * 0.9);
         if (this.stepT <= 0) { this.stepT = 1; audio.play('hound_step', { pos: _v.copy(this.pos).setY(0.2), volume: Math.min(1, 0.25 + sp * 0.12), intensity: Math.min(1, sp / 6) }); }
       }
+    } else if (this.fm) {
+      const st = this._st;
+      st.speed = sp; st.state = s.s; st.attackT = s.a; st.look = look; st.intensity = s.i; st.dead = false;
+      this.fm.update(dt, st);
+      if (this.type === 'mole' && s.s === 'burrow' && sp > 0.5 && Math.random() < dt * 8) this.mgr.world.fx.dustBurst(_v.copy(this.pos).setY(0.05), 1, [0.55, 0.47, 0.28], 0.4);
     }
     this.collider?.setTranslation({ x: this.pos.x, y: this.pos.y + this.colHalf, z: this.pos.z });
   }
@@ -518,6 +609,7 @@ class MonsterView {
     if (this.body?.getHeadWorldPosition) return this.body.getHeadWorldPosition(out);
     if (this.sm) return out.copy(this.pos).setY(this.pos.y + 1.6);
     if (this.type === 'hound') return out.copy(this.pos).setY(this.pos.y + 0.6);
+    if (this.fm) return out.copy(this.pos).setY(this.pos.y + (this.fy || 0) + this.fm.height * 0.8);
     return out.copy(this.pos).setY(this.pos.y + (this.sl?.height || 1.2) * 0.85);
   }
 
@@ -528,6 +620,7 @@ class MonsterView {
     this.root.userData.dispose?.(); // Still Life instance resources (shared geometry/materials stay cached)
     this.body?.dispose?.();
     this.sm?.dispose?.();
+    this.fm?.dispose?.();
     if (this.collider) { try { this.mgr.world.physics.removeCollider(this.collider); } catch (e) { /* freed */ } }
   }
 }
@@ -562,8 +655,27 @@ export class MonsterManager {
     net.onHost('residueLocal', (d) => this.dropResidue(new THREE.Vector3().fromArray(d.p)));
     net.onHost('flash', (d) => this._hostFlash(d));
     net.onHost('yoinked', (d, from) => this._hostYoinked(d, from));
-    // camp systems: distorter safe zones, wheel trolleys, field workbench (and world.safeZones / world.isSafe)
+    // camp systems: distorter safe zones, wheel trolleys (and world.safeZones / world.isSafe)
     this.base = new BaseSystems(this);
+    // health, hits, gore, grabs (QTE) and finishers
+    this.combat = new Combat(this);
+    this.corpses = [];
+    // studying / taming / cooking / fungus / camp stove / ambient mystery (game/bio.js)
+    this.bio = new Bio(this);
+  }
+
+  // ---------- combat API (see creatures/combat.js) ----------
+  // applyHit({ origin, dir, range, damage, from, kind, radius, heavy }) -> { hit, agent, killed, point }
+  applyHit(o) { return this.combat.applyHit(o); }
+  // host: damage an agent directly
+  damageAgent(a, dmg, dir, o) { return this.combat.damage(a, dmg, dir, o); }
+  // scanner / study API (see game/bio.js): creatureAt({origin, dir, range}) -> info | null; study(ray, dt)
+  creatureAt(ray) { return this.bio.creatureAt(ray); }
+  study(ray, dt) { return this.bio.study(ray, dt); }
+
+  // client view for a snapshot (also used for corpses of creatures this peer never saw alive)
+  makeView(snap) {
+    try { return new MonsterView(this, snap); } catch (e) { console.warn('monster view', snap.t, e); return null; }
   }
 
   // ---------- host helpers ----------
@@ -641,10 +753,10 @@ export class MonsterManager {
   damagePlayer(pl, dmg, kind, from, cause, opts = {}) {
     // a distorter field protects whoever stands inside it
     if (zoneAt(this.world, pl.pos)) return;
-    const d = { dmg, kind, from: from.toArray(), cause, heavy: opts.heavy, san: opts.sanity || 0 };
+    const d = { dmg, kind, from: from.toArray(), cause, heavy: opts.heavy, san: opts.sanity || 0, nk: opts.noKnock ? 1 : 0 };
     if (pl.id === net.selfId) this._onHurt(d);
     else net.toPeer(pl.id, 'hurt', d);
-    this.world.fxAll({ k: 'blood', p: [pl.pos.x, pl.pos.y + 0.9, pl.pos.z], n: 14 });
+    this.world.fxAll({ k: 'blood', p: [pl.pos.x, pl.pos.y + 0.9, pl.pos.z], n: dmg < 5 ? 4 : 14 });
   }
 
   _onHurt(d) {
@@ -652,40 +764,20 @@ export class MonsterManager {
     if (l.dead) return;
     const died = l.survival.damage(d.dmg, d.kind, { cause: d.cause, heavy: d.heavy });
     if (d.san) l.survival.sanity = Math.max(0, l.survival.sanity - d.san);
-    l.shake = 1;
-    audio.play('hurt', { volume: 1 });
-    // knockback away from attacker
-    const from = new THREE.Vector3().fromArray(d.from);
-    const k = l.pos.clone().sub(from).setY(0).normalize().multiplyScalar(5);
-    l.applyYank([k.x, 2.5, k.z]);
+    l.shake = d.nk ? 0.4 : 1;
+    audio.play('hurt', { volume: d.nk ? 0.5 : 1 });
+    // knockback away from attacker (not while it is holding you)
+    if (!d.nk) {
+      const from = new THREE.Vector3().fromArray(d.from);
+      const k = l.pos.clone().sub(from).setY(0).normalize().multiplyScalar(5);
+      l.applyYank([k.x, 2.5, k.z]);
+    }
     this.game.healthity?.say(d.kind === 'slash' ? 'slashed' : 'hurt');
     if (died) l.onDeath(d.cause);
   }
 
-  hit(id, dir) {
-    const a = this.agents.get(id);
-    if (!a) return;
-    if (a.type === 'bacteria') {
-      a.setState('stunned');
-      a.vel.addScaledVector(dir, 3);
-      this.sound('bacteria_growl', a.pos, 1);
-    } else if (a.onHit) {
-      if (a.onHit(dir)) this._kill(a);
-    } else {
-      a.hp--;
-      a.vel.addScaledVector(dir, 4);
-      this.sound('stilllife_scream', a.pos, 0.9);
-      if (a.hp <= 0) this._kill(a);
-    }
-  }
-
-  _kill(a) {
-    this.world.fxAll({ k: 'sparks', p: a.pos.clone().setY(0.6).toArray(), n: 10 });
-    this.world.fxAll({ k: 'dust', p: a.pos.clone().setY(0.5).toArray(), n: 30, c: [0.85, 0.75, 0.6] });
-    if (a.type !== 'smiler') this.dropResidue(a.pos, 'still_life_tissue');
-    a.dispose();
-    this.agents.delete(a.id);
-  }
+  // legacy melee (tools.js swing): a fixed blunt hit
+  hit(id, dir, from) { this.combat.legacyHit(id, dir, from); }
 
   dropResidue(pos, kind = 'bacteria_residue') {
     if (!net.isHost) return;
@@ -731,13 +823,16 @@ export class MonsterManager {
 
   _make(type, pos, variant) {
     const id = this.nextId++;
+    let a;
     switch (type) {
-      case 'bacteria': return new BacteriaAI(this, id, pos);
-      case 'hound': return new HoundAI(this, id, pos);
-      case 'smiler': return new SmilerAI(this, id, pos);
-      case 'partygoer': return new PartygoerAI(this, id, pos);
-      default: return new StillLifeAI(this, id, pos, variant);
+      case 'bacteria': a = new BacteriaAI(this, id, pos); break;
+      case 'hound': a = new HoundAI(this, id, pos); break;
+      case 'smiler': a = new SmilerAI(this, id, pos); break;
+      case 'partygoer': a = new PartygoerAI(this, id, pos); break;
+      default: a = FAUNA_AI[type] ? new FAUNA_AI[type](this, id, pos) : new StillLifeAI(this, id, pos, variant);
     }
+    initCombat(a);
+    return a;
   }
 
   typeCooldown(type, sec) { this.typeCool[type] = Math.max(this.typeCool[type] || 0, sec); }
@@ -837,15 +932,30 @@ export class MonsterManager {
         if (p) this.debugSpawn('partygoer', p);
       }
     }
-    // cull agents far from everyone (they'll respawn nearer)
+    if (this.world.type === 'yellow' && !this.level.game.isLobby) this._spawnFauna(day);
+    // cull agents far from everyone (they'll respawn nearer); tamed animals stay with the team
     const players = this.alivePlayers();
     for (const a of [...this.agents.values()]) {
+      if (a.grab || (a.tamer && this.level.isChunkLoaded(a.pos.x, a.pos.z))) continue;
       let nd = 1e9;
       for (const p of players) nd = Math.min(nd, p.pos.distanceTo(a.pos));
       if ((nd > 70 && !a.raid) || !this.level.isChunkLoaded(a.pos.x, a.pos.z) || a.vanish) {
         a.dispose();
         this.agents.delete(a.id);
       }
+    }
+  }
+
+  // Level 0 fauna: moles on carpet, moths anywhere dry, crawlers / fungal things in damp (and dark) sectors
+  _spawnFauna(day) {
+    const n = {};
+    for (const a of this.agents.values()) if (FAUNA_AI[a.type] && !a.tamer) n[a.type] = (n[a.type] || 0) + 1;
+    for (const type in FAUNA_BY_DAY) {
+      if ((n[type] || 0) >= (FAUNA_BY_DAY[type][day] ?? 0) || this.typeCool[type] > 0) continue;
+      const [lo, hi] = FAUNA_RANGE[type];
+      const ok = FAUNA_CELL[type];
+      const p = this._spawnPoint(lo, hi, null, (q) => ok(this.level.cell(q.x, q.z)));
+      if (p) { this.debugSpawn(type, p); this.typeCooldown(type, 8); } else this.typeCooldown(type, 14);
     }
   }
 
@@ -952,7 +1062,8 @@ export class MonsterManager {
         this._hostSpawning(dt);
         this._hostRaids(dt);
       }
-      for (const a of this.agents.values()) a.update(Math.min(dt, 0.05));
+      const dta = Math.min(dt, 0.05);
+      for (const a of this.agents.values()) if (!this.combat.preUpdate(a, dta)) a.update(dta);
       this.snapT -= dt;
       if (this.snapT <= 0) {
         this.snapT = 1 / 15;
@@ -960,8 +1071,13 @@ export class MonsterManager {
       }
     }
     for (const v of this.views.values()) v.update(dt);
+    for (let i = this.corpses.length - 1; i >= 0; i--) {
+      if (!this.corpses[i].update(dt)) { this.corpses[i].dispose(); this.corpses.splice(i, 1); }
+    }
     this._localPerception(dt);
     this.base.update(dt);
+    this.combat.update(dt);
+    this.bio.update(dt);
   }
 
   _onSnap(list) {
@@ -990,7 +1106,8 @@ export class MonsterManager {
     _frustum.setFromProjectionMatrix(_m4);
     for (const v of this.views.values()) {
       const d = v.pos.distanceTo(l.pos);
-      const w = v.type === 'bacteria' ? 1 : v.type === 'smiler' || v.type === 'hound' ? 0.75 : 0.5;
+      if (v.type === 'mole' || v.type === 'moth') continue; // harmless animals don't stress anyone
+      const w = v.type === 'bacteria' || v.type === 'fungal' ? 1 : v.type === 'smiler' || v.type === 'hound' || v.type === 'dcrawler' ? 0.75 : 0.5;
       near = Math.max(near, w * Math.max(0, 1 - d / 22));
       if (d < 26 && _frustum.containsPoint(v.headPos(_v))) {
         if (this.world.physics.lineOfSight(cam.position, _v)) {
@@ -1000,6 +1117,7 @@ export class MonsterManager {
       }
       if ((v.type === 'bacteria' || v.type === 'hound') && (v.snap.s === 'chase' || v.snap.s === 'pounce') && d < 25) chased = true;
       if (v.type === 'smiler' && v.snap.s === 'charge' && d < 20) chased = true;
+      if ((v.type === 'dcrawler' && v.snap.s === 'rush') || (v.type === 'fungal' && v.snap.s === 'hunt' && d < 12)) chased = true;
     }
     this.localNear = near;
     this.localVisible = visible;
@@ -1043,15 +1161,19 @@ export class MonsterManager {
     }
   }
 
-  playFx(m, p) { this.base.playFx(m, p); }
+  playFx(m, p) { this.base.playFx(m, p); this.bio.playFx(m, p); }
 
   dispose() {
     for (const a of this.agents.values()) a.dispose();
     this.agents.clear();
     for (const v of this.views.values()) v.dispose();
     this.views.clear();
+    for (const v of this.corpses) v.dispose();
+    this.corpses = [];
     for (const m of this.residueMeshes) m.removeFromParent();
     this.base.dispose();
+    this.combat.dispose();
+    this.bio.dispose();
     for (const t of ['mons', 'hurt', 'residue', 'yoink']) net.clientHandlers.delete(t);
     for (const t of ['residueLocal', 'flash', 'yoinked']) net.hostHandlers.delete(t);
   }

@@ -30,12 +30,13 @@ A GitHub Pages workflow (`.github/workflows/deploy.yml`) builds and deploys on e
 | Action | Keys |
 |---|---|
 | Move / sprint / crouch / jump | WASD / Shift / Ctrl or C / Space |
-| Grab physics objects (and teammates) | hold **LMB**. While holding: **wheel** = distance, **R + mouse** = rotate, **RMB** = throw |
-| Interact / pick up | **E** |
-| Use the selected item (eat, drink, heal, light, throw) | **RMB** |
-| Built-in multitool (empty hand): attach / detach / dismantle what you aim at, or the camp part you carry | **RMB** (hold). **R** switches ATTACH / DISMANTLE |
-| Inventory slots | **1–5** / wheel |
-| Drop or throw an item | **G** |
+| Interact / pick up | tap **RMB** (or **E**) |
+| Grab and pull physics objects (and teammates) | hold **RMB**: the longer you hold, the harder you pull. While holding: **Shift** = throw far, **LMB** = throw, **wheel** = distance, **R + mouse** = rotate |
+| Punch | **LMB** (hold to wind up a haymaker). Hard hits knock teammates out into a ragdoll for ~2 s |
+| Use the item in your right hand (eat, drink, heal, swing a crowbar, light, throw) | **LMB** |
+| Built-in multitool: attach / detach / dismantle what you aim at, or the camp part you carry | **Q** draws it, hold **LMB** to charge power (a full charge zaps), **R** switches ATTACH / DISMANTLE |
+| Swap hands / pick the right-hand item | **1–5** / wheel |
+| Drop an item (hold: drop everything) | **G** |
 | Flashlight | **F** |
 | Wristwatch | **Tab**. Switch tabs with **Q/E**. **LMB** takes a photo in the CAMERA tab |
 | Emotes | **H** wave, **J** dance, **B** point |
@@ -48,16 +49,23 @@ Touch devices get on-screen controls styled like the knobs of a 1990s field term
 
 * **Left thumb**: a floating analog stick. Push it to the rim to sprint.
 * **Right thumb**: drag to look, tap to interact with whatever is under the dot.
-* **Buttons**: JUMP, USE (shows what it will do), GRAB (hold; THROW and ROT appear while carrying), ITEM, DUCK, plus WATCH, LIGHT, NEXT, DROP, VIEW and MENU along the top. ◀ ▶ switch watch tabs.
+* **Buttons**: JUMP, USE (shows what it will do), GRAB (tap = use, hold = grab and pull; ROT appears while carrying), PUNCH (punch / use the right-hand item / the multitool; THROW while carrying), TOOL (multitool), DUCK, plus WATCH, LIGHT, NEXT (swap hands), DROP, VIEW and MENU along the top. ◀ ▶ switch watch tabs. Quick-time events turn the whole screen into a tap / hold area.
 * Phones start on the LOW graphics preset unless you pick one in Settings.
 
-#### Healthity on screen
+#### Healthity
 
-When Healthity talks it pops into the corner of your screen with a speech bubble and a synthesized robot voice (toggle in Settings). It greets you, walks you through Day 1 and HQ with tips, and comments on what you pick up. Press **X** (or the HLTH button, or tap its bubble) for a check-up: your vitals, what you need most and what to do next.
+You start without one. On Level 0 two crates wait between the lift and the camp: one holds basic supplies, the other knocks from the inside. Open it and a broken **Healthity MK-VII** (a yellowed, cracked 1979 medical unit with doll eyes on a little CRT and a receipt printer for a mouth) slumps out, sparking. Press **E** on it to repair it: the view zooms into its opened chassis, where you drag each loose wire onto the post of its colour (a wrong post shorts out) and hold on every joint to zap it with your multitool. Then it reboots, floats up and prints your orders as a **receipt** out of its mouth: take it (**E** on Healthity, or pick it up off the floor) to read it up close, and press **X** to read it again. The boxes tick as you finish tasks, and a new receipt prints when the orders change. Healthity talks in floating text next to itself with a synthesized voice (toggle in Settings), gives tips for the current task, warns about low health, sanity and battery, and charges your multitool (**E** when the battery is not full).
 
-#### No HUD
+All messages in the game (HQ radio, pickups, warnings, achievements) are floating 3D text instead of screen boxes.
 
-There is no on-screen HUD. Vitals, carried items, tasks, credits and messages live on the wristwatch. When something happens (HQ radio, a pickup, a warning, the exit countdown) the watch beeps and your clone glances at it. Raising the watch zooms in on its face.
+#### (Almost) no HUD
+
+The only HUD is two little machines at the top of the view, drawn in 3D:
+
+* a **mechanical heart** (health): brass valves, a pressure gauge and a glass chamber of sloshing green plasma that beats with your pulse. Damage cracks the glass, the cracks leak plasma while you bleed and the pressure needle sags. A **bandage**, **medkit** or **plasma syringe** plays a first-person patch-up: your clone pulls the heart out of its chest, tapes the cracks and/or injects plasma, and pushes it back in. Food and drink heal a little too.
+* a **mechanical brain** called **SANITY**: glass hemispheres of glowing filaments and gears in a steel cage. It drains in the dark, alone and near monsters, and recovers with teammates and light. Low sanity turns it violet, then red, and you start hallucinating; at zero for a few seconds, your clone dies of insanity.
+
+What you carry sits in your hands: one item in the right hand, a second in the left, and three or more become an armful piled in front of you that slows you down and keeps your fists busy. The multitool shows its battery on an LED bar. Quick-time events (a monster grabbing you, pinning one down) appear as big keycaps under the crosshair. Tasks, credits and messages live on the wristwatch. When something happens (HQ radio, a pickup, a warning, the exit countdown) the watch beeps and your clone glances at it. Raising the watch zooms in on its face.
 
 ## The game loop
 
@@ -103,13 +111,13 @@ When Day 7 ends, the dimension is gone and so is anyone still inside it.
 * **Physics (Rapier)**
   * Almost everything can be grabbed, rotated, dragged, stacked, thrown and broken.
   * Each player's grab force is capped, so heavy furniture needs several clones working together.
-  * The **built-in multitool** (empty hand + RMB) **attaches** whatever you aim at to what it touches (a real fixed physics joint: barricades, furniture stacks), **detaches** it again, or (press R) **dismantles** furniture into crafting materials. The welding torch still welds too.
+  * The **built-in multitool** ([Q], hold LMB) charges up the longer you hold it (faster work, heavy furniture needs power, a full charge fires a damaging zap) and runs on a battery that Healthity or a battery item recharges. Attaching a **caster wheel** to a board or crate mounts it on a real spinning axle, so you can build carts. It **attaches** whatever you aim at to what it touches (a real fixed physics joint: barricades, furniture stacks), **detaches** it again, or (press R) **dismantles** furniture into crafting materials. The welding torch still welds too.
   * Looking at furniture with an empty hand shows its name and, once the pads are online, what the pads pay for it.
   * Craft barricade panels, spike traps, noise makers, splints, bandages and lamps at **workbenches**.
-* **Survival** (`src/game/survival.js`) is kept simple for now: health, **hunger**, **thirst**, stamina and bleeding (light or heavy; it costs health until bandaged).
-  * Blood pressure, infection, fractures, sleep / microsleep and sanity (with its hallucinations and fake warnings) are still in the code but switched off by one flag, `ADVANCED_SURVIVAL`.
+* **Survival** (`src/game/survival.js`): health, **sanity**, **hunger**, **thirst**, stamina and bleeding (light or heavy; it costs health until bandaged). Clones killed by a huge hit are torn apart into robot parts (limbs, plates, gears, wire) in a spray of plasma and oil.
+  * Blood pressure, infection, fractures and sleep / microsleep are still in the code but switched off by one flag, `ADVANCED_SURVIVAL`.
   * `survival.needsActive`: hunger and thirst only drain while it is on (Level 0 switches it on once the camp is built).
-* **Healthity**: a floating medical robot with a pixel face. It warns you about your condition and gives terrible corporate wellness advice. You can pat it.
+* **Healthity**: an old floating medical unit you repair on Level 0. It warns you about your condition, prints mission receipts, charges your multitool and gives terrible corporate wellness advice. You can pat it.
 * **Wristwatch**: a retro corporate terminal with these tabs:
   * **STATUS**: vitals with a live EKG.
   * **CAMERA**: research photos.

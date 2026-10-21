@@ -1,4 +1,5 @@
-// Room shells of the R.O.O.M. HQ lobby (Sublevel B4): 1990s underground corporate interior.
+// Room shells of the R.O.O.M. HQ lobby (Sublevel B4): 1990s underground corporate interior (today one small
+// waiting room; rooms may carry a floor trapdoor / ceiling hatch hole and an explicit troffer grid).
 // Carpet-tile offices, VCT break / locker rooms, a tiled cloning lab and a painted-block dispatch bay;
 // drop ceilings with grid-aligned recessed troffers (surface fixtures on the bay's concrete soffit),
 // wood wainscot with chair rails, tile wainscot with bullnose caps, rubber cove bases, corner beads,
@@ -34,10 +35,11 @@ export function buildLobbyShell(lobby, rooms, walls, H, T) {
   const lightBoxes = [];
   rooms.forEach((R, r) => {
     const w = R.x1 - R.x0, d = R.z1 - R.z0;
-    const nx = Math.max(1, Math.round(w / 3.2)), nz = Math.max(1, Math.round(d / 3.2));
-    const sx = Math.max(TILE * 2, Math.round(w / nx / TILE) * TILE), sz = Math.max(TILE * 2, Math.round(d / nz / TILE) * TILE);
-    const cx0 = Math.round(((R.x0 + R.x1) / 2 - ((nx - 1) / 2) * sx) / TILE) * TILE;
-    const cz0 = (Math.round(((R.z0 + R.z1) / 2 - ((nz - 1) / 2) * sz) / TILE - 0.5) + 0.5) * TILE;
+    let nx = Math.max(1, Math.round(w / 3.2)), nz = Math.max(1, Math.round(d / 3.2));
+    let sx = Math.max(TILE * 2, Math.round(w / nx / TILE) * TILE), sz = Math.max(TILE * 2, Math.round(d / nz / TILE) * TILE);
+    let cx0 = Math.round(((R.x0 + R.x1) / 2 - ((nx - 1) / 2) * sx) / TILE) * TILE;
+    let cz0 = (Math.round(((R.z0 + R.z1) / 2 - ((nz - 1) / 2) * sz) / TILE - 0.5) + 0.5) * TILE;
+    if (R.grid) ({ nx, nz, sx, sz, cx0, cz0 } = R.grid); // explicit troffer grid (small rooms)
     A[r].set(cx0 - sx / 2, cz0 - sz / 2, sx, sz);
     B[r].set(nx, nz, H - 0.04, 0);
     for (let a = 0; a < nx; a++) for (let b = 0; b < nz; b++) {
@@ -59,8 +61,13 @@ export function buildLobbyShell(lobby, rooms, walls, H, T) {
     };
     const fl = geo('floor_' + R.floor);
     fl.room = r;
-    const xs = lines(R.x0, R.x1), zs = lines(R.z0, R.z1);
-    fl.grid([R.x0, 0, R.z1], [w, 0, 0], [0, 0, -d], [0, 1, 0], xs.map((x) => (x - R.x0) / w), zs.map((z) => (R.z1 - z) / d).reverse().map((v) => v), (x, y, z) => [x, z]);
+    // optional holes (a trapdoor in the floor, a hatch in the ceiling): grid lines on their edges, cells skipped
+    const FH = R.floorHole, CH = R.ceilHole;
+    const inRect = (h, x, z) => h && x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1;
+    const xs = lines(R.x0, R.x1, FH ? [FH.x0, FH.x1] : []), zs = lines(R.z0, R.z1, FH ? [FH.z0, FH.z1] : []);
+    const fus = xs.map((x) => (x - R.x0) / w), fvs = zs.map((z) => (R.z1 - z) / d).reverse();
+    fl.grid([R.x0, 0, R.z1], [w, 0, 0], [0, 0, -d], [0, 1, 0], fus, fvs, (x, y, z) => [x, z],
+      FH ? (iu, iv) => inRect(FH, R.x0 + ((fus[iu] + fus[iu + 1]) / 2) * w, R.z1 - ((fvs[iv] + fvs[iv + 1]) / 2) * d) : null);
     // ceiling
     const mine = lightBoxes.filter((L) => L.r === r);
     if (R.id === 'dispatch') {
@@ -79,11 +86,11 @@ export function buildLobbyShell(lobby, rooms, walls, H, T) {
     }
     const c = geo('ceil', { wet: true });
     c.room = r; c.wet = -0.15;
-    const cxs = lines(R.x0, R.x1, mine.flatMap((L) => [L.x0, L.x1]));
-    const czs = lines(R.z0, R.z1, mine.flatMap((L) => [L.z0, L.z1]));
+    const cxs = lines(R.x0, R.x1, [...mine.flatMap((L) => [L.x0, L.x1]), ...(CH ? [CH.x0, CH.x1] : [])]);
+    const czs = lines(R.z0, R.z1, [...mine.flatMap((L) => [L.z0, L.z1]), ...(CH ? [CH.z0, CH.z1] : [])]);
     const inLight = (x, z) => mine.some((L) => x > L.x0 + 0.001 && x < L.x1 - 0.001 && z > L.z0 + 0.001 && z < L.z1 - 0.001);
     c.grid([R.x0, H - 0.002, R.z0], [w, 0, 0], [0, 0, d], [0, -1, 0], cxs.map((x) => (x - R.x0) / w), czs.map((z) => (z - R.z0) / d), (x, y, z) => [x, z],
-      (iu, iv) => inLight((cxs[iu] + cxs[iu + 1]) / 2, (czs[iv] + czs[iv + 1]) / 2));
+      (iu, iv) => { const x = (cxs[iu] + cxs[iu + 1]) / 2, z = (czs[iv] + czs[iv + 1]) / 2; return inLight(x, z) || inRect(CH, x, z); });
     const tg = { enamel: geo('enamel'), lens: geo('lens') };
     tg.enamel.room = r; tg.lens.room = r;
     for (const L of mine) troffer(tg, L.x0, L.z0, L.x1, L.z1, true, 0.5, H);

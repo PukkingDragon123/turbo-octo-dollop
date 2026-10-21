@@ -68,6 +68,27 @@ export class Agent {
     this.controller.setCharacterMass(90);
     this.lastPos = pos.clone();
     this.stuckT = 0;
+    // combat (creatures/combat.js sets maxHp / armor / poise from its tables right after construction)
+    this.maxHp = 3;
+    this.armor = 1;       // damage multiplier
+    this.maxPoise = 20;   // damage that staggers it
+    this.poise = 20;
+    this.hurtT = 0;       // short flinch after a hit (snapshot label 'hurt')
+    this.staggerT = 0;    // reeling: AI suspended, open to a finisher (label 'stagger')
+    this.dead = false;
+    this.grab = null;     // { pid, t, dur, o } while it holds a player (combat.js)
+    this.lastHitBy = null;
+  }
+
+  // reeling after a heavy hit: drift with the knock-back, no AI (the manager calls this instead of update)
+  staggerUpdate(dt) {
+    this.staggerT -= dt;
+    this.hurtT = Math.max(0, this.hurtT - dt);
+    this.vel.multiplyScalar(Math.max(0, 1 - dt * 4));
+    this.attackT = Math.max(0, this.attackT - dt * 2);
+    this.frozen = false;
+    this.integrate(dt);
+    if (this.staggerT <= 0) { this.staggerT = 0; this.poise = this.maxPoise; this.onRecover?.(); }
   }
 
   // state the AI falls back to after a flinch / raid
@@ -416,13 +437,18 @@ export class Agent {
   }
 
   snapshot() {
-    const st = this.flinchT > 0 ? 'flinch' : this.raid && this.raidLabel ? this.raidLabel : this.state;
-    return {
+    const st = this.flinchT > 0 ? 'flinch' : this.staggerT > 0 ? 'stagger' : this.grab ? 'grab' : this.hurtT > 0 ? 'hurt' : this.raid && this.raidLabel ? this.raidLabel : this.state;
+    const o = {
       id: this.id, t: this.type, v: this.variant || null,
       p: [+this.pos.x.toFixed(2), +this.pos.y.toFixed(2), +this.pos.z.toFixed(2)],
       y: +this.yaw.toFixed(2), s: st,
       l: this.look ? [+this.look.x.toFixed(1), +this.look.y.toFixed(1), +this.look.z.toFixed(1)] : null,
       a: +this.attackT.toFixed(2), f: this.frozen ? 1 : 0, i: +(this.intensity || 0).toFixed(2),
     };
+    if (this.hp < this.maxHp) o.h = +Math.max(0, this.hp / this.maxHp).toFixed(2);
+    if (this.flyY) o.fy = +this.flyY.toFixed(2);
+    if (this.tamer) o.tm = 1;
+    if (this.burrowed) o.b = 1;
+    return o;
   }
 }

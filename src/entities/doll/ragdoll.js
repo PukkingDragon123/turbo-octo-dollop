@@ -13,6 +13,7 @@ import { badgeDigitsGeo } from './robotbody.js';
 import { robotMaterial, ROBOT_MAT_FLAGS } from './robotmat.js';
 import { resolveCos } from './dollcos.js';
 import { partsFor, cosKey } from './doll_avatar.js';
+import { makeMorph } from './robotmorph.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const SC = ROBOT_SCALE;
@@ -133,9 +134,11 @@ function ragGeometry(cos) {
   const F = frames();
   const out = Object.fromEntries(PART_NAMES.map((n) => [n, new Map()]));
   const parts = partsFor(cos);
-  const over = {}; for (const p of parts) Object.assign(over, p.over);
+  let over = {}; for (const p of parts) Object.assign(over, p.over);
+  const mo = makeMorph(cos, over);
+  if (mo) over = mo.over;
   const S = deadSkinMatrices(over);
-  for (const p of parts) for (const [mat, g] of p.geos) { const posed = poseSkin(g, S); splitGeo(posed, F, out, mat); posed.dispose(); }
+  for (const p of parts) for (const [mat, g0] of p.geos) { const g = mo ? mo.geo(g0, mat) : g0; const posed = poseSkin(g, S); splitGeo(posed, F, out, mat); posed.dispose(); if (g !== g0) g.dispose(); }
   const digits = badgeDigitsGeo(String(1000 + Math.floor(Math.random() * 8999)));
   splitGeo(digits, F, out, 'decal');
   digits.dispose();

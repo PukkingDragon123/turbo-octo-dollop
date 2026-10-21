@@ -29,6 +29,7 @@ export const SUIT_STYLE = {
   black: { color: 0x2b2b31, rough: 0.9, cc: 0.5 },
   camo: { color: 0xffffff, print: 'doll_camo', rough: 1.3, cc: 0.08 },
   gold: { color: 0xe8b43e, metal: 0.7, rough: 0.55, cc: 1.0 },
+  chrome: { color: 0xc9ced6, metal: 0.92, rough: 0.32, cc: 1.0 },
 };
 export const suitStyle = (id, entry) => SUIT_STYLE[id] || { color: entry?.color ?? 0xf3c010 };
 

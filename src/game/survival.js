@@ -2,8 +2,9 @@
 // infection, stamina, sleep/insomnia and sanity. Rates are per real-time second and tuned so
 // a careful team can survive a full 70-minute dimension with the supplies they find.
 //
-// SIMPLE MODE (ADVANCED_SURVIVAL = false, the default for now): only health, hunger, thirst, stamina and
-// bleeding matter. Blood pressure / blood volume, infection, sanity (hallucinations, fake warnings),
+// SIMPLE MODE (ADVANCED_SURVIVAL = false, the default for now): only health, hunger, thirst, stamina,
+// bleeding and SANITY matter (the mechanical-brain HUD: it drains in the dark, alone and near monsters;
+// low sanity hallucinates, 0 for a while kills by insanity). Blood pressure / blood volume, infection,
 // fractures, rest / microsleep / insomnia keep their code paths but are held at neutral values every
 // tick (so other systems writing to them are neutralised too). Flip the flag to bring them back.
 //
@@ -12,6 +13,7 @@
 import { clamp } from '../core/rng.js';
 
 export const ADVANCED_SURVIVAL = false;
+export const INSANE_DEATH = 9; // seconds at zero sanity before the clone dies of insanity
 
 export class Survival {
   constructor() {
@@ -50,10 +52,15 @@ export class Survival {
     this._prev = {};
     this.time = 0;
     this.microsleep = 0;
+    this.insaneT = 0;        // seconds spent at zero sanity (death by insanity at INSANE_DEATH)
+    this.lastHit = null;     // { amount, kind, time } of the latest damage (hard deaths break the clone apart)
   }
 
   // ---- external effects ----
   applyFx(fx = {}) {
+    // food and drink patch the clone up a little (unless the item already heals)
+    const feed = Math.max(0, fx.hunger || 0) + Math.max(0, fx.thirst || 0);
+    if (feed > 0 && !fx.health) this.health = clamp(this.health + feed * 0.2, 0, 100);
     if (fx.hunger) this.hunger = clamp(this.hunger + fx.hunger, 0, 100);
     if (fx.thirst) this.thirst = clamp(this.thirst + fx.thirst, 0, 100);
     if (fx.stamina) this.stamina = clamp(this.stamina + fx.stamina, 0, this.maxStamina);
@@ -77,10 +84,11 @@ export class Survival {
     }
     const adv = this.advanced;
     this.health -= amount;
+    this.lastHit = { amount, kind, time: this.time };
     this.pain = clamp(this.pain + amount / 60, 0, 1);
     this.lastDamage = this.time;
     this.damageFlash = Math.min(1, this.damageFlash + amount / 35 + 0.25);
-    if (adv) this.sanity = clamp(this.sanity - amount * 0.2, 0, 100);
+    this.sanity = clamp(this.sanity - amount * (adv ? 0.2 : 0.08), 0, 100);
     if (kind === 'slash') {
       this.bleed = Math.max(this.bleed, opts.heavy === false ? 1 : 2);
       this.bleedTimer = 0;
@@ -181,16 +189,17 @@ export class Survival {
       if (this.microsleep < -6 - Math.random() * 10) this.microsleep = 0.6 + Math.random() * 0.8;
     } else this.microsleep = Math.min(this.microsleep, 0);
 
-    // sanity
-    if (!adv) this.sanity = 100;
-    else if (!lobby) {
+    // sanity (always on: the mechanical brain on the HUD)
+    if (!lobby) {
+      const light = ctx.light ?? 1;
       let ds = 0;
-      if ((ctx.light ?? 1) < 0.12) ds -= 0.32;
-      else if ((ctx.light ?? 1) < 0.3) ds -= 0.08;
-      if (!ctx.teammatesNear) ds -= 0.05;
-      else if ((ctx.light ?? 1) > 0.3) ds += 0.25 * Math.min(2, ctx.teammatesNear);
-      if (ctx.monsterVisible) ds -= 2.2;
-      ds -= this.stress * 0.4;
+      if (light < 0.12) ds -= adv ? 0.32 : 0.2;
+      else if (light < 0.3) ds -= adv ? 0.08 : 0.06;
+      if (!ctx.teammatesNear) ds -= adv ? 0.05 : 0.035;
+      else if (light > 0.3) ds += 0.25 * Math.min(2, ctx.teammatesNear);
+      if (!ctx.teammatesNear && light > 0.6) ds += 0.04; // bright light calms a little
+      if (ctx.monsterVisible) ds -= adv ? 2.2 : 1.4;
+      ds -= this.stress * (adv ? 0.4 : 0.35);
       if (ctx.safeRoom) ds += 0.6;
       if (this.infection > 60) ds -= 0.1;
       ds -= (ctx.dayPressure || 0) * 0.08;
@@ -199,6 +208,11 @@ export class Survival {
     } else {
       this.sanity = Math.min(100, this.sanity + dt * 2);
     }
+    // zero sanity: the clone's mind burns out unless it recovers in time
+    if (this.sanity <= 0.5 && !lobby && !ctx.safeDay) {
+      this.insaneT += dt;
+      if (this.insaneT >= INSANE_DEATH) { this.health = 0; this.die('insanity'); return; }
+    } else this.insaneT = Math.max(0, this.insaneT - dt * (this.sanity > 3 ? 2 : 0.5));
     this.insomnia = adv && (this.sanity < 30 || this.stress > 0.35 || (ctx.monsterNear || 0) > 0.3);
 
     // natural healing
@@ -219,7 +233,6 @@ export class Survival {
   _neutralise() {
     this.infection = 0;
     this.fracture = false;
-    this.sanity = 100;
     this.rest = 100;
     this.microsleep = 0;
     this.insomnia = false;
@@ -241,8 +254,8 @@ export class Survival {
     else if (this.thirst < 40) c.push('THIRSTY');
     if (adv && this.rest < 20) c.push('EXHAUSTED');
     else if (adv && this.rest < 40) c.push('TIRED');
-    if (adv && this.sanity < 25) c.push('PSYCHOSIS');
-    else if (adv && this.sanity < 50) c.push('ANXIOUS');
+    if (this.sanity < 25) c.push('PSYCHOSIS');
+    else if (this.sanity < 50) c.push('ANXIOUS');
     if (adv && this.blood < 3200) c.push('LOW BLOOD PRESSURE');
     if (adv && this.insomnia) c.push('INSOMNIA');
     return c;

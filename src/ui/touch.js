@@ -1,10 +1,12 @@
 // On-screen controls for phones and tablets, drawn in the pixel-art kit: steel / hazmat keycaps with
 // phosphor-glass faces, glowing glyphs, amber status LEDs and a real 1 px press travel.
 // Left thumb: a floating analog stick (push it all the way to sprint). Right thumb: drag anywhere to look,
-// tap to interact, and a cluster of buttons for jump / use / grab / item / crouch. Everything feeds the
-// regular input object (virtual keys, mouse buttons and look deltas), so gameplay code is unchanged.
-// The layout is computed in pixels for the current viewport + safe area so nothing overlaps, from 360 px
-// portrait phones to landscape tablets; the inventory bar and the needs patch are placed around it.
+// tap to interact, and a cluster of buttons: JUMP, USE (E), GRAB (RMB: tap = use, hold = grab and pull),
+// PUNCH (LMB: punch / use the right-hand item / the drawn multitool; THROW while carrying), TOOL ([Q]),
+// DUCK, ROT / MODE. Everything feeds the regular input object (virtual keys, mouse buttons and look deltas),
+// so gameplay code is unchanged. The stick sprints through 'TouchSprint' (so it never triggers the
+// Shift far-throw). The layout is computed in pixels for the current viewport + safe area so nothing
+// overlaps, from 360 px portrait phones to landscape tablets.
 import { input } from '../core/input.js';
 import { capPix, stickBasePix, stickKnobPix, Pix, C, text, textWidth, FONT5, glyph } from './pixelart.js';
 
@@ -28,8 +30,9 @@ const BUTTONS = [
   { id: 'ask', label: 'HLTH', icon: 'bot', shape: 'plate', key: 'KeyX', sys: true },
   { id: 'jump', label: 'JUMP', icon: 'jump', d: 32, key: 'Space', bezel: 'hazmat' },
   { id: 'use', label: 'USE', icon: 'hand', d: 28, key: 'KeyE', bezel: 'hazmat' },
-  { id: 'grab', label: 'GRAB', icon: 'fist', d: 28, mouse: 0 },
-  { id: 'item', label: 'ITEM', icon: 'item', d: 28, mouse: 2 },
+  { id: 'grab', label: 'GRAB', icon: 'hand', d: 28, mouse: 2 },
+  { id: 'item', label: 'PUNCH', icon: 'fist', d: 28, mouse: 0 },
+  { id: 'tool', label: 'TOOL', icon: 'gear', d: 22, key: 'KeyQ', led: true },
   { id: 'duck', label: 'DUCK', icon: 'crouch', d: 24, act: 'duck', led: true },
   { id: 'rot', label: 'ROT', icon: 'rotate', d: 22, key: 'KeyR' },
   { id: 'mode', label: 'MODE', icon: 'swap', d: 22, act: 'mode' },
@@ -187,8 +190,9 @@ export class TouchControls {
     put('item', bx - 45 * P, by - 45 * P);
     put('duck', bx - 80 * P, by - 13 * P);
     put('rot', bx - 76 * P, by - 41 * P);
-    put('mode', bx - 76 * P, by - 41 * P); // shares ROT's spot: ROT while carrying, MODE with a free hand
-    this.cluster = { left: bx - 92 * P, top: by - 64 * P, right: bx, bottom: by };
+    put('mode', bx - 76 * P, by - 41 * P); // shares ROT's spot: ROT while carrying, MODE with the multitool out
+    put('tool', bx - 80 * P, by - 69 * P);
+    this.cluster = { left: bx - 92 * P, top: by - 82 * P, right: bx, bottom: by };
     // system plates along the top right (two columns in portrait)
     const pw = PLATE_W * P, ph = (PLATE_H + 2) * P, gap = 2 * P;
     const needsRight = ins.l + 10 + 94 * P; // the needs patch hugs the top-left corner
@@ -341,7 +345,7 @@ export class TouchControls {
     this.knobCv.style.transform = '';
     this._setSprint(false);
     input.moveAxis = null;
-    for (const k of ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'ShiftLeft']) input.virtualUp(k);
+    for (const k of ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'ShiftLeft', 'TouchSprint']) input.virtualUp(k);
   }
 
   _setSprint(on) {
@@ -378,7 +382,7 @@ export class TouchControls {
     const set = (code, on) => (on ? input.virtualDown(code) : input.virtualUp(code));
     set('KeyW', ay < -0.55); set('KeyS', ay > 0.55); set('KeyA', ax < -0.55); set('KeyD', ax > 0.55);
     const sprint = m > SPRINT_AT && ay < 0.2;
-    set('ShiftLeft', sprint);
+    set('TouchSprint', sprint);
     this._setSprint(sprint);
   }
 
@@ -393,8 +397,12 @@ export class TouchControls {
     this._render(b);
     b.el.classList.toggle('on', down);
     if (down) { try { navigator.vibrate?.(8); } catch (e) { /* ignore */ } }
-    if (d.key) { if (down) input.virtualDown(d.key); else input.virtualUp(d.key); }
-    if (d.mouse !== undefined) input.virtualMouse(d.mouse, down);
+    // PUNCH while carrying something (not a camp part) is the far THROW
+    if (down) b.via = b.def.id === 'item' && this.throwMode ? 'TouchThrow' : null;
+    if (b.via) { if (down) input.virtualDown(b.via); else input.virtualUp(b.via); } else {
+      if (d.key) { if (down) input.virtualDown(d.key); else input.virtualUp(d.key); }
+      if (d.mouse !== undefined) input.virtualMouse(d.mouse, down);
+    }
     if (!down) return;
     if (d.act === 'next') input.mouse.wheel += 1;
     if (d.act === 'duck') {
@@ -431,9 +439,9 @@ export class TouchControls {
     const dead = !!l.dead;
     const grab = !!l.grab;
     const watch = !!l.watchOpen;
-    // a hand without an RMB item use belongs to the built-in multitool (attach / dismantle)
-    const cur = l.inv?.current;
-    const mt = typeof l.toggleMultitoolMode === 'function' && !(cur && l._handItemUse?.());
+    // the drawn multitool (or the old multitool item) owns PUNCH and shows MODE
+    const cur = l.hands?.rightItem?.() ?? l.inv?.current;
+    const mt = !!(l.toolOut || l._mtItem?.());
     const state = `${term}|${dead}|${grab}|${watch}|${mt}`;
     if (state !== this.state) {
       this.state = state;
@@ -445,9 +453,10 @@ export class TouchControls {
       vis('item', !term);
       vis('rot', full && grab);
       vis('mode', full && !grab && mt);
+      vis('tool', full);
       this.tabsEl.classList.toggle('show', full && watch);
       const set = (id, label, icon) => { const b = this.btn[id]; b.label = label; b.icon = icon; };
-      set('grab', dead ? 'NEXT' : 'GRAB', dead ? 'arrowR' : 'fist');
+      set('grab', dead ? 'PREV' : 'GRAB', dead ? 'back' : 'hand');
       set('menu', term ? 'EXIT' : 'MENU', term ? 'back' : 'menu');
       set('use', term ? 'OK' : 'USE', term ? 'ok' : 'hand');
       this.btn.use.big = term;
@@ -455,24 +464,27 @@ export class TouchControls {
       this._placeUse();
       this.root.classList.toggle('watching', watch);
     }
-    // ITEM button shows what it will use: the held item's sprite, THROW while carrying, PREV when spectating
+    // PUNCH button shows what LMB does: punch, the right-hand item, the multitool, THROW while carrying
     const it = this.btn.item;
-    if (dead) { it.label = 'PREV'; it.icon = 'arrowL'; it.iconPix = null; }
-    else if (grab && l._mtOwnsRmb?.()) { it.label = 'ATTACH'; it.icon = 'item'; it.iconKey = 'multitool|'; it.iconPix = ui.iconPix?.('multitool') || null; }
+    const owns = grab && l._mtOwnsLmb?.();
+    this.throwMode = grab && !owns;
+    const armful = !!l.hands?.layout?.armful;
+    if (dead) { it.label = 'NEXT'; it.icon = 'next'; it.iconPix = null; }
+    else if (owns) { it.label = 'ATTACH'; it.icon = 'item'; it.iconKey = 'multitool|'; it.iconPix = ui.iconPix?.('multitool') || null; }
     else if (grab) { it.label = 'THROW'; it.icon = 'throw'; it.iconPix = null; }
+    else if (armful) { it.label = 'FULL'; it.icon = 'drop'; it.iconPix = null; }
     else if (mt) {
-      // built-in multitool: show the tool and its current mode
       it.iconKey = 'multitool|';
       it.iconPix = ui.iconPix?.('multitool') || null;
       it.label = l.mtMode === 'dismantle' ? 'SCRAP' : 'ATTACH';
       it.icon = 'item';
-    } else if (cur) {
+    } else if (cur && l._handItemUse?.()) {
       const variant = cur.type === 'sample_jar' && cur.state?.kind ? 'full' : undefined;
       it.iconKey = `${cur.type}|${variant || ''}`;
       it.iconPix = ui.iconPix?.(cur.type, variant) || null;
-      it.label = 'ITEM';
+      it.label = l._handItemUse() === 'swing' ? 'SWING' : 'USE';
       it.icon = 'item';
-    } else { it.label = 'ITEM'; it.icon = 'item'; it.iconPix = null; }
+    } else { it.label = 'PUNCH'; it.icon = 'fist'; it.iconPix = null; }
     // context: what USE would do right now
     let ctx = '';
     if (!term && !dead) {
@@ -486,6 +498,7 @@ export class TouchControls {
     this.btn.light.lit = !!l.flashOn;
     this.btn.duck.lit = this.crouchOn;
     this.btn.watch.lit = watch;
+    this.btn.tool.lit = !!l.toolOut;
     for (const b of Object.values(this.btn)) this._render(b);
     if (watch) this.tabBtns.forEach((tb, i) => this._renderTab(tb, i === (g.watch?.tabIdx ?? 0)));
     // the inventory gives way to the watch tabs while the watch is up
