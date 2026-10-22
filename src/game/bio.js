@@ -62,7 +62,7 @@ class NoteBehaviour {
   prompt() { return `[${input.keyName('interact')}] Read the scribbled note`; }
   interact() {
     const i = (this.prop.state.n ?? this.prop.id) % NOTES.length;
-    floatText.notice(`"${NOTES[i]}"`, { duration: 8, speaker: 'SCRIBBLED NOTE', color: '#f0e6c8' });
+    floatText.notice(`"${NOTES[i]}"`, { duration: 8, speaker: 'SCRIBBLED NOTE', color: '#3a2a1a', font: 'scrawl' });
     audio.play('paper', { volume: 0.7 });
   }
 }

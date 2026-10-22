@@ -1,6 +1,7 @@
 // R.O.O.M. — boot & main loop
 import '@fontsource/vt323';
 import '@fontsource/ibm-plex-mono';
+import { loadFonts } from './ui/fonts.js';
 import './ui/style.css';
 import * as THREE from 'three';
 import { engine } from './core/engine.js';
@@ -45,7 +46,7 @@ async function boot() {
   setL('LOADING FONTS...');
   try {
     await Promise.race([
-      Promise.all([document.fonts.load('24px "VT323"'), document.fonts.load('24px "IBM Plex Mono"'), document.fonts.load('bold 24px "IBM Plex Mono"')]).then(() => document.fonts.ready),
+      Promise.all([document.fonts.load('24px "VT323"'), document.fonts.load('24px "IBM Plex Mono"'), document.fonts.load('bold 24px "IBM Plex Mono"'), loadFonts()]).then(() => document.fonts.ready),
       new Promise((r) => setTimeout(r, 4000)),
     ]);
   } catch (e) { /* fonts optional */ }

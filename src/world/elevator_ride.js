@@ -534,7 +534,7 @@ export class ElevatorRide {
     const S = this.S;
     S.fx.sparks(S.car.root.localToWorld(_v.set(x, y, z)), n, _v2.set(0, 1, 0), [1, 0.62, 0.25], speed);
   }
-  _glitchText(txt, col = '#ff7a5a', dur = 1.3) { floatText.notice(txt, { color: col, duration: dur, size: 0.9 }); }
+  _glitchText(txt, col = '#ff7a5a', dur = 1.3) { floatText.notice(txt, { color: col, duration: dur, size: 0.9, paper: false, font: 'horror' }); }
 
   update(dt) {
     if (!this.active) return;

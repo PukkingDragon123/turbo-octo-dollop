@@ -251,8 +251,8 @@ export class RobotPit {
       S.fx.sparks(_v.set(x, 0.2, z), 80, UP, [1, 0.55, 0.15], 7);
       for (let k = 0; k < 60; k++) this._flame(x + (Math.random() - 0.5) * 2, z + (Math.random() - 0.5) * 2, 1.6);
     });
-    this._once('notice1', imp + 1.0, () => floatText.notice('CLONE RECYCLED.', { color: '#ffb070', duration: 3.5, size: 1.2 }));
-    this._once('notice2', imp + 2.3, () => floatText.notice('THANK YOU FOR YOUR SERVICE.', { color: '#ffe0b0', duration: 3, size: 1.1 }));
+    this._once('notice1', imp + 1.0, () => floatText.notice('CLONE RECYCLED.', { color: '#ffb070', duration: 3.5, size: 1.2, paper: false, font: 'title' }));
+    this._once('notice2', imp + 2.3, () => floatText.notice('THANK YOU FOR YOUR SERVICE.', { color: '#ffe0b0', duration: 3, size: 1.1, paper: false, font: 'deco' }));
     this._once('roar2', imp + 0.5, () => audio.play('furnace_roar', { volume: 0.9 }));
     this._once('roar3', imp + 3.2, () => audio.play('furnace_roar', { volume: 0.8, pitch: 0.9 }));
     // ---- fire: embers up the shaft always, flames around the camera once in the melt

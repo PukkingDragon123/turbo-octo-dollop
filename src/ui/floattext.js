@@ -6,15 +6,22 @@
 // Both return a handle { set(text), close() }. Call floatText.update(dt, camera) once per frame.
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
+import { FONT } from './fonts.js';
 
 const W = 1024, H = 256;
-const BODY = '600 44px "IBM Plex Mono", monospace';
-const LABEL = '30px "VT323", monospace';
 const NOTICE_BASE = -0.86; // bottom of the notice stack, in screen half-heights below centre
-export const FLOAT = { typeRate: 48, popTime: 0.32, fade: 0.45, bobAmp: 0.012, worldScale: 0.0011, noticeScale: 0.00052 };
+export const FLOAT = { typeRate: 48, popTime: 0.32, fade: 0.45, bobAmp: 0.012, worldScale: 0.0013, noticeScale: 0.0008 };
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const easeOutBack = (t) => { const c = 1.9; return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2; };
+
+// any caller colour becomes a dark ink of the same hue on paper (light amber -> burnt umber)
+function inkOn(col) {
+  if (!col || !/^#[0-9a-f]{6}$/i.test(col)) return '#2b2216';
+  const n = parseInt(col.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  const m = (v, base) => Math.round(v * 0.3 + base * 0.7);
+  return `rgb(${m(r, 40)},${m(g, 26)},${m(b, 16)})`;
+}
 
 function wrap(ctx, text, maxW) {
   const out = [];
@@ -53,47 +60,108 @@ class Bubble {
     this._layout();
     this._draw(0);
   }
+  // look: notices are torn scraps of aged paper with hand-written ink; spoken lines are chalky
+  // hand-lettering floating in the air (no box), each speaker with its own face
+  _style() {
+    if (this._st) return this._st;
+    const sp = String(this.o.speaker || '').toUpperCase();
+    // floating speech (say) is set in EB Garamond; notices are hand-written paper scraps
+    const role = this.o.font || (!this.notice ? 'speech' : sp === 'HEALTHITY' ? 'type' : sp === 'HQ' || sp === 'RECEPTION' ? 'print' : sp === 'ACHIEVEMENT' ? 'title' : 'hand');
+    const big = role === 'hand' || role === 'messy' || role === 'speech';
+    this._st = {
+      role,
+      body: `${role === 'hand' ? '700 ' : role === 'speech' ? '500 ' : ''}${big ? 60 : 44}px ${FONT[role] || FONT.hand}`,
+      label: `30px ${FONT.title}`,
+      lh: big ? 58 : 54,
+      paper: this.notice && this.o.paper !== false,
+      seed: (this.text.length * 9301 + 49297) % 233280,
+    };
+    return this._st;
+  }
   _layout() {
-    const c = this.ctx;
-    c.font = BODY;
-    this.lines = wrap(c, this.text, W - 120).slice(0, 4);
+    const c = this.ctx, st = this._style();
+    c.font = st.body;
+    this.lines = wrap(c, this.text, W - 150).slice(0, 4);
+  }
+  _rand(i) { const x = Math.sin((this._style().seed + i) * 12.9898) * 43758.5453; return x - Math.floor(x); }
+  _paper(c, x0, y0, w, h) {
+    // aged paper scrap: torn edges, uneven yellowing, a coffee ring, a strip of tape
+    const R = (i) => this._rand(i);
+    c.save();
+    c.translate(W / 2, y0 + h / 2);
+    c.rotate((R(1) - 0.5) * 0.035);
+    c.translate(-W / 2, -(y0 + h / 2));
+    c.beginPath();
+    const step = 18;
+    c.moveTo(x0, y0 + R(2) * 6);
+    for (let x = x0; x <= x0 + w; x += step) c.lineTo(x, y0 + R(x) * 7);
+    for (let y = y0; y <= y0 + h; y += step) c.lineTo(x0 + w - R(y + 500) * 6, y);
+    for (let x = x0 + w; x >= x0; x -= step) c.lineTo(x, y0 + h - R(x + 900) * 8);
+    for (let y = y0 + h; y >= y0; y -= step) c.lineTo(x0 + R(y + 1300) * 6, y);
+    c.closePath();
+    c.shadowColor = 'rgba(0,0,0,0.55)'; c.shadowBlur = 14; c.shadowOffsetY = 6;
+    const g = c.createLinearGradient(x0, y0, x0 + w, y0 + h);
+    g.addColorStop(0, '#efe4c6'); g.addColorStop(0.55, '#e6d7b1'); g.addColorStop(1, '#d8c493');
+    c.fillStyle = g; c.fill();
+    c.shadowColor = 'transparent';
+    c.clip();
+    // fibres + foxing
+    for (let i = 0; i < 70; i++) {
+      c.fillStyle = `rgba(120,90,40,${0.04 + R(i + 40) * 0.07})`;
+      c.beginPath(); c.arc(x0 + R(i + 60) * w, y0 + R(i + 80) * h, 1 + R(i + 99) * 5, 0, Math.PI * 2); c.fill();
+    }
+    c.strokeStyle = 'rgba(110,80,35,0.18)'; c.lineWidth = 7;
+    c.beginPath(); c.arc(x0 + w * (0.72 + R(7) * 0.2), y0 + h * 0.6, 34 + R(8) * 18, 0, Math.PI * 1.7); c.stroke();
+    const eg = c.createLinearGradient(x0, 0, x0 + w, 0);
+    eg.addColorStop(0, 'rgba(90,60,20,0.25)'); eg.addColorStop(0.12, 'rgba(0,0,0,0)'); eg.addColorStop(0.88, 'rgba(0,0,0,0)'); eg.addColorStop(1, 'rgba(90,60,20,0.25)');
+    c.fillStyle = eg; c.fillRect(x0, y0, w, h);
+    c.restore();
+    // tape
+    c.save();
+    c.translate(x0 + w * (0.2 + R(9) * 0.6), y0 + 2);
+    c.rotate((R(10) - 0.5) * 0.4);
+    c.fillStyle = 'rgba(235,228,200,0.55)'; c.fillRect(-46, -12, 92, 26);
+    c.restore();
   }
   _draw(n) {
-    const c = this.ctx, col = this.o.color || '#eaf6ee';
+    const c = this.ctx, st = this._style();
     c.clearRect(0, 0, W, H);
-    const lh = 54, top = this.o.speaker ? 62 : 26;
-    const h = top + this.lines.length * lh + 22;
+    const lh = st.lh, top = this.o.speaker ? 54 : 16;
+    const h = top + this.lines.length * lh + 26;
     const y0 = (H - h) / 2;
-    // soft plate: dark glass with a thin accent edge and scanlines
-    c.fillStyle = 'rgba(6,10,9,0.62)';
-    c.beginPath(); c.roundRect(20, y0, W - 40, h, 18); c.fill();
-    c.strokeStyle = col; c.globalAlpha = 0.35; c.lineWidth = 2; c.stroke(); c.globalAlpha = 1;
-    c.fillStyle = 'rgba(0,0,0,0.18)';
-    for (let y = y0 + 2; y < y0 + h; y += 4) c.fillRect(22, y, W - 44, 1);
+    const ink = st.paper ? inkOn(this.o.color) : (this.o.color || '#f2ecd8');
+    if (st.paper) this._paper(c, 34, y0, W - 68, h);
     if (this.o.speaker) {
-      c.font = LABEL; c.fillStyle = col; c.globalAlpha = 0.85;
-      c.fillText(String(this.o.speaker).toUpperCase(), 52, y0 + 40);
+      c.font = st.label; c.fillStyle = st.paper ? '#7a1f14' : ink; c.globalAlpha = 0.9;
+      c.fillText(String(this.o.speaker).toUpperCase(), 64, y0 + 38);
       c.globalAlpha = 1;
     }
-    c.font = BODY;
-    c.shadowColor = col; c.shadowBlur = 10;
+    c.font = st.body;
     let left = Math.floor(n);
     this.lines.forEach((ln, i) => {
       const part = left >= ln.length ? ln : ln.slice(0, Math.max(0, left));
       left -= ln.length + 1;
-      c.fillStyle = col;
-      c.fillText(part, 52, y0 + top + 18 + i * lh + 22);
-      if (part.length < ln.length && part.length >= 0 && left < 0 && left > -ln.length - 2) {
-        const x = 52 + c.measureText(part).width + 4;
-        c.fillRect(x, y0 + top + i * lh + 10, 20, 38); // block cursor
+      const y = y0 + top + (i + 1) * lh - 6;
+      if (!st.paper) {
+        // floating lettering: dark halo for contrast, then chalky ink with a faint glow
+        c.lineJoin = 'round'; c.lineWidth = 9; c.strokeStyle = 'rgba(8,6,4,0.78)';
+        c.strokeText(part, 64, y);
+        c.shadowColor = ink; c.shadowBlur = 8;
+      }
+      c.fillStyle = ink;
+      c.fillText(part, 64, y);
+      c.shadowBlur = 0;
+      if (part.length < ln.length && left < 0 && left > -ln.length - 2) {
+        const x = 64 + c.measureText(part).width + 6;
+        c.fillRect(x, y - lh * 0.55, 4, lh * 0.62); // pen tip
       }
     });
-    c.shadowBlur = 0;
     this.tex.needsUpdate = true;
   }
   // visible plate height as a fraction of the screen half-height (FOV-independent)
   plateNdc() {
-    const ph = (this.o.speaker ? 62 : 26) + this.lines.length * 54 + 22;
+    const st = this._style();
+    const ph = (this.o.speaker ? 54 : 16) + this.lines.length * st.lh + 26;
     return ph * FLOAT.noticeScale * (this.o.size || 1) / (Math.tan(Math.PI / 6) * 1.2);
   }
   set(text) { this.text = String(text); this.shown = 0; this.t = Math.min(this.t, FLOAT.popTime); this._layout(); }
