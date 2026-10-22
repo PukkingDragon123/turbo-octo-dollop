@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import * as Tex from './textures.js';
 import * as Synth from './texsynth.js';
 import '../world/env/recipes.js';
+import './surfaces.js'; // detailed wallpaper / carpet / ceiling recipes (lv_*)
 
 const defs = {
   // --- Object materials (UVs 0..1 per face; textures tile once unless overridden) ---
@@ -62,15 +63,23 @@ const defs = {
 // ns = normal scale, rough = roughness multiplier, metal = metalness (uses the ORM blue channel when the
 // recipe carries metal), aniso = anisotropic filtering (floors get the maximum).
 const synth = {
-  wallpaper: { r: 'env_wallpaper', o: {}, ns: 1.0 },
-  wallpaper_manila: { r: 'env_wallpaper', o: { c0: 0xb48c58, c1: 0x94703f, c2: 0x553a1c, c3: 0xc6a06a, p0: [3, 6, 18, 0.95], p1: [1, 0.7, 1, 1], size: 512 }, ns: 1.0 },
-  carpet: { r: 'env_carpet', o: {}, ns: 1.0, aniso: 16, envMapIntensity: 0.3 },
-  ceiling: { r: 'env_acoustic', o: {}, ns: 1.0 },
+  // wallpapers: lv_wallpaper p1.x style 0 pin-stripe + chevron (Level 0), 1 damask, 2 floral sprig, 3 trellis, 4 stripe
+  wallpaper: { r: 'lv_wallpaper', o: {}, ns: 1.0 },
+  wallpaper_manila: { r: 'lv_wallpaper', o: { c0: 0xb48c58, c1: 0x94703f, c2: 0x553a1c, c3: 0xc6a06a, p0: [3, 1, 3, 1.3], p1: [1, 0.7, 1, 1], size: 1024 }, ns: 1.0 },
+  wallpaper_damask: { r: 'lv_wallpaper', o: { c0: 0xc9b98e, c1: 0xa89466, c2: 0x5a4a2c, c3: 0xd8ca9c, p0: [3, 1, 3, 1.2], p1: [1, 0.6, 1, 1], size: 1024 }, ns: 1.0 },
+  wallpaper_floral: { r: 'lv_wallpaper', o: { c0: 0xd8cca8, c1: 0xa4584a, c2: 0x4a3a28, c3: 0x6e7a4a, p0: [3, 3, 9, 1.0], p1: [2, 0.7, 1, 1], size: 1024 }, ns: 1.0 },
+  wallpaper_trellis: { r: 'lv_wallpaper', o: { c0: 0xc2c4a2, c1: 0x8a9470, c2: 0x4a4a34, c3: 0xe0dcc0, p0: [3, 2, 6, 1.0], p1: [3, 0.6, 1, 1], size: 1024 }, ns: 1.0 },
+  wallpaper_stripe: { r: 'lv_wallpaper', o: { c0: 0xcfc2a0, c1: 0x9a7a5a, c2: 0x4e3e2a, c3: 0xe4d6b2, p0: [3, 1, 3, 1.0], p1: [4, 0.6, 1, 1], size: 1024 }, ns: 1.0 },
+  // carpets: lv_carpet p1.x style 0 damp cut pile (Level 0), 1 patterned loop-pile office carpet, 2 berber loop
+  carpet: { r: 'lv_carpet', o: {}, ns: 1.0, aniso: 16, envMapIntensity: 0.3 },
+  carpet_pattern: { r: 'lv_carpet', o: { c0: 0x5d6878, c1: 0x46505e, c2: 0x2c303a, c3: 0x9a8a6a, p0: [300, 0.6, 0.6, 0.35], p1: [1, 4, 0.5, 160] }, ns: 1.0, aniso: 16 },
+  carpet_berber: { r: 'lv_carpet', o: { c0: 0xb8ab90, c1: 0x968a70, c2: 0x5a5040, c3: 0xd8ccb0, p0: [300, 0.9, 0.5, 0.35], p1: [2, 4, 0.5, 140] }, ns: 1.0, aniso: 16 },
+  ceiling: { r: 'lv_acoustic', o: {}, ns: 1.0 },
   concrete: { r: 'concrete', o: { c0: 0xa8a49a, c1: 0x86827a, c2: 0x4e4a44, c3: 0xbdb7aa, p0: [70, 0.35, 0.6, 0.45], wear: 0.35, meters: 2, size: 512 }, ns: 1.0 },
   concrete_dark: { r: 'env_slab', o: {}, color: 0x9a968e, ns: 1.0, aniso: 16 },
   slab: { r: 'env_slab', o: {}, ns: 1.0, aniso: 16 },
   cmu: { r: 'env_cmu', o: {}, ns: 1.0 },
-  office_carpet: { r: 'env_carpet_tile', o: {}, ns: 1.0, aniso: 16 },
+  office_carpet: { r: 'lv_carpet', o: { c0: 0x76829a, c1: 0x5f6a80, c2: 0x3a404c, c3: 0x9a8e78, p0: [300, 0.6, 0.6, 0.3], p1: [1, 4, 0.4, 160] }, ns: 1.0, aniso: 16 },
   linoleum: { r: 'env_vct', o: {}, ns: 0.8, aniso: 16, envMapIntensity: 1.0 },
   paint: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a, size: 512, meters: 1.0 }, color: 0xddd2b9, ns: 0.8 },
   paint_green: { r: 'env_paint', o: { c0: 0xf2ede2, c1: 0xe2dccd, c2: 0x9a907a, size: 512, meters: 1.0 }, color: 0x93a890, ns: 0.8 },

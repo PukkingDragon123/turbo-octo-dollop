@@ -243,7 +243,7 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
     // reaching into the chest cavity (both hands drop out of view)
     reachR: { h: V(0.08, -0.36, -0.1), d: V(-0.4, 0.75, -0.5), u: V(-0.2, 0.5, 0.85) },
     // hugging an armful of items from beneath
-    armR: { h: V(0.12, -0.26, -0.3), d: V(-0.55, 0.22, -0.8), u: V(0.3, -0.92, 0.1) },
+    armR: { h: V(0.1, -0.27, -0.4), d: V(-0.55, 0.22, -0.8), u: V(0.3, -0.92, 0.1) },
   };
   const mirror = (p) => ({ h: V(-p.h.x, p.h.y, p.h.z), d: V(-p.d.x, p.d.y, p.d.z), u: V(-p.u.x, p.u.y, p.u.z) });
   for (const k of ['wind', 'jab', 'cradle', 'reach', 'arm']) POSE[k + 'L'] = mirror(POSE[k + 'R']);

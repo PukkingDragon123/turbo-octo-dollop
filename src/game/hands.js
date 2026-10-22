@@ -22,7 +22,7 @@ try {
   LOOT_TABLES.storage?.push(['wheel', 1]);
 } catch (e) { /* tables missing */ }
 
-export const HANDS = { armfulAt: 3, pileBase: [0, -0.255, -0.42], pileItem: 0.15, slowPerItem: 0.07, slowPerKg: 0.025, minSpeed: 0.5 };
+export const HANDS = { armfulAt: 3, pileBase: [0, -0.235, -0.52], pileItem: 0.11, slowPerItem: 0.07, slowPerKg: 0.025, minSpeed: 0.5 };
 const WEIGHT = {
   medkit: 1.2, welder: 2.2, flashlight: 0.6, canned_food: 0.6, plank: 1.6, metal_scrap: 1.2, wire_spool: 0.8, crowbar: 1.6,
   wrench: 1, water_tester: 0.5, almond_water: 0.6, almond_milk: 0.5, noise_maker: 0.5, battery: 0.3, gear: 0.5, pipe_short: 0.8,
@@ -197,7 +197,7 @@ export class Hands {
       _box.setFromObject(o);
       const size = _box.getSize(_s), ctr = _box.getCenter(_v);
       const maxD = Math.max(size.x, size.y, size.z, 0.02);
-      const s = clamp(HANDS.pileItem / maxD, 0.45, 1.4);
+      const s = clamp(HANDS.pileItem / maxD, 0.35, 1);
       const pivot = new THREE.Group();
       o.position.sub(ctr);
       pivot.add(o);

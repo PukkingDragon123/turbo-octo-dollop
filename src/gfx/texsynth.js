@@ -98,6 +98,29 @@ float scratches(vec2 uv, float n, float len, float width){
     s = max(s, (1.0 - smoothstep(0.0, width, dist)) * (1.0 - abs(t) / len));
   }
   return s; }
+// sparse round marks in hashed voronoi cells (dents, drips, water spots, burns): x fill, y rim, z cell hash.
+// per: cells per tile, prob: share of cells with a mark, r: radius range in cell units
+vec3 spots(vec2 uv, float per, float prob, float rmin, float rmax){
+  vec4 v = vor(uv, vec2(per), 0.8);
+  float on = step(1.0 - prob, v.z); float r = mix(rmin, rmax, v.w);
+  float d = v.x + (gn(uv * per * 6.0, vec2(per * 6.0)) - 0.5) * r * 0.4;
+  return vec3((1.0 - smoothstep(r * 0.8, r, d)) * on, (1.0 - smoothstep(0.0, r * 0.1 + 0.012, abs(d - r * 0.9))) * on, v.w); }
+// oily fingerprints (rotated ellipse of whorl ridges) in a share of the cells of a per x per grid
+float fprint(vec2 uv, float per, float prob){
+  vec2 p = uv * per; vec2 c = mod(floor(p), vec2(per)); vec3 h = h32(c + 17.0);
+  if (h.z > prob) return 0.0;
+  vec2 f = fract(p) - 0.5 - (h.xy - 0.5) * 0.3; float a = h.x * 6.283; f = mat2(cos(a), -sin(a), sin(a), cos(a)) * f;
+  float m = 1.0 - smoothstep(0.6, 1.0, length(f / vec2(0.15, 0.21)));
+  float rid = 0.5 + 0.5 * sin(length(f * vec2(1.0, 0.8)) * 300.0 + f.x * 24.0);
+  return m * (0.35 + 0.65 * smoothstep(0.3, 0.8, rid)) * (0.5 + 0.5 * h.y); }
+// run-down streaks below hashed sources (rust, grime, water): per columns per tile, prob, len (tile fraction)
+float streaks(vec2 uv, float per, float prob, float len){
+  vec2 p = uv * vec2(per, 1.0); float c = mod(floor(p.x), per); vec3 h = h32(vec2(c, 5.0));
+  if (h.z > prob) return 0.0;
+  float dy = fract(h.y - uv.y);
+  float x = fract(p.x) - 0.5 - (h.x - 0.5) * 0.6 + (gn(vec2(uv.y * 24.0, c), vec2(24.0, per)) - 0.5) * 0.18;
+  float w = 0.04 + 0.14 * dy / max(len, 0.01);
+  return (1.0 - smoothstep(w * 0.4, w, abs(x))) * (1.0 - smoothstep(0.0, len, dy)) * (0.6 + 0.4 * gn(vec2(x * 8.0, uv.y * 60.0), vec2(8.0, 60.0))); }
 `;
 
 const MAIN = /* glsl */`
@@ -134,6 +157,8 @@ registerRecipe('wood', {
     float rings = floor(uP0.x + 0.5);
     float w = fbm(uv, vec2(2.0, 2.0), 5) - 0.5; float w2 = fbm(uv + 0.31, vec2(3.0, 8.0), 4) - 0.5;
     float y = uv.y + w * 0.035 * uP0.y + w2 * 0.012 + 0.022 * sin(uv.x * 2.0 * PI + w * 3.0);
+    vec4 kn = vor(uv, vec2(2.0, 3.0), 0.8); float knotOn = step(0.7, kn.z);
+    y += (1.0 - smoothstep(0.0, 0.4, kn.x)) * 0.025 * knotOn * (kn.w - 0.3);
     float r = y * rings; float ring = fract(r);
     float late = smoothstep(0.62, 0.92, ring) * (1.0 - smoothstep(0.93, 1.0, ring));
     float ringTone = h12(vec2(mod(floor(r), rings), 3.0));
@@ -146,8 +171,16 @@ registerRecipe('wood', {
     float wearN = fbm(uv + 5.3, vec2(4.0, 4.0), 5); float worn = smoothstep(1.0 - uWear * 0.6, 1.05 - uWear * 0.6, wearN);
     float scr = scratches(uv, 9.0, 0.45, 0.01) * uWear;
     col = mix(col, col * 1.2 + 0.02, scr * 0.5);
-    S s; s.albedo = col; s.height = 0.5 + (fine - 0.5) * 0.12 - pore * 0.3 - late * 0.04 - scr * 0.1;
-    s.rough = mix(uP0.w, 0.8, worn * 0.8 + pore * 0.35) + scr * 0.15; s.ao = 1.0 - pore * 0.3; s.metal = 0.0; return s; }`,
+    float knot = (1.0 - smoothstep(0.05, 0.11, kn.x)) * knotOn, knotRing = (1.0 - smoothstep(0.1, 0.22, kn.x)) * knotOn * (0.5 + 0.5 * sin(kn.x * 140.0));
+    col = mix(col, uC2 * 0.8, knot * 0.85 + knotRing * 0.25);
+    vec3 dent = spots(uv, 11.0, 0.1, 0.04, 0.12) * uWear;
+    vec3 ringW = spots(uv + 0.37, 2.0, 0.35, 0.16, 0.26) * uWear;
+    float oily = fprint(uv, 5.0, 0.35) * uWear + smoothstep(0.62, 0.85, fbm(uv + 8.8, vec2(3.0), 4)) * uWear * 0.6;
+    col = mix(col, uC2, pore * uWear * 0.25 + dent.x * 0.12);
+    col = mix(col, col * vec3(0.78, 0.74, 0.7), ringW.y * 0.6 + ringW.x * 0.06);
+    col *= 1.0 - oily * 0.06;
+    S s; s.albedo = col; s.height = 0.5 + (fine - 0.5) * 0.12 - pore * 0.3 - late * 0.04 - scr * 0.1 - dent.x * 0.3 + knot * 0.05 - ringW.y * 0.04;
+    s.rough = mix(uP0.w, 0.8, worn * 0.8 + pore * 0.35) + scr * 0.15 + ringW.y * 0.2 - oily * 0.12 + knot * 0.1; s.ao = 1.0 - pore * 0.3 - dent.x * 0.2; s.metal = 0.0; return s; }`,
 });
 
 registerRecipe('planks', {
@@ -168,7 +201,14 @@ registerRecipe('planks', {
     float bevel = 1.0 - smoothstep(0.0, uP0.y * 2.5, min(seamY, seamX * 3.0));
     float wearN = fbm(uv + 1.3, vec2(4.0, 4.0), 5); float worn = smoothstep(1.0 - uWear * 0.55, 1.05 - uWear * 0.55, wearN);
     col = mix(col, uC2, seam * 0.85); col = mix(col, col * 0.75 + vec3(0.04, 0.03, 0.02), worn * 0.5);
-    S s; s.albedo = col; s.height = 0.6 - seam * 0.6 - bevel * 0.15 + (fine - 0.5) * 0.15; s.rough = mix(uP0.w, 0.9, worn) + seam * 0.3; s.ao = 1.0 - seam * 0.6; s.metal = 0.0; return s; }`,
+    float nail = (1.0 - smoothstep(0.0025, 0.004, length(vec2((lu < 0.5 ? lu - 0.03 : lu - 0.97) / uP0.z, (fy - 0.5) / n)))) * step(0.4, hb.x);
+    float sgrime = (1.0 - smoothstep(0.0, uP0.y * 4.0, min(seamY, seamX * 3.0))) * (1.0 - seam) * uWear;
+    float scuff = scratches(uv * 2.0, 6.0, 0.4, 0.008) * uWear;
+    col = mix(col, vec3(0.12, 0.11, 0.1), nail * 0.85);
+    col = mix(col, uC2 * 0.9, sgrime * 0.45);
+    col = mix(col, col * 1.18 + 0.03, scuff * 0.4);
+    S s; s.albedo = col; s.height = 0.6 - seam * 0.6 - bevel * 0.15 + (fine - 0.5) * 0.15 - nail * 0.1 - scuff * 0.08;
+    s.rough = mix(uP0.w, 0.9, worn) + seam * 0.3 + sgrime * 0.1 - nail * 0.3; s.ao = 1.0 - seam * 0.6 - sgrime * 0.2; s.metal = nail * 0.8; return s; }`,
 });
 
 registerRecipe('fabric', {
@@ -277,9 +317,15 @@ registerRecipe('paint_metal', {
     float orange = gn(uv * 260.0, vec2(260.0));
     vec3 paint = uC0 * (0.92 + peel * 0.12 + (orange - 0.5) * 0.04);
     float grime = smoothstep(0.55, 0.85, fbm(uv + 9.9, vec2(3.0), 5)) * uWear; paint *= 1.0 - grime * 0.3;
+    float bloom = smoothstep(1.0 - uWear * 0.75 - 0.16, 1.0 - uWear * 0.75, chipN) * (1.0 - chip) * uP0.y;
+    float run = streaks(uv, 9.0, 0.45, 0.4) * uWear * uP0.y * (1.0 - chip);
+    paint = mix(paint, paint * vec3(0.72, 0.5, 0.32) + uC2 * 0.25, sat(bloom * 0.7 + run * 0.6));
     vec3 col = mix(paint, uC3, primer * 0.7); col = mix(col, mix(uC1, uC2, rust), chip); col = mix(col, uC1 * 1.1, scr * 0.8);
-    S s; s.albedo = col; s.height = 0.6 + orange * 0.03 - chip * 0.35 - primer * 0.1 - scr * 0.2 + rust * 0.1;
+    float oily = fprint(uv, 4.0, 0.3) * uWear;
+    col *= 1.0 - oily * 0.05;
+    S s; s.albedo = col; s.height = 0.6 + orange * 0.03 - chip * 0.35 - primer * 0.1 - scr * 0.2 + rust * 0.1 + bloom * 0.12;
     s.metal = max(chip * (1.0 - rust), scr); s.rough = mix(mix(uP0.x, 0.6, primer), mix(0.38, 0.9, rust), chip); s.rough = mix(s.rough, 0.3, scr);
+    s.rough = s.rough + bloom * 0.25 + run * 0.15 - oily * 0.15;
     s.ao = 1.0 - chip * 0.15; return s; }`,
 });
 
@@ -291,7 +337,16 @@ registerRecipe('metal', {
     float m = fbm(uv, vec2(5.0), 5); float pit = smoothstep(0.82, 0.95, gn(uv * 120.0, vec2(120.0))) * uP0.z;
     float smudge = smoothstep(0.5, 0.8, fbm(uv + 2.2, vec2(3.0), 5)) * uWear; float scr = scratches(uv, 8.0, 0.45, 0.004) * uWear;
     vec3 col = mix(uC1, uC0, 0.55 + (br - 0.5) * 0.5 * uP0.x + (m - 0.5) * 0.4); col = mix(col, uC2, pit * 0.6 + smudge * 0.15);
-    S s; s.albedo = col; s.height = 0.5 + (br - 0.5) * 0.2 * uP0.x - pit * 0.4 - scr * 0.2; s.rough = uP0.y + (br - 0.5) * 0.12 * uP0.x + smudge * 0.25 + pit * 0.3 - scr * 0.1; s.ao = 1.0 - pit * 0.3; s.metal = 1.0 - pit * 0.6; return s; }`,
+    float fp = fprint(uv, 5.0, 0.4) * uWear;
+    vec3 ws = spots(uv + 0.21, 6.0, 0.3, 0.08, 0.2) * uWear;
+    float bloom = smoothstep(0.7, 0.95, gn(uv * 120.0, vec2(120.0)) + fbm(uv + 3.3, vec2(6.0), 3) * 0.3) * uWear * uP0.z;
+    vec3 dent = spots(uv + 0.63, 5.0, 0.12, 0.08, 0.2) * uWear;
+    col = mix(col, col * 0.85, fp * 0.5);
+    col = mix(col, vec3(0.78, 0.77, 0.72), ws.y * 0.35 + ws.x * 0.06);
+    col = mix(col, vec3(0.42, 0.22, 0.1), bloom * 0.7);
+    S s; s.albedo = col; s.height = 0.5 + (br - 0.5) * 0.2 * uP0.x - pit * 0.4 - scr * 0.2 - dent.x * 0.25 + bloom * 0.1;
+    s.rough = uP0.y + (br - 0.5) * 0.12 * uP0.x + smudge * 0.25 + pit * 0.3 - scr * 0.1 + fp * 0.18 + ws.y * 0.25 + bloom * 0.5;
+    s.ao = 1.0 - pit * 0.3 - bloom * 0.2; s.metal = (1.0 - pit * 0.6) * (1.0 - bloom); return s; }`,
 });
 
 registerRecipe('rust', {
@@ -300,7 +355,16 @@ registerRecipe('rust', {
     float a = fbm(uv, vec2(4.0), 7); float b = ridged(uv + 1.3, vec2(6.0), 5); float flake = smoothstep(0.55, 0.75, fbm(uv + 4.0, vec2(14.0), 4));
     float metalP = smoothstep(0.62, 0.8, fbm(uv + 8.0, vec2(5.0), 5)) * (1.0 - uP0.x);
     vec3 col = mix(uC1, uC0, a); col = mix(col, uC2, b * 0.45); col = mix(col, uC1 * 0.6, flake * 0.4); col = mix(col, uC3, metalP);
-    S s; s.albedo = col; s.height = a * 0.6 + b * 0.3 + flake * 0.25 - metalP * 0.3; s.rough = mix(0.95, 0.45, metalP); s.ao = 0.6 + a * 0.4; s.metal = metalP; return s; }`,
+    vec3 sc = vorEdge(uv + 0.17, vec2(16.0), 1.0);
+    float scale = (1.0 - smoothstep(0.0, 0.05, sc.x)) * smoothstep(0.4, 0.7, a);
+    float lift = smoothstep(0.05, 0.25, sc.x) * sc.y * smoothstep(0.45, 0.7, a);
+    float pitR = smoothstep(0.86, 0.96, gn(uv * 90.0 + 1.0, vec2(90.0)));
+    float band = fbm(uv * vec2(1.0, 1.0) + 6.6, vec2(2.0, 8.0), 4);
+    col = mix(col, uC2 * 1.15, smoothstep(0.55, 0.8, band) * 0.35 * (1.0 - metalP));
+    col = mix(col, vec3(0.06, 0.04, 0.03), scale * 0.6 + pitR * 0.7);
+    col *= 0.92 + lift * 0.16;
+    S s; s.albedo = col; s.height = a * 0.6 + b * 0.3 + flake * 0.25 - metalP * 0.3 + lift * 0.25 - scale * 0.2 - pitR * 0.35;
+    s.rough = mix(0.95, 0.45, metalP) - lift * 0.05; s.ao = (0.6 + a * 0.4) * (1.0 - scale * 0.4 - pitR * 0.4); s.metal = metalP; return s; }`,
 });
 
 registerRecipe('concrete', {
@@ -313,7 +377,14 @@ registerRecipe('concrete', {
     vec3 ce = vorEdge(uv, vec2(3.0), 1.0); float crack = (1.0 - smoothstep(0.0, 0.006, ce.x)) * step(0.62, ce.y) * uP0.y * smoothstep(0.35, 0.6, fbm(uv + 5.0, vec2(3.0), 4));
     float stain = smoothstep(0.55, 0.8, fbm(uv + 9.0, vec2(2.0), 6)) * uP0.w; float drip = smoothstep(0.7, 0.95, gn(uv * vec2(30.0, 2.0), vec2(30.0, 2.0))) * smoothstep(0.4, 0.9, fbm(uv + 3.0, vec2(4.0), 3)) * uWear;
     vec3 col = mix(uC1, uC0, m) * (0.9 + d * 0.15); col = mix(col, mix(uC2, uC3, ag.w), agg * 0.3); col = mix(col, uC2 * 0.6, sat(stain * 0.45 + drip * 0.35 + crack * 0.9 + pore * 0.85));
-    S s; s.albedo = col; s.height = m * 0.4 + d * 0.15 + agg * 0.12 - pore * 0.5 - crack * 0.6; s.rough = 0.88 + d * 0.08 - stain * 0.1; s.ao = 1.0 - pore * 0.5 - crack * 0.5; s.metal = 0.0; return s; }`,
+    float spall = smoothstep(0.7, 0.74, fbm(uv + 12.0, vec2(5.0), 5)) * uWear * 1.4;
+    float eff = smoothstep(0.6, 0.85, fbm(uv + 14.0, vec2(3.0), 5)) * smoothstep(0.4, 0.7, gn(uv * 40.0, vec2(40.0))) * uWear;
+    vec3 oil = spots(uv + 0.5, 3.0, 0.3, 0.12, 0.3) * uWear;
+    col = mix(col, mix(uC2, uC3, ag.w) * (0.8 + d * 0.3), sat(spall) * 0.6);
+    col = mix(col, vec3(0.86, 0.85, 0.82), eff * 0.35);
+    col = mix(col, col * 0.55, oil.x * 0.5 + oil.y * 0.2);
+    S s; s.albedo = col; s.height = m * 0.4 + d * 0.15 + agg * 0.12 - pore * 0.5 - crack * 0.6 - sat(spall) * 0.25 + agg * sat(spall) * 0.2;
+    s.rough = 0.88 + d * 0.08 - stain * 0.1 - oil.x * 0.35 + eff * 0.06; s.ao = 1.0 - pore * 0.5 - crack * 0.5 - sat(spall) * 0.15; s.metal = 0.0; return s; }`,
 });
 
 registerRecipe('plaster', {
@@ -342,8 +413,16 @@ registerRecipe('tiles', {
     float dirt = smoothstep(0.45, 0.8, fbm(uv + 6.0, vec2(4.0), 5)) * uWear;
     vec3 gcol = mix(uC1, uC2, sat(uP1.w * 0.6 + dirt * 0.6));
     vec3 col = mix(tcol * (1.0 - dirt * 0.12), gcol, grout); col = mix(col, uC2, crack * 0.7);
-    S s; s.albedo = col; s.height = grout > 0.5 ? 0.2 : 0.2 + bev * 0.75 + (wav - 0.5) * 0.04 - crack * 0.3;
-    s.rough = mix(uP0.w + (wav - 0.5) * 0.04 + dirt * 0.1, 0.92, grout); s.ao = 1.0 - grout * 0.45 - (1.0 - bev) * 0.2; s.metal = 0.0; return s; }`,
+    vec3 cz = vorEdge(uv + th.xy, uP0.xy * 7.0, 1.0);
+    float craze = (1.0 - smoothstep(0.0, 0.025, cz.x)) * step(0.55, th.y) * uWear * (1.0 - grout);
+    vec2 cd = min(f, 1.0 - f); float corner = length(cd);
+    float chipC = (1.0 - smoothstep(g * 0.6, g * 1.6, corner + (wav - 0.5) * 0.03)) * step(0.82, th.x) * (1.0 - grout);
+    float scum = smoothstep(0.55, 0.8, fbm(uv + 2.9, vec2(3.0), 5)) * uWear;
+    col = mix(col, uC2 * 1.1, craze * 0.35);
+    col = mix(col, mix(uC1, uC0 * 0.8, 0.5), chipC * 0.8);
+    col = mix(col, col * 0.93 + vec3(0.04), scum * 0.25 * (1.0 - grout));
+    S s; s.albedo = col; s.height = grout > 0.5 ? 0.2 : 0.2 + bev * 0.75 + (wav - 0.5) * 0.04 - crack * 0.3 - craze * 0.03 - chipC * 0.5;
+    s.rough = mix(uP0.w + (wav - 0.5) * 0.04 + dirt * 0.1 + scum * 0.25 + chipC * 0.6, 0.92, grout); s.ao = 1.0 - grout * 0.45 - (1.0 - bev) * 0.2 - chipC * 0.2; s.metal = 0.0; return s; }`,
 });
 
 registerRecipe('acoustic', {
@@ -385,7 +464,12 @@ registerRecipe('plastic', {
     float st = gn(uv * 300.0, vec2(300.0)); float m = fbm(uv, vec2(3.0), 5); float yel = smoothstep(0.4, 0.8, fbm(uv + 2.0, vec2(2.0), 4)) * uWear;
     float scr = scratches(uv, 10.0, 0.4, 0.004) * uWear; float grime = smoothstep(0.6, 0.85, fbm(uv + 5.0, vec2(4.0), 5)) * uWear;
     vec3 col = uC0 * (0.95 + (m - 0.5) * 0.1); col = mix(col, uC1, yel * 0.5); col = mix(col, uC2, grime * 0.3); col = mix(col, col * 1.15 + 0.02, scr);
-    S s; s.albedo = col; s.height = 0.5 + (st - 0.5) * 0.2 * uP0.y - scr * 0.2; s.rough = uP0.x + (st - 0.5) * 0.1 * uP0.y + grime * 0.2 - scr * 0.1; s.ao = 1.0 - grime * 0.2; s.metal = 0.0; return s; }`,
+    float fp = fprint(uv, 4.0, 0.4) * uWear;
+    float scuff = scratches(uv * 1.5, 5.0, 0.35, 0.02) * uWear;
+    float dust = sat(0.5 - st) * 2.0 * uWear * smoothstep(0.4, 0.7, fbm(uv + 7.0, vec2(4.0), 4));
+    col = mix(col, col * 0.88, fp * 0.4); col = mix(col, uC2 * 0.8, scuff * 0.3); col = mix(col, vec3(0.6, 0.58, 0.54), dust * 0.25);
+    S s; s.albedo = col; s.height = 0.5 + (st - 0.5) * 0.2 * uP0.y - scr * 0.2 - scuff * 0.06;
+    s.rough = uP0.x + (st - 0.5) * 0.1 * uP0.y + grime * 0.2 - scr * 0.1 - fp * 0.12 + scuff * 0.12 + dust * 0.2; s.ao = 1.0 - grime * 0.2; s.metal = 0.0; return s; }`,
 });
 
 registerRecipe('rubber', {
