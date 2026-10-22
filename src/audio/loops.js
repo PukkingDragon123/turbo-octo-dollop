@@ -726,10 +726,12 @@ LOOPS.factory_drone = {
     const air = L.gain(0.22);
     L.chain(L.noise('p'), L.filter('bandpass', 650, 0.5), air, m);
     L.rlfo(0.07, 0.1, air.gain);
-    const b = mat(L.A, 'factory_clanks', 11, 32000, (S, o) => {
-      S.scatter(9, 0.2, 10.4, (t) => impact(S, o, t, S.pick(['metal', 'heavy']), S.rr(0.4, 1), S.rr(1.2, 2.6), S.rr(0.2, 0.7)));
-      S.scatter(3, 0.5, 10, (t) => thud(S, o, t, S.rr(70, 110), 40, 0.3, 0.6));
+    const b = mat(L.A, 'factory_clanks', 11, 32000, (S, d) => {
+      const o = new Float32Array(S.n(d));
+      S.scatter(9, 0.2, d - 0.6, (t) => impact(S, o, t, S.pick(['metal', 'heavy']), S.rr(0.4, 1), S.rr(1.2, 2.6), S.rr(0.2, 0.7)));
+      S.scatter(3, 0.5, d - 1, (t) => thud(S, o, t, S.rr(70, 110), 40, 0.3, 0.6));
       S.lp(o, 1100); S.verb(o, 2.6, 0.7, 0.5, 1.4);   // far away in a big hall
+      return o;
     });
     L.chain(L.buf(b), L.gain(0.9), m);
   },

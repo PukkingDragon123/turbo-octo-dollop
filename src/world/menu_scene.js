@@ -1223,7 +1223,8 @@ export class MenuScene {
       setP(e);
       const dx = e.clientX - d.x, dy = e.clientY - d.y, dtm = performance.now() - d.t;
       if (d.ctl) { this._endCtl(d); return; }
-      if (this.mode === 'workshop' && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.2 && dtm < 1200) { this._section(this.secIdx + (dx < 0 ? 1 : -1)); return; }
+      const big = Math.abs(dx) > Math.max(50, window.innerWidth * 0.12);
+      if (this.mode === 'workshop' && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.2 && (dtm < 1200 || big)) { this._section(this.secIdx + (dx < 0 ? 1 : -1)); return; }
       if (d.moved < 12 && dtm < 900) this._click(d.act, e);
     };
     this._onKey = (e) => {
