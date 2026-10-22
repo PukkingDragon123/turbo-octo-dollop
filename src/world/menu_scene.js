@@ -31,8 +31,9 @@ import * as AV from '../entities/avatar.js';
 import { buildModel } from '../entities/catalog.js';
 import {
   RoboArm, Sparks, Batch, cyl, factoryMats, LiveTex, fitText, wrapLines, HangPanel, Hatch, Knob, Toggle, Fader, Selector,
-  Crate, Junk, Puffs, Motes, kitMesh as mesh, kitRbox as rbox, PLEX, VT,
+  Crate, Junk, Puffs, Motes, kitMesh as mesh, kitRbox as rbox,
 } from '../entities/wardrobe.js';
+import { FONT } from '../ui/fonts.js';
 import { getPart } from '../entities/doll/doll_avatar.js';
 import { buildHatPart, buildVisorPart, buildAccPart, buildPackPart } from '../entities/doll/robotcos.js';
 import { buildRobotHead } from '../entities/doll/robotbody.js';
@@ -43,6 +44,8 @@ import { ROBOT_SCALE } from '../entities/doll/robotrig.js';
 import { HC } from '../entities/doll/robotshape.js';
 
 const { Avatar, COSMETICS, resolveCos, DEFAULT_COSMETICS } = AV;
+// type roles (ui/fonts.js): deco signage, typewriter forms, CRT terminals, marker labels, handwriting
+const F_SIGN = FONT.deco, F_TYPE = FONT.type, F_CRT = FONT.crt, F_MARK = FONT.marker, F_HAND = FONT.hand, F_PRINT = FONT.print, F_TITLE = FONT.title, F_SPEECH = FONT.speech;
 const PI = Math.PI, TAU = PI * 2, DEG = PI / 180;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -219,8 +222,8 @@ export class MenuScene {
     const sign = this._tex(1024, 192, (g, w, h) => {
       g.fillStyle = '#0a0907'; g.fillRect(0, 0, w, h);
       g.fillStyle = '#c9b48a'; g.textBaseline = 'middle';
-      fitText(g, 'R.O.O.M. CLONE ASSEMBLY · LINE 04', w / 2, h * 0.42, w - 60, 86, `bold {s}px ${PLEX}`);
-      g.fillStyle = '#8a7a5a'; fitText(g, 'NO UNIT LEAVES THIS FLOOR ALIVE · IT LEAVES IT FINISHED', w / 2, h * 0.8, w - 80, 34, `{s}px ${VT}`);
+      fitText(g, 'R.O.O.M. CLONE ASSEMBLY · LINE 04', w / 2, h * 0.42, w - 60, 86, `{s}px ${F_PRINT}`);
+      g.fillStyle = '#8a7a5a'; fitText(g, 'NO UNIT LEAVES THIS FLOOR ALIVE · IT LEAVES IT FINISHED', w / 2, h * 0.8, w - 80, 34, `{s}px ${F_TYPE}`);
     });
     this.lineSign = this._plane(7, 1.3, this._emTexMat(sign.tex, 0.25), S, 0, 5.3, -9.9);
     // ceiling floodlight fixtures in 4 banks (lenses glow when the bank is on)
@@ -281,6 +284,7 @@ export class MenuScene {
     this.body = new THREE.Group(); this.swing.add(this.body); this.body.position.y = -CABLE;
     this.body.add(this.av.root);
     this.av.root.position.y = -1.2;
+    this.av.root.rotation.y = PI;   // faces the hall (the rig looks down -Z)
     // harness ring on the upper back
     this.ring = mesh(new THREE.TorusGeometry(0.035 / ROBOT_SCALE, 0.008 / ROBOT_SCALE, 6, 14), F.steel, null, 0, 0.17, 0.13, PI / 2);
     this.av.bones.chest.add(this.ring);
@@ -293,8 +297,8 @@ export class MenuScene {
     // toe tag
     const tag = this._tex(256, 128, (g, w, h) => {
       g.fillStyle = '#e8dcb8'; g.fillRect(0, 0, w, h); g.fillStyle = '#2a2018'; g.textBaseline = 'middle';
-      fitText(g, 'UNIT ' + this.av.empNo, w / 2, h * 0.3, w - 30, 40, `bold {s}px ${PLEX}`);
-      g.fillStyle = '#7a2a1a'; fitText(g, 'AWAITING ASSEMBLY', w / 2, h * 0.68, w - 26, 34, `{s}px ${VT}`);
+      fitText(g, 'UNIT ' + this.av.empNo, w / 2, h * 0.3, w - 30, 40, `bold {s}px ${F_HAND}`);
+      g.fillStyle = '#7a2a1a'; fitText(g, 'AWAITING ASSEMBLY', w / 2, h * 0.68, w - 26, 34, `bold {s}px ${F_HAND}`);
       g.beginPath(); g.fillStyle = '#1a1410'; g.arc(18, h / 2, 7, 0, TAU); g.fill();
     });
     this.tagMat = new THREE.MeshStandardMaterial({ map: tag.tex, emissiveMap: tag.tex, emissive: 0xffffff, emissiveIntensity: 0.05, roughness: 0.9, side: THREE.DoubleSide });
@@ -314,8 +318,10 @@ export class MenuScene {
     b.pelvis.rotation.set(0.04 + D.vx * 0.04, 0, D.vz * 0.05);
     b.spine.rotation.set(-0.07 + tw, 0, 0.02);
     b.chest.rotation.set(-0.13 + tw, 0, -0.03 + tw);
-    b.neck.rotation.set(-0.32 + l.hd[0] * 0.4, 0, 0.1 + l.hd[1] * 0.4);
-    b.head.rotation.set(-0.46 + l.hd[0] + Math.sin(t * 0.4) * 0.02, 0.12, 0.24 + l.hd[1]);
+    // the head lolls: chin down in the dark, rolled to one side under the work lights (face to the camera)
+    const up = this._headUp = damp(this._headUp ?? 0, this.mode === 'workshop' ? 1 : 0, 2, 1 / 60);
+    b.neck.rotation.set(lerp(-0.26, -0.08, up) + l.hd[0] * 0.4, 0, lerp(0.1, 0.16, up) + l.hd[1] * 0.4);
+    b.head.rotation.set(lerp(-0.34, -0.1, up) + l.hd[0] + Math.sin(t * 0.4) * 0.02, lerp(0.12, 0.05, up), lerp(0.24, 0.3, up) + l.hd[1]);
     for (const [S, s, a, g] of [['L', -1, l.aL, l.lL], ['R', 1, l.aR, l.lR]]) {
       b['sh' + S].rotation.set(0.1 + a[0], 0, s * 0.08 + a[1]);
       b['el' + S].rotation.set(0.28 + Math.max(0, a[0]) * 0.5, 0, 0);
@@ -324,6 +330,7 @@ export class MenuScene {
       b['kn' + S].rotation.set(-0.32 - Math.abs(g[0]) * 0.4, 0, 0);
       b['an' + S].rotation.set(-0.55, 0, 0);
     }
+    b.jaw.rotation.x = -0.05 - j * 0.12;   // slack, not gaping
     const hs = D.headless ? 1e-4 : 1, es = D.eyeless ? 1e-4 : 1;
     b.head.scale.setScalar(hs); b.eyeL.scale.setScalar(es); b.eyeR.scale.setScalar(es);
     // twitches of not-quite-life: LEDs stutter while it is being worked on
@@ -458,7 +465,7 @@ export class MenuScene {
     this.destSel.root.position.set(-0.38, 1.0, 0.18); this.destSel.root.rotation.x = -PI / 2 + TILT; g.add(this.destSel.root);
     this._addHit(this.destSel.hit, { type: 'dest', modes: ['dispatch'] });
     this.destSel.set(Math.max(0, DESTS.indexOf(profile.settings.destination || 'yellow')));
-    const lab = this._tex(256, 96, (x, w, h) => { x.fillStyle = '#1b1d1a'; x.fillRect(0, 0, w, h); x.fillStyle = '#d8c79a'; x.textBaseline = 'middle'; fitText(x, 'L0   L37   L1.1', w / 2, h * 0.35, w - 20, 34, `bold {s}px ${PLEX}`); x.fillStyle = '#8a8060'; fitText(x, 'DESTINATION', w / 2, h * 0.75, w - 20, 26, `{s}px ${VT}`); });
+    const lab = this._tex(256, 96, (x, w, h) => { x.fillStyle = '#1b1d1a'; x.fillRect(0, 0, w, h); x.fillStyle = '#d8c79a'; x.textBaseline = 'middle'; fitText(x, 'L0   L37   L1.1', w / 2, h * 0.35, w - 20, 34, `{s}px ${F_MARK}`); x.fillStyle = '#8a8060'; fitText(x, 'DESTINATION', w / 2, h * 0.75, w - 20, 26, `{s}px ${F_TYPE}`); });
     this._plane(0.2, 0.075, new THREE.MeshStandardMaterial({ map: lab.tex, roughness: 0.8 }), g, -0.38, 0.985, 0.3, -PI / 2 + TILT, 0, 0);
     this._drawDispatchCrt();
   }
@@ -466,7 +473,7 @@ export class MenuScene {
     const d = profile.settings.destination || 'yellow';
     this.dCrt.draw((x, w, h) => {
       x.fillStyle = '#031006'; x.fillRect(0, 0, w, h);
-      x.fillStyle = '#62ff8a'; x.shadowColor = '#62ff8a'; x.shadowBlur = 8; x.textBaseline = 'top'; x.font = `30px ${VT}`;
+      x.fillStyle = '#62ff8a'; x.shadowColor = '#62ff8a'; x.shadowBlur = 8; x.textBaseline = 'top'; x.font = `30px ${F_CRT}`;
       const L = ['R.O.O.M. DISPATCH TERMINAL', '--------------------------', `UNIT   #${this.av.empNo}  (${(profile.name || '').toUpperCase()})`, `DEST   ${LEVEL_NAME[d] || d.toUpperCase()}`, 'STATUS NOT ALIVE YET', '', msg || '> PULL LEVER TO DISPATCH'];
       L.forEach((s, i) => x.fillText(s, 20, 18 + i * 44));
       x.shadowBlur = 0; x.fillStyle = 'rgba(0,0,0,0.25)'; for (let y = 0; y < h; y += 4) x.fillRect(0, y, w, 2);
@@ -505,8 +512,8 @@ export class MenuScene {
     this.tape.visible = !s;
     const label = (t1, t2) => this._tex(512, 220, (x, w, h) => {
       x.clearRect(0, 0, w, h); x.fillStyle = 'rgba(22,16,10,0.85)'; x.textBaseline = 'middle';
-      fitText(x, t1, w / 2, h * 0.38, w - 40, 96, `bold {s}px ${PLEX}`);
-      x.font = `44px ${VT}`; fitText(x, t2, w / 2, h * 0.78, w - 40, 48, `{s}px ${VT}`);
+      fitText(x, t1, w / 2, h * 0.38, w - 40, 96, `{s}px ${F_MARK}`);
+      x.font = `44px ${F_MARK}`; fitText(x, t2, w / 2, h * 0.78, w - 40, 48, `{s}px ${F_MARK}`);
     }).tex;
     if (!s) {
       this.crates[0].root.visible = false; this.crates[2].root.visible = false;
@@ -523,7 +530,7 @@ export class MenuScene {
       const b = mesh(rbox(0.16, 0.035, 0.075, 0.004), this.F.cash, c1.contents, -0.14 + (i % 3) * 0.14, 0.27 + Math.floor(i / 3) * 0.038, -0.08 + ((i * 7) % 3) * 0.08, 0, rnd(-0.2, 0.2), 0);
       void b;
     }
-    const tag = this._tex(256, 128, (x, w, h) => { x.fillStyle = '#efe3bf'; x.fillRect(0, 0, w, h); x.fillStyle = '#1e1a12'; x.textBaseline = 'middle'; fitText(x, money(s.credits), w / 2, h * 0.45, w - 30, 64, `bold {s}px ${PLEX}`); x.fillStyle = '#7a2a1a'; fitText(x, 'TEAM FUNDS', w / 2, h * 0.82, w - 30, 30, `{s}px ${VT}`); });
+    const tag = this._tex(256, 128, (x, w, h) => { x.fillStyle = '#efe3bf'; x.fillRect(0, 0, w, h); x.fillStyle = '#1e1a12'; x.textBaseline = 'middle'; fitText(x, money(s.credits), w / 2, h * 0.45, w - 30, 64, `bold {s}px ${F_HAND}`); x.fillStyle = '#7a2a1a'; fitText(x, 'TEAM FUNDS', w / 2, h * 0.82, w - 30, 30, `{s}px ${F_TYPE}`); });
     this.cashTag = new THREE.Group(); this.cashTag.position.set(0.12, 0.55, 0.12); c1.contents.add(this.cashTag);
     this._plane(0.16, 0.08, new THREE.MeshStandardMaterial({ map: tag.tex, roughness: 0.9, side: THREE.DoubleSide }), this.cashTag, 0, -0.06, 0);
     mesh(cyl(0.0015, 0.05, 'y', 4), this.F.steel, this.cashTag, 0, -0.005, 0);
@@ -546,16 +553,16 @@ export class MenuScene {
     const doc = this._tex(512, 680, (x, w, h) => {
       x.fillStyle = '#ece4cf'; x.fillRect(0, 0, w, h);
       x.fillStyle = '#20180f'; x.textBaseline = 'top';
-      x.font = `bold 34px ${PLEX}`; x.fillText('CLONE RUN RECORD', 32, 30);
+      x.font = `34px ${F_TYPE}`; x.fillText('CLONE RUN RECORD', 32, 30);
       x.fillRect(32, 76, w - 64, 3);
-      x.font = `30px ${VT}`;
+      x.font = `28px ${F_TYPE}`;
       const un = Object.keys(s.unlocks || {}).filter((k) => s.unlocks[k]);
       const rows = [['DIMENSION', LEVEL_NAME[s.level] || s.level], ['DAY', `${s.day} OF 7`], ['FUNDS', money(s.credits)], ['ESCAPE', `${Math.round(clamp(s.escape || 0, 0, 1) * 100)}%`], ['POCKETS', `${s.inventory.length} ITEMS`], ['STASH', `${s.stash.length} ITEMS`], ['UNLOCKS', un.length ? un.slice(0, 3).join(', ').toUpperCase() : 'NONE']];
       rows.forEach(([a, b], i) => { x.fillStyle = '#5a4a32'; x.fillText(a, 32, 100 + i * 52); x.fillStyle = '#20180f'; x.fillText(String(b), 220, 100 + i * 52); });
       x.fillStyle = 'rgba(30,20,10,0.25)'; for (let i = 0; i < 6; i++) x.fillRect(32, 480 + i * 22, rnd(200, w - 64), 6);
       x.save(); x.translate(w * 0.58, h * 0.8); x.rotate(-0.22);
       x.strokeStyle = 'rgba(180,30,24,0.85)'; x.lineWidth = 7; x.strokeRect(-180, -46, 360, 92);
-      x.fillStyle = 'rgba(180,30,24,0.85)'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `bold 40px ${PLEX}`; x.fillText('APPROVED', 0, -12); x.font = `26px ${VT}`; x.fillText('FOR CONTINUATION', 0, 26);
+      x.fillStyle = 'rgba(180,30,24,0.85)'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `40px ${F_TITLE}`; x.fillText('APPROVED', 0, -12); x.font = `24px ${F_TYPE}`; x.fillText('FOR CONTINUATION', 0, 26);
       x.restore();
     });
     const paper = this._plane(0.3, 0.4, new THREE.MeshStandardMaterial({ map: doc.tex, roughness: 0.92 }), c3.contents, 0, 0.3, 0, -PI / 2 + 0.25, 0, 0.12);
@@ -632,24 +639,24 @@ export class MenuScene {
       for (let i = 0; i < 400; i++) { x.fillStyle = `rgba(0,0,0,${Math.random() * 0.06})`; x.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 30, 1 + Math.random() * 3); }
       x.strokeStyle = '#2c332e'; x.lineWidth = 8; x.strokeRect(10, 10, w - 20, h - 20);
       x.fillStyle = '#e9dcb2'; x.textBaseline = 'middle';
-      fitText(x, 'CALIBRATION BAY · CLONE PERIPHERALS', w * 0.68, 42, w * 0.6, 34, `bold {s}px ${PLEX}`);
+      fitText(x, 'CALIBRATION BAY · CLONE PERIPHERALS', w * 0.68, 42, w * 0.6, 34, `{s}px ${F_SIGN}`);
       const px = (X) => (X / 1.5 + 0.5) * w, py = (Y) => (1 - ((Y - 1.45) / 1.1 + 0.5)) * h;
       for (const c of this.ctls) {
         const cx = px(c.x), cy = py(c.y);
         x.fillStyle = '#e9dcb2';
         if (c.type === 'knob') {
-          fitText(x, c.label, cx, cy + 62, 140, 22, `bold {s}px ${PLEX}`);
+          fitText(x, c.label, cx, cy + 62, 140, 22, `{s}px ${F_TYPE}`);
           x.strokeStyle = '#e9dcb2'; x.lineWidth = 2;
           for (let i = 0; i <= 10; i++) { const a = -PI / 2 - 2.35 + (4.7 * i) / 10; const r0 = 44, r1 = i % 5 ? 50 : 56; x.beginPath(); x.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); x.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); x.stroke(); }
         } else if (c.type === 'fader') {
-          fitText(x, c.label, cx, cy - 52, 300, 22, `bold {s}px ${PLEX}`);
-          x.font = `20px ${VT}`; x.textAlign = 'left'; x.fillText('SLOW', cx - 170, cy + 44); x.textAlign = 'right'; x.fillText('FAST', cx + 170, cy + 44);
+          fitText(x, c.label, cx, cy - 52, 300, 22, `{s}px ${F_TYPE}`);
+          x.font = `20px ${F_HAND}`; x.textAlign = 'left'; x.fillText('SLOW', cx - 170, cy + 44); x.textAlign = 'right'; x.fillText('FAST', cx + 170, cy + 44);
         } else if (c.type === 'toggle') {
-          fitText(x, c.label, cx, cy + 60, 180, 22, `bold {s}px ${PLEX}`);
-          x.font = `20px ${VT}`; x.textAlign = 'center'; x.fillText('ON', cx, cy - 58);
+          fitText(x, c.label, cx, cy + 60, 180, 22, `{s}px ${F_TYPE}`);
+          x.font = `20px ${F_HAND}`; x.textAlign = 'center'; x.fillText('ON', cx, cy - 58);
         } else {
-          fitText(x, c.label, cx, cy + 62, 200, 22, `bold {s}px ${PLEX}`);
-          x.font = `18px ${VT}`; x.textAlign = 'center';
+          fitText(x, c.label, cx, cy + 62, 200, 22, `{s}px ${F_TYPE}`);
+          x.font = `18px ${F_TYPE}`; x.textAlign = 'center';
           c.opts.forEach((o, i) => { const a = -PI / 2 - 0.9 + 0.9 * i; x.fillText(o.toUpperCase(), cx + Math.cos(a) * 52, cy + Math.sin(a) * 40); });
         }
       }
@@ -667,13 +674,13 @@ export class MenuScene {
     const a = this.activeCtl;
     this.crt.draw((x, w, h) => {
       x.fillStyle = '#020b04'; x.fillRect(0, 0, w, h);
-      x.fillStyle = '#7dffa0'; x.shadowColor = '#7dffa0'; x.shadowBlur = 6; x.textBaseline = 'top'; x.font = `28px ${VT}`;
+      x.fillStyle = '#7dffa0'; x.shadowColor = '#7dffa0'; x.shadowBlur = 6; x.textBaseline = 'top'; x.font = `28px ${F_CRT}`;
       x.fillText('> ' + (a ? a.label : 'SELECT A CONTROL'), 16, 14);
       if (a) {
-        x.font = `64px ${VT}`; x.fillText(this._fmt(a), 16, 46);
+        x.font = `64px ${F_CRT}`; x.fillText(this._fmt(a), 16, 46);
         if (a.type === 'knob' || a.type === 'fader') { const k = clamp((this._ctlValue(a) - a.min) / (a.max - a.min), 0, 1); x.strokeStyle = '#7dffa0'; x.lineWidth = 2; x.strokeRect(16, 118, w - 32, 22); x.fillRect(18, 120, (w - 36) * k, 18); }
       }
-      x.font = `24px ${VT}`;
+      x.font = `24px ${F_CRT}`;
       this.ctls.forEach((c, i) => { x.fillStyle = c === a ? '#d0ffd8' : '#3fa860'; x.fillText(`${c.label.padEnd(17, '.')}${this._fmt(c)}`, 16 + (i % 2) * 248, 160 + Math.floor(i / 2) * 42); });
       x.shadowBlur = 0; x.fillStyle = 'rgba(0,0,0,0.3)'; for (let y = 0; y < h; y += 4) x.fillRect(0, y, w, 2);
     });
@@ -719,7 +726,7 @@ export class MenuScene {
   }
   _drawPlaques() {
     const ids = Object.keys(ACHIEVEMENTS), got = ids.filter((k) => profile.has(k)).length;
-    this.troHead.draw((x, w, h) => { x.fillStyle = '#080706'; x.fillRect(0, 0, w, h); x.fillStyle = '#e8c87a'; x.shadowColor = '#e8c87a'; x.shadowBlur = 14; x.textBaseline = 'middle'; fitText(x, `COMMENDATIONS · ${got} / ${ids.length}`, w / 2, h / 2, w - 60, 72, `bold {s}px ${PLEX}`); });
+    this.troHead.draw((x, w, h) => { x.fillStyle = '#080706'; x.fillRect(0, 0, w, h); x.fillStyle = '#e8c87a'; x.shadowColor = '#e8c87a'; x.shadowBlur = 14; x.textBaseline = 'middle'; fitText(x, `COMMENDATIONS · ${got} / ${ids.length}`, w / 2, h / 2, w - 60, 72, `{s}px ${F_SIGN}`); });
     for (const p of this.plaques) {
       const A = ACHIEVEMENTS[p.id], on = profile.has(p.id), rw = this._rewardMap[p.id] || [];
       p.on = on;
@@ -732,15 +739,15 @@ export class MenuScene {
         x.fillStyle = g; x.fillRect(0, 0, w, h);
         x.strokeStyle = on ? '#6a4a1a' : '#34363a'; x.lineWidth = 6; x.strokeRect(8, 8, w - 16, h - 16);
         x.fillStyle = on ? '#2a1c08' : '#8a8c90'; x.textBaseline = 'top';
-        fitText(x, A.name.toUpperCase(), w / 2, 22, w - 40, 30, `bold {s}px ${PLEX}`);
-        x.font = `24px ${VT}`; x.fillStyle = on ? '#3a2a10' : '#6a6c70';
+        fitText(x, A.name.toUpperCase(), w / 2, 22, w - 40, 30, `{s}px ${F_PRINT}`);
+        x.font = `italic 500 22px ${F_SPEECH}`; x.fillStyle = on ? '#3a2a10' : '#6a6c70';
         wrapLines(x, A.desc, w - 48).slice(0, 3).forEach((l, i) => { x.textAlign = 'center'; x.fillText(l, w / 2, 70 + i * 26); });
         if (rw.length) {
-          x.fillStyle = on ? '#7a1a10' : '#9a5a2a'; x.font = `22px ${VT}`;
+          x.fillStyle = on ? '#7a1a10' : '#9a5a2a'; x.font = `bold 24px ${F_HAND}`;
           const s = 'SPECIAL ISSUE: ' + rw.map((r) => r.name).join(', ');
           wrapLines(x, s, w - 40).slice(0, 2).forEach((l, i) => x.fillText(l, w / 2, 160 + i * 24));
         }
-        if (!on) { x.fillStyle = 'rgba(160,40,30,0.8)'; x.font = `bold 20px ${PLEX}`; x.textAlign = 'right'; x.fillText('LOCKED', w - 18, 18); }
+        if (!on) { x.fillStyle = 'rgba(160,40,30,0.8)'; x.font = `20px ${F_MARK}`; x.textAlign = 'right'; x.fillText('LOCKED', w - 18, 18); }
       });
     }
   }
@@ -779,9 +786,9 @@ export class MenuScene {
     this.rackHead.draw((x, w, h) => {
       x.fillStyle = '#0a0806'; x.fillRect(0, 0, w, h);
       x.fillStyle = '#ffb43a'; x.shadowColor = '#ffb43a'; x.shadowBlur = 16; x.textBaseline = 'middle';
-      fitText(x, sec.title, w / 2, h * 0.4, w - 300, 80, `bold {s}px ${PLEX}`);
+      fitText(x, sec.title, w / 2, h * 0.4, w - 300, 80, `{s}px ${F_SIGN}`);
       x.shadowBlur = 4; x.fillStyle = '#d0b080';
-      fitText(x, `${String(this.secIdx + 1).padStart(2, '0')}/${SECTIONS.length} · ${sec.sub} · SWIPE ◄ ►`, w / 2, h * 0.8, w - 300, 34, `{s}px ${VT}`);
+      fitText(x, `${String(this.secIdx + 1).padStart(2, '0')}/${SECTIONS.length} · ${sec.sub} · SWIPE ◄ ►`, w / 2, h * 0.8, w - 300, 34, `{s}px ${F_TYPE}`);
     });
     const cur = this.cos[sec.cat];
     list.forEach((o, i) => {
@@ -798,11 +805,11 @@ export class MenuScene {
       const lab = this._tex(256, 64, (x, w, h) => {
         x.fillStyle = ok ? '#151310' : '#1a0d0a'; x.fillRect(0, 0, w, h);
         x.fillStyle = ok ? '#e8d4a8' : '#c04a3a'; x.textBaseline = 'middle';
-        fitText(x, ok ? o.name.toUpperCase() : 'LOCKED', w / 2, h * (ok ? 0.5 : 0.32), w - 12, 30, `bold {s}px ${PLEX}`);
-        if (!ok) { x.fillStyle = '#a07050'; fitText(x, (ACHIEVEMENTS[o.unlock]?.name || o.unlock).toUpperCase(), w / 2, h * 0.74, w - 12, 22, `{s}px ${VT}`); }
+        fitText(x, ok ? o.name.toUpperCase() : 'LOCKED', w / 2, h * (ok ? 0.5 : 0.32), w - 12, 30, `{s}px ${F_MARK}`);
+        if (!ok) { x.fillStyle = '#a07050'; fitText(x, (ACHIEVEMENTS[o.unlock]?.name || o.unlock).toUpperCase(), w / 2, h * 0.74, w - 12, 22, `bold {s}px ${F_HAND}`); }
       });
       c.label = this._plane(L.cell - 0.03, (L.cell - 0.03) / 4, this._emTexMat(lab.tex, 0.55), c.g, 0, -L.cell / 2 + (L.cell - 0.03) / 8 + 0.01, 0.012);
-      c.item = this._itemFor(sec.cat, o, L.cell * 0.62);
+      c.item = this._itemFor(sec.cat, o, L.cell * 0.7);
       c.item.position.set(0, 0.02, 0.07);
       c.g.add(c.item);
       if (!ok) this._lockLook(c);
@@ -816,7 +823,7 @@ export class MenuScene {
     const portrait = this.aspect < 1.05;
     const cols = n <= 4 ? 2 : n <= 9 ? 3 : portrait ? 3 : 4;
     const rows = Math.ceil(n / cols);
-    const cell = portrait ? 0.4 : 0.36;
+    const cell = portrait ? 0.4 : 0.31;
     return { cols, rows, cell, w: cols * cell + 0.1, h: rows * cell + 0.12 };
   }
   _lockLook(c) {
@@ -930,6 +937,7 @@ export class MenuScene {
       default: noneSign();
     }
     g.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+    whiteVC(g);
     return g;
   }
   _eyeMat(rgb) { return cached2('eye_' + rgb.join(','), () => new THREE.MeshPhysicalMaterial({ color: new THREE.Color(rgb[0], rgb[1], rgb[2]), roughness: 0.06, clearcoat: 1, clearcoatRoughness: 0.03 })); }
@@ -955,6 +963,7 @@ export class MenuScene {
       mesh(cyl(0.004, 0.08, 'y', 5), this.F.rubber, inner, 0.02, -0.12, 0.13);
     }
     if (!inner.children.length) return null;
+    whiteVC(inner);
     const box = new THREE.Box3().setFromObject(inner);
     inner.position.copy(box.getCenter(V()).multiplyScalar(-1));
     const big = ['skull', 'face', 'hat', 'visor', 'accessory', 'backpack'].includes(cat);
@@ -966,7 +975,7 @@ export class MenuScene {
   _buildBackTag() {
     const g = (this.backTag = new THREE.Group());
     this.camera.add(g);
-    const t = this._tex(256, 96, (x, w, h) => { x.fillStyle = '#e8b414'; x.fillRect(0, 0, w, h); x.fillStyle = '#16130e'; x.textBaseline = 'middle'; x.strokeStyle = '#16130e'; x.lineWidth = 5; x.strokeRect(6, 6, w - 12, h - 12); fitText(x, '◄ BACK', w / 2, h / 2 + 2, w - 40, 54, `bold {s}px ${PLEX}`); });
+    const t = this._tex(256, 96, (x, w, h) => { x.fillStyle = '#e8b414'; x.fillRect(0, 0, w, h); x.fillStyle = '#16130e'; x.textBaseline = 'middle'; x.strokeStyle = '#16130e'; x.lineWidth = 5; x.strokeRect(6, 6, w - 12, h - 12); fitText(x, '◄ BACK', w / 2, h / 2 + 2, w - 40, 54, `{s}px ${F_MARK}`); });
     this.backPiv = new THREE.Group(); g.add(this.backPiv);
     const chain = mesh(cyl(0.0012, 0.08, 'y', 4), new THREE.MeshBasicMaterial({ color: 0x777777 }), this.backPiv, 0, -0.04, 0); chain.castShadow = false;
     this.backPlate = this._plane(0.07, 0.026, new THREE.MeshBasicMaterial({ map: t.tex, side: THREE.DoubleSide }), this.backPiv, 0, -0.093, 0);
@@ -1018,7 +1027,7 @@ export class MenuScene {
     const order = [P.new, P.cont, P.settings, P.trophies];
     order.forEach((p, i) => { p.root.scale.setScalar(pw * (i === 3 ? 0.95 : 1)); p.place(px, ys[i], 0.38, ceil, -0.12); });
     // re-place children after scale (chains measured in panel space)
-    for (const p of order) { const s = p.root.scale.x; p.body.position.y /= s; for (const c of p.chains) c.scale.y = Math.max(0.05, -p.body.position.y - p.h / 2 - 0.1); }
+    for (const p of order) { const s = p.root.scale.x; p.body.position.y /= s; p.drop0 = p.body.position.y; }
     this._layoutBoard();
     // trophy plaques grid
     const cols = portrait ? 4 : 7, n = this.plaques.length, rows = Math.ceil(n / cols);
@@ -1634,7 +1643,7 @@ export class MenuScene {
   _resetAfterDrop() {
     if (this.fallBody) { this.fallBody.removeFromParent(); this.fallBody = null; }
     this.body.add(this.av.root);
-    this.av.root.position.set(0, -1.2, 0); this.av.root.rotation.set(0, 0, 0);
+    this.av.root.position.set(0, -1.2, 0); this.av.root.rotation.set(0, PI, 0);
     this.dg = new Dangle();
     this.hatch.open = 0; for (const d of this.hatch.doors) { d.a = 0; d.v = 0; }
     this.wake = 0; this._wokeS = false;
@@ -1749,7 +1758,7 @@ export class MenuScene {
   _updateLights(dt) {
     const t = this.t;
     // hub work lamp (flicker on start + rare flutter)
-    let key = this.mode === 'intro' && this.introT < 0.55 ? 0 : 62;
+    let key = this.mode === 'intro' && this.introT < 0.55 ? 0 : this.mode === 'workshop' ? 34 : 62;
     if (this.keyFlick > 0) { this.keyFlick -= dt; key *= Math.random() < 0.5 ? 0.1 : 1; }
     if (Math.sin(t * 0.7) > 0.995) key *= 0.4;
     if (this.mode === 'drop' && this.drop?.phase >= 2) key = damp(this.key.intensity, 8, 2, dt);
@@ -1766,7 +1775,7 @@ export class MenuScene {
     else this.bankFade = banks / 4;
     const lv = this.bankFade * (this.bankFlick > 0 ? (Math.random() < 0.5 ? 0.3 : 1) : 1);
     if (this.bankFlick > 0) this.bankFlick -= dt;
-    this.ws[0].intensity = 150 * lv; this.ws[1].intensity = 110 * lv;
+    this.ws[0].intensity = 85 * lv; this.ws[1].intensity = 60 * lv;
     this.hemi.intensity = 0.05 + 0.35 * lv;
     this.scene.environmentIntensity = 0.1 + 0.25 * lv;
     this.bankFix.forEach((m, i) => { const on = this.bankOn < 0 ? this.bankFade : i < banks ? 1 : 0; m.color.setRGB(0.05 + 4 * on, 0.05 + 3.9 * on, 0.04 + 3.4 * on); });
@@ -1787,6 +1796,14 @@ export class MenuScene {
     this.lineSign.material.emissiveIntensity = 0.18 + 0.4 * lv;
   }
   _updatePanels(dt) {
+    // the sign boxes are winched up into the dark while you are at a station
+    const up = this.mode === 'hub' || this.mode === 'intro' ? 0 : 3.4;
+    this._panelLift = damp(this._panelLift ?? 0, up, up ? 1.8 : 3.2, dt);
+    for (const p of Object.values(this.panels)) {
+      p.body.position.y = (p.drop0 ?? p.body.position.y) + this._panelLift / p.root.scale.x;
+      for (const c of p.chains) c.scale.y = Math.max(0.05, -p.body.position.y - p.h / 2 - 0.1);
+      p.root.visible = p.body.position.y < -0.4;
+    }
     for (const [k, p] of Object.entries(this.panels)) {
       const hov = this.hover?.userData.act?.type === 'panel' && this.hover.userData.act.key === k;
       p.update(dt, hov);
@@ -1913,4 +1930,12 @@ export class MenuScene {
 const DEFAULT_IRIS = [0.12, 0.16, 0.2];
 const _cache2 = new Map();
 function cached2(k, f) { if (!_cache2.has(k)) _cache2.set(k, f()); return _cache2.get(k); }
+// robot materials use vertex colours: primitives without a colour attribute would render black
+function whiteVC(root) {
+  root.traverse((m) => {
+    if (!m.isMesh || !m.material?.vertexColors || m.geometry.attributes.color) return;
+    m.geometry = m.geometry.clone();
+    m.geometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(m.geometry.attributes.position.count * 3).fill(1), 3));
+  });
+}
 function easeOutBack(t) { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }

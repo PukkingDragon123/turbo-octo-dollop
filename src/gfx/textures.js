@@ -103,7 +103,45 @@ function canvasTex(canvas, srgb) {
   return t;
 }
 
+// Handling wear for object textures: grime mottling (darker, browner, rougher), dust settled in low spots,
+// oily smudges and fingerprints (smoother), dark specks. amt 0..1, seed picks the layout.
+function applyWear(L, amt, seed) {
+  const { w, h } = L, n = w * h;
+  let hmin = Infinity, hmax = -Infinity;
+  for (let i = 0; i < n; i++) { const v = L.height[i]; if (v < hmin) hmin = v; if (v > hmax) hmax = v; }
+  const hr = hmax - hmin || 1;
+  const rng = new RNG(seed);
+  const prints = [];
+  for (let k = 0; k < 5; k++) prints.push([rng.next(), rng.next(), rng.next() * Math.PI, rng.range(0.025, 0.04)]);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x, u = x / w, v = y / h;
+      const g = smoothstep(0.52, 0.85, tileFbm(u * 3, v * 3, 3, 3, 3, seed)) * amt;
+      const dust = smoothstep(0.6, 0.95, 1 - (L.height[i] - hmin) / hr) * amt * 0.6;
+      const sm = smoothstep(0.62, 0.85, tileFbm(u * 5 + 0.3, v * 5, 5, 5, 2, seed + 1)) * amt;
+      let fp = 0;
+      for (const [px, py, a, r] of prints) {
+        let dx = u - px, dy = v - py;
+        dx -= Math.round(dx); dy -= Math.round(dy);
+        const ca = Math.cos(a), sa = Math.sin(a);
+        const d = Math.hypot((dx * ca - dy * sa) / r, (dx * sa + dy * ca) / (r * 1.35));
+        if (d < 1) fp = Math.max(fp, (1 - d * d) * (0.5 + 0.5 * Math.sin(d * r * 900)));
+      }
+      fp *= amt;
+      const speck = hash01(x, y, seed) > 0.9965 ? amt : 0;
+      const k = 1 - g * 0.2 - sm * 0.04 - fp * 0.06 - speck * 0.5;
+      const c = i * 3;
+      L.col[c] = (L.col[c] * k * (1 - g * 0.02)) * (1 - dust * 0.25) + 0.13 * dust;
+      L.col[c + 1] = (L.col[c + 1] * k * (1 - g * 0.06)) * (1 - dust * 0.25) + 0.125 * dust;
+      L.col[c + 2] = (L.col[c + 2] * k * (1 - g * 0.12)) * (1 - dust * 0.25) + 0.115 * dust;
+      L.rough[i] = clamp(L.rough[i] + g * 0.12 + dust * 0.15 - sm * 0.12 - fp * 0.15, 0.03, 1);
+      L.height[i] -= speck * 0.1 * hr;
+    }
+  }
+}
+
 function finish(layer, opts = {}) {
+  if (opts.wear) applyWear(layer, opts.wear, opts.seed ?? 1);
   const out = {
     map: canvasTex(toCanvasRGB(layer), true),
     normalMap: canvasTex(normalFromHeight(layer, opts.normalStrength ?? 2), false),
@@ -293,7 +331,7 @@ gens.wood = () => {
       L.rough[i] = 0.55 + fine * 0.2;
     }
   }
-  return finish(L, { size: 1, normalStrength: 1.2 });
+  return finish(L, { size: 1, normalStrength: 1.2, wear: 0.5, seed: 11 });
 };
 
 // Raw pale plank (pine), for crafting planks / pallets
@@ -313,7 +351,7 @@ gens.plank = () => {
       L.rough[i] = 0.78;
     }
   }
-  return finish(L, { size: 1, normalStrength: 1.5 });
+  return finish(L, { size: 1, normalStrength: 1.5, wear: 0.55, seed: 12 });
 };
 
 // Scuffed painted metal (neutral light grey, tint with material.color)
@@ -349,7 +387,7 @@ gens.metal = () => {
       L.metal[i] = Math.max(chip, s) * 0.9;
     }
   }
-  return finish(L, { size: 1, normalStrength: 1.5 });
+  return finish(L, { size: 1, normalStrength: 1.5, wear: 0.5, seed: 13 });
 };
 
 // Brushed steel
@@ -368,7 +406,7 @@ gens.steel = () => {
       L.rough[i] = 0.3 + brush * 0.12 + n * 0.1;
     }
   }
-  return finish(L, { size: 1, normalStrength: 0.8 });
+  return finish(L, { size: 1, normalStrength: 0.8, wear: 0.45, seed: 14 });
 };
 
 gens.rust = () => {
@@ -390,7 +428,7 @@ gens.rust = () => {
       L.metal[i] = 1 - rust;
     }
   }
-  return finish(L, { size: 1, normalStrength: 2.5 });
+  return finish(L, { size: 1, normalStrength: 2.5, wear: 0.35, seed: 15 });
 };
 
 // Corrugated cardboard with tape strip and printed corporate stamp
@@ -426,7 +464,7 @@ gens.cardboard = () => {
       L.rough[i] = tape ? 0.35 : 0.9;
     }
   }
-  return finish(L, { size: 1, normalStrength: 1.3 });
+  return finish(L, { size: 1, normalStrength: 1.3, wear: 0.5, seed: 16 });
 };
 
 // Woven upholstery
@@ -446,7 +484,7 @@ gens.fabric = () => {
       L.rough[i] = 0.95;
     }
   }
-  return finish(L, { size: 0.25, normalStrength: 1.8 });
+  return finish(L, { size: 0.25, normalStrength: 1.8, wear: 0.4, seed: 17 });
 };
 
 // Lobby: blue-grey commercial carpet tiles, 0.5m tiles. 1 tile = 1m
@@ -582,7 +620,7 @@ gens.hazmat = () => {
       L.rough[i] = 0.5 + wrinkle * 0.15 + grain * 0.05;
     }
   }
-  return finish(L, { size: 0.5, normalStrength: 2.2 });
+  return finish(L, { size: 0.5, normalStrength: 2.2, wear: 0.45, seed: 18 });
 };
 
 // Glossy plastic micro-texture (tint via color)
@@ -600,7 +638,7 @@ gens.plastic = () => {
       L.rough[i] = 0.35 + smoothstep(0.55, 0.8, scuff) * 0.25 + n * 0.05;
     }
   }
-  return finish(L, { size: 0.5, normalStrength: 0.6 });
+  return finish(L, { size: 0.5, normalStrength: 0.6, wear: 0.45, seed: 19 });
 };
 
 // Grayscale tileable noise (linear) for shaders: R = low freq fbm, G = mid, B = high, A=1

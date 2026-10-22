@@ -1,7 +1,22 @@
 // Printed artwork for the furniture atlas: labels, stickers, stencils, screens, spines, glyphs.
 // (Regions are drawn once into the shared atlas canvas on first use.)
 import { RNG } from '../../core/rng.js';
-import { region, rUV, txt, marker, grunge, rrect, noiseFill, barcode, logo, lines, blobStains, seg7, font } from './atlas.js';
+import { region as atlasRegion, rUV, txt, marker, grunge, rrect, noiseFill, barcode, logo, lines, blobStains, seg7, font } from './atlas.js';
+import { ageCanvas, typeText, handText, stamp, AGE, INK } from '../../gfx/aged.js';
+
+// paper / printed regions get the aged-print pass (yellowing, foxing, folds, grime... see src/gfx/aged.js)
+const AGED = {
+  memo: { ...AGE.file, coffee: 1, dogEar: 0.5 }, memo2: { ...AGE.file, coffee: 0, folds: 'h' }, sticky: AGE.note,
+  calendar: { ...AGE.poster, folds: 'none', tape: 0 }, fc_label: AGE.label, box_label: AGE.label, box_files: AGE.label,
+  box_records: AGE.label, box_roomcorp: AGE.label, box_fragile: AGE.label, box_misc: AGE.label, asset_tag: AGE.sign,
+  inspect_tag: AGE.label, ext_label: AGE.sign, barrel_label: AGE.sign, jug_label: AGE.label, wetfloor: AGE.sign,
+  toolbox_sticker: AGE.sign, ladder_warn: AGE.sign, crate_stencil: AGE.sign, pallet_stamp: AGE.label, mug_logo: { ...AGE.label, foxing: 0 },
+};
+let ageSeed = 1;
+function region(name, w, h, draw) {
+  const a = AGED[name];
+  atlasRegion(name, w, h, a ? (ctx, w2, h2, rng) => { draw(ctx, w2, h2, rng); ageCanvas(ctx, w2, h2, { ...a, seed: ageSeed++ }); } : draw);
+}
 
 const PI = Math.PI, TAU = PI * 2, HP = PI / 2;
 
@@ -96,16 +111,15 @@ region('memo', 192, 256, (ctx, w, h, rng) => {
   noiseFill(ctx, w, h, rng, '#f2efe4', 300, 0.04);
   txt(ctx, 'MEMORANDUM', w / 2, 22, 18, '#1a1a1a', { fam: 'serif' });
   ctx.fillStyle = '#222'; ctx.fillRect(14, 34, w - 28, 2);
-  ['TO:   ALL STAFF', 'FROM: FACILITIES', 'RE:   EXITS'].forEach((s, i) => txt(ctx, s, 14, 50 + i * 15, 10, '#222', { align: 'left', fam: 'mono', weight: 'normal' }));
+  typeText(ctx, 'TO:   ALL STAFF\nFROM: FACILITIES\nRE:   EXITS', 14, 50, { size: 11, lineHeight: 15, seed: 21 });
   lines(ctx, 14, 100, w - 28, 9, 13, rng, 'rgba(30,30,40,0.7)', 2);
+  stamp(ctx, 'RECEIVED', w * 0.66, h * 0.6, { size: 15, color: INK.red, angle: -0.22, sub: 'OCT 14 1993', seed: 4 });
   ctx.fillStyle = 'rgba(160,120,50,0.12)'; ctx.beginPath(); ctx.arc(w * 0.7, h * 0.8, 26, 0, TAU); ctx.fill();
 });
 region('sticky', 96, 96, (ctx, w, h, rng) => {
   ctx.fillStyle = '#f3e26a'; ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = 'rgba(0,0,0,0.06)'; ctx.fillRect(0, 0, w, 10);
-  marker(ctx, 'ext. 4471', w / 2, 34, 17, 'rgba(20,30,120,0.9)', rng, { weight: 'normal' });
-  marker(ctx, "don't use", w / 2, 58, 15, 'rgba(20,30,120,0.9)', rng, { weight: 'normal' });
-  marker(ctx, 'stairwell B', w / 2, 76, 15, 'rgba(20,30,120,0.9)', rng, { weight: 'normal' });
+  handText(ctx, "ext. 4471\ndon't use\nstairwell B", w / 2, 34, { size: 20, lineHeight: 21, align: 'center', color: INK.blue, font: 'hand', seed: 6 });
 });
 region('calendar', 160, 224, (ctx, w, h, rng) => {
   ctx.fillStyle = '#f4f1e8'; ctx.fillRect(0, 0, w, h);
@@ -127,7 +141,7 @@ region('fc_label', 384, 96, (ctx, w, h, rng) => {
     const x = (i % 3) * 128, y = Math.floor(i / 3) * 48;
     ctx.fillStyle = i === 5 ? '#e9d9b0' : '#efe9d8'; ctx.fillRect(x, y, 128, 48);
     ctx.fillStyle = 'rgba(80,60,30,0.10)'; ctx.fillRect(x, y + 36, 128, 12);
-    txt(ctx, L[i], x + 64, y + 24, L[i].length > 9 ? 15 : 19, '#1e1e24', { fam: 'mono' });
+    typeText(ctx, L[i], x + 64, y + 30, { size: L[i].length > 9 ? 15 : 19, align: 'center', seed: 30 + i });
   }
 });
 region('spines', 512, 256, (ctx, w, h, rng) => {

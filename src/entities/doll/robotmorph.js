@@ -150,7 +150,7 @@ export function makeMorph(cos, over) {
         }
         if (wt <= 0) continue;
         pos.setXYZ(v, ox / wt, oy / wt, oz / wt);
-        if (nrm) { const l = Math.hypot(mx, my, mz) || 1; nrm.setXYZ(v, mx / l, my / l, mz / l); }
+        if (nrm) { const l = Math.hypot(mx, my, mz); if (l > 1e-8) nrm.setXYZ(v, mx / l, my / l, mz / l); }
         if (recolor && key === 'bead' && col && EYES.has(dom)) {
           const r = col.getX(v), gg = col.getY(v), bb = col.getZ(v), L = 0.299 * r + 0.587 * gg + 0.114 * bb;
           if (L < 0.4) { const k = L / irisL; col.setXYZ(v, iris[0] * k, iris[1] * k, iris[2] * k); }

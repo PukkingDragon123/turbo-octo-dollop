@@ -255,6 +255,9 @@ export function buildHead(B, face = {}) {
       p.set(Math.sin(t) * Math.cos(a) * R, Math.sin(t) * Math.sin(a) * R, -Math.cos(t) * R);
     });
     outward(iris, V());
+    // the dome's pole is a degenerate fan (zero-area faces -> zero normal -> NaN in the shader, visible
+    // whenever the LED pupil is off): use the exact sphere normal instead
+    { const ip = iris.attributes.position, inn = iris.attributes.normal; for (let i = 0; i < ip.count; i++) { const x = ip.getX(i), y = ip.getY(i), z = ip.getZ(i), l = Math.hypot(x, y, z) || 1; inn.setXYZ(i, x / l, y / l, z / l); } }
     const ic = kind === 'mismatch' && S === 'R' ? [0.24, 0.06, 0.05] : [0.12, 0.16, 0.2];
     vcol(iris, (x, y, z) => { const t = Math.hypot(x, y) / (r * Math.sin(ia)); const k = 0.5 + 0.7 * t; return [ic[0] * k, ic[1] * k, ic[2] * k]; });
     B.rigid(eye, 'bead', iris);

@@ -85,26 +85,38 @@ function paintFace(x, f, frame) {
     }
   }
   // ---- form shading (baked light from above): sockets, nose sides, folds, under-lip, jaw
-  blurred(x, 6, () => {
+  blurred(x, 8, () => {
     for (const s of (cyc ? [0] : [-1, 1])) {
       const th = s * FACE.eyeTh * (cyc ? 0 : 1);
-      blob(x, th + s * -0.12, FACE.eyePh + 0.02, 34, 46, '120,70,70', 0.32);       // inner corner (nose bridge side)
-      blob(x, th, FACE.eyePh + 0.09, 92, 40, '150,100,96', 0.26);                    // upper lid crease / socket
-      blob(x, th, FACE.eyePh - 0.1, 80, 30, f.id === 'sleepy' ? '110,70,120' : '130,96,120', f.id === 'sleepy' ? 0.5 : 0.26);   // under-eye
+      blob(x, th + s * -0.13, FACE.eyePh + 0.03, 40, 56, '110,60,60', 0.45);       // inner corner (nose bridge side)
+      blob(x, th, FACE.eyePh + 0.1, 104, 46, '140,88,86', 0.42);                    // upper lid crease / socket
+      blob(x, th + s * 0.1, FACE.eyePh + 0.02, 60, 70, '120,80,84', 0.22);          // outer socket
+      blob(x, th, FACE.eyePh - 0.11, 86, 30, f.id === 'sleepy' ? '110,70,120' : '120,86,116', f.id === 'sleepy' ? 0.55 : 0.34);   // under-eye
+      blob(x, s * 0.82, 0.18, 60, 150, '120,90,90', 0.3);                             // temples turn away
     }
+    blob(x, 0, -0.95, 300, 60, '120,80,76', 0.35);                                    // under the jaw
     for (const s of [-1, 1]) {
       blob(x, s * 0.1, -0.02, 18, 120, '150,92,84', 0.28);                           // sides of the nose bridge
       x.strokeStyle = 'rgba(150,84,76,0.38)'; x.lineWidth = 9; x.lineCap = 'round';
       x.beginPath(); x.moveTo(FU(s * 0.13), FV(-0.24)); x.quadraticCurveTo(FU(s * 0.3), FV(-0.33), FU(s * (0.33 + (masc ? 0.02 : 0))), FV(-0.47)); x.stroke();   // nasolabial
       blob(x, s * 0.62, -0.42, 70, 140, '140,92,84', 0.2);                           // under the cheekbones
     }
-    blob(x, 0, -0.29, 40, 14, '120,60,60', 0.4);                                     // under the nose
-    blob(x, 0, -0.56, 70, 18, '120,70,66', 0.34);                                    // under the lower lip
+    blob(x, 0, -0.29, 46, 16, '110,52,52', 0.55);                                    // under the nose
+    blob(x, 0, -0.56, 80, 22, '110,62,60', 0.5);                                     // under the lower lip
+    for (const s of [-1, 1]) blob(x, s * 0.022, -0.33, 7, 30, '150,96,90', 0.35);    // philtrum ridges' groove
     blob(x, 0, 0.35, 140, 24, '150,108,96', 0.12);                                   // brow ridge underside
   });
   // highlights: bridge, tip, cheekbones, chin, cupid's bow
-  blob(x, 0, 0.06, 14, 120, '255,246,236', 0.4);
-  blob(x, 0.01, -0.17, 14, 12, '255,250,244', 0.55);
+  blob(x, 0, 0.06, 16, 120, '255,244,232', 0.32);
+  blob(x, 0.005, -0.18, 22, 18, '255,240,230', 0.3);
+  for (const s of [-1, 1]) blob(x, s * 0.012, -0.33, 4, 26, '255,236,226', 0.35);   // philtrum ridges
+  // fine lines: forehead, crow's feet, under-eye crease
+  x.strokeStyle = 'rgba(150,100,90,0.12)'; x.lineWidth = 1.6;
+  for (let i = 0; i < 3; i++) { x.beginPath(); x.moveTo(FU(0.4), FV(0.46 + i * 0.05)); x.quadraticCurveTo(FU(0), FV(0.49 + i * 0.05), FU(-0.4), FV(0.46 + i * 0.05)); x.stroke(); }
+  if (!cyc) for (const s of [-1, 1]) {
+    for (let i = 0; i < (fem ? 1 : 3); i++) { x.beginPath(); x.moveTo(FU(s * 0.58), FV(FACE.eyePh + 0.02 - i * 0.04)); x.lineTo(FU(s * 0.66), FV(FACE.eyePh + 0.05 - i * 0.07)); x.stroke(); }
+    x.beginPath(); x.moveTo(FU(s * 0.26), FV(FACE.eyePh - 0.1)); x.quadraticCurveTo(FU(s * 0.4), FV(FACE.eyePh - 0.16), FU(s * 0.52), FV(FACE.eyePh - 0.11)); x.stroke();
+  }
   for (const s of [-1, 1]) blob(x, s * 0.5, 0.0, 60, 26, '255,240,228', 0.28, s * -0.3);
   blob(x, 0, -0.74, 34, 18, '255,240,230', 0.3);
   // ---- pores and fine mottling
@@ -137,32 +149,37 @@ function paintFace(x, f, frame) {
     if (fem) soft(x, 0, -h * 0.6, w * 1.1, h * 0.8, '140,96,100', 0.24);
     // caruncle (inner corner, toward the nose: canvas +s side)
     soft(x, s * w * 0.95, h * 0.1, 9, 7, '214,120,120', 0.8);
-    // upper lash line
-    x.strokeStyle = 'rgba(34,20,18,0.92)'; x.lineCap = 'round';
-    x.lineWidth = fem ? 5.5 : 3.8;
-    x.beginPath(); x.ellipse(0, h * 0.12, w, h, 0, PI * 1.04, PI * 1.96); x.stroke();
-    if (fem) { x.lineWidth = 3; x.beginPath(); x.moveTo(-s * w * 0.96, -h * 0.02); x.lineTo(-s * (w + 14), -h * 0.32); x.stroke(); }   // flick
-    // lower lash line + waterline
-    x.lineWidth = 1.6; x.strokeStyle = 'rgba(70,40,36,0.55)';
-    x.beginPath(); x.ellipse(0, -h * 0.05, w * 0.97, h * 0.92, 0, PI * 0.08, PI * 0.92); x.stroke();
-    x.lineWidth = 2.2; x.strokeStyle = 'rgba(214,140,130,0.45)';
-    x.beginPath(); x.ellipse(0, -h * 0.14, w * 0.92, h * 0.86, 0, PI * 0.12, PI * 0.88); x.stroke();
-    // lashes: upper (longer toward the outer corner), lower (sparse)
-    const nUp = fem ? 30 : masc ? 16 : 22, lenUp = fem ? 22 : masc ? 10 : 14;
-    x.strokeStyle = 'rgba(22,14,12,0.85)';
+    // upper lid skin shadow + smudged lash line
+    blurred(x, 3, () => {
+      x.strokeStyle = 'rgba(60,34,30,0.55)'; x.lineWidth = fem ? 10 : 8; x.lineCap = 'round';
+      x.beginPath(); x.ellipse(0, h * 0.14, w * 0.98, h, 0, PI * 1.06, PI * 1.94); x.stroke();
+    });
+    x.strokeStyle = 'rgba(26,16,14,0.9)'; x.lineCap = 'round';
+    x.lineWidth = fem ? 4 : 2.8;
+    x.beginPath(); x.ellipse(0, h * 0.12, w, h, 0, PI * 1.05, PI * 1.95); x.stroke();
+    // waterline + soft lower lid rim
+    blurred(x, 2, () => {
+      x.lineWidth = 3; x.strokeStyle = 'rgba(200,120,112,0.45)';
+      x.beginPath(); x.ellipse(0, -h * 0.12, w * 0.93, h * 0.88, 0, PI * 0.12, PI * 0.88); x.stroke();
+      x.lineWidth = 2; x.strokeStyle = 'rgba(80,46,40,0.35)';
+      x.beginPath(); x.ellipse(0, -h * 0.04, w * 0.97, h * 0.95, 0, PI * 0.1, PI * 0.9); x.stroke();
+    });
+    // upper lashes: a dense fringe of fine curved hairs, longer and swept out toward the outer corner
+    const nUp = fem ? 90 : masc ? 46 : 64, lenUp = fem ? 20 : masc ? 9 : 13;
     for (let i = 0; i < nUp; i++) {
-      const t = i / (nUp - 1), a = PI * (1.06 + t * 0.88);
+      const t = rng.next(), a = PI * (1.08 + t * 0.84);
       const outer = (Math.cos(a) * -s + 1) / 2;   // 0 inner .. 1 outer
       const px = Math.cos(a) * w, py = Math.sin(a) * h + h * 0.12;
-      const L = lenUp * (0.45 + 0.75 * outer) * (0.8 + rng.next() * 0.4);
-      const dx = Math.cos(a) * 0.5 - s * outer * 0.4, dy = -1;
-      x.lineWidth = 1.2 + rng.next() * 0.6;
-      x.beginPath(); x.moveTo(px, py); x.quadraticCurveTo(px + dx * L * 0.6, py + dy * L * 0.55, px + dx * L * 1.05 - s * outer * 3, py + dy * L * 0.75); x.stroke();
+      const L = lenUp * (0.35 + 0.85 * outer) * (0.7 + rng.next() * 0.5);
+      const dx = Math.cos(a) * 0.35 - s * outer * 0.55, dy = -1;
+      x.strokeStyle = `rgba(20,12,10,${0.45 + rng.next() * 0.4})`;
+      x.lineWidth = 0.7 + rng.next() * 0.7;
+      x.beginPath(); x.moveTo(px, py); x.quadraticCurveTo(px + dx * L * 0.3, py + dy * L * 0.7, px + dx * L * 1.1 - s * outer * 4, py + dy * L * 0.9); x.stroke();
     }
-    x.strokeStyle = 'rgba(40,26,22,0.5)'; x.lineWidth = 1;
-    for (let i = 0; i < 9; i++) {
-      const t = (i + 0.5) / 9, a = PI * (0.15 + t * 0.7), px = Math.cos(a) * w * 0.96, py = Math.sin(a) * h * 0.92 - h * 0.05;
-      x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * 3, py + 6 + rng.next() * 4); x.stroke();
+    x.strokeStyle = 'rgba(40,26,22,0.3)'; x.lineWidth = 0.7;
+    for (let i = 0; i < (fem ? 22 : 12); i++) {
+      const a = PI * (0.18 + rng.next() * 0.64), px = Math.cos(a) * w * 0.96, py = Math.sin(a) * h * 0.92 - h * 0.05;
+      x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * 2, py + 3 + rng.next() * 4); x.stroke();
     }
     if (f.eyes === 'button') {
       x.strokeStyle = 'rgba(30,20,16,0.8)'; x.lineWidth = 3;
@@ -174,11 +191,11 @@ function paintFace(x, f, frame) {
   const browC = masc ? '46,32,26' : fem ? '70,48,36' : '58,40,30';
   for (const s of (cyc ? [0] : [-1, 1])) {
     const bth = s * FACE.browTh, bph = FACE.browPh + (s > 0 ? 0.008 : 0);
-    const half = (masc ? 0.17 : fem ? 0.15 : 0.16) * PX, thick = (masc ? 17 : fem ? 9 : 13);
+    const half = (masc ? 0.18 : fem ? 0.16 : 0.17) * PX, thick = (masc ? 26 : fem ? 15 : 20);
     const arch = fem ? 16 : masc ? 4 : 9;
     const bx = FU(bth), by = FV(bph) + 6;
     blurred(x, 5, () => soft(x, bx, by, half * 1.05, thick * 1.3, browC, 0.35));
-    const nH = masc ? 420 : fem ? 220 : 300;
+    const nH = masc ? 900 : fem ? 520 : 700;
     for (let i = 0; i < nH; i++) {
       const t = rng.next() * 2 - 1;                 // -1 inner .. 1 outer (in character space)
       const cxp = bx + -s * t * half, inner = (1 - t) / 2;
@@ -194,8 +211,8 @@ function paintFace(x, f, frame) {
   if (f.browRot > 0.3 || f.id === 'grumpy') blob(x, 0, FACE.browPh - 0.04, 28, 30, '130,80,70', 0.3);   // frown furrow
   // ---- nose: nostrils, alar creases, tip
   for (const s of [-1, 1]) {
-    soft(x, FU(s * 0.04), FV(-0.272), 13, 7, '58,28,26', 0.85, s * 0.3);
-    soft(x, FU(s * 0.075), FV(-0.24), 10, 20, '150,80,72', 0.4, s * 0.4);
+    soft(x, FU(s * 0.04), FV(-0.272), 15, 8, '62,30,28', 0.7, s * 0.3);
+    soft(x, FU(s * 0.078), FV(-0.24), 14, 26, '140,74,68', 0.45, s * 0.4);
   }
   if (f.mouth === 'cat') {
     x.fillStyle = 'rgba(200,110,130,0.85)'; x.beginPath(); x.moveTo(FU(-0.05), FV(-0.19)); x.lineTo(FU(0.05), FV(-0.19)); x.lineTo(FU(0), FV(-0.235)); x.closePath(); x.fill();
@@ -208,7 +225,7 @@ function paintFace(x, f, frame) {
   const L = FU(mw), R = FU(-mw), C = FU(0) + 3;
   const lift = M.lift;
   const yAt = (t) => my - lift * t * t;
-  const upH = fem ? 22 : masc ? 14 : 18, loH = fem ? 30 : masc ? 22 : 26;
+  const upH = fem ? 40 : masc ? 30 : 35, loH = fem ? 50 : masc ? 40 : 46;
   const lipCol = fem ? ['176,74,84', '198,96,104', '150,58,70'] : masc ? ['168,98,96', '182,112,108', '140,78,78'] : ['172,86,90', '192,104,106', '146,66,74'];
   if (M.cat) {
     x.strokeStyle = 'rgba(90,34,40,0.9)'; x.lineWidth = 4;
@@ -230,7 +247,10 @@ function paintFace(x, f, frame) {
       lg.addColorStop(0, `rgba(${lipCol[0]},0.85)`); lg.addColorStop(0.45, `rgba(${lipCol[2]},0.95)`); lg.addColorStop(0.6, `rgba(${lipCol[1]},0.9)`); lg.addColorStop(1, `rgba(${lipCol[0]},0.7)`);
       x.fillStyle = lg; x.fill();
     };
-    blurred(x, 2.2, () => { lip(true); lip(false); });
+    blurred(x, 3.5, () => { lip(true); lip(false); });
+    // vermilion border: a faint darker rim, then the inner wet darkening toward the parting line
+    x.save(); x.globalAlpha = 0.18; x.strokeStyle = '#6a2a30'; x.lineWidth = 2; lip(true); x.stroke(); lip(false); x.stroke(); x.restore();
+    soft(x, C, my + 4, (R - L) * 0.42, 9, '90,26,34', 0.5);
     // vertical lip lines
     x.strokeStyle = 'rgba(110,40,48,0.25)'; x.lineWidth = 1;
     for (let i = 0; i < 46; i++) {

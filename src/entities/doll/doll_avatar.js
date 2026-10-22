@@ -53,7 +53,13 @@ const PARTS = new Map();
 export function getPart(key, build) {
   if (!PARTS.has(key)) {
     const B = build();
-    PARTS.set(key, B instanceof RPartBuilder ? B.finish() : B);
+    const P = B instanceof RPartBuilder ? B.finish() : B;
+    // zero-length normals (degenerate fans) turn into NaN pixels, which bloom spreads over the screen
+    for (const g of P.geos?.values?.() || []) {
+      const n = g.attributes.normal; if (!n) continue;
+      for (let i = 0; i < n.count; i++) if (!(Math.abs(n.getX(i)) + Math.abs(n.getY(i)) + Math.abs(n.getZ(i)) > 1e-6)) n.setXYZ(i, 0, 0, -1);
+    }
+    PARTS.set(key, P);
   }
   return PARTS.get(key);
 }

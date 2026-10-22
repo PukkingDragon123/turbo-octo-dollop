@@ -405,6 +405,7 @@ export class QuestKiosk extends Kiosk {
     const pick = this.nodes.find((n) => e.state(n) === 'ready') || this.nodes.find((n) => e.state(n) === 'active' && n.sec !== 'MAIN') || this.nodes.find((n) => e.state(n) === 'active');
     if (pick) this.sel = pick.id;
     this._open({
+      distance: 0.56, // frame the tree tighter than the default screen fit
       view() { return self._view(); },
       select() { self._claim(); },
       draw(ctx, w, h, pal, t) { self._draw(ctx, w, h, pal, t, true); },
@@ -575,12 +576,12 @@ export class QuestKiosk extends Kiosk {
       const tc = st === 'claimed' ? pal.bg : st === 'locked' ? pal.dim : st === 'ready' ? pal.hi : col;
       if (st === 'locked') lock(ctx, x + 6, y + 8, 13, hexA(pal.dim, 0.9));
       else if (st === 'claimed') check(ctx, x + 6, y + 9, 13, pal.bg);
-      text(ctx, n.short, x + 24, y + 2, 22, tc, 'left');
+      text(ctx, n.short, x + 24, y + 3, 21, tc, 'left');
       if (st === 'active') {
         ctx.fillStyle = hexA(col, 0.25); ctx.fillRect(x + 4, y + h - 6, w - 8, 3);
         ctx.fillStyle = col; ctx.fillRect(x + 4, y + h - 6, (w - 8) * pr.frac, 3);
       }
-      if (st === 'ready') text(ctx, 'CLAIM', x + w - 4, y + 4, 16, pal.hi, 'right');
+      if (st === 'ready' && Math.floor(t * 3) % 2) { ctx.fillStyle = pal.hi; ctx.fillRect(x + w - 12, y - 6, 12, 14); ctx.fillStyle = pal.bg; ctx.fillRect(x + w - 7, y - 4, 2, 6); ctx.fillRect(x + w - 7, y + 4, 2, 2); } // "!" badge
       if (sel) {
         const p = 4 + Math.sin(t * 8) * 2, L = 10;
         ctx.strokeStyle = pal.hi; ctx.lineWidth = 2;

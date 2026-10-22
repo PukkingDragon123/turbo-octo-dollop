@@ -78,13 +78,13 @@ export const QUEST_TREES = {
     Q({ id: 'v_slam', sec: 'SALVAGE', short: 'BIG SLAM', name: 'BIG SLAM', desc: 'Crush 8 items in a single slam.', req: { c: 'combo', n: 8 }, deps: ['v_six'], reward: { credits: 60000 }, x: 1, y: 4 }),
     Q({ id: 'v_strip', sec: 'SALVAGE', short: 'LIQUIDATOR', name: 'ASSET STRIPPER', desc: 'HARD: deliver $500,000 in this level.', req: { c: 'escape', n: 500000 }, deps: ['v_slam'], reward: { credits: 100000, ach: 'asset_stripper' }, x: 1, y: 5, hard: true }),
     // ---- COMBAT
-    Q({ id: 'c_defense', sec: 'COMBAT', short: 'SELF DEFENSE', name: 'SELF DEFENSE', desc: 'Land 3 melee hits on anything. Unlocks WEAPONS in the store.', req: { c: 'swings', n: 3 }, deps: ['m_cash'], reward: { credits: 8000, unlock: ['shop:weapons'] }, x: 2, y: 1 }),
-    Q({ id: 'c_pest', sec: 'COMBAT', short: 'PEST CONTROL', name: 'PEST CONTROL', desc: 'Land 10 weapon hits on creatures.', req: { c: 'hits', n: 10 }, deps: ['c_defense'], reward: { credits: 35000 }, x: 2, y: 2 }),
+    Q({ id: 'c_defense', sec: 'COMBAT', short: 'DEFENSE', name: 'SELF DEFENSE', desc: 'Land 3 melee hits on anything. Unlocks WEAPONS in the store.', req: { c: 'swings', n: 3 }, deps: ['m_cash'], reward: { credits: 8000, unlock: ['shop:weapons'] }, x: 2, y: 1 }),
+    Q({ id: 'c_pest', sec: 'COMBAT', short: 'PEST CTRL', name: 'PEST CONTROL', desc: 'Land 10 weapon hits on creatures.', req: { c: 'hits', n: 10 }, deps: ['c_defense'], reward: { credits: 35000 }, x: 2, y: 2 }),
     Q({ id: 'c_basher', sec: 'COMBAT', short: 'BASHER', name: 'BACTERIA BASHER', desc: 'HARD: stun the Bacteria 3 times.', req: { c: 'stuns', n: 3 }, deps: ['c_pest'], reward: { credits: 120000, ach: 'bacteria_basher' }, x: 2, y: 3, hard: true }),
     // ---- RESEARCH
-    Q({ id: 'r_contact', sec: 'RESEARCH', short: 'FIRST CONTACT', name: 'FIRST CONTACT', desc: 'Study 4 different things with the watch SCANNER.', req: { c: 'scan', n: 4 }, deps: ['m_cash'], reward: { credits: 10000, unlock: ['app:radio'] }, x: 3, y: 1 }),
+    Q({ id: 'r_contact', sec: 'RESEARCH', short: 'CONTACT', name: 'FIRST CONTACT', desc: 'Study 4 different things with the watch SCANNER.', req: { c: 'scan', n: 4 }, deps: ['m_cash'], reward: { credits: 10000, unlock: ['app:radio'] }, x: 3, y: 1 }),
     Q({ id: 'r_paper', sec: 'RESEARCH', short: 'PAPER TRAIL', name: 'PAPER TRAIL', desc: 'Find 3 CASE FILES hidden in office rooms and feed them to the crusher.', req: { c: 'files', n: 3 }, deps: ['r_contact'], reward: { credits: 40000 }, x: 3, y: 2 }),
-    Q({ id: 'r_bio', sec: 'RESEARCH', short: 'FIELD BIOLOGY', name: 'FIELD BIOLOGY', desc: 'Study 2 kinds of creature with the SCANNER.', req: { c: 'scan_mon', n: 2 }, deps: ['r_paper', 'c_pest'], reward: { credits: 50000 }, x: 3, y: 3 }),
+    Q({ id: 'r_bio', sec: 'RESEARCH', short: 'BIOLOGY', name: 'FIELD BIOLOGY', desc: 'Study 2 kinds of creature with the SCANNER.', req: { c: 'scan_mon', n: 2 }, deps: ['r_paper', 'c_pest'], reward: { credits: 50000 }, x: 3, y: 3 }),
     Q({ id: 'r_dossier', sec: 'RESEARCH', short: 'DOSSIER', name: 'COMPLETE DOSSIER', desc: 'HARD: recover all 6 case files and study 15 things.', req: { all: [{ c: 'files', n: 6, label: 'CASE FILES' }, { c: 'scan', n: 15, label: 'STUDIES' }] }, deps: ['r_bio'], reward: { credits: 200000, ach: 'dossier' }, x: 3, y: 4, hard: true }),
     // ---- TOOLS
     Q({ id: 't_store', sec: 'TOOLS', short: 'CUSTOMER', name: 'VALUED CUSTOMER', desc: 'Buy 2 things from the company store.', req: { c: 'buy', n: 2 }, deps: ['m_cash'], reward: { credits: 6000, unlock: ['app:flash'] }, x: 4, y: 1 }),
@@ -110,7 +110,7 @@ export const QUEST_TREES = {
 // ---------------------------------------------------------------------------------------------- shop
 export const SHOP_CATS = [
   { id: 'basic', name: 'BASIC', unlock: 'shop:basic', hint: 'EARN $1,000' },
-  { id: 'weapons', name: 'WEAPONS', unlock: 'shop:weapons', hint: 'COMBAT: SELF DEFENSE' },
+  { id: 'weapons', name: 'WEAPONS', unlock: 'shop:weapons', hint: 'COMBAT: DEFENSE' },
   { id: 'armor', name: 'ARMOR', unlock: 'shop:armor', hint: 'SURVIVAL: PROBATION' },
   { id: 'upgrades', name: 'UPGRADES', unlock: 'shop:upgrades', hint: 'SALVAGE: SIX FIGURES' },
   { id: 'apps', name: 'APPS', unlock: 'shop:apps', hint: 'EARN $1,000' },
@@ -158,7 +158,7 @@ export const WATCH_APPS = [
   { id: 'bank', name: 'BANK', icon: 'coin', builtin: true },
   { id: 'map', name: 'MAP', icon: 'map', via: 'BUILD BASE' },
   { id: 'scanner', name: 'SCANNER', icon: 'scan', via: 'GET FOOD' },
-  { id: 'radio', name: 'RADIO', icon: 'radio', via: 'FIRST CONTACT' },
+  { id: 'radio', name: 'RADIO', icon: 'radio', via: 'CONTACT' },
   { id: 'flash', name: 'FLASH+', icon: 'bolt', via: 'CUSTOMER' },
 ];
 

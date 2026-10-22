@@ -275,7 +275,7 @@ export class Combat {
     const key = 'ko:' + from;
     lvl.spawnBody(key, r?.cosmetics || (from === net.selfId ? this.p.cosmetics : {}), new THREE.Vector3().fromArray(d.p), d.yaw || 0, new THREE.Vector3().fromArray(d.v || [0, 0, 0]));
     clearTimeout(this._koTimers?.[from]);
-    (this._koTimers ||= {})[from] = setTimeout(() => { if (this.game.world === w) lvl.removeBody?.(key); }, (COMBAT.koTime + 4) * 1000);
+    (this._koTimers ||= {})[from] = setTimeout(() => { if (this.game.world === w) lvl.removeBody?.(key); }, (COMBAT.koTime + 13) * 1000); // safety net if koEnd never arrives (disconnect)
   }
 
   // host: a clone died to a huge hit -> snap its ragdoll apart and scatter robot parts

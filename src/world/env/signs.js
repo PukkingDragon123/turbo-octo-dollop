@@ -2,6 +2,7 @@
 // wall lettering and painted floor markings, all from one procedural canvas atlas so every sign in a chunk is a
 // single merged mesh / draw call lit by the baked grid light (bakedMaterial with this atlas as its map).
 import * as THREE from 'three';
+import { ageCanvas, AGE, FONT } from '../../gfx/aged.js';
 
 const AW = 1024, AH = 1024;
 // atlas regions [x, y, w, h] in px
@@ -45,19 +46,19 @@ function atlas() {
     g.fillStyle = blue; g.fillRect(x, y, w, h);
     g.strokeStyle = '#d9d3c2'; g.lineWidth = 5; g.strokeRect(x + 7, y + 7, w - 14, h - 14);
     g.fillStyle = '#f1ede2';
-    g.font = `bold ${Math.round(h * 0.34)}px "Arial Narrow", Arial, Helvetica, sans-serif`;
+    g.font = `${Math.round(h * 0.34)}px ${FONT.deco}`;
     g.textBaseline = 'middle';
     const ay = y + h / 2;
-    if (arrow === 'r') { g.textAlign = 'left'; g.fillText(text, x + 26, ay - (sub ? 12 : 0)); arrowPath(x + w - 62, ay, 74, 0); }
-    else if (arrow === 'l') { g.textAlign = 'right'; g.fillText(text, x + w - 26, ay - (sub ? 12 : 0)); arrowPath(x + 62, ay, 74, 2); }
-    else if (arrow === 'u') { g.textAlign = 'left'; g.fillText(text, x + 26, ay - (sub ? 12 : 0)); arrowPath(x + w - 62, ay, 74, 3); }
-    else { g.textAlign = 'center'; g.fillText(text, x + w / 2, ay - (sub ? 12 : 0)); }
+    if (arrow === 'r') { g.textAlign = 'left'; g.fillText(text, x + 26, ay - (sub ? 12 : 0), w - 140); arrowPath(x + w - 62, ay, 74, 0); }
+    else if (arrow === 'l') { g.textAlign = 'right'; g.fillText(text, x + w - 26, ay - (sub ? 12 : 0), w - 140); arrowPath(x + 62, ay, 74, 2); }
+    else if (arrow === 'u') { g.textAlign = 'left'; g.fillText(text, x + 26, ay - (sub ? 12 : 0), w - 140); arrowPath(x + w - 62, ay, 74, 3); }
+    else { g.textAlign = 'center'; g.fillText(text, x + w / 2, ay - (sub ? 12 : 0), w - 60); }
     if (sub) {
-      g.font = `${Math.round(h * 0.17)}px Arial, Helvetica, sans-serif`;
+      g.font = `${Math.round(h * 0.18)}px ${FONT.print}`;
       g.fillStyle = '#c9c2ae';
-      if (arrow === 'l') { g.textAlign = 'right'; g.fillText(sub, x + w - 28, ay + 26); }
-      else if (arrow) { g.textAlign = 'left'; g.fillText(sub, x + 28, ay + 26); }
-      else { g.textAlign = 'center'; g.fillText(sub, x + w / 2, ay + 26); }
+      if (arrow === 'l') { g.textAlign = 'right'; g.fillText(sub, x + w - 28, ay + 26, w - 60); }
+      else if (arrow) { g.textAlign = 'left'; g.fillText(sub, x + 28, ay + 26, w - 60); }
+      else { g.textAlign = 'center'; g.fillText(sub, x + w / 2, ay + 26, w - 60); }
     }
   };
   plate(R.pads_r, 'TELEPORT PADS', 'r', 'SELL · DISPATCH');
@@ -107,6 +108,16 @@ function atlas() {
     g.fillStyle = `rgba(${40 + Math.random() * 40},${35 + Math.random() * 30},20,${Math.random() * 0.08})`;
     const s = 1 + Math.random() * 6;
     g.fillRect(Math.random() * AW, Math.random() * AH, s, s);
+  }
+  // aged print: faded enamel, scratches, grime on the plates; worn floor paint (src/gfx/aged.js)
+  let seed = 1;
+  for (const [k, r] of Object.entries(R)) {
+    if (k === 'plate' || k === 'white') continue;
+    const [x, y, w, h] = r;
+    const o = k === 'hazard' || k === 'line' || k === 'arrow' ? { ...AGE.sign, scratches: 0.9, grime: 0.7, edges: 0.2 } : { ...AGE.sign, yellow: 0.2 };
+    g.save(); g.translate(x, y); g.beginPath(); g.rect(0, 0, w, h); g.clip();
+    ageCanvas(g, w, h, { ...o, seed: seed++ });
+    g.restore();
   }
   _tex = new THREE.CanvasTexture(c);
   _tex.colorSpace = THREE.SRGBColorSpace;

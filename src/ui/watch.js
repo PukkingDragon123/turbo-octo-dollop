@@ -645,7 +645,7 @@ export class Watch {
     const r = e.rules, ry = by + 22;
     a.hline(2, AW - 3, ry, P.faint);
     text(a, `${r.name}: ${r.title}`.slice(0, 30), 4, ry + 3, P.hi, { font: FONT3 });
-    text(a, `PRICES X${r.priceMul}  HAZARDS: ${r.hazards.slice(0, 2).join(', ')}`.slice(0, 38), 4, ry + 10, P.dim, { font: FONT3 });
+    text(a, `PRICES X${r.priceMul} · ${r.hazards[0]}`.slice(0, 38), 4, ry + 10, P.dim, { font: FONT3 });
     text(a, 'PURCHASES DO NOT DRAIN THE FUND', 4, ry + 17, P.dim, { font: FONT3 });
     const last = this.game.world?.level?.mission?.crusher?.lastSale;
     if (last) text(a, `LAST UPLOAD +${short$(last)}`, 4, AH - 9, P.fg);

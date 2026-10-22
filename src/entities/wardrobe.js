@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { FONT } from '../ui/fonts.js';
 
 const PI = Math.PI, TAU = PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -798,7 +799,8 @@ export class Sparks {
 // panels, the floor hatch + drop shaft, panel controls (knob / toggle / fader / selector), crates,
 // debris (bolts, oil, ripped parts), steam and dust motes. All procedural.
 // =====================================================================================================
-export const PLEX = "'IBM Plex Mono', monospace", VT = "'VT323', monospace";
+// signage type roles (ui/fonts.js): art-deco display for sign titles, worn typewriter for the small print
+export const PLEX = FONT.deco, VT = FONT.type;
 export { mesh as kitMesh, rbox as kitRbox, M4 as kitM4 };
 
 let _F = null;
@@ -924,7 +926,7 @@ export class HangPanel {
       g.fillStyle = '#070605'; g.fillRect(0, 0, w, h);
       g.strokeStyle = dim ? '#2a241c' : '#3a2c18'; g.lineWidth = 6; g.strokeRect(14, 14, w - 28, h - 28);
       g.fillStyle = acc; g.shadowColor = acc; g.shadowBlur = dim ? 0 : 22; g.textBaseline = 'middle';
-      fitText(g, title, w / 2, h * (sub ? 0.4 : 0.5), w - 120, Math.round(h * 0.42), `bold {s}px ${PLEX}`);
+      fitText(g, title, w / 2, h * (sub ? 0.42 : 0.52), w - 120, Math.round(h * 0.44), `{s}px ${PLEX}`);
       g.shadowBlur = dim ? 0 : 8;
       if (sub) { g.fillStyle = dim ? '#5a4c38' : '#e9c98a'; fitText(g, sub, w / 2, h * 0.76, w - 140, Math.round(h * 0.2), `{s}px ${VT}`); }
       g.shadowBlur = 0;
