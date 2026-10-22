@@ -380,3 +380,49 @@ canvas.px, #ui canvas { image-rendering: pixelated; image-rendering: crisp-edges
   filter: drop-shadow(0 0 6px rgba(255,200,90,0.6)); transition: transform 0.6s cubic-bezier(0.5, -0.3, 0.7, 1), opacity 0.6s ease-in; }
 .flyitem.go { transform: translate(0, 34vh) scale(0.4); opacity: 0; }
 #in-dest { width: 100%; }
+
+/* ===== Elegant UI override: replaces the old pixel-art frames on every remaining HTML screen =====
+   One face (Cormorant Garamond), ivory ink, hairline gold rules, dark glass. No border-images, no pixel scaling. */
+:root { --lux-font: "Cormorant Garamond", "EB Garamond", Garamond, Georgia, serif; --lux-ink: #efe6d2; --lux-gold: #c9aa6b; --lux-dim: #8f8571; --lux-bg: rgba(9, 8, 7, 0.84); --lux-red: #d0644c; }
+#ui, #ui * { font-family: var(--lux-font) !important; image-rendering: auto !important; }
+#ui .crt, #pause .crt, #settings .crt, #controls .crt, #alert .crt, #runover .crt, #custom .crt, #pxterm, #pxwatch, #pxlobby {
+  border: 1px solid rgba(201, 170, 107, 0.45) !important; border-image: none !important; border-radius: 2px;
+  background: var(--lux-bg) !important; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.6) !important;
+  color: var(--lux-ink) !important; backdrop-filter: blur(6px); }
+#ui .crt::before, #ui .crt::after { display: none !important; }
+#ui .crt h1, #ui .crt h2 { font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--lux-ink) !important; text-shadow: none !important;
+  border-bottom: 1px solid rgba(201, 170, 107, 0.35); padding-bottom: 0.35em; }
+#ui .crt h2 { font-size: 30px; }
+#ui .crt .sub, #ui .crt .hint, #ui .crt label { color: var(--lux-dim) !important; font-style: italic; letter-spacing: 0.04em; text-shadow: none !important; }
+#ui .crt .btn, #pxlobby .lp-start {
+  border: none !important; border-image: none !important; background: none !important; color: var(--lux-ink) !important; text-shadow: none !important;
+  font-size: 26px; font-weight: 500; letter-spacing: 0.08em; padding: 6px 4px !important; position: relative; text-align: left; transition: color 0.2s, letter-spacing 0.25s; }
+#ui .crt .btn::before { content: '' !important; position: absolute; left: 0; bottom: 4px; width: 0; height: 1px; background: var(--lux-gold) !important; transition: width 0.3s ease-out; background-image: none !important; }
+#ui .crt .btn:hover, #ui .crt .btn:focus-visible, #ui .crt .btn.sel { color: var(--lux-gold) !important; letter-spacing: 0.12em; }
+#ui .crt .btn:hover::before, #ui .crt .btn.sel::before { width: 100%; }
+#ui .crt .btn:active { transform: none !important; opacity: 0.8; }
+#ui .crt .btn:disabled { color: var(--lux-dim) !important; }
+#ui .crt input[type=text], #ui .crt select { background: transparent !important; border: none !important; border-bottom: 1px solid rgba(201, 170, 107, 0.5) !important; border-image: none !important; color: var(--lux-ink) !important; font-size: 22px; }
+#ui .crt input[type=range] { accent-color: var(--lux-gold); }
+#ui .kbd { border: 1px solid rgba(201, 170, 107, 0.5) !important; border-image: none !important; background: none !important; color: var(--lux-gold) !important; border-radius: 2px; padding: 0 6px; font-style: normal; }
+#prompt { color: var(--lux-ink) !important; font-size: 22px !important; font-style: italic; letter-spacing: 0.06em; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9) !important;
+  background: none !important; border: none !important; border-image: none !important; }
+#prompt:not(:empty) { animation: luxin 0.35s cubic-bezier(.2, .9, .3, 1.2) !important; }
+@keyframes luxin { from { opacity: 0; transform: translate(-50%, 6px) scale(0.96); filter: blur(3px); } }
+#progress .bar, #timing { border: none !important; border-image: none !important; height: 3px !important; background: rgba(239, 230, 210, 0.15) !important; }
+#progress .fill { background: var(--lux-gold) !important; box-shadow: 0 0 10px rgba(201, 170, 107, 0.7); }
+#progress .label, #timing .lbl { font-style: italic; color: var(--lux-ink) !important; text-shadow: 0 1px 4px #000 !important; }
+#timing .zone { background: rgba(201, 170, 107, 0.45) !important; }
+#timing .needle { background: var(--lux-ink) !important; top: -6px !important; bottom: -6px !important; width: 2px !important; }
+#crosshair { background: rgba(239, 230, 210, 0.7) !important; border-radius: 50% !important; border-image: none !important; }
+#crosshair.focus { background: none !important; border: 1px solid rgba(201, 170, 107, 0.9) !important; border-radius: 50% !important; }
+#loading { background: #000 !important; }
+#loading .t { font-size: 46px !important; letter-spacing: 0.3em; font-weight: 500; color: var(--lux-ink) !important; text-shadow: none !important; }
+#loading .l { font-style: italic; color: var(--lux-dim) !important; }
+#loading .bar { border: none !important; border-image: none !important; height: 1px !important; background: rgba(239, 230, 210, 0.15) !important; }
+#loading .bar div { background: var(--lux-gold) !important; box-shadow: none !important; }
+#loading canvas, #death canvas { display: none !important; }
+#death .t { font-size: 64px !important; font-weight: 500; letter-spacing: 0.22em; color: var(--lux-red) !important; text-shadow: 0 0 30px rgba(208, 100, 76, 0.35) !important; animation: luxin 1.2s ease-out; }
+#death .c, #death .s { font-style: italic; color: var(--lux-ink) !important; text-shadow: 0 1px 6px #000 !important; background: none !important; border: none !important; border-image: none !important; }
+#clickstart { font-style: italic; color: var(--lux-ink) !important; letter-spacing: 0.12em; text-shadow: 0 1px 6px #000 !important; }
+#voiceind { font-style: italic; }

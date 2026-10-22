@@ -10,7 +10,7 @@ import { FONT } from './fonts.js';
 
 const W = 1024, H = 256;
 const NOTICE_BASE = -0.86; // bottom of the notice stack, in screen half-heights below centre
-export const FLOAT = { typeRate: 48, popTime: 0.32, fade: 0.45, bobAmp: 0.012, worldScale: 0.0013, noticeScale: 0.0008 };
+export const FLOAT = { typeRate: 40, popTime: 0.5, fade: 0.45, bobAmp: 0.012, worldScale: 0.0013, noticeScale: 0.0008 };
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const easeOutBack = (t) => { const c = 1.9; return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2; };
@@ -56,24 +56,31 @@ class Bubble {
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), this.mat);
     this.mesh.renderOrder = 999;
     this.mesh.frustumCulled = false;
+    // a dark copy floating behind the lettering: real depth that shifts with parallax as you move
+    this.shadowMat = new THREE.MeshBasicMaterial({ map: this.tex, color: 0x000000, transparent: true, opacity: 0, depthTest: !notice, depthWrite: false, toneMapped: false });
+    this.shadow = new THREE.Mesh(this.mesh.geometry, this.shadowMat);
+    this.shadow.position.set(10, -16, notice ? -30 : -46);
+    this.shadow.scale.setScalar(1.02);
+    this.shadow.renderOrder = 998;
+    this.shadow.frustumCulled = false;
+    this.mesh.add(this.shadow);
     this.lines = [];
     this._layout();
     this._draw(0);
   }
-  // look: notices are torn scraps of aged paper with hand-written ink; spoken lines are chalky
-  // hand-lettering floating in the air (no box), each speaker with its own face
+  // look: one face for everything (FONT.main, Cormorant Garamond) set as raised 3D lettering: an extruded
+  // bronze body under an ivory-to-gold face, floating in the air with a parallax shadow behind it.
+  // Speech is italic, notices upright. Paper scraps only when a caller asks (o.paper === true).
   _style() {
     if (this._st) return this._st;
-    const sp = String(this.o.speaker || '').toUpperCase();
-    // floating speech (say) is set in EB Garamond; notices are hand-written paper scraps
-    const role = this.o.font || (!this.notice ? 'speech' : sp === 'HEALTHITY' ? 'type' : sp === 'HQ' || sp === 'RECEPTION' ? 'print' : sp === 'ACHIEVEMENT' ? 'title' : 'hand');
-    const big = role === 'hand' || role === 'messy' || role === 'speech';
+    const italic = !this.notice || this.o.italic;
+    const fam = FONT.main; // one face everywhere (callers' o.font is ignored on purpose)
     this._st = {
-      role,
-      body: `${role === 'hand' ? '700 ' : role === 'speech' ? '500 ' : ''}${big ? 60 : 44}px ${FONT[role] || FONT.hand}`,
-      label: `30px ${FONT.title}`,
-      lh: big ? 58 : 54,
-      paper: this.notice && this.o.paper !== false,
+      body: `${italic ? 'italic ' : ''}600 ${this.notice ? 58 : 64}px ${fam}`,
+      label: `700 30px ${FONT.main}`,
+      lh: this.notice ? 62 : 68,
+      depth: this.notice ? 5 : 7,
+      paper: this.notice && this.o.paper === true,
       seed: (this.text.length * 9301 + 49297) % 233280,
     };
     return this._st;
@@ -126,42 +133,79 @@ class Bubble {
   _draw(n) {
     const c = this.ctx, st = this._style();
     c.clearRect(0, 0, W, H);
-    const lh = st.lh, top = this.o.speaker ? 54 : 16;
-    const h = top + this.lines.length * lh + 26;
+    const lh = st.lh, top = this.o.speaker ? 44 : 10;
+    const h = top + this.lines.length * lh + 24;
     const y0 = (H - h) / 2;
-    const ink = st.paper ? inkOn(this.o.color) : (this.o.color || '#f2ecd8');
     if (st.paper) this._paper(c, 34, y0, W - 68, h);
+    const tint = this.o.color || '#f1e7cf';
+    const face = st.paper ? inkOn(this.o.color) : null;
+    const x0 = 64;
     if (this.o.speaker) {
-      c.font = st.label; c.fillStyle = st.paper ? '#7a1f14' : ink; c.globalAlpha = 0.9;
-      c.fillText(String(this.o.speaker).toUpperCase(), 64, y0 + 38);
-      c.globalAlpha = 1;
+      // centred small-caps name between two hairlines
+      c.font = st.label;
+      c.letterSpacing = '7px';
+      const name = String(this.o.speaker).toUpperCase(), nw = c.measureText(name).width;
+      c.fillStyle = st.paper ? '#7a1f14' : '#d9bb7c';
+      c.shadowColor = 'rgba(0,0,0,0.85)'; c.shadowBlur = 6;
+      c.fillText(name, (W - nw) / 2, y0 + 30);
+      c.shadowBlur = 0; c.shadowColor = 'transparent';
+      c.fillRect((W - nw) / 2 - 70, y0 + 21, 52, 1.5);
+      c.fillRect((W + nw) / 2 + 18, y0 + 21, 52, 1.5);
+      c.letterSpacing = '0px';
     }
     c.font = st.body;
-    let left = Math.floor(n);
+    const grad = c.createLinearGradient(0, y0, 0, y0 + h);
+    grad.addColorStop(0, '#fffaf0'); grad.addColorStop(0.55, tint); grad.addColorStop(1, '#b8955a');
+    let left = n;
     this.lines.forEach((ln, i) => {
-      const part = left >= ln.length ? ln : ln.slice(0, Math.max(0, left));
+      const y = y0 + top + (i + 1) * lh - 10;
+      const full = Math.max(0, Math.min(ln.length, Math.floor(left)));
+      const frac = left - Math.floor(left);
+      const part = ln.slice(0, full);
+      const draw = (txt, x, alpha) => {
+        if (!txt) return;
+        c.globalAlpha = alpha;
+        if (st.paper) { c.fillStyle = face; c.fillText(txt, x, y); return; }
+        // extrusion: stacked offsets from dark bronze to near-black, soft shadow on the deepest layer
+        for (let d = st.depth; d >= 1; d--) {
+          const k = d / st.depth;
+          c.shadowColor = d === st.depth ? 'rgba(0,0,0,0.75)' : 'transparent';
+          c.shadowBlur = d === st.depth ? 14 : 0; c.shadowOffsetY = d === st.depth ? 6 : 0;
+          c.fillStyle = `rgb(${Math.round(70 - k * 55)},${Math.round(52 - k * 42)},${Math.round(30 - k * 26)})`;
+          c.fillText(txt, x + d * 0.8, y + d * 1.15);
+        }
+        c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetY = 0;
+        c.fillStyle = grad;
+        c.fillText(txt, x, y);
+        // top-edge highlight
+        c.globalAlpha = alpha * 0.35;
+        c.fillStyle = '#ffffff';
+        c.fillText(txt, x - 0.6, y - 1.2);
+        c.globalAlpha = alpha;
+        c.fillStyle = grad;
+        c.fillText(txt, x, y);
+      };
+      const lx = st.paper ? x0 : (W - c.measureText(ln).width) / 2; // centred lines
+      draw(part, lx, 1);
+      // the next few characters ink in softly instead of popping
+      if (full < ln.length && left > 0) {
+        let x = lx + c.measureText(part).width;
+        for (let j = 0; j < 3 && full + j < ln.length; j++) {
+          const ch = ln[full + j];
+          const a = j === 0 ? frac : 0;
+          if (a > 0.02) draw(ch, x, a);
+          x += c.measureText(ch).width;
+        }
+      }
+      c.globalAlpha = 1;
       left -= ln.length + 1;
-      const y = y0 + top + (i + 1) * lh - 6;
-      if (!st.paper) {
-        // floating lettering: dark halo for contrast, then chalky ink with a faint glow
-        c.lineJoin = 'round'; c.lineWidth = 9; c.strokeStyle = 'rgba(8,6,4,0.78)';
-        c.strokeText(part, 64, y);
-        c.shadowColor = ink; c.shadowBlur = 8;
-      }
-      c.fillStyle = ink;
-      c.fillText(part, 64, y);
-      c.shadowBlur = 0;
-      if (part.length < ln.length && left < 0 && left > -ln.length - 2) {
-        const x = 64 + c.measureText(part).width + 6;
-        c.fillRect(x, y - lh * 0.55, 4, lh * 0.62); // pen tip
-      }
     });
     this.tex.needsUpdate = true;
   }
   // visible plate height as a fraction of the screen half-height (FOV-independent)
   plateNdc() {
     const st = this._style();
-    const ph = (this.o.speaker ? 54 : 16) + this.lines.length * st.lh + 26;
+    const ph = (this.o.speaker ? 44 : 10) + this.lines.length * st.lh + 24;
     return ph * FLOAT.noticeScale * (this.o.size || 1) / (Math.tan(Math.PI / 6) * 1.2);
   }
   set(text) { this.text = String(text); this.shown = 0; this.t = Math.min(this.t, FLOAT.popTime); this._layout(); }
@@ -174,15 +218,20 @@ class Bubble {
       this._draw(this.shown);
     }
     if (this.t > this.life && this.closing < 0) this.closing = 0;
-    let a = Math.min(1, this.t / 0.15);
-    let s = easeOutBack(Math.min(1, this.t / FLOAT.popTime));
+    let a = Math.min(1, this.t / 0.18);
+    const pin = Math.min(1, this.t / FLOAT.popTime);
+    let s = 0.82 + 0.18 * easeOutBack(pin);
+    // flip up like a card standing on its baseline, with a slight swing
+    let flip = (1 - easeOutBack(pin)) * -1.25, rise = 0;
     if (this.closing >= 0) {
       this.closing += dt;
       const k = Math.min(1, this.closing / FLOAT.fade);
-      a *= 1 - k; s *= 1 - k * 0.25;
+      const e = k * k;
+      a *= 1 - k; s *= 1 - e * 0.12; flip += e * 0.55; rise = e;
       if (k >= 1) return false;
     }
     this.mat.opacity = a;
+    this.shadowMat.opacity = a * 0.42;
     const m = this.mesh;
     if (this.notice) {
       // camera space, laid out in screen units (stackY = bottom of this plate, 0..1 of the half-height
@@ -191,24 +240,27 @@ class Bubble {
       const d = 1.2, th = Math.tan(THREE.MathUtils.degToRad((cam.fov || 60) / 2));
       const k = th / Math.tan(Math.PI / 6);
       const half = this.plateNdc(cam) / 2;
-      _v.set(0, (NOTICE_BASE + stackY + half) * th * d + Math.sin(this.t * 2) * 0.002, -d).applyMatrix4(cam.matrixWorld);
+      _v.set(0, (NOTICE_BASE + stackY + half) * th * d + Math.sin(this.t * 2) * 0.002 + rise * 0.03 * th * d, -d).applyMatrix4(cam.matrixWorld);
       m.position.copy(_v);
       m.quaternion.copy(cam.getWorldQuaternion(_q));
+      m.rotateX(flip);
       m.scale.setScalar(FLOAT.noticeScale * (this.o.size || 1) * s * k);
     } else {
       const at = this.o.at;
       if (at?.isObject3D) at.getWorldPosition(_v); else if (at) _v.copy(at); else _v.set(0, 0, 0);
       if (this.o.offset) _v.add(this.o.offset); else _v.y += 0.45;
-      _v.y += Math.sin(this.t * 1.7) * FLOAT.bobAmp;
+      _v.y += Math.sin(this.t * 1.7) * FLOAT.bobAmp + rise * 0.12;
       m.position.copy(_v);
       m.quaternion.copy(cam.getWorldQuaternion(_q));
+      m.rotateX(flip);
+      m.rotateY(Math.sin(this.t * 0.7) * 0.06);
       m.scale.setScalar(FLOAT.worldScale * (this.o.size || 1) * s);
     }
     return true;
   }
   dispose() {
     this.mesh.removeFromParent();
-    this.mesh.geometry.dispose(); this.mat.dispose(); this.tex.dispose();
+    this.mesh.geometry.dispose(); this.mat.dispose(); this.shadowMat.dispose(); this.tex.dispose();
   }
 }
 
