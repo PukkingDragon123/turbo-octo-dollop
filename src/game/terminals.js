@@ -179,6 +179,9 @@ export class ShopKiosk extends KioskBase {
     this.console = con;
     box(1.38, 0.05, 0.3, dark, 0, 0, 0, con);
     box(1.38, 0.012, 0.3, Mat.get('rubber'), 0, 0.03, 0, con);
+    // phosphor edge strips along the console lip
+    this.lipMat = greenEmissive(0.9);
+    for (const z of [-0.152, 0.152]) box(1.38, 0.01, 0.008, this.lipMat, 0, 0.032, z, con);
     // category drum (pentagonal, etched labels), turned by the crank knob beside it
     const drum = new THREE.Group(); drum.position.set(-0.5, 0.075, 0); con.add(drum);
     this.drum = drum;
