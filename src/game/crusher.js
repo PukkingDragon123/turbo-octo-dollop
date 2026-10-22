@@ -266,7 +266,7 @@ export class Crusher extends Device {
     // counter display under the gauge
     const cnt = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.21), new THREE.MeshBasicMaterial({ color: 0 }));
     cnt.position.set(gx, 0.42, 0.315); g.add(cnt);
-    this.counter = new CrtScreen(320, 120, 'red');
+    this.counter = new CrtScreen(320, 120, 'green');
     this.counter.fps = 6;
     this.counter.attach(cnt, 1.6);
     // control console at the front left: CRT + big red button
@@ -277,7 +277,7 @@ export class Crusher extends Device {
     box(0.62, 0.46, 0.3, Mat.get('plastic_beige'), 0, 0.23, -0.1, head);
     const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.34), new THREE.MeshBasicMaterial({ color: 0 }));
     scr.position.set(0, 0.24, 0.051); head.add(scr);
-    this.scr = new CrtScreen(512, 352, 'cyan');
+    this.scr = new CrtScreen(512, 352, 'green');
     this.scr.fps = 8;
     this.scr.attach(scr, 1.5);
     this.button = new THREE.Group(); this.button.position.set(kx + 0.18, 1.07, kz + 0.17); g.add(this.button);

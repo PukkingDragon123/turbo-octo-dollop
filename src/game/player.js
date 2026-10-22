@@ -819,6 +819,7 @@ export class LocalPlayer {
     }
     if (this.game.isLobby) this.tool.charge(dt * 0.05);
     this.tool.sputter = Math.max(0, this.tool.sputter - dt);
+    this.tool.drainMul = this._upgrade('battery') ? 0.5 : 1; // shop upgrade (game/economy.js)
     // use action in progress (eat / drink / heal)
     if (this.useAction) {
       this.useAction.t += dt;
@@ -855,6 +856,8 @@ export class LocalPlayer {
     }
     // fists, or a swing weapon in the right hand (not while reading the watch)
     if (this.watchOpen) { this.combat.cancel(); return; }
+    // ranged weapons (nail gun) fire through the economy's weapon attack (tools._swing, stats + quest counters)
+    if (def?.weapon?.ranged) { if (input.mouseHit(0)) this.game.tools._swing(cur, this); return; }
     this.combat.input(dt, { weapon: def?.use === 'swing' ? cur : null, sides: { R: !cur, L: !H.leftItem() } });
   }
 
@@ -1024,7 +1027,7 @@ export class LocalPlayer {
         this.holdAction = this.game.tools.begin(def.use, item, this);
         break;
       default:
-        if (def.material) this.game.ui.toast('Crafting material — use a workbench');
+        if (def.material) floatText.notice('Scrap — sell it in the crusher', { duration: 1.4 });
         break;
     }
   }
@@ -1238,6 +1241,7 @@ export class LocalPlayer {
       lobby,
       dayPressure: lobby ? 0 : this.game.day?.instability?.() || 0,
       safeDay: !lobby && this.game.day?.active && this.game.day.day <= 1,
+      sanityDrainMul: this._upgrade('sanity') ? 0.3 : 1, // psycho-acoustic field upgrade (game/economy.js)
     });
     if (s.dead && !this.dead) { this.onDeath(s.deathCause || 'injuries'); return; }
     // the stomach growls when hunger crosses a threshold (the old sleeve patch did this)
@@ -1353,6 +1357,12 @@ export class LocalPlayer {
       ko: this.combat.poseFlag || 0,
       hs: s.summary(), lp: s.fracture ? 1 : 0,
     });
+  }
+
+  // team upgrades bought in the shop (game/economy.js): 'battery' | 'carry' | 'sanity' | 'plasma'
+  _upgrade(k) {
+    const e = this.game.world?.level?.mission?.econ;
+    try { return !!(e && !e.disposed && e.has?.('up:' + k)); } catch (err) { return false; }
   }
 
   // teammates see the top of an armful in the clone's hands

@@ -65,11 +65,11 @@ const defs = {
 const synth = {
   // wallpapers: lv_wallpaper p1.x style 0 pin-stripe + chevron (Level 0), 1 damask, 2 floral sprig, 3 trellis, 4 stripe
   wallpaper: { r: 'lv_wallpaper', o: {}, ns: 1.0 },
-  wallpaper_manila: { r: 'lv_wallpaper', o: { c0: 0xb48c58, c1: 0x94703f, c2: 0x553a1c, c3: 0xc6a06a, p0: [3, 1, 3, 1.3], p1: [1, 0.7, 1, 1], size: 1024 }, ns: 1.0 },
-  wallpaper_damask: { r: 'lv_wallpaper', o: { c0: 0xc9b98e, c1: 0xa89466, c2: 0x5a4a2c, c3: 0xd8ca9c, p0: [3, 1, 3, 1.2], p1: [1, 0.6, 1, 1], size: 1024 }, ns: 1.0 },
+  wallpaper_manila: { r: 'lv_wallpaper', o: { c0: 0xb48c58, c1: 0x94703f, c2: 0x553a1c, c3: 0xc6a06a, p0: [3, 1, 3, 1.3], p1: [1, 0.7, 1, 1], size: 512 }, ns: 1.0 },
+  wallpaper_damask: { r: 'lv_wallpaper', o: { c0: 0xc9b98e, c1: 0xa89466, c2: 0x5a4a2c, c3: 0xd8ca9c, p0: [3, 1, 3, 1.2], p1: [1, 0.6, 1, 1], size: 512 }, ns: 1.0 },
   wallpaper_floral: { r: 'lv_wallpaper', o: { c0: 0xd8cca8, c1: 0xa4584a, c2: 0x4a3a28, c3: 0x6e7a4a, p0: [3, 3, 9, 1.5], p1: [2, 0.7, 1, 1], size: 1024 }, ns: 1.0 },
-  wallpaper_trellis: { r: 'lv_wallpaper', o: { c0: 0xc2c4a2, c1: 0x8a9470, c2: 0x4a4a34, c3: 0xe0dcc0, p0: [3, 2, 6, 1.0], p1: [3, 0.6, 1, 1], size: 1024 }, ns: 1.0 },
-  wallpaper_stripe: { r: 'lv_wallpaper', o: { c0: 0xcfc2a0, c1: 0x9a7a5a, c2: 0x4e3e2a, c3: 0xe4d6b2, p0: [3, 1, 3, 1.0], p1: [4, 0.6, 1, 1], size: 1024 }, ns: 1.0 },
+  wallpaper_trellis: { r: 'lv_wallpaper', o: { c0: 0xc2c4a2, c1: 0x8a9470, c2: 0x4a4a34, c3: 0xe0dcc0, p0: [3, 2, 6, 1.0], p1: [3, 0.6, 1, 1], size: 512 }, ns: 1.0 },
+  wallpaper_stripe: { r: 'lv_wallpaper', o: { c0: 0xcfc2a0, c1: 0x9a7a5a, c2: 0x4e3e2a, c3: 0xe4d6b2, p0: [3, 1, 3, 1.0], p1: [4, 0.6, 1, 1], size: 512 }, ns: 1.0 },
   // carpets: lv_carpet p1.x style 0 damp cut pile (Level 0), 1 patterned loop-pile office carpet, 2 berber loop
   carpet: { r: 'lv_carpet', o: {}, ns: 1.0, aniso: 16, envMapIntensity: 0.3 },
   carpet_pattern: { r: 'lv_carpet', o: { c0: 0x5d6878, c1: 0x46505e, c2: 0x2c303a, c3: 0x9a8a6a, p0: [300, 0.6, 0.6, 0.35], p1: [1, 4, 0.5, 160] }, ns: 1.0, aniso: 16 },

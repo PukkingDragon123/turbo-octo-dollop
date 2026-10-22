@@ -276,7 +276,7 @@ export class Tools {
         const dry = tool.battery <= 0.001;
         if (!dry) {
           tool.power = Math.min(1, tool.power + dt / MT.chargeTime);
-          tool.battery = Math.max(0, tool.battery - dt * (MT.drainIdle + MT.drainPower * tool.power));
+          tool.battery = Math.max(0, tool.battery - dt * (MT.drainIdle + MT.drainPower * tool.power) * (tool.drainMul ?? 1));
         } else {
           tool.power = Math.max(0, tool.power - dt * 3);
           tool.sputter = 0.3;

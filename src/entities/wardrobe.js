@@ -799,8 +799,32 @@ export class Sparks {
 // panels, the floor hatch + drop shaft, panel controls (knob / toggle / fader / selector), crates,
 // debris (bolts, oil, ripped parts), steam and dust motes. All procedural.
 // =====================================================================================================
-// signage type roles (ui/fonts.js): art-deco display for sign titles, worn typewriter for the small print
-export const PLEX = FONT.deco, VT = FONT.type;
+// signage type roles (ui/fonts.js): art-deco display for sign titles, CRT pixel type for the small print
+export const PLEX = FONT.deco, VT = FONT.crt;
+// green phosphor palette + helpers shared by every readout of the factory (Pip-Boy-like terminals)
+export const PHOS = { hi: '#9dffb2', mid: '#5cf07e', soft: '#b8ffc8', dim: '#2c6a3c', bg: '#010603' };
+// bracket corners instead of a boxed border
+export function brackets(g, x, y, w, h, len = 40, color = PHOS.mid, lw = 4, glow = 10) {
+  g.save(); g.strokeStyle = color; g.lineWidth = lw; g.shadowColor = color; g.shadowBlur = glow; g.lineCap = 'square';
+  for (const [cx, cy, sx, sy] of [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]]) {
+    g.beginPath(); g.moveTo(cx + sx * len, cy); g.lineTo(cx, cy); g.lineTo(cx, cy + sy * len); g.stroke();
+  }
+  g.restore();
+}
+export function scanlines(g, w, h, a = 0.25) {
+  g.fillStyle = `rgba(0,0,0,${a})`;
+  for (let y = 0; y < h; y += 4) g.fillRect(0, y, w, 2);
+  const v = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
+  g.fillStyle = v; g.fillRect(0, 0, w, h);
+}
+// dark phosphor screen background with a faint glow in the middle
+export function phosphorBg(g, w, h) {
+  g.fillStyle = PHOS.bg; g.fillRect(0, 0, w, h);
+  const r = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7);
+  r.addColorStop(0, 'rgba(40,150,70,0.18)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = r; g.fillRect(0, 0, w, h);
+}
 export { mesh as kitMesh, rbox as kitRbox, M4 as kitM4 };
 
 let _F = null;
@@ -896,7 +920,7 @@ export function wrapLines(g, text, maxW) {
 // a heavy backlit sign box hanging from two chains (pivot = ceiling point). The face is a LiveTex used as
 // map + emissiveMap so only the painted letters glow. Hover brightens it; kick() makes it swing.
 export class HangPanel {
-  constructor({ w = 1.5, h = 0.42, accent = '#ffb43a' } = {}) {
+  constructor({ w = 1.5, h = 0.42, accent = PHOS.hi } = {}) {
     const F = factoryMats();
     this.w = w; this.h = h; this.accent = accent;
     this.root = new THREE.Group(); this.root.rotation.order = 'YXZ';
@@ -921,19 +945,25 @@ export class HangPanel {
     this.t = Math.random() * 10;
   }
   setText(title, sub = '', { dim = false, tag = '' } = {}) {
-    const acc = dim ? '#6a5a40' : this.accent;
+    const acc = dim ? PHOS.dim : this.accent;
     this.face.draw((g, w, h) => {
-      g.fillStyle = '#070605'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = dim ? '#2a241c' : '#3a2c18'; g.lineWidth = 6; g.strokeRect(14, 14, w - 28, h - 28);
-      g.fillStyle = acc; g.shadowColor = acc; g.shadowBlur = dim ? 0 : 22; g.textBaseline = 'middle';
-      fitText(g, title, w / 2, h * (sub ? 0.42 : 0.52), w - 120, Math.round(h * 0.44), `{s}px ${PLEX}`);
-      g.shadowBlur = dim ? 0 : 8;
-      if (sub) { g.fillStyle = dim ? '#5a4c38' : '#e9c98a'; fitText(g, sub, w / 2, h * 0.76, w - 140, Math.round(h * 0.2), `{s}px ${VT}`); }
+      g.fillStyle = '#020604'; g.fillRect(0, 0, w, h);
+      const vg = g.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, w * 0.6);
+      vg.addColorStop(0, dim ? 'rgba(20,60,30,0.10)' : 'rgba(40,140,70,0.16)'); vg.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = vg; g.fillRect(0, 0, w, h);
+      brackets(g, 18, 18, w - 36, h - 36, Math.min(60, h * 0.26), acc, dim ? 3 : 5, dim ? 0 : 14);
+      g.fillStyle = acc; g.shadowColor = acc; g.shadowBlur = dim ? 0 : 24; g.textBaseline = 'middle';
+      fitText(g, title, w / 2, h * (sub ? 0.42 : 0.52), w - 140, Math.round(h * 0.44), `{s}px ${PLEX}`);
+      if (sub) {
+        g.shadowBlur = dim ? 0 : 10;
+        g.fillStyle = acc; g.fillRect(w * 0.2, h * 0.64, w * 0.6, 2);
+        g.fillStyle = dim ? PHOS.dim : PHOS.soft; fitText(g, sub, w / 2, h * 0.79, w - 160, Math.round(h * 0.2), `{s}px ${VT}`);
+      }
       g.shadowBlur = 0;
       if (tag) { g.fillStyle = acc; g.font = `${Math.round(h * 0.14)}px ${VT}`; g.textAlign = 'left'; g.fillText(tag, 34, 44); }
-      for (const [x, y] of [[30, 30], [w - 30, 30], [30, h - 30], [w - 30, h - 30]]) { g.fillStyle = '#4a4a46'; g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2); g.fill(); }
+      scanlines(g, w, h, 0.22);
     });
-    this.base = dim ? 0.45 : 1;
+    this.base = dim ? 0.5 : 1;
   }
   // pivot at (x, ceilY, z), panel centre at height y
   place(x, y, z, ceilY, yaw = 0) {
@@ -1228,9 +1258,10 @@ export class Puffs {
     }
     this.i = 0;
   }
-  puff(p, dir, n = 6, size = 0.35, speed = 0.8, life = 1.6, alpha = 0.22) {
+  puff(p, dir, n = 6, size = 0.35, speed = 0.8, life = 1.6, alpha = 0.22, color = 0xd8d8d0) {
     for (let k = 0; k < n; k++) {
       const it = this.items[this.i]; this.i = (this.i + 1) % this.items.length;
+      it.s.material.color.set(color);
       it.s.position.copy(p); it.v.copy(dir).multiplyScalar(speed * (0.5 + Math.random())).add(new THREE.Vector3((Math.random() - 0.5) * 0.3, Math.random() * 0.2, (Math.random() - 0.5) * 0.3));
       it.life = it.max = life * (0.7 + Math.random() * 0.6); it.size = size * (0.6 + Math.random() * 0.8); it.a = alpha;
       it.s.visible = true;

@@ -31,7 +31,7 @@ import * as AV from '../entities/avatar.js';
 import { buildModel } from '../entities/catalog.js';
 import {
   RoboArm, Sparks, Batch, cyl, factoryMats, LiveTex, fitText, wrapLines, HangPanel, Hatch, Knob, Toggle, Fader, Selector,
-  Crate, Junk, Puffs, Motes, kitMesh as mesh, kitRbox as rbox,
+  Crate, Junk, Puffs, Motes, kitMesh as mesh, kitRbox as rbox, PHOS, brackets, scanlines, phosphorBg,
 } from '../entities/wardrobe.js';
 import { FONT } from '../ui/fonts.js';
 import { getPart } from '../entities/doll/doll_avatar.js';
@@ -45,7 +45,7 @@ import { HC } from '../entities/doll/robotshape.js';
 
 const { Avatar, COSMETICS, resolveCos, DEFAULT_COSMETICS } = AV;
 // type roles (ui/fonts.js): deco signage, typewriter forms, CRT terminals, marker labels, handwriting
-const F_SIGN = FONT.deco, F_TYPE = FONT.type, F_CRT = FONT.crt, F_MARK = FONT.marker, F_HAND = FONT.hand, F_PRINT = FONT.print, F_TITLE = FONT.title, F_SPEECH = FONT.speech;
+const F_SIGN = FONT.deco, F_TYPE = FONT.type, F_CRT = FONT.crt, F_MONO = FONT.mono, F_MARK = FONT.marker, F_HAND = FONT.hand, F_PRINT = FONT.print, F_TITLE = FONT.title;
 const PI = Math.PI, TAU = PI * 2, DEG = PI / 180;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -416,10 +416,10 @@ export class MenuScene {
       return p;
     };
     this.panels = {
-      new: mk('new', 1.5, 0.42, '#ffb43a'),
-      cont: mk('cont', 1.5, 0.42, '#ffb43a'),
-      settings: mk('settings', 1.5, 0.42, '#ffb43a'),
-      trophies: mk('trophies', 1.2, 0.3, '#d8c08a'),
+      new: mk('new', 1.5, 0.42, PHOS.hi),
+      cont: mk('cont', 1.5, 0.42, PHOS.hi),
+      settings: mk('settings', 1.5, 0.42, PHOS.hi),
+      trophies: mk('trophies', 1.2, 0.3, PHOS.mid),
     };
     this._refreshPanels();
   }
@@ -472,11 +472,17 @@ export class MenuScene {
   _drawDispatchCrt(msg = '') {
     const d = profile.settings.destination || 'yellow';
     this.dCrt.draw((x, w, h) => {
-      x.fillStyle = '#031006'; x.fillRect(0, 0, w, h);
-      x.fillStyle = '#62ff8a'; x.shadowColor = '#62ff8a'; x.shadowBlur = 8; x.textBaseline = 'top'; x.font = `30px ${F_CRT}`;
-      const L = ['R.O.O.M. DISPATCH TERMINAL', '--------------------------', `UNIT   #${this.av.empNo}  (${(profile.name || '').toUpperCase()})`, `DEST   ${LEVEL_NAME[d] || d.toUpperCase()}`, 'STATUS NOT ALIVE YET', '', msg || '> PULL LEVER TO DISPATCH'];
-      L.forEach((s, i) => x.fillText(s, 20, 18 + i * 44));
-      x.shadowBlur = 0; x.fillStyle = 'rgba(0,0,0,0.25)'; for (let y = 0; y < h; y += 4) x.fillRect(0, y, w, 2);
+      phosphorBg(x, w, h);
+      brackets(x, 10, 10, w - 20, h - 20, 34, PHOS.mid, 3, 8);
+      x.fillStyle = PHOS.hi; x.shadowColor = PHOS.mid; x.shadowBlur = 10; x.textBaseline = 'top'; x.font = `34px ${F_CRT}`;
+      x.fillText('R.O.O.M. DISPATCH', 28, 22);
+      x.fillRect(28, 64, w - 56, 2);
+      x.font = `28px ${F_CRT}`; x.fillStyle = PHOS.mid;
+      const L = [`UNIT ....... #${this.av.empNo}`, `NAME ....... ${(profile.name || '').toUpperCase()}`, `DEST ....... ${LEVEL_NAME[d] || d.toUpperCase()}`, 'STATUS ..... NOT ALIVE YET'];
+      L.forEach((s, i) => x.fillText(s, 28, 82 + i * 40));
+      x.fillStyle = PHOS.hi; x.font = `30px ${F_CRT}`;
+      x.fillText((msg || '> PULL LEVER TO DISPATCH') + ((Date.now() / 500 | 0) % 2 ? '_' : ''), 28, 262);
+      x.shadowBlur = 0; scanlines(x, w, h, 0.28);
     });
   }
 
@@ -527,7 +533,7 @@ export class MenuScene {
     // cash bundles + a value tag
     const n = clamp(Math.ceil((s.credits || 0) / 250), 1, 9);
     for (let i = 0; i < n; i++) {
-      const b = mesh(rbox(0.16, 0.035, 0.075, 0.004), this.F.cash, c1.contents, -0.14 + (i % 3) * 0.14, 0.27 + Math.floor(i / 3) * 0.038, -0.08 + ((i * 7) % 3) * 0.08, 0, rnd(-0.2, 0.2), 0);
+      const b = mesh(rbox(0.17, 0.04, 0.08, 0.004), this.F.cash, c1.contents, -0.15 + (i % 3) * 0.15, 0.3 + Math.floor(i / 3) * 0.042, -0.08 + ((i * 7) % 3) * 0.08, 0, rnd(-0.2, 0.2), 0);
       void b;
     }
     const tag = this._tex(256, 128, (x, w, h) => { x.fillStyle = '#efe3bf'; x.fillRect(0, 0, w, h); x.fillStyle = '#1e1a12'; x.textBaseline = 'middle'; fitText(x, money(s.credits), w / 2, h * 0.45, w - 30, 64, `bold {s}px ${F_HAND}`); x.fillStyle = '#7a2a1a'; fitText(x, 'TEAM FUNDS', w / 2, h * 0.82, w - 30, 30, `{s}px ${F_TYPE}`); });
@@ -549,25 +555,35 @@ export class MenuScene {
         c2.contents.add(wrap);
       } catch (e) { console.warn('[menu] crate item', type, e); }
     });
-    // the stamped run record
-    const doc = this._tex(512, 680, (x, w, h) => {
-      x.fillStyle = '#ece4cf'; x.fillRect(0, 0, w, h);
-      x.fillStyle = '#20180f'; x.textBaseline = 'top';
-      x.font = `34px ${F_TYPE}`; x.fillText('CLONE RUN RECORD', 32, 30);
-      x.fillRect(32, 76, w - 64, 3);
-      x.font = `28px ${F_TYPE}`;
-      const un = Object.keys(s.unlocks || {}).filter((k) => s.unlocks[k]);
-      const rows = [['DIMENSION', LEVEL_NAME[s.level] || s.level], ['DAY', `${s.day} OF 7`], ['FUNDS', money(s.credits)], ['ESCAPE', `${Math.round(clamp(s.escape || 0, 0, 1) * 100)}%`], ['POCKETS', `${s.inventory.length} ITEMS`], ['STASH', `${s.stash.length} ITEMS`], ['UNLOCKS', un.length ? un.slice(0, 3).join(', ').toUpperCase() : 'NONE']];
-      rows.forEach(([a, b], i) => { x.fillStyle = '#5a4a32'; x.fillText(a, 32, 100 + i * 52); x.fillStyle = '#20180f'; x.fillText(String(b), 220, 100 + i * 52); });
-      x.fillStyle = 'rgba(30,20,10,0.25)'; for (let i = 0; i < 6; i++) x.fillRect(32, 480 + i * 22, rnd(200, w - 64), 6);
-      x.save(); x.translate(w * 0.58, h * 0.8); x.rotate(-0.22);
-      x.strokeStyle = 'rgba(180,30,24,0.85)'; x.lineWidth = 7; x.strokeRect(-180, -46, 360, 92);
-      x.fillStyle = 'rgba(180,30,24,0.85)'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `40px ${F_TITLE}`; x.fillText('APPROVED', 0, -12); x.font = `24px ${F_TYPE}`; x.fillText('FOR CONTINUATION', 0, 26);
+    // the run manifest: a green holographic projection rising out of the records crate, stamped for continuation
+    const un = Object.keys(s.unlocks || {}).filter((k) => s.unlocks[k]);
+    const doc = this._tex(512, 640, (x, w, h) => {
+      x.clearRect(0, 0, w, h);
+      x.fillStyle = 'rgba(30,140,60,0.10)'; x.fillRect(0, 0, w, h);
+      brackets(x, 10, 10, w - 20, h - 20, 40, PHOS.mid, 4, 12);
+      x.fillStyle = PHOS.hi; x.shadowColor = PHOS.mid; x.shadowBlur = 12; x.textBaseline = 'top';
+      x.font = `40px ${F_CRT}`; x.fillText('RUN MANIFEST', 34, 30);
+      x.fillRect(34, 78, w - 68, 2);
+      x.font = `30px ${F_CRT}`;
+      const rows = [['DIMENSION', LEVEL_NAME[s.level] || s.level], ['DAY', `${s.day} OF 7`], ['FUNDS', money(s.credits)], ['POCKETS', `${s.inventory.length} ITEMS`], ['STASH', `${s.stash.length} ITEMS`], ['UNLOCKS', un.length ? un.slice(0, 2).join(', ').toUpperCase() : 'NONE']];
+      rows.forEach(([a2, b2], i) => { x.fillStyle = PHOS.mid; x.fillText(a2, 34, 96 + i * 42); x.fillStyle = PHOS.hi; x.textAlign = 'right'; x.fillText(String(b2), w - 34, 96 + i * 42); x.textAlign = 'left'; });
+      const esc = clamp(s.escape || 0, 0, 1);
+      x.fillStyle = PHOS.mid; x.fillText('ESCAPE', 34, 362);
+      for (let i = 0; i < 20; i++) { x.fillStyle = i / 20 < esc ? PHOS.hi : PHOS.dim; x.fillRect(34 + i * 22, 402, 18, 22); }
+      x.save(); x.translate(w * 0.52, h * 0.82); x.rotate(-0.16);
+      x.strokeStyle = PHOS.hi; x.lineWidth = 5; x.strokeRect(-190, -50, 380, 100);
+      x.fillStyle = PHOS.hi; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `48px ${F_CRT}`; x.fillText('APPROVED', 0, -14); x.font = `24px ${F_CRT}`; x.fillText('FOR CONTINUATION', 0, 26);
       x.restore();
+      x.shadowBlur = 0; x.fillStyle = 'rgba(0,0,0,0.35)'; for (let y = 0; y < h; y += 4) x.fillRect(0, y, w, 2);
     });
-    const paper = this._plane(0.3, 0.4, new THREE.MeshStandardMaterial({ map: doc.tex, roughness: 0.92 }), c3.contents, 0, 0.3, 0, -PI / 2 + 0.25, 0, 0.12);
-    void paper;
-    mesh(new THREE.BoxGeometry(0.33, 0.012, 0.43), this.F.wood, c3.contents, 0, 0.29, 0, 0.25, 0, 0.12);
+    const holo = new THREE.Group(); holo.position.set(0, 0.86, 0.02); c3.contents.add(holo);
+    this.holoMat = new THREE.MeshBasicMaterial({ map: doc.tex, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, color: new THREE.Color(1.6, 1.8, 1.6) });
+    this._plane(0.4, 0.5, this.holoMat, holo, 0, 0, 0);
+    const beam = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.08, 0.4, 0.16), transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const cone = mesh(new THREE.ConeGeometry(0.2, 0.36, 24, 1, true), beam, c3.contents, 0, 0.49, 0.0, PI, 0, 0); cone.castShadow = false;
+    mesh(cyl(0.05, 0.03, 'y', 18), this.F.dark, c3.contents, 0, 0.29, 0);
+    mesh(new THREE.CircleGeometry(0.04, 18), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 2.6, 0.8) }), c3.contents, 0, 0.306, 0, -PI / 2).castShadow = false;
+    this.holo = holo; holo.scale.setScalar(0.01);
   }
 
   // ============================================================================ build: settings cabinet
@@ -657,7 +673,8 @@ export class MenuScene {
         } else {
           fitText(x, c.label, cx, cy + 62, 200, 22, `{s}px ${F_TYPE}`);
           x.font = `18px ${F_TYPE}`; x.textAlign = 'center';
-          c.opts.forEach((o, i) => { const a = -PI / 2 - 0.9 + 0.9 * i; x.fillText(o.toUpperCase(), cx + Math.cos(a) * 52, cy + Math.sin(a) * 40); });
+          const SH = { low: 'LO', medium: 'MED', high: 'HI', open: 'OPEN', ptt: 'PTT', off: 'OFF' };
+          c.opts.forEach((o, i) => { const a = -PI / 2 - 0.9 + 0.9 * i; x.fillText(SH[o] || o.toUpperCase(), cx + Math.cos(a) * 64, cy + Math.sin(a) * 50); });
         }
       }
       x.fillStyle = 'rgba(20,20,20,0.6)'; for (const [X, Y] of [[24, 24], [w - 24, 24], [24, h - 24], [w - 24, h - 24]]) { x.beginPath(); x.arc(X, Y, 9, 0, TAU); x.fill(); }
@@ -673,16 +690,18 @@ export class MenuScene {
   _drawCrt() {
     const a = this.activeCtl;
     this.crt.draw((x, w, h) => {
-      x.fillStyle = '#020b04'; x.fillRect(0, 0, w, h);
-      x.fillStyle = '#7dffa0'; x.shadowColor = '#7dffa0'; x.shadowBlur = 6; x.textBaseline = 'top'; x.font = `28px ${F_CRT}`;
-      x.fillText('> ' + (a ? a.label : 'SELECT A CONTROL'), 16, 14);
+      phosphorBg(x, w, h);
+      brackets(x, 8, 8, w - 16, h - 16, 28, PHOS.mid, 3, 8);
+      x.fillStyle = PHOS.hi; x.shadowColor = PHOS.mid; x.shadowBlur = 8; x.textBaseline = 'top'; x.font = `26px ${F_CRT}`;
+      x.fillText('> ' + (a ? a.label : 'SELECT A CONTROL'), 20, 18);
       if (a) {
-        x.font = `64px ${F_CRT}`; x.fillText(this._fmt(a), 16, 46);
-        if (a.type === 'knob' || a.type === 'fader') { const k = clamp((this._ctlValue(a) - a.min) / (a.max - a.min), 0, 1); x.strokeStyle = '#7dffa0'; x.lineWidth = 2; x.strokeRect(16, 118, w - 32, 22); x.fillRect(18, 120, (w - 36) * k, 18); }
+        x.font = `60px ${F_CRT}`; x.fillText(this._fmt(a), 20, 44);
+        if (a.type === 'knob' || a.type === 'fader') { const k = clamp((this._ctlValue(a) - a.min) / (a.max - a.min), 0, 1), n = 24; for (let i = 0; i < n; i++) { x.fillStyle = i / n < k ? PHOS.hi : PHOS.dim; x.fillRect(20 + i * ((w - 40) / n), 116, (w - 40) / n - 4, 18); } }
       }
-      x.font = `24px ${F_CRT}`;
-      this.ctls.forEach((c, i) => { x.fillStyle = c === a ? '#d0ffd8' : '#3fa860'; x.fillText(`${c.label.padEnd(17, '.')}${this._fmt(c)}`, 16 + (i % 2) * 248, 160 + Math.floor(i / 2) * 42); });
-      x.shadowBlur = 0; x.fillStyle = 'rgba(0,0,0,0.3)'; for (let y = 0; y < h; y += 4) x.fillRect(0, y, w, 2);
+      x.fillStyle = PHOS.dim; x.fillRect(20, 146, w - 40, 2);
+      x.font = `22px ${F_CRT}`;
+      this.ctls.forEach((c, i) => { x.fillStyle = c === a ? PHOS.soft : PHOS.mid; x.fillText(`${c.label.slice(0, 11).padEnd(12, '.')}${this._fmt(c)}`, 20 + (i % 2) * 240, 160 + Math.floor(i / 2) * 40); });
+      x.shadowBlur = 0; scanlines(x, w, h, 0.3);
     });
   }
   _applySetting(c, v, commit = false) {
@@ -713,7 +732,7 @@ export class MenuScene {
     for (const [cat, list] of Object.entries(COSMETICS)) for (const o of list) if (o.unlock) (this._rewardMap[o.unlock] ||= []).push({ cat, name: o.name });
     for (const id of Object.keys(ACHIEVEMENTS)) {
       const p = { id, g: new THREE.Group(), tex: this._tex(384, 232) };
-      p.mat = new THREE.MeshStandardMaterial({ map: p.tex.tex, emissiveMap: p.tex.tex, emissive: 0xffffff, emissiveIntensity: 0.0, roughness: 0.4, metalness: 0.6 });
+      p.mat = new THREE.MeshStandardMaterial({ map: p.tex.tex, emissiveMap: p.tex.tex, emissive: 0xffffff, emissiveIntensity: 0.0, roughness: 0.18, metalness: 0.1 });
       p.face = this._plane(0.5, 0.3, p.mat, p.g, 0, 0, 0.012);
       p.back = mesh(rbox(0.54, 0.34, 0.02, 0.006), this.F.brass, p.g, 0, 0, 0);
       p.lamp = mesh(new THREE.BoxGeometry(0.3, 0.012, 0.012), this.F.ledOff, p.g, 0, 0.2, 0.03);
@@ -726,28 +745,31 @@ export class MenuScene {
   }
   _drawPlaques() {
     const ids = Object.keys(ACHIEVEMENTS), got = ids.filter((k) => profile.has(k)).length;
-    this.troHead.draw((x, w, h) => { x.fillStyle = '#080706'; x.fillRect(0, 0, w, h); x.fillStyle = '#e8c87a'; x.shadowColor = '#e8c87a'; x.shadowBlur = 14; x.textBaseline = 'middle'; fitText(x, `COMMENDATIONS · ${got} / ${ids.length}`, w / 2, h / 2, w - 60, 72, `{s}px ${F_SIGN}`); });
+    this.troHead.draw((x, w, h) => { phosphorBg(x, w, h); brackets(x, 8, 8, w - 16, h - 16, 30, PHOS.mid, 3, 8); x.fillStyle = PHOS.hi; x.shadowColor = PHOS.mid; x.shadowBlur = 16; x.textBaseline = 'middle'; fitText(x, `COMMENDATIONS · ${got} / ${ids.length}`, w / 2, h / 2, w - 80, 72, `{s}px ${F_SIGN}`); x.shadowBlur = 0; scanlines(x, w, h, 0.25); });
     for (const p of this.plaques) {
       const A = ACHIEVEMENTS[p.id], on = profile.has(p.id), rw = this._rewardMap[p.id] || [];
       p.on = on;
       p.back.material = on ? this.F.brass : this.F.gunmetal;
       p.lamp.material = on ? this.F.glowAmber : this.F.ledOff;
-      p.mat.emissiveIntensity = on ? 0.35 : 0.06;
+      p.mat.emissiveIntensity = on ? 1.1 : 0.75;
       p.tex.draw((x, w, h) => {
-        const g = x.createLinearGradient(0, 0, w, h);
-        if (on) { g.addColorStop(0, '#d8b46a'); g.addColorStop(0.5, '#f4dc98'); g.addColorStop(1, '#a8823e'); } else { g.addColorStop(0, '#1e2024'); g.addColorStop(1, '#121316'); }
-        x.fillStyle = g; x.fillRect(0, 0, w, h);
-        x.strokeStyle = on ? '#6a4a1a' : '#34363a'; x.lineWidth = 6; x.strokeRect(8, 8, w - 16, h - 16);
-        x.fillStyle = on ? '#2a1c08' : '#8a8c90'; x.textBaseline = 'top';
-        fitText(x, A.name.toUpperCase(), w / 2, 22, w - 40, 30, `{s}px ${F_PRINT}`);
-        x.font = `italic 500 22px ${F_SPEECH}`; x.fillStyle = on ? '#3a2a10' : '#6a6c70';
-        wrapLines(x, A.desc, w - 48).slice(0, 3).forEach((l, i) => { x.textAlign = 'center'; x.fillText(l, w / 2, 70 + i * 26); });
+        phosphorBg(x, w, h);
+        const c1 = on ? PHOS.hi : '#5aa86e', c2 = on ? PHOS.mid : '#3f8a55';
+        brackets(x, 8, 8, w - 16, h - 16, 24, c2, 3, on ? 8 : 0);
+        x.shadowColor = PHOS.mid; x.shadowBlur = on ? 10 : 0; x.textBaseline = 'top';
+        x.fillStyle = c1; fitText(x, A.name.toUpperCase(), w / 2, 18, w - 40, 30, `{s}px ${F_CRT}`);
+        x.fillStyle = c2; x.fillRect(24, 54, w - 48, 2);
+        x.font = `20px ${F_MONO}`; x.fillStyle = c2; x.textAlign = 'center';
+        wrapLines(x, A.desc, w - 48).slice(0, 3).forEach((l, i) => x.fillText(l, w / 2, 64 + i * 24));
         if (rw.length) {
-          x.fillStyle = on ? '#7a1a10' : '#9a5a2a'; x.font = `bold 24px ${F_HAND}`;
-          const s = 'SPECIAL ISSUE: ' + rw.map((r) => r.name).join(', ');
-          wrapLines(x, s, w - 40).slice(0, 2).forEach((l, i) => x.fillText(l, w / 2, 160 + i * 24));
+          x.fillStyle = on ? PHOS.soft : '#3c7a4c'; x.font = `22px ${F_CRT}`;
+          wrapLines(x, '\u25B8 SPECIAL ISSUE: ' + rw.map((r) => r.name.toUpperCase()).join(', '), w - 40).slice(0, 2).forEach((l, i) => x.fillText(l, w / 2, 152 + i * 24));
         }
-        if (!on) { x.fillStyle = 'rgba(160,40,30,0.8)'; x.font = `20px ${F_MARK}`; x.textAlign = 'right'; x.fillText('LOCKED', w - 18, 18); }
+        if (!on) {
+          for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(90,200,120,${Math.random() * 0.08})`; x.fillRect(Math.random() * w, Math.random() * h, 2, 1); }
+          x.save(); x.translate(w - 70, h - 34); x.rotate(-0.12); x.strokeStyle = '#3c7a4c'; x.lineWidth = 2; x.strokeRect(-58, -16, 116, 32); x.fillStyle = '#3c7a4c'; x.font = `22px ${F_CRT}`; x.textBaseline = 'middle'; x.fillText('CLASSIFIED', 0, 1); x.restore();
+        }
+        x.shadowBlur = 0; scanlines(x, w, h, 0.3);
       });
     }
   }
@@ -761,7 +783,7 @@ export class MenuScene {
     this.rackHead = this._tex(1024, 160);
     this.rackHeadM = this._plane(1, 0.16, this._emTexMat(this.rackHead.tex, 1.0), this.rackInner, 0, 0, 0.005);
     const arrowG = new THREE.ConeGeometry(0.06, 0.11, 3); arrowG.rotateZ(-PI / 2);
-    this.arrowMat = new THREE.MeshStandardMaterial({ color: 0x2a1a08, emissive: 0xffa030, emissiveIntensity: 0.6, roughness: 0.4 });
+    this.arrowMat = new THREE.MeshStandardMaterial({ color: 0x08200e, emissive: 0x5cf07e, emissiveIntensity: 0.6, roughness: 0.4 });
     this.arrows = [-1, 1].map((s) => {
       const m = mesh(arrowG, this.arrowMat, this.rackInner, 0, 0, 0.02, 0, 0, s < 0 ? PI : 0);
       this._addHit(m, { type: 'arrow', dir: s, modes: ['workshop'] });
@@ -784,11 +806,13 @@ export class MenuScene {
     this.rackHeadM.position.set(0, L.h / 2 + 0.06, 0.006); this.rackHeadM.scale.set(L.w, 1, 1);
     this.arrows[0].position.set(-L.w / 2 + 0.07, L.h / 2 + 0.06, 0.04); this.arrows[1].position.set(L.w / 2 - 0.07, L.h / 2 + 0.06, 0.04);
     this.rackHead.draw((x, w, h) => {
-      x.fillStyle = '#0a0806'; x.fillRect(0, 0, w, h);
-      x.fillStyle = '#ffb43a'; x.shadowColor = '#ffb43a'; x.shadowBlur = 16; x.textBaseline = 'middle';
-      fitText(x, sec.title, w / 2, h * 0.4, w - 300, 80, `{s}px ${F_SIGN}`);
-      x.shadowBlur = 4; x.fillStyle = '#d0b080';
-      fitText(x, `${String(this.secIdx + 1).padStart(2, '0')}/${SECTIONS.length} · ${sec.sub} · SWIPE ◄ ►`, w / 2, h * 0.8, w - 300, 34, `{s}px ${F_TYPE}`);
+      phosphorBg(x, w, h);
+      brackets(x, 150, 10, w - 300, h - 20, 26, PHOS.mid, 3, 8);
+      x.fillStyle = PHOS.hi; x.shadowColor = PHOS.mid; x.shadowBlur = 16; x.textBaseline = 'middle';
+      fitText(x, sec.title, w / 2, h * 0.4, w - 340, 80, `{s}px ${F_SIGN}`);
+      x.shadowBlur = 6; x.fillStyle = PHOS.mid;
+      fitText(x, `${String(this.secIdx + 1).padStart(2, '0')}/${SECTIONS.length} · ${sec.sub} · SWIPE ◄ ►`, w / 2, h * 0.8, w - 340, 34, `{s}px ${F_CRT}`);
+      x.shadowBlur = 0; scanlines(x, w, h, 0.25);
     });
     const cur = this.cos[sec.cat];
     list.forEach((o, i) => {
@@ -1080,15 +1104,19 @@ export class MenuScene {
       }
       case 'dispatch': {
         const g = this.dispatch; g.updateWorldMatrix(true, false);
-        const l = g.localToWorld(V(0.05, 1.08, 0.1)).lerp(V(0, 2.4, 0), 0.28);
-        const dir = V(0, 0.55, 1).transformDirection(g.matrixWorld).normalize();
-        return { p: this._fitPos(l, dir, 0.85, 0.75, 48), l, fov: 48 };
+        // first person at the console: over the lever and the CRT, the hook and the hatch beyond
+        const l = g.localToWorld(V(0.02, 1.1, -0.1)).lerp(V(0, 2.2, 0), 0.3);
+        const eye = g.localToWorld(V(0.05, 1.68, 0.95));
+        const dir = eye.clone().sub(l).normalize();
+        const p = this._fitPos(l, dir, 0.62, 0.5, 54, 1.0);
+        if (p.distanceTo(l) < eye.distanceTo(l)) p.copy(eye);
+        return { p, l, fov: 54 };
       }
       case 'continue': {
         const g = this.contG; g.updateWorldMatrix(true, false);
-        const l = g.localToWorld(V(0, 0.45, 0.02));
-        const dir = V(0, 0.95, 1).transformDirection(g.matrixWorld).normalize();
-        return { p: this._fitPos(l, dir, 1.25, 0.6, 46), l, fov: 46 };
+        const l = g.localToWorld(V(0, 0.62, 0.02));
+        const dir = V(0, 0.7, 1).transformDirection(g.matrixWorld).normalize();
+        return { p: this._fitPos(l, dir, 1.25, 0.72, 46), l, fov: 46 };
       }
       case 'settings': {
         const g = this.setG; g.updateWorldMatrix(true, false);
@@ -1609,7 +1637,7 @@ export class MenuScene {
         this._sfx('body_impact', { volume: 1, pos: this.av.root.position.clone() });
         this._sfx('crate_land', { volume: 0.5, pos: this.av.root.position.clone() });
         juice.hitstop(140); juice.shake(1.0); this.fx.flash = 0.55; this.fx.glitch = 0.6;
-        this.puffs.puff(V(0.1, -15.9, -0.1), V(0, 0.4, 0), 16, 0.8, 1.5, 2.6, 0.2);
+        this.puffs.puff(V(0.1, -15.9, -0.1), V(0, 0.4, 0), 12, 0.6, 1.2, 2.4, 0.12, 0x4a443c);
         this.junk.burstBolts(V(0.1, -15.7, -0.1), V(0, 1, 0), 8, -16);
         this.shaftLight.intensity = 0;
         r.p.set(0.9, -14.9, 1.3); r.l.set(0.05, -15.75, -0.1); r.fov = 44;
@@ -1870,11 +1898,19 @@ export class MenuScene {
       c.root.rotation.z = damp(c.root.rotation.z, 0, 8, dt);
     }
     if (this.cashTag) this.cashTag.rotation.y = Math.sin(this.t * 1.3) * 0.4;
+    if (this.holo) {
+      const open = this.crates[2].opened && this.mode === 'continue';
+      const k = damp(this.holo.scale.y, open ? 1 : 0.01, open ? 4 : 10, dt);
+      this.holo.scale.set(open ? Math.min(1, k * 1.4) : k, k, 1);
+      this.holo.position.y = 0.86 + Math.sin(this.t * 1.7) * 0.01;
+      this.holo.rotation.y = Math.sin(this.t * 0.5) * 0.12;
+      this.holoMat.opacity = 0.85 * (Math.random() < 0.04 ? 0.4 : 1) * (0.92 + 0.08 * Math.sin(this.t * 40));
+    }
     // plaques
     for (const p of this.plaques) {
       const h = hov?.type === 'plaque' && hov.p === p;
       p.g.position.z = damp(p.g.position.z, 0.02 + (h ? 0.04 : 0), 10, dt);
-      p.mat.emissiveIntensity = damp(p.mat.emissiveIntensity, (p.on ? 0.35 : 0.06) + (h ? 0.4 : 0), 10, dt);
+      p.mat.emissiveIntensity = damp(p.mat.emissiveIntensity, (p.on ? 1.1 : 0.75) + (h ? 0.5 : 0) + (Math.random() < 0.02 ? -0.3 : 0), 10, dt);
     }
   }
   _updateBackline(dt) {
@@ -1898,7 +1934,9 @@ export class MenuScene {
     g.visible = this.backShow > 0.02;
     if (!g.visible) return;
     const d = 0.35, hh = Math.tan((this.camera.fov * DEG) / 2) * d, hw = hh * this.camera.aspect;
-    g.position.set(-hw + Math.min(0.07, hw * 0.28), hh + 0.12 * (1 - this.backShow) + 0.002, -d);
+    const k = clamp(hw / 0.2, 0.5, 1);
+    g.scale.setScalar(k);
+    g.position.set(-hw + 0.055 * k + 0.008, hh + 0.12 * (1 - this.backShow) + 0.002, -d);
     const s = this.backSw;
     s.v += (-60 * s.a - 3 * s.v - this.rig.vel.x * 0.4) * dt; s.a += s.v * dt;
     const h = this.hover?.userData.act?.type === 'back';

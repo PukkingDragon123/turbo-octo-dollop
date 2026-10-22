@@ -15,6 +15,7 @@ import { G, groups, Q } from '../physics/physics.js';
 import { audio } from '../audio/audio.js';
 import { juice } from '../gfx/juice.js';
 import { clamp, damp } from '../core/rng.js';
+import { itemDef } from './itemdefs.js';
 
 export const COMBAT = {
   chargeTime: 0.7,        // s to a full haymaker
@@ -123,9 +124,11 @@ export class Combat {
     const cam = engine.camera;
     const origin = cam.position.clone();
     const dir = _f.set(0, 0, -1).applyQuaternion(cam.quaternion).clone();
-    const range = sw.weapon ? COMBAT.weaponRange : COMBAT.range;
+    // shop weapons carry stats (itemdefs weapon: dmg = hits per swing, range, knock)
+    const ws = sw.weapon ? itemDef(sw.weapon.type).weapon : null;
+    const range = ws?.range ?? (sw.weapon ? COMBAT.weaponRange : COMBAT.range);
     const [d0, d1] = sw.weapon ? COMBAT.weaponDamage : COMBAT.damage;
-    const damage = d0 + (d1 - d0) * sw.power;
+    const damage = (d0 + (d1 - d0) * sw.power) * (ws ? Math.max(0.6, ws.dmg * 0.7) : 1);
     const kind = sw.weapon ? 'weapon' : 'punch';
     // 1) monsters (the creature manager does its own cone test and reports what it hit)
     let res = null;
@@ -158,7 +161,7 @@ export class Combat {
     if (!hit) return; // whiff
     const ud = hit.ud;
     if (ud?.kind === 'prop' && ud.prop) {
-      net.toHost('hit', { id: ud.prop.id, p: hit.point.toArray(), d: dir.toArray(), f: sw.power, w: sw.weapon ? 1 : 0 });
+      net.toHost('hit', { id: ud.prop.id, p: hit.point.toArray(), d: dir.toArray(), f: Math.max(0.3, sw.power) * (ws?.knock ?? 1), w: sw.weapon ? 1 : 0 });
       this._landed(hit.point, sw, ud.prop.material);
     } else if (ud?.kind === 'monster' && ud.monster) {
       net.toHost('hit', { mon: ud.monster.id, p: hit.point.toArray(), d: dir.toArray(), f: sw.power, w: sw.weapon ? 1 : 0 });

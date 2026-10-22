@@ -157,7 +157,7 @@ registerRecipe('wood', {
     float rings = floor(uP0.x + 0.5);
     float w = fbm(uv, vec2(2.0, 2.0), 5) - 0.5; float w2 = fbm(uv + 0.31, vec2(3.0, 8.0), 4) - 0.5;
     float y = uv.y + w * 0.035 * uP0.y + w2 * 0.012 + 0.022 * sin(uv.x * 2.0 * PI + w * 3.0);
-    vec4 kn = vor(uv, vec2(2.0, 3.0), 0.8); float knotOn = step(0.7, kn.z);
+    vec4 kn = vor(uv, vec2(2.0, 3.0), 0.8); float knotOn = step(0.86, kn.z) * sat(uP0.z);
     y += (1.0 - smoothstep(0.0, 0.4, kn.x)) * 0.025 * knotOn * (kn.w - 0.3);
     float r = y * rings; float ring = fract(r);
     float late = smoothstep(0.62, 0.92, ring) * (1.0 - smoothstep(0.93, 1.0, ring));
@@ -172,7 +172,7 @@ registerRecipe('wood', {
     float scr = scratches(uv, 9.0, 0.45, 0.01) * uWear;
     col = mix(col, col * 1.2 + 0.02, scr * 0.5);
     float knot = (1.0 - smoothstep(0.05, 0.11, kn.x)) * knotOn, knotRing = (1.0 - smoothstep(0.1, 0.22, kn.x)) * knotOn * (0.5 + 0.5 * sin(kn.x * 140.0));
-    col = mix(col, uC2 * 0.8, knot * 0.85 + knotRing * 0.25);
+    col = mix(col, uC2, knot * 0.5 + knotRing * 0.18);
     vec3 dent = spots(uv, 11.0, 0.1, 0.04, 0.12) * uWear;
     vec3 ringW = spots(uv + 0.37, 2.0, 0.35, 0.16, 0.26) * uWear;
     float oily = fprint(uv, 5.0, 0.35) * uWear + smoothstep(0.62, 0.85, fbm(uv + 8.8, vec2(3.0), 4)) * uWear * 0.6;

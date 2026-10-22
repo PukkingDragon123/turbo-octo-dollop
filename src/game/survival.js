@@ -203,6 +203,7 @@ export class Survival {
       if (ctx.safeRoom) ds += 0.6;
       if (this.infection > 60) ds -= 0.1;
       ds -= (ctx.dayPressure || 0) * 0.08;
+      if (ds < 0) ds *= ctx.sanityDrainMul ?? 1;
       if (ctx.safeDay) ds = Math.max(ds, 0.05);
       this.sanity = clamp(this.sanity + ds * dt, 0, 100);
     } else {

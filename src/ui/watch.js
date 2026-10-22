@@ -24,7 +24,8 @@ const LEGACY = ['status', 'map', 'tasks'];
 const AW = 160, AH = 120, K = 3;
 
 // phosphor palette (green terminal)
-const P = { bg: '#020f05', fg: '#4dff7a', dim: '#1f9a40', faint: '#0c3a1a', hi: '#d8ffe0', bad: '#ff5a4a', badDim: '#7a1e18', warn: '#ffd060', cyan: '#9fd8ff', red: '#ff3a2a' };
+// monochrome phosphor (Pip-Boy style): every colour is an intensity of the same green
+const P = { bg: '#020f05', fg: '#4dff7a', dim: '#1f9a40', faint: '#0c3a1a', hi: '#d8ffe0', bad: '#d8ffe0', badDim: '#1f9a40', warn: '#b8ffc8', cyan: '#8dffad', red: '#4dff7a' };
 
 const MINI = {
   heart: ['.#.#.', '#####', '#####', '.###.', '..#..'],
@@ -274,18 +275,17 @@ export class Watch {
     const list = this.installed();
     const meta = WATCH_APPS.find((x) => x.id === this.app);
     const name = glance ? 'NOTICE' : meta?.name || this.app.toUpperCase();
-    a.rect(2, 1, AW - 4, 10, glance ? P.dim : P.fg);
     if (!glance) {
-      glyphMini(a, 'pulse', 4, 4, P.bg);
-      text(a, '<', 12, 3, P.bg);
       const nw = textWidth(name, FONT5);
-      text(a, name, 20, 3, P.bg);
-      text(a, '>', 22 + nw, 3, P.bg);
+      text(a, '<', 3, 2, P.dim);
+      text(a, name, 10, 2, P.hi);
+      text(a, '>', 12 + nw, 2, P.dim);
+      rulePx(a, 2, 18 + nw, 11, P.fg);
       list.forEach((id, i) => {
         const x = AW - 6 - (list.length - 1 - i) * 5;
-        if (id === this.app) a.rect(x - 1, 4, 3, 3, P.bg); else a.set(x, 5, P.dim);
+        if (id === this.app) a.rect(x - 1, 3, 3, 5, P.hi); else a.rect(x, 6, 1, 2, P.dim);
       });
-    } else text(a, name, 5, 3, P.bg);
+    } else { text(a, name, 4, 2, P.hi); rulePx(a, 2, 8 + textWidth(name, FONT5), 11, P.fg); }
     // day + clock
     const day = g.day?.active ? `DAY ${g.day.day}/7` : 'HQ  B4';
     text(a, day, 4, 14, P.hi);
@@ -349,7 +349,7 @@ export class Watch {
       const x = x0 + (i % cols) * (tw + 1), y = y0 + Math.floor(i / cols) * (th + 2);
       const on = e ? e.appInstalled(app.id) : LEGACY.includes(app.id);
       const hl = app.id === next && Math.floor(t * 2) % 2;
-      a.frame(x, y, tw, th, on ? (hl ? P.hi : P.dim) : P.faint);
+      if (hl) brk(a, x, y, tw, th, 4, P.hi);
       bitmap(ICON[app.icon] || ICON.home, { '#': on ? (hl ? P.hi : P.fg) : P.faint }, a, x + 15, y + 4);
       if (!on) bitmap(MINI.lock, { '#': P.dim }, a, x + tw - 7, y + 2);
       const nm = app.name.slice(0, 7);
@@ -382,7 +382,7 @@ export class Watch {
     });
     // EKG
     const ey = y0 + 50, eh = 26;
-    a.frame(2, ey, AW - 4, eh, P.faint);
+    brk(a, 2, ey, AW - 4, eh, 5, P.dim);
     for (let x = 6; x < AW - 4; x += 8) a.vline(x, ey + 1, ey + eh - 2, P.faint);
     const n = this.ekg.length, ew = AW - 52;
     let px = -1, py = -1;
@@ -470,7 +470,7 @@ export class Watch {
     a.poly(pts, P.hi);
     a.set(Math.round(mx), Math.round(my), P.fg);
     // frame + compass
-    a.frame(1, top - 1, AW - 2, bot - top + 2, P.dim);
+    brk(a, 1, top - 1, AW - 2, bot - top + 2, 6, P.dim);
     a.rect(AW - 12, top + 1, 9, 9, P.bg);
     text(a, 'N', AW - 10, top + 2, P.hi);
   }
@@ -519,7 +519,7 @@ export class Watch {
       text(a, 'HQ ORIENTATION', 4, y, P.hi);
       y += 11;
       for (const s of ['VISIT YOUR LOCKER', 'GRAB SNACKS: BREAK ROOM', 'READ THE ORIENTATION', 'HOST: START SHIFT', 'STEP INTO THE ELEVATOR']) {
-        a.frame(4, y + 1, 5, 5, P.dim);
+        diamond(a, 7, y + 3, P.dim, false);
         text(a, s, 12, y, P.fg);
         y += 10;
       }
@@ -536,9 +536,7 @@ export class Watch {
     if (!mainDone) {
       for (const n of main) {
         const st = e.state(n), done = st === 'claimed', cur = st === 'active';
-        a.frame(4, y + 1, 6, 6, done ? P.fg : cur ? P.hi : P.dim);
-        if (done) bitmap(MINI.check, { '#': P.hi }, a, 5, y + 2);
-        else if (cur && Math.floor(t * 3) % 2) a.rect(6, y + 3, 2, 2, P.hi);
+        diamond(a, 7, y + 4, done ? P.fg : cur ? P.hi : P.dim, done || (cur && Math.floor(t * 3) % 2));
         text(a, (n.task || n.name).toUpperCase().slice(0, 26), 13, y, done ? P.dim : cur ? P.hi : P.fg);
         y += 10;
       }
@@ -593,7 +591,7 @@ export class Watch {
     } else {
       for (const gen of m.generators || []) {
         const done = gen.running;
-        a.frame(4, y + 1, 5, 5, done ? P.fg : P.dim);
+        diamond(a, 7, y + 3, done ? P.fg : P.dim, done);
         if (done) { a.set(5, y + 3, P.hi); a.set(6, y + 4, P.hi); a.set(7, y + 2, P.hi); }
         text(a, `REPAIR ${String(gen.label || 'GENERATOR').toUpperCase()}`.slice(0, 22), 12, y, done ? P.dim : P.fg);
         if (gen.state?.linked) text(a, 'LINK', AW - 4, y, P.hi, { align: 'right', font: FONT3 });
@@ -601,7 +599,7 @@ export class Watch {
       }
       if (m.state) {
         const ex = m.state.exit;
-        a.frame(4, y + 1, 5, 5, m.state.extraction ? P.fg : P.dim);
+        diamond(a, 7, y + 3, m.state.extraction ? P.fg : P.dim, !!m.state.extraction);
         text(a, 'REQUEST EXTRACTION', 12, y, m.state.extraction ? P.dim : P.fg);
         y += 9;
         if (ex && !ex.done && m.exitTimeLeft) {
@@ -637,8 +635,8 @@ export class Watch {
     text(a, `${Math.floor(f * 100)}%`, AW - 4, gy, f >= 1 ? (Math.floor(t * 3) % 2 ? P.hi : P.warn) : P.hi, { align: 'right' });
     const bx = 14, bw = AW - 20, by = gy + 10;
     a.disc(9, by + 4, 5, P.red);
-    a.frame(bx, by, bw, 9, P.dim);
-    a.rect(bx + 1, by + 2, Math.round((bw - 2) * f), 5, P.red);
+    rulePx(a, bx, bx + bw, by + 8, P.dim);
+    a.rect(bx, by + 2, Math.round(bw * f), 5, P.fg);
     for (let i = 1; i < 4; i++) a.vline(bx + Math.round(bw * i / 4), by + 9, by + 11, P.dim);
     text(a, `${fmt$(e.escape)} / ${short$(e.quota)}`, 4, by + 13, P.fg, { font: FONT3 });
     // level rules
@@ -690,7 +688,7 @@ export class Watch {
   // ------------------------------------------------------------------ RADIO
   _radio(a, t, y0) {
     // tuner strip
-    a.frame(2, y0, AW - 4, 12, P.dim);
+    rulePx(a, 2, AW - 3, y0 + 12, P.dim);
     for (let x = 6; x < AW - 6; x += 6) a.vline(x, y0 + 7, y0 + 10, P.faint);
     const nx = 40 + Math.round(Math.sin(t * 0.3) * 3);
     a.vline(nx, y0 + 1, y0 + 10, P.bad);
@@ -741,14 +739,24 @@ function glyphMini(a, name, x, y, c) { bitmap(MINI[name] || MINI.heart, { '#': c
 // chunky segmented bar in the phosphor style
 function segBar(a, x, y, w, h, f, c) {
   f = Math.max(0, Math.min(1, Number.isFinite(f) ? f : 0));
-  a.frame(x, y, w, h, P.dim);
-  const segs = Math.max(4, Math.floor((w - 2) / 5));
-  const sw = (w - 2) / segs;
-  const n = f * segs;
+  const segs = Math.max(4, Math.floor(w / 3));
+  const on = Math.round(f * segs);
   for (let i = 0; i < segs; i++) {
-    const sx = Math.round(x + 1 + i * sw + 1), ex = Math.round(x + 1 + (i + 1) * sw) - 1;
-    if (i < Math.floor(n)) a.rect(sx, y + 2, ex - sx + 1, h - 4, c);
-    else if (i < n) a.rect(sx, y + 2, Math.max(1, Math.round((ex - sx + 1) * (n - i))), h - 4, c);
-    else a.set(sx, y + Math.floor(h / 2), P.faint);
+    const sx = x + i * 3;
+    if (i < on) a.rect(sx, y, 2, h, c);
+    else a.rect(sx, y + h - 2, 2, 2, P.faint);
   }
+}
+
+// Fallout-style furniture: an underline rule with end ticks, bracket corners, a diamond bullet
+function rulePx(a, x0, x1, y, c) { a.hline(x0, x1, y, c); a.set(x0, y - 1, c); a.set(x1, y - 1, c); }
+function brk(a, x, y, w, h, l, c) {
+  const x1 = x + w - 1, y1 = y + h - 1;
+  a.hline(x, x + l, y, c); a.vline(x, y, y + l, c);
+  a.hline(x1 - l, x1, y, c); a.vline(x1, y, y + l, c);
+  a.hline(x, x + l, y1, c); a.vline(x, y1 - l, y1, c);
+  a.hline(x1 - l, x1, y1, c); a.vline(x1, y1 - l, y1, c);
+}
+function diamond(a, cx, cy, c, fill) {
+  for (let d = -2; d <= 2; d++) { const w = 2 - Math.abs(d); if (fill) a.hline(cx - w, cx + w, cy + d, c); else { a.set(cx - w, cy + d, c); a.set(cx + w, cy + d, c); } }
 }

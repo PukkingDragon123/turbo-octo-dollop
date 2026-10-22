@@ -346,9 +346,9 @@ function grimeGLSL(kind, wet) {
         vec2 lg = vec2(nzR(wp * 0.045 + vec2(21.3045, 21.3)), nzR(wp * 0.045 + vec2(21.3, 21.3045))) - ln;
         float lgl = max(length(lg), 1e-4);
         float acrossL = (ln - 0.5) * 0.1 / lgl;
-        float lane = 1.0 - smoothstep(0.25, 0.6, abs(acrossL));
-        c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))) * vec3(1.02, 0.98, 0.9), lane * 0.16 * uGrime);
-        c *= 1.0 - lane * 0.08 * uGrime;
+        float lane = (1.0 - smoothstep(0.3, 0.8, abs(acrossL))) * (0.6 + 0.4 * mid);
+        c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))) * vec3(1.02, 0.98, 0.9), lane * 0.3 * uGrime);
+        c *= 1.0 - lane * 0.14 * uGrime;
         {
           vec2 tg = vec2(-lg.y, lg.x) / lgl;
           float al = dot(wp, tg) / 0.36; float k = floor(al);
@@ -357,9 +357,9 @@ function grimeGLSL(kind, wet) {
           float sole = 1.0 - smoothstep(0.8, 1.0, length((sp - vec2(0.03, 0.0)) / vec2(0.075, 0.045)));
           float heel = 1.0 - smoothstep(0.8, 1.0, length((sp + vec2(0.085, 0.0)) / vec2(0.035, 0.038)));
           float tread = 0.6 + 0.4 * step(0.5, fract(sp.x * 55.0));
-          float trail = smoothstep(0.55, 0.72, nzG(wp * 0.09 + 5.0)) * step(0.3, bkH(vec2(k, floor(ln * 9.0)) + 4.0));
+          float trail = smoothstep(0.45, 0.65, nzG(wp * 0.09 + 5.0)) * step(0.3, bkH(vec2(k, floor(ln * 9.0)) + 4.0));
           float shoe = max(sole, heel) * tread * trail * uGrime;
-          c = mix(c, c * vec3(0.6, 0.53, 0.43), shoe * 0.38);
+          c = mix(c, c * vec3(0.55, 0.48, 0.38), shoe * 0.5);
         }
         // cigarette burns: melted black core, scorched brown halo
         {
@@ -462,12 +462,26 @@ function grimeGLSL(kind, wet) {
           c *= 1.0 + dome * (bd.y / brr) * 0.16;
           c *= 1.0 - (1.0 - smoothstep(0.0, 0.05, abs(bl - brr))) * step(bd.y, 0.0) * bon * 0.12;
         }
+        // dirty run-down streaks from the ceiling line (grey-brown, thin, fading downwards)
+        {
+          float ru = u * 2.5 + w * 0.71; float rc = floor(ru); float rf = fract(ru);
+          float rh = bkH(vec2(rc, floor(w * 0.33 + 0.5) + 61.0));
+          if (rh > 0.62) {
+            float rx = 0.2 + 0.6 * fract(rh * 9.1) + (nzG(vec2(u * 3.0, y * 0.35)) - 0.5) * 0.12;
+            float rl = 0.35 + 1.6 * fract(rh * 4.3);
+            float down = (uGrid.w - y) / rl;
+            float rw = 0.025 + 0.03 * down;
+            float run = (1.0 - smoothstep(rw * 0.4, rw, abs(rf - rx))) * (1.0 - smoothstep(0.3, 1.0, down)) * step(0.0, down);
+            run *= 0.55 + 0.45 * nzR(vec2(u * 7.0, y * 1.3));
+            c = mix(c, c * vec3(0.72, 0.68, 0.6), run * 0.4 * uGrime);
+          }
+        }
         // greasy handprints at hand height (leaning, pushing), some smeared downwards
         float handGloss = 0.0;
         {
           float hu = u * 0.8 + w * 1.37; float hc = floor(hu); float hf = (fract(hu) - 0.5) / 0.8;
           float hh = bkH(vec2(hc, floor(w * 0.33 + 0.5) + 31.0));
-          if (hh > 0.8) {
+          if (hh > 0.72) {
             vec2 hq = vec2(hf - (fract(hh * 3.9) - 0.5) * 0.6, y - (0.95 + 0.6 * fract(hh * 7.7)));
             float ang = (fract(hh * 5.3) - 0.5) * 0.9; hq = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * hq;
             hq.x *= fract(hh * 11.0) > 0.5 ? 1.0 : -1.0;
@@ -482,7 +496,7 @@ function grimeGLSL(kind, wet) {
             float thumb = 1.0 - smoothstep(0.008, 0.012, length(tpa - tba * clamp(dot(tpa, tba) / dot(tba, tba), 0.0, 1.0)));
             float hand = max(palm, max(fing, thumb)) * (0.55 + 0.45 * nzG(vec2(u * 9.0, y * 9.0)));
             float smear = (1.0 - smoothstep(0.03, 0.06, abs(hq.x))) * step(hq.y, 0.0) * (1.0 - smoothstep(0.0, 0.12 + 0.15 * fract(hh * 2.3), -hq.y)) * step(0.5, fract(hh * 17.0));
-            c = mix(c, c * vec3(0.7, 0.64, 0.54), (hand * 0.34 + smear * 0.14) * uGrime);
+            c = mix(c, c * vec3(0.66, 0.6, 0.5), (hand * 0.45 + smear * 0.18) * uGrime);
             handGloss = hand * 0.12 * uGrime;
           }
         }
@@ -499,7 +513,7 @@ function grimeGLSL(kind, wet) {
         vec3 c = diffuseColor.rgb;
         c *= mix(vec3(1.0), vec3(1.0, 0.96, 0.86), nzR(vWPos.xz * 0.045) * 0.35);
         c *= 0.97 + 0.06 * fract(th * 13.1);
-        float stainP = 0.06 + ${W} * 0.3;
+        float stainP = 0.1 + ${W} * 0.3;
         if (th < stainP) {
           vec2 cc = vec2(fract(th * 37.1), fract(th * 91.7)) * 0.6 + 0.2;
           float r = 0.12 + 0.32 * fract(th * 53.3);
