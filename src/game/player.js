@@ -236,6 +236,7 @@ export class LocalPlayer {
     if (!this.world) return;
     const ui = this.game.ui;
     const s = this.survival;
+    if (net.isHost) this.combat.hostTick();
     if (this.dead) {
       this.qte.update(dt);
       this._updateSpectate(dt);

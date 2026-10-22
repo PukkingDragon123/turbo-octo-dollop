@@ -59,7 +59,7 @@ export class Combat {
     });
     net.onClient('punched', (d) => this.onPunched(d));
     net.onHost('ko', (d, from) => this._hostKO(d, from));
-    net.onHost('koEnd', (d, from) => this.game.world?.level?.removeBody?.('ko:' + from));
+    net.onHost('koEnd', (d, from) => { this._koBodies?.delete(from); this.game.world?.level?.removeBody?.('ko:' + from); });
     net.onHost('gore', (d, from) => this._hostGore(d, from));
     net.onClient('goreFx', (d) => this._goreFx(d));
   }
@@ -277,8 +277,17 @@ export class Combat {
     const r = this.game.roster.get(from);
     const key = 'ko:' + from;
     lvl.spawnBody(key, r?.cosmetics || (from === net.selfId ? this.p.cosmetics : {}), new THREE.Vector3().fromArray(d.p), d.yaw || 0, new THREE.Vector3().fromArray(d.v || [0, 0, 0]));
-    clearTimeout(this._koTimers?.[from]);
-    (this._koTimers ||= {})[from] = setTimeout(() => { if (this.game.world === w) lvl.removeBody?.(key); }, (COMBAT.koTime + 13) * 1000); // safety net if koEnd never arrives (disconnect)
+    // safety net if koEnd never arrives (disconnect): game time, so a slow frame rate can't cut a KO short
+    (this._koBodies ||= new Map()).set(from, { key, w, t0: w.time });
+  }
+
+  // host, every frame: clear KO ragdolls whose owner never got up
+  hostTick() {
+    if (!this._koBodies?.size) return;
+    for (const [from, b] of this._koBodies) {
+      if (b.w !== this.game.world) { this._koBodies.delete(from); continue; }
+      if (b.w.time - b.t0 > COMBAT.koTime + 10) { b.w.level?.removeBody?.(b.key); this._koBodies.delete(from); }
+    }
   }
 
   // host: a clone died to a huge hit -> snap its ragdoll apart and scatter robot parts

@@ -68,14 +68,25 @@ function edgesOf(geo) {
 
 export function buildHologram(obj, mats, size = 0.34) {
   obj.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(obj);
+  const inv = new THREE.Matrix4().copy(obj.matrixWorld).invert();
+  // bounds of exactly what is drawn (visible meshes only; hidden flames / helpers would shrink the fit)
+  const meshes = [];
+  const box = new THREE.Box3(), gb = new THREE.Box3();
+  obj.traverse((o) => {
+    if (!o.isMesh || !o.geometry) return;
+    let vis = true;
+    for (let p = o; p && p !== obj; p = p.parent) if (!p.visible) vis = false;
+    if (!vis) return;
+    const m = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld);
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    box.union(gb.copy(o.geometry.boundingBox).applyMatrix4(m));
+    meshes.push([o, m]);
+  });
+  if (box.isEmpty()) box.set(new THREE.Vector3(-0.1, -0.1, -0.1), new THREE.Vector3(0.1, 0.1, 0.1));
   const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
   const k = size / Math.max(0.04, s.x, s.y, s.z);
   const inner = new THREE.Group();
-  const inv = new THREE.Matrix4().copy(obj.matrixWorld).invert();
-  obj.traverse((o) => {
-    if (!o.isMesh || !o.geometry || !o.visible) return;
-    const m = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld);
+  for (const [o, m] of meshes) {
     const shell = new THREE.Mesh(o.geometry, mats.shell);
     shell.matrixAutoUpdate = false; shell.matrix.copy(m);
     const lines = new THREE.LineSegments(edgesOf(o.geometry), mats.line);
@@ -84,7 +95,7 @@ export function buildHologram(obj, mats, size = 0.34) {
     shell.userData.noProbe = lines.userData.noProbe = true;
     shell.castShadow = shell.receiveShadow = false;
     inner.add(shell, lines);
-  });
+  }
   inner.position.copy(c).multiplyScalar(-k);
   inner.scale.setScalar(k);
   const g = new THREE.Group();
