@@ -533,11 +533,11 @@ export class MenuScene {
     // cash bundles + a value tag
     const n = clamp(Math.ceil((s.credits || 0) / 250), 1, 9);
     for (let i = 0; i < n; i++) {
-      const b = mesh(rbox(0.17, 0.04, 0.08, 0.004), this.F.cash, c1.contents, -0.15 + (i % 3) * 0.15, 0.3 + Math.floor(i / 3) * 0.042, -0.08 + ((i * 7) % 3) * 0.08, 0, rnd(-0.2, 0.2), 0);
+      const b = mesh(rbox(0.17, 0.04, 0.08, 0.004), this.F.cash, c1.contents, -0.15 + (i % 3) * 0.15, 0.4 + Math.floor(i / 3) * 0.042, -0.08 + ((i * 7) % 3) * 0.08, 0, rnd(-0.2, 0.2), 0);
       void b;
     }
     const tag = this._tex(256, 128, (x, w, h) => { x.fillStyle = '#efe3bf'; x.fillRect(0, 0, w, h); x.fillStyle = '#1e1a12'; x.textBaseline = 'middle'; fitText(x, money(s.credits), w / 2, h * 0.45, w - 30, 64, `bold {s}px ${F_HAND}`); x.fillStyle = '#7a2a1a'; fitText(x, 'TEAM FUNDS', w / 2, h * 0.82, w - 30, 30, `{s}px ${F_TYPE}`); });
-    this.cashTag = new THREE.Group(); this.cashTag.position.set(0.12, 0.55, 0.12); c1.contents.add(this.cashTag);
+    this.cashTag = new THREE.Group(); this.cashTag.position.set(0.12, 0.62, 0.12); c1.contents.add(this.cashTag);
     this._plane(0.16, 0.08, new THREE.MeshStandardMaterial({ map: tag.tex, roughness: 0.9, side: THREE.DoubleSide }), this.cashTag, 0, -0.06, 0);
     mesh(cyl(0.0015, 0.05, 'y', 4), this.F.steel, this.cashTag, 0, -0.005, 0);
     // inventory items
@@ -550,7 +550,7 @@ export class MenuScene {
         o.scale.multiplyScalar(k);
         const wrap = new THREE.Group(); wrap.add(o);
         const ctr = box.getCenter(V()).multiplyScalar(k); o.position.sub(ctr);
-        wrap.position.set(-0.16 + (i % 3) * 0.16, 0.36 + Math.floor(i / 3) * 0.06, -0.08 + Math.floor(i / 3) * 0.14);
+        wrap.position.set(-0.16 + (i % 3) * 0.16, 0.46 + Math.floor(i / 3) * 0.06, -0.08 + Math.floor(i / 3) * 0.14);
         wrap.rotation.set(rnd(-0.4, 0.4), rnd(0, TAU), rnd(-0.3, 0.3));
         c2.contents.add(wrap);
       } catch (e) { console.warn('[menu] crate item', type, e); }
@@ -576,13 +576,13 @@ export class MenuScene {
       x.restore();
       x.shadowBlur = 0; x.fillStyle = 'rgba(0,0,0,0.35)'; for (let y = 0; y < h; y += 4) x.fillRect(0, y, w, 2);
     });
-    const holo = new THREE.Group(); holo.position.set(0, 0.86, 0.02); c3.contents.add(holo);
+    const holo = new THREE.Group(); holo.position.set(0, 0.95, 0.02); c3.contents.add(holo);
     this.holoMat = new THREE.MeshBasicMaterial({ map: doc.tex, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, color: new THREE.Color(1.6, 1.8, 1.6) });
     this._plane(0.4, 0.5, this.holoMat, holo, 0, 0, 0);
     const beam = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.08, 0.4, 0.16), transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-    const cone = mesh(new THREE.ConeGeometry(0.2, 0.36, 24, 1, true), beam, c3.contents, 0, 0.49, 0.0, PI, 0, 0); cone.castShadow = false;
-    mesh(cyl(0.05, 0.03, 'y', 18), this.F.dark, c3.contents, 0, 0.29, 0);
-    mesh(new THREE.CircleGeometry(0.04, 18), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 2.6, 0.8) }), c3.contents, 0, 0.306, 0, -PI / 2).castShadow = false;
+    const cone = mesh(new THREE.ConeGeometry(0.2, 0.36, 24, 1, true), beam, c3.contents, 0, 0.58, 0.0, PI, 0, 0); cone.castShadow = false;
+    mesh(cyl(0.05, 0.03, 'y', 18), this.F.dark, c3.contents, 0, 0.385, 0);
+    mesh(new THREE.CircleGeometry(0.04, 18), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 2.6, 0.8) }), c3.contents, 0, 0.402, 0, -PI / 2).castShadow = false;
     this.holo = holo; holo.scale.setScalar(0.01);
   }
 
@@ -1903,7 +1903,7 @@ export class MenuScene {
       const open = this.crates[2].opened && this.mode === 'continue';
       const k = damp(this.holo.scale.y, open ? 1 : 0.01, open ? 4 : 10, dt);
       this.holo.scale.set(open ? Math.min(1, k * 1.4) : k, k, 1);
-      this.holo.position.y = 0.86 + Math.sin(this.t * 1.7) * 0.01;
+      this.holo.position.y = 0.95 + Math.sin(this.t * 1.7) * 0.01;
       this.holo.rotation.y = Math.sin(this.t * 0.5) * 0.12;
       this.holoMat.opacity = 0.85 * (Math.random() < 0.04 ? 0.4 : 1) * (0.92 + 0.08 * Math.sin(this.t * 40));
     }

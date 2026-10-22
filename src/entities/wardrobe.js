@@ -1135,7 +1135,7 @@ export class Crate {
     B.box(w, h, t, F.wood, 0, h / 2, d / 2 - t / 2); B.box(w, h, t, F.wood, 0, h / 2, -d / 2 + t / 2);
     B.box(t, h, d, F.wood, w / 2 - t / 2, h / 2, 0); B.box(t, h, d, F.wood, -w / 2 + t / 2, h / 2, 0);
     for (const y of [0.04, h - 0.04]) B.box(w + 0.012, 0.05, d + 0.012, F.wood, 0, y, 0);
-    B.add(new THREE.PlaneGeometry(w - t * 2, d - t * 2), F.straw, M4(0, h * 0.55, 0, -Math.PI / 2));
+    B.add(new THREE.PlaneGeometry(w - t * 2, d - t * 2), F.straw, M4(0, h * 0.8, 0, -Math.PI / 2));
     this.meshes = B.build(this.root);
     this.lid = new THREE.Group(); this.root.add(this.lid);
     const lb = new Batch();

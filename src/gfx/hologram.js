@@ -7,6 +7,8 @@
 //   holoCone(radius, height, mat)  -> the projector light cone (open, additive)
 import * as THREE from 'three';
 
+const PI = Math.PI;
+
 const VERT = /* glsl */`
   uniform float uTime; uniform float uGlitch;
   varying vec3 vW; varying vec3 vN; varying vec3 vV;
@@ -98,8 +100,14 @@ export function buildHologram(obj, mats, size = 0.34) {
   }
   inner.position.copy(c).multiplyScalar(-k);
   inner.scale.setScalar(k);
+  // long flat things (pipes, bats, files) are stood up on end with a slight lean, so the spin reads from the front
+  const tilt = new THREE.Group();
+  tilt.add(inner);
+  if (s.y < Math.max(s.x, s.z) * 0.6) {
+    if (s.z >= s.x) tilt.rotation.x = -PI / 2 + 0.35; else tilt.rotation.z = PI / 2 - 0.35;
+  }
   const g = new THREE.Group();
-  g.add(inner);
+  g.add(tilt);
   return g;
 }
 
