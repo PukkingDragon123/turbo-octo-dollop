@@ -22,12 +22,17 @@ import '@fontsource/rye';
 import '@fontsource/limelight';
 import '@fontsource/creepster';
 import '@fontsource/courier-prime';
+import '@fontsource/cormorant-garamond/500.css';
+import '@fontsource/cormorant-garamond/600-italic.css';
+import '@fontsource/cormorant-garamond/700.css';
 import '@fontsource/eb-garamond/500.css';
 import '@fontsource/eb-garamond/500-italic.css';
 import '@fontsource/eb-garamond/700.css';
 
 export const FONT = {
-  speech: '"EB Garamond", Garamond, Georgia, serif',
+  // THE game font: luxurious, mysterious, calligraphic (use for all in-world text, signs, speech, labels)
+  main: '"Cormorant Garamond", "EB Garamond", Garamond, Georgia, serif',
+  speech: '"Cormorant Garamond", "EB Garamond", Garamond, Georgia, serif',
   hand: '"Caveat", "Comic Sans MS", cursive',
   marker: '"Permanent Marker", "Caveat", cursive',
   scrawl: '"Rock Salt", "Permanent Marker", cursive',
@@ -44,7 +49,7 @@ export const FONT = {
 // resolve once the faces are usable in canvas text (canvas doesn't trigger font loading by itself)
 export function loadFonts(timeout = 4000) {
   const faces = ['400 32px "Caveat"', '700 32px "Caveat"', '32px "Permanent Marker"', '32px "Rock Salt"', '32px "Reenie Beanie"',
-    '32px "Special Elite"', '32px "IM Fell English"', '32px "Rye"', '32px "Limelight"', '32px "Creepster"', '32px "Courier Prime"', '500 32px "EB Garamond"', 'italic 500 32px "EB Garamond"', '700 32px "EB Garamond"'];
+    '32px "Special Elite"', '32px "IM Fell English"', '32px "Rye"', '32px "Limelight"', '32px "Creepster"', '32px "Courier Prime"', '500 32px "EB Garamond"', 'italic 500 32px "EB Garamond"', '700 32px "EB Garamond"', '500 32px "Cormorant Garamond"', 'italic 600 32px "Cormorant Garamond"', '700 32px "Cormorant Garamond"'];
   return Promise.race([
     Promise.all(faces.map((f) => document.fonts.load(f).catch(() => null))),
     new Promise((r) => setTimeout(r, timeout)),
