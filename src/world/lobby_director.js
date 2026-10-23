@@ -158,6 +158,9 @@ export class LobbyDirector {
     // a click on the call panel zooms in too (E / tap go through the device's interact())
     const f = g.local.focus;
     if (!this.mode && f?.kind === 'device' && f.target === this.el && input.mouseHit(0) && this.el.state.ph === 'idle') this.openPanel();
+    // and a click on Gloria talks to her (same as [E])
+    const rec = this.lobby.receptionist;
+    if (!this.mode && rec && f?.kind === 'device' && f.target === rec && input.mouseHit(0)) rec.interact(g.local);
     if (this.mode === 'drop') this._drop(dt);
     else if (this.mode === 'panel') this._panelInput(dt);
     else if (this.mode === 'joinfall') this._joinFall(dt);
@@ -233,7 +236,7 @@ export class LobbyDirector {
     if (!this.hatchBang && l.pos.y < this.lobby.H + 0.4) { this.hatchBang = true; audio.play('door_heavy_open', { volume: 0.5, pitch: 1.3 }); }
     if (this.landT < 0 && ((l.grounded && l.pos.y < 0.5 && t > 0.15) || t > 5)) {
       this.landT = t;
-      juice.shake(0.95); juice.hitstop(150); juice.flash(0.22); juice.punch(0.07);
+      juice.shake(0.4); juice.hitstop(90); juice.punch(0.03);
       audio.play('crate_land', { volume: 1 });
       audio.play('robo_clunk', { volume: 0.9, delay: 0.03 });
       audio.play('gasp', { volume: 0.7, delay: 0.25 });
@@ -258,13 +261,12 @@ export class LobbyDirector {
       this._welcome();
     }
   }
+  // Gloria (the receptionist) greets the new arrival; she is the one who starts the shift
   _welcome() {
-    const host = net.mode === 'host', client = net.mode === 'client';
-    floatText.notice('SUBLEVEL B4  //  WAITING ROOM', { color: '#ffd9a0', duration: 3.4 });
+    const rec = this.lobby.receptionist;
+    if (rec) { rec.greet(); return; }
     const at = this.panel?.group;
-    if (!at) return;
-    const msg = client ? 'WAITING FOR THE HOST' : this.lineMode === 'host' ? (host ? 'PANEL: START OR EXIT' : 'PANEL: START OR EXIT') : 'CALL PANEL: HOST OR JOIN';
-    floatText.say(msg, { at, offset: new THREE.Vector3(0, 0.45, 0), size: 0.55, duration: 6, color: client ? '#9fd0ff' : '#ffcf8a' });
+    if (at) floatText.say(net.mode === 'client' ? 'WAITING FOR THE HOST' : 'CALL PANEL: HOST OR JOIN', { at, offset: new THREE.Vector3(0, 0.45, 0), size: 0.55, duration: 6, color: '#ffcf8a' });
   }
 
   // ------------------------------------------------------------------ the call panel
@@ -468,7 +470,7 @@ export class LobbyDirector {
         P.readout.set('OPEN');
         audio.play('elevator_ding', { volume: 0.8, pitch: 1.2 });
         floatText.say(`SHIFT CODE  ${code}`, { at: el.board.group, offset: new THREE.Vector3(0, -0.32, 0), size: 0.8, color: '#ffe2a0', duration: 6 });
-        floatText.notice('Give the code to up to 3 clones. They drop in through the ceiling.', { color: '#ffd9a0', duration: 5 });
+        floatText.notice('Give the code to up to 3 clones. When everyone is here, tell Gloria to start.', { color: '#ffd9a0', duration: 5 });
       } else {
         el.hostCode('', 'dead');
         P.readout.set('DEAD');
@@ -476,7 +478,7 @@ export class LobbyDirector {
         audio.play('radio_static_burst', { volume: 0.5, delay: 0.1 });
         juice.shake(0.12);
         floatText.say('LINE DEAD', { at: el.board.group, offset: new THREE.Vector3(0, -0.3, 0), size: 0.9, color: '#ff6a4a', duration: 5 });
-        floatText.notice(SOLO_ONLY ? 'No outside line in this build. Solo shift: press START when ready.' : `${err || 'No line to the switchboard'}. Solo shift: press START when ready.`, { color: '#ffb08a', duration: 6 });
+        floatText.notice(SOLO_ONLY ? 'No outside line in this build. Solo shift: tell Gloria when you are ready.' : `${err || 'No line to the switchboard'}. Solo shift: tell Gloria when you are ready.`, { color: '#ffb08a', duration: 6 });
       }
       this.holdT = Math.max(2.6, 1.9 - (this.t - t0) + 1.2);
     };
@@ -560,7 +562,6 @@ export class LobbyDirector {
       this.goTo((d, o) => this._fallPose(o, true), 0.45);
       this.hand.visible = false;
     }
-    if (t > 0.6) pp.uGlitch.value = clamp((t - 0.6) * 0.45, 0, 0.7);
     this._noKillPlane();
     if (t > 1.5) pp.uFade.value = sstep(1.5, 1.95, t);
     if (t > 2.0 && this.joinCb) {
@@ -574,8 +575,7 @@ export class LobbyDirector {
   // START pressed (every peer): a wide shot of the doors for whoever is at the panel
   onBoard() {
     const host = this.mode === 'panel';
-    floatText.notice('THE CAR LEAVES IN 8 SECONDS. EVERYONE IN THE ROOM GOES.', { color: '#ffd9a0', duration: 4.5 });
-    if (!host) return;
+    if (!host) return; // Gloria announces the departure (entities/receptionist.js)
     if (input.textCapture === this._onKey) input.textCapture = null;
     this.mode = 'board';
     this.holdT = 2.2;
@@ -627,7 +627,7 @@ export class LobbyDirector {
     if (t >= 1.3 && !this.trapped) {
       this.trapped = true;
       this.lobby.openTrap('exit');
-      juice.shake(0.7); juice.hitstop(90); juice.flash(0.15);
+      juice.shake(0.35); juice.hitstop(60);
       audio.play('door_heavy_open', { volume: 1, pitch: 0.7 });
       audio.play('_boom', { volume: 0.7 });
       audio.play('_amb_scream', { volume: 0.6, delay: 0.4 });
@@ -637,7 +637,6 @@ export class LobbyDirector {
       if (!l.dead && l.world) l.applyYank([(c.x - l.pos.x) * 1.6, 2.2, (c.z - l.pos.z) * 1.6]);
       this.goTo((d, o) => this._fallPose(o, false), 0.5);
     }
-    if (t > 1.6) engine.post.params.uGlitch.value = clamp((t - 1.6) * 0.3, 0, 0.35);
     this._noKillPlane();
     if (t >= 2.5) {
       this._loop('wind_fall', false);

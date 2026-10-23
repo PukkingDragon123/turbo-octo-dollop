@@ -10,10 +10,10 @@
 // The car shudders and drops down a block-walled hoistway; floors, cage lamps and painted numbers rush
 // past the brass gate; the floor dial spins through impossible numbers. Five times the car slams to a
 // stop and the landing doors open on another dimension (the Yellow Rooms, the Poolrooms, a moonlit
-// grass field, a red hotel corridor, a hall of endless doors), then shut again. Finally the hoistway
-// dissolves and the car falls through a black void past a single lit door, the brakes scream, the lights
-// die, and they come back on in the arrival car standing in Level 0, whose gate clatters open once every
-// rider has arrived. Everything is procedural; the ride scene is built once per session and reused.
+// grass field, a red hotel corridor, a hall of endless doors), then shut again. Finally the main cable
+// snaps and the lights die: the free fall is pure darkness (sound only: wind, the void drone, the brakes
+// screaming, the slam). No text, no glitch. The lights come back on in the arrival car standing in
+// Level 0 (ArrivalElevator / the arrival sequence take over from there). Everything is procedural; the ride scene is built once per session and reused.
 //
 // Exports: ElevatorRide (per ride), prepareRide(game) (build/compile ahead), Elevator (hooks game.js calls
 // while loading a world), ArrivalElevator (the car standing in the level).
@@ -27,7 +27,6 @@ import { Device } from '../game/devices.js';
 import { ElevatorCar, LandingDoors, GBin, T, CAR, carMaterials } from '../entities/elevator.js';
 import { VLRig, vlPatch } from '../entities/vlights.js';
 import { juice } from '../gfx/juice.js';
-import { floatText } from '../ui/floattext.js';
 import { FX } from '../gfx/particles.js';
 
 const PI = Math.PI, TAU = PI * 2;
@@ -57,7 +56,6 @@ const FIRST_TRAVEL = 0.85, TRAVEL = 0.6, ST_OPEN = 0.12, ST_OPEN_D = 0.28, ST_HO
   }
 })();
 const T_VOID = STOPS[STOPS.length - 1].depart;
-const GLITCH = ['L3V3L 0 // NOT HERE', 'THE P00LROOMS?', 'SIGNAL LOST', 'ROOM 5 IS OCCUPIED', 'D00RS D00RS D00RS'];
 const T_BRAKE_SND = T_VOID + 1.35, T_SLAM = T_BRAKE_SND + 1.2, T_HANDOFF = T_SLAM + 0.3;
 
 // travel distance (m) at time t
@@ -194,7 +192,6 @@ class RideScene {
     this.M.glow.color.setScalar(1.6);
     this.M.sky = new THREE.MeshBasicMaterial({ map: nightSky(), side: THREE.BackSide, fog: false, depthWrite: false });
     this.M.moon = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 2.2, 2.0), fog: false });
-    this.M.void = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide, fog: false });
     this._shaft();
     this._dust();
     this.fx = new FX(this.scene);
@@ -203,9 +200,6 @@ class RideScene {
       yellow: this._yellow(), pool: this._pool(), field: this._field(), hotel: this._hotel(), doors: this._doors(),
     };
     for (const v of Object.values(this.vignettes)) { v.group.visible = false; v.group.position.set(0, 0, WZ + 0.25); this.root.add(v.group); }
-    this.voidGroup = this._void();
-    this.voidGroup.visible = false;
-    this.root.add(this.voidGroup);
     this.root.traverse((o) => { if (o.isMesh || o.isPoints) { o.userData.noProbe = true; o.frustumCulled = o.isInstancedMesh ? false : o.frustumCulled; } });
   }
 
@@ -396,33 +390,6 @@ class RideScene {
     floor.mesh(M.checker, g); wood.mesh(M.wood, g); paint.mesh(M.paint, g); glow.mesh(M.glow, g);
     return { group: g, lights: [[new THREE.Vector3(0, 4.5, 5), 0xc8d0ff, 34, 30], [new THREE.Vector3(-1.6, 1.4, 6.5), 0xffe8c0, 2.4]], amb: [0.07, 0.065, 0.09] };
   }
-  _void() {
-    const g = new THREE.Group(), M = this.M;
-    const shell = new THREE.Mesh(new THREE.SphereGeometry(140, 16, 10), M.void);
-    g.add(shell);
-    const door = new THREE.Group();
-    const wood = new GBin(), glow = new GBin();
-    wood.span(-0.6, 0, -0.08, -0.5, 2.3, 0.08, 0x1a1210); wood.span(0.5, 0, -0.08, 0.6, 2.3, 0.08, 0x1a1210); wood.span(-0.6, 2.2, -0.08, 0.6, 2.3, 0.08, 0x1a1210);
-    wood.box(0.98, 2.18, 0.05, 0x6a5a48, T(-0.5, 1.09, 0.0, 0, -0.32, 0).multiply(T(0.49, 0, 0)));
-    glow.span(-0.5, 0, 0.0, 0.5, 2.2, 0.01, 0xfff6e8);
-    wood.mesh(M.paint, door); glow.mesh(M.glow, door);
-    // soft light halo around the doorway + a shaft of light falling out of the crack
-    const hc = canvas(128, 128), hx = hc.getContext('2d'), hg = hx.createRadialGradient(64, 64, 4, 64, 64, 64);
-    hg.addColorStop(0, 'rgba(255,240,215,0.9)'); hg.addColorStop(0.35, 'rgba(255,220,180,0.25)'); hg.addColorStop(1, 'rgba(255,220,180,0)');
-    hx.fillStyle = hg; hx.fillRect(0, 0, 128, 128);
-    const halo = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshBasicMaterial({ map: ctex(hc), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
-    halo.position.set(0, 1.1, -0.15);
-    door.add(halo);
-    const shaft = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 7), new THREE.MeshBasicMaterial({ map: ctex(hc), color: 0xffe8c8, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }));
-    shaft.position.set(0.3, 1.1, 2.4); shaft.rotation.set(-PI / 2, 0, 0.3);
-    door.add(shaft);
-    door.position.set(1.2, -3, 26);
-    door.rotation.y = PI + 0.4;
-    g.add(door);
-    this.voidDoor = door;
-    return g;
-  }
-
   // label a segment with its floor number ("B5" .. "B29")
   label(seg, floor) {
     if (seg.floor === floor) return;
@@ -482,7 +449,6 @@ export class ElevatorRide {
     if (!this.S) { this.active = false; return; }
     // per-ride state of the shared scene
     for (const v of Object.values(this.S.vignettes)) v.group.visible = false;
-    this.S.voidGroup.visible = false;
     for (const s of this.S.segments) { s.g.visible = true; s.doors.set(0); }
     this.S.dust.visible = true;
     this.S.car.gate.set(0);
@@ -534,7 +500,6 @@ export class ElevatorRide {
     const S = this.S;
     S.fx.sparks(S.car.root.localToWorld(_v.set(x, y, z)), n, _v2.set(0, 1, 0), [1, 0.62, 0.25], speed);
   }
-  _glitchText(txt, col = '#ff7a5a', dur = 1.3) { floatText.notice(txt, { color: col, duration: dur, size: 0.9, paper: false, font: 'horror' }); }
 
   update(dt) {
     if (!this.active) return;
@@ -588,33 +553,30 @@ export class ElevatorRide {
     this._once('lurch', T_MOVE + 0.12, () => {
       this._snd('cable_snap', { volume: 1 }); this._snd('metal_scream', { volume: 0.7, delay: 0.1 });
       this.slipV = -2.6; this.tiltT = 0.05; this.blackout = Math.max(this.blackout, 0.22);
-      juice.shake(0.6); juice.hitstop(70); juice.punch(0.05);
+      juice.shake(0.28); juice.hitstop(40);
       for (const sx of [-1.25, 1.25]) this._sparks(sx, 2.4, CAR.FRONT, 26, 7);
-      this._glitchText('CABLE 2 OF 4 SEVERED', '#ffb070');
     });
     STOPS.forEach((s, i) => {
       this._once(`brk${i}`, s.arrive - 0.12, () => {
         // emergency brake: slam, sparks off the rails, the lights stutter and come back a little dimmer
         this._snd('thunk', { volume: 1, pitch: 0.6 }); this._snd('elev_brake', { volume: 0.8, pitch: 1.2 }); this._snd('elevator_ding', { volume: 0.7, pitch: s.ding * 0.9, delay: 0.25 });
         this.jolt = 1.4; this.slipV = -1.4; this.tiltV += (i % 2 ? 1 : -1) * 0.5;
-        juice.shake(0.45); juice.hitstop(60 + i * 8);
+        juice.shake(0.2); juice.hitstop(30 + i * 4);
         this.dead = Math.min(0.55, this.dead + 0.09); this.blackout = Math.max(this.blackout, 0.12);
         for (const sx of [-1.25, 1.25]) this._sparks(sx, 0.2 + Math.random() * 2, CAR.FRONT, 18, 5);
       });
       this._once(`open${i}`, s.open, () => {
         this._snd('elev_doors', { volume: 0.9, pitch: 1.1 }); this._snd('_tear', { volume: 0.6 }); this._dimOn(s, true);
-        this._glitchText(GLITCH[i], i === 3 ? '#ff4a3a' : '#c8f0ff', 1.1);
       });
       this._once(`close${i}`, s.close, () => { this._snd('elev_doors', { volume: 0.9, pitch: 1.6 }); this._snd('thunk', { volume: 0.7, pitch: 0.9, delay: ST_CLOSE }); });
       this._once(`gone${i}`, s.close + ST_CLOSE, () => this._dimOn(s, false));
       this._once(`go${i}`, s.depart - 0.05, () => { this._snd('elev_cable', { volume: 0.8, pitch: 0.9 + i * 0.05 }); this.shake = Math.max(this.shake, 0.5); });
     });
-    // the main cable snaps: freefall, tilted, red emergency light
+    // the main cable snaps: the lights die, the free fall is pure darkness (sound only)
     this._once('snap', T_VOID - 0.05, () => {
       this._snd('cable_snap', { volume: 1.2, pitch: 0.8 }); this._snd('metal_scream', { volume: 1, delay: 0.05 }); this._snd('_crack', { volume: 0.8 });
-      this.tiltT = 0.13; this.slipV = -3; juice.shake(0.9); juice.hitstop(120); juice.flash(0.3); juice.punch(0.08);
-      for (let k = 0; k < 4; k++) this._sparks((k % 2 ? 1 : -1) * 1.25, 2.4 - k * 0.3, CAR.FRONT, 30, 9);
-      this._glitchText('MAIN CABLE LOST // FREEFALL', '#ff4a3a', 1.8);
+      this.tiltT = 0.13; this.slipV = -3; juice.shake(0.35); juice.hitstop(60);
+      this._snd('lights_out', { volume: 0.8, delay: 0.08 });
     });
     this._once('void', T_VOID + 0.3, () => { this._snd('void_drone', { volume: 0.9 }); this._snd('whisper', { volume: 0.7, delay: 0.6 }); this._snd('teleport_whoosh', { volume: 0.6 }); });
     this._once('scream2', T_VOID + 0.9, () => this._snd('metal_scream', { volume: 0.8, pitch: 0.7 }));
@@ -622,7 +584,7 @@ export class ElevatorRide {
     this._once('slam', T_SLAM, () => {
       this.jolt = 2.6; this.shake = 1.6; this.slipV = -4; this._snd('collapse_rumble', { volume: 0.7 }); this._snd('_boom', { volume: 0.9 }); this._snd('crate_land', { volume: 1 });
       this.blackout = Math.max(this.blackout, 0.6);
-      juice.shake(1); juice.hitstop(200); juice.flash(0.85); juice.punch(0.12);
+      juice.shake(0.4); juice.hitstop(90);
     });
     // travel speed -> wind + rattle loops
     const D = travelAt(t), v = (D - this.lastD) / Math.max(dt, 1e-3);
@@ -666,8 +628,6 @@ export class ElevatorRide {
     S.dust.geometry.attributes.position.needsUpdate = true;
     S.dust.material.opacity = inVoid ? 0.9 : 0.15 + speed * 0.5;
     S.dust.material.size = 0.008 + speed * 0.02;
-    S.voidGroup.visible = inVoid && t < T_SLAM;
-    if (inVoid) S.voidDoor.position.y = -4.2 + (t - T_VOID) * 2.2;
     // ---- floor dial: spins through impossible numbers while moving, shows the dimension at stops
     const stop = STOPS.find((s) => t >= s.arrive && t < s.depart);
     let led = 'B4', col = '#ffae3a';
@@ -746,7 +706,7 @@ export class ElevatorRide {
     S.car.root.rotation.x = Math.sin(t * 11) * this.shake * 0.003;
     S.car.root.position.y = this.slip * 0.12;
     S.car.syncLights();
-    const sh = this.shake * 0.016 + this.jolt * 0.028;
+    const sh = this.shake * 0.008 + this.jolt * 0.014;
     const bob = -Math.sin(Math.min(1, this.jolt) * PI) * 0.05 * Math.min(1, this.jolt);
     S.root.updateMatrixWorld(true);
     const p = S.car.root.localToWorld(_v.set(this.rel.x, EYE + bob, this.rel.z));
@@ -757,12 +717,10 @@ export class ElevatorRide {
     const fov = 72 + (t > T_VOID && t < T_SLAM ? 8 * sstep(T_VOID, T_VOID + 1, t) : 0);
     if (Math.abs(cam.fov - fov) > 0.05) { cam.fov += (fov - cam.fov) * Math.min(1, dt * 4); cam.updateProjectionMatrix(); }
     if (audio.ready) audio.setListener(cam.position, cam.quaternion);
-    // post: glitch at stops / void / slam, fade during blackouts
+    // post: no glitch; black during blackouts and for the whole free fall (sound only)
     const pp = engine.post.params;
-    let gl = this.jolt * 0.2 + (this.dim ? 0.03 : 0);
-    if (t > T_VOID && t < T_SLAM) gl += 0.14 + 0.1 * Math.sin(t * 7);
-    pp.uGlitch.value = clamp(gl, 0, 0.9);
-    const fade = this.blackout > 0 ? 1 : 0;
+    pp.uGlitch.value = 0;
+    const fade = this.blackout > 0 || t > T_VOID + 0.12 ? 1 : 0;
     pp.uFade.value += (fade - pp.uFade.value) * Math.min(1, dt * (fade ? 30 : 8));
   }
 
