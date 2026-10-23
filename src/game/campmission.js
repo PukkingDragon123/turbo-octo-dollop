@@ -43,6 +43,7 @@ import { Crusher } from './crusher.js';
 import { ShopKiosk, QuestKiosk } from './terminals.js';
 import { SideQuests } from './sidequests.js';
 import { Onboarding } from './onboarding.js';
+import { ArrivalDirector } from './arrival.js';
 
 const CAMP_EXIT_SECONDS = 180;
 const CLONE_DELAY = 7;
@@ -142,7 +143,7 @@ export class CampMission extends Mission {
 
   markers() {
     const out = [{ kind: 'camp', pos: this.camp.pos.clone(), label: 'CAMP' }];
-    if (this.crusher) out.push({ kind: 'crusher', pos: this.crusher.root.position.clone(), label: 'CRUSHER' });
+    if (this.crusher && !this.crusher.hidden) out.push({ kind: 'crusher', pos: this.crusher.root.position.clone(), label: 'CRUSHER' });
     out.push(...this.sideq.markers());
     const e = this.state.exit;
     if (e && !e.done) out.push({ kind: 'exit', pos: new THREE.Vector3(e.x, 0, e.z), label: 'EXIT' });
@@ -250,7 +251,12 @@ export class CampMission extends Mission {
     }
     this.sideq.build();
     this.ghosts = new CampGhosts(this.world, this.camp);
-    this.onboarding = new Onboarding(this); // arrival crates: supplies + the broken Healthity (game/onboarding.js)
+    this.onboarding = new Onboarding(this); // the supply crate + the broken Healthity (game/onboarding.js)
+    // the arrival sequence: noclip, stranded, things clip in one by one (game/arrival.js); hides the
+    // crusher and the kiosks until their beats
+    this.arrival = new ArrivalDirector(this);
+    this.world.addDevice(this.arrival);
+    this.game.arrival = this.arrival;
   }
 
   // teleport pad hall: pads in a row on the far side, the lever between them and the camp
@@ -345,20 +351,22 @@ export class CampMission extends Mission {
     this.pushState();
     const delay = (ms, fn) => setTimeout(() => { if (!this.disposed) fn(); }, ms);
     const brief = () => this.hq(`Welcome to Level 0, employees. First task: BUILD YOUR CAMP. Your TENT KIT is waiting at the camp site. Open it, drag each part onto its glowing marker and attach it with your built-in multitool (empty hand, RMB).`, 'RECEPTION');
-    // arriving by elevator: brief when the gate opens (onArrival), not in the middle of the ride
-    if (this.game.ride?.active) {
-      this._brief = brief;
-      delay(45000, () => { if (this._brief) { this._brief = null; brief(); } });
-    } else delay(3000, brief);
+    // the brief comes once the arrival sequence has phased the terminals in (game/arrival.js -> fireBrief);
+    // a long stall on the broken Healthity still gets it eventually
+    this._brief = brief;
+    delay(240000, () => this.fireBrief(0));
   }
 
-  // called on every peer when the arrival elevator's gate opens (world/elevator_ride.js)
-  onArrival() {
-    this.onboarding?.onArrival();
+  fireBrief(delayMs = 1500) {
     if (!this._brief) return;
     const b = this._brief;
     this._brief = null;
-    setTimeout(() => { if (!this.disposed) b(); }, 1200);
+    setTimeout(() => { if (!this.disposed) b(); }, delayMs);
+  }
+
+  // called on every peer when the arrival car has flung its riders out and imploded (world/elevator_ride.js)
+  onArrival(info) {
+    this.game.arrival?.begin(info);
   }
 
   // host: nothing may stand on the pads or the lever (chunk furniture spawned before the mission existed)
@@ -847,6 +855,7 @@ export class CampMission extends Mission {
   dispose() {
     this.disposed = true;
     this.onboarding?.dispose();
+    if (this.game.arrival === this.arrival) this.game.arrival = null;
     this.econ.dispose();
     this.sideq.dispose();
     net.clientHandlers.delete('mstate');

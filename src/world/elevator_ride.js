@@ -897,7 +897,8 @@ export class ArrivalElevator extends Device {
       for (const c of this.colliders) c?.setEnabled?.(false);
       this.car.gateCollider?.setEnabled(false);
       const gate = _v2.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-      if (l.world && !l.dead && this._inside(l.pos)) {
+      // hand-off: the arrival director (game/arrival.js) may take this clone (noclip through the wall)
+      if (l.world && !l.dead && this._inside(l.pos) && !g.arrival?.fling?.({ base: this.base, yaw: this.yaw, spin: this.spinV })) {
         const rad = l.pos.clone().sub(this.base).setY(0);
         const tan = new THREE.Vector3(-rad.z, 0, rad.x).multiplyScalar(this.spinV * 0.35);
         const v = gate.clone().multiplyScalar(7.5).addScaledVector(rad, 2.5).add(tan.clampLength(0, 4));

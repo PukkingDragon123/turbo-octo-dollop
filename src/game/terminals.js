@@ -88,6 +88,12 @@ class KioskBase extends Device {
     this.range = 2.6;
   }
   get econ() { return this.mission.econ; }
+  // not in the world until the arrival director slides it out of the camp wall (game/arrival.js)
+  setHidden(h) {
+    this.hidden = !!h;
+    this.root.visible = !h;
+    for (const c of this.colliders) c?.setEnabled?.(!h);
+  }
   get unlocked() { return !!this.econ?.has(this.unlockKey); }
   nearLocal(r = 12) { return this.root.position.distanceTo(this.world.game.local.pos) < r; }
 
@@ -103,8 +109,9 @@ class KioskBase extends Device {
 
   _lockedScreen(ctx, w, h, t, title, need) {
     ptext(ctx, title, w / 2, h * 0.12, Math.round(h * 0.11), { align: 'center', c: PH.dim });
-    icon(ctx, 'lock', w / 2, h * 0.45, h * 0.12, Math.floor(t * 2) % 2 ? PH.hi : PH.dim, 4);
-    ptext(ctx, 'OFFLINE', w / 2, h * 0.62, Math.round(h * 0.1), { align: 'center', c: PH.fg });
+    const deny = (this.denyT || 0) > 0, jx = deny ? (Math.random() - 0.5) * 6 : 0;
+    icon(ctx, 'lock', w / 2 + jx, h * 0.45, h * 0.12, deny || Math.floor(t * 2) % 2 ? PH.hi : PH.dim, 4);
+    ptext(ctx, deny ? (Math.floor(t * 6) % 2 ? 'ACCESS DENIED' : '') : 'OFFLINE', w / 2 + jx, h * 0.62, Math.round(h * 0.1), { align: 'center', c: deny ? PH.hi : PH.fg });
     rule(ctx, w * 0.25, w * 0.75, h * 0.75, PH.dim);
     ptext(ctx, need, w / 2, h * 0.79, Math.round(h * 0.065), { align: 'center', c: PH.dim });
     phosphorFx(ctx, w, h, t);
@@ -169,6 +176,19 @@ export class ShopKiosk extends KioskBase {
       this.cones.push(cone);
     }
     this.holoRoot = new THREE.Group(); this.holoRoot.position.set(0, 0, -0.1); R.add(this.holoRoot);
+    // a slow dashed ring of light on the deck under the selected item, and a scan ring climbing it
+    this.ringMat = holoLineMaterial(0x7dffa0);
+    const rp = [];
+    for (let i = 0; i < 36; i++) { if (i % 3 === 2) continue; const a0 = (i / 36) * PI * 2, a1 = ((i + 1) / 36) * PI * 2; rp.push(Math.cos(a0) * 0.2, 0, Math.sin(a0) * 0.2, Math.cos(a1) * 0.2, 0, Math.sin(a1) * 0.2); }
+    for (let i = 0; i < 12; i++) { const a = (i / 12) * PI * 2; rp.push(Math.cos(a) * 0.22, 0, Math.sin(a) * 0.22, Math.cos(a) * 0.25, 0, Math.sin(a) * 0.25); }
+    const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3));
+    this.deckRing = new THREE.LineSegments(rg, this.ringMat); this.deckRing.position.set(0, DECK_Y + 0.05, -0.1); this.deckRing.renderOrder = 6; R.add(this.deckRing);
+    this.scanRing = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.0035, 4, 48), this.ringMat); this.scanRing.rotation.x = -PI / 2; this.scanRing.renderOrder = 6; R.add(this.scanRing);
+    // BUY: the hologram collapses to a point and streaks off through the wall to the crusher's teleporter
+    this.streakMat = holoMaterial(0xb8ffc8);
+    const sg = new THREE.CylinderGeometry(0.016, 0.016, 1, 8, 1, true); sg.translate(0, 0.5, 0); sg.rotateX(PI / 2);
+    this.streak = new THREE.Mesh(sg, this.streakMat); this.streak.visible = false; this.streak.renderOrder = 8; this.streak.userData.noProbe = true; this.streak.frustumCulled = false;
+    this.world.group.add(this.streak);
     // holographic name + price above the centre slot
     this.nameTex = canvasTex(768, 96, () => {});
     this.priceTex = canvasTex(512, 128, () => {});
@@ -283,6 +303,7 @@ export class ShopKiosk extends KioskBase {
 
   prompt(player, hit) {
     const k = input.keyName('interact');
+    if (this.hidden) return null;
     if (!this.unlocked) return 'COMPANY STORE — OFFLINE. Complete EARN $1,000 to power it up.';
     const it = this._cur(), c = this._control(hit);
     if (c === 'prev') return `[${k}] < PREVIOUS ITEM`;
@@ -297,7 +318,8 @@ export class ShopKiosk extends KioskBase {
   }
 
   interact(player, kind, hit) {
-    if (!this.unlocked) { audio.play('ui_error', { volume: 0.4, bus: 'ui' }); this.world.game.ui.toast('STORE OFFLINE: earn $1,000 first', 'warn'); return; }
+    if (this.hidden) return;
+    if (!this.unlocked) { audio.play('ui_error', { volume: 0.4, bus: 'ui' }); this._flash('EARN $1,000 FIRST'); return; }
     const c = this._control(hit);
     if (c === 'prev') this._step(-1);
     else if (c === 'next') this._step(1);
@@ -354,7 +376,8 @@ export class ShopKiosk extends KioskBase {
     audio.play('thunk', { pos: this.root.position, volume: 0.9 });
     if (!it) return;
     const st = this.econ.shopStatus(it);
-    if (!st.ok) { audio.play('ui_error', { volume: 0.4, bus: 'ui' }); this.world.game.ui.toast(st.poor ? `Not enough credits (${fmt$(it.price)})` : `${shopName(it)}: ${st.why}`, 'warn'); return; }
+    if (!st.ok) { audio.play('ui_error', { volume: 0.4, bus: 'ui' }); this._flash(st.poor ? 'INSUFFICIENT CREDITS' : String(st.why || 'UNAVAILABLE').toUpperCase()); return; }
+    juice.hitstop(45);
     this.beam = { t0: this.t, id: it.model || it.id };
     audio.play('teleport_whoosh', { pos: this.root.position, volume: 0.8, pitch: 1.4 });
     this.world.fx.flashLight(_v.set(0, DECK_Y + 0.2, -0.1).applyMatrix4(this.root.matrixWorld), 0x4dff7a, 9, 0.35, 4);
@@ -362,6 +385,28 @@ export class ShopKiosk extends KioskBase {
   }
 
   hostAction(a, d, from) { if (a === 'buy') this.econ?.hostBuy(d?.id, from); }
+
+  // a refusal blinks on the holographic price line (no pop-up boxes)
+  _flash(text) { this.flashMsg = { text, t0: this.t }; this.glitchT = 0.4; this.denyT = 1.2; }
+
+  // the purchase streaking from the projector to the crusher chamber (every frame while it flies)
+  _updateStreak() {
+    const k = this.beam ? (this.t - this.beam.t0 - 0.62) / 0.5 : -1, cr = this.mission.crusher;
+    if (k < 0 || k > 1 || !cr || cr.hidden) { this.streak.visible = false; return; }
+    const S = _v.set(0, HOLO_Y - 0.2, -0.1).applyMatrix4(this.root.matrixWorld).clone(), T = cr.chamberPos(new THREE.Vector3(), 0.7);
+    const head = Math.min(1, (k / 0.6) ** 2), tail = ease(clamp01((k - 0.3) / 0.7));
+    const p0 = S.clone().lerp(T, tail), p1 = S.lerp(T, head);
+    const L = p0.distanceTo(p1);
+    this.streak.visible = L > 0.01;
+    this.streak.position.copy(p0);
+    this.streak.lookAt(p1);
+    this.streak.scale.set(1 + (1 - k) * 1.5, 1 + (1 - k) * 1.5, Math.max(0.01, L));
+    const u = this.streakMat.uniforms;
+    u.uTime.value = this.t; u.uAlpha.value = 1.6 * (1 - tail * 0.6); u.uGlitch.value = 0.3;
+    if (!this.beam.hit && k > 0.62) { this.beam.hit = true; this.world.fx?.flashLight?.(T, 0x9fffb0, 10, 0.3, 6); audio.play('teleport_in', { pos: T, volume: 0.7 }); }
+  }
+
+  dispose() { this.streak.removeFromParent(); this.streak.geometry.dispose(); super.dispose(); }
 
   // ---------------- holograms
   _holo(type) {
@@ -410,8 +455,17 @@ export class ShopKiosk extends KioskBase {
       h.scale.set(sc, sc * Math.max(0.02, sy), sc);
       h.rotation.y += dt * (0.5 + 0.6 * c);
       const m = h.userData.mats;
+      if (s.o === 0 && this.glitchT > 0) glitch = Math.max(glitch, this.glitchT * 2.2);
       for (const mm of [m.shell, m.line]) { mm.uniforms.uTime.value = this.t; mm.uniforms.uAlpha.value = alpha * (this.unlocked ? 1 : 0.6); mm.uniforms.uGlitch.value = glitch + (Math.random() < 0.01 ? 0.8 : 0); }
     }
+    this.glitchT = Math.max(0, (this.glitchT || 0) - dt);
+    const ru = this.ringMat.uniforms, on = this.unlocked ? 1 : 0.15;
+    ru.uTime.value = this.t; ru.uAlpha.value = on * (0.55 + 0.2 * Math.sin(this.t * 3)); ru.uGlitch.value = this.glitchT;
+    this.deckRing.rotation.y += dt * 0.35;
+    const sc = (this.t * 0.55) % 1;
+    this.scanRing.position.set(0, DECK_Y + 0.1 + sc * 0.62, -0.1);
+    this.scanRing.scale.setScalar(1.05 - sc * 0.35);
+    this.scanRing.visible = this.unlocked && !this.beam;
     this.cones.forEach((cone, i) => {
       const u = cone.material.uniforms;
       u.uTime.value = this.t;
@@ -429,7 +483,9 @@ export class ShopKiosk extends KioskBase {
     if (!this.unlocked) { name = 'COMPANY STORE'; price = 'OFFLINE'; sub = ''; }
     else if (!catOpen) { name = SHOP_CATS[this.cat].name; price = 'LOCKED'; sub = SHOP_CATS[this.cat].hint; }
     else if (!it) { name = '—'; price = ''; sub = ''; }
-    else { const st = e.shopStatus(it); name = shopName(it).toUpperCase(); price = st.owned ? 'OWNED' : fmt$(it.price); sub = st.ok ? '' : st.why; }
+    else { const st = e.shopStatus(it); name = shopName(it).toUpperCase(); price = st.owned ? 'OWNED' : fmt$(it.price); sub = st.ok ? '' : String(st.why || '').toUpperCase(); }
+    const fm = this.flashMsg && this.t - this.flashMsg.t0 < 1.8 ? this.flashMsg : null;
+    if (fm) sub = Math.floor((this.t - fm.t0) * 5) % 2 ? '' : `-- ${fm.text} --`;
     const key = `${name}|${price}|${sub}|${this.cat}`;
     if (key === this._txtKey) return;
     this._txtKey = key;
@@ -460,6 +516,8 @@ export class ShopKiosk extends KioskBase {
 
   update(dt) {
     this.t += dt;
+    if (this.hidden) return;
+    this.denyT = Math.max(0, (this.denyT || 0) - dt);
     this.signMat.emissiveIntensity = this.unlocked ? 0.75 + 0.06 * Math.sin(this.t * 3) : 0.06;
     // controls: drum turns to the category, buttons spring back
     const target = (this.cat / SHOP_CATS.length) * PI * 2;
@@ -474,6 +532,7 @@ export class ShopKiosk extends KioskBase {
     this.buyMat.emissiveIntensity = ok ? 1.4 + Math.sin(this.t * 6) * 0.8 : 0.25;
     if (!this.nearLocal(22)) return;
     this._updateHolos(dt);
+    this._updateStreak();
     this._updateText();
     this._updateFlaps(dt);
     if (!this.inSession && this.nearLocal(10)) this.scr.draw(dt, (ctx, w, h, pal, t) => this._drawCrt(ctx, w, h, t, false));
@@ -600,13 +659,15 @@ export class QuestKiosk extends KioskBase {
 
   prompt() {
     const k = input.keyName('interact');
+    if (this.hidden) return null;
     if (!this.unlocked) return 'FIELD OPS — OFFLINE. Build your camp first.';
     const ready = this.nodes.filter((n) => this.econ.state(n) === 'ready').length;
     return `[${k}] Open the QUEST NETWORK${ready ? ` — ${ready} reward${ready === 1 ? '' : 's'} to claim!` : ''}`;
   }
 
   interact() {
-    if (!this.unlocked) { audio.play('ui_error', { volume: 0.4, bus: 'ui' }); this.world.game.ui.toast('FIELD OPS OFFLINE: build your camp first', 'warn'); return; }
+    if (this.hidden) return;
+    if (!this.unlocked) { audio.play('ui_error', { volume: 0.4, bus: 'ui' }); this.denyT = 1.2; return; }
     const self = this, e = this.econ;
     const pick = this.nodes.find((n) => e.state(n) === 'ready') || this.nodes.find((n) => e.state(n) === 'active' && n.sec !== 'MAIN') || this.nodes.find((n) => e.state(n) === 'active');
     if (pick) this.sel = pick.id;
@@ -655,6 +716,8 @@ export class QuestKiosk extends KioskBase {
 
   update(dt) {
     this.t += dt;
+    if (this.hidden) return;
+    this.denyT = Math.max(0, (this.denyT || 0) - dt);
     this.ring = Math.min(1, this.ring + dt * 3);
     const on = this.unlocked;
     this.ledMat.emissiveIntensity = on ? 1.4 : 0.5 * (Math.floor(this.t * 2) % 2);

@@ -6,6 +6,7 @@
 // seed-independent plan in global cell coordinates: every chunk that owns one of its cells or edges applies it,
 // so it survives Day-7 corridor shifting and is identical for every seed (see LANDMARKS).
 import { hash01, hash3, RNG, valueNoise2 } from '../../../core/rng.js';
+import { spineX, spineZ, hallAt, macroEdge, endType, failAt, LOW_CEIL } from './macro.js';
 
 export const CELL = 3.0;
 export const CHUNK = 8; // cells per chunk side
@@ -105,7 +106,8 @@ const ck = (i, j) => (i + 32768) * 65536 + (j + 32768);
       // single-cell exits get a cased arch instead of a gap
       if (t === W.NONE) {
         const ap = a.kind === 'apron' ? a : b.kind === 'apron' ? b : null;
-        if (ap && EXITS[ap.exit].at.length === 1 && ap.k === 1) t = W.ARCH;
+        // the camp is a sealed room: every way out is a cased arch (wide enough to haul furniture through)
+        if (ap && ap.k === 1 && (EXITS[ap.exit].at.length === 1 || EXITS[ap.exit].parent === 'camp')) t = W.ARCH;
       }
     } else {
       const p = a || b, outwardIsB = !!a; // p is planned, the other side is free maze
@@ -188,13 +190,15 @@ export function missionChunks(seed) {
 const SPECIALS = [
   ['chairpile', 8], ['office_room', 9], ['bedroom', 6], ['tv_room', 5], ['storage', 9], ['clipping', 2],
   ['sinking', 3], ['manila_room', 3], ['endless_hall', 4], ['poolrooms_glimpse', 2], ['red_chair', 3],
-  ['stairs_nowhere', 3], ['many_doors', 2], ['vent_room', 4], ['vending_lonely', 3], ['workshop', 5],
+  ['stairs_nowhere', 4], ['many_doors', 2], ['vent_room', 4], ['vending_lonely', 3], ['workshop', 5],
   ['cubicle_farm', 6], ['dead_clone', 5],
   // furnished rooms (lots of loot to haul)
   ['break_room', 7], ['living_room', 7], ['library', 4], ['server_room', 3], ['locker_room', 4],
   // weird rooms (rare)
   ['slide_pit', 2.6], ['ball_pit', 2.6], ['chair_tower', 1.6], ['carpet_pit', 2.2], ['tilted_room', 1.6], ['ceiling_room', 1.8],
   ['giant_room', 1.6], ['door_corridor', 1.6], ['frozen_party', 1.8], ['mirror_room', 2.4],
+  // rooms behind rooms: a row of rooms with the doors in line, a room built inside a room
+  ['enfilade', 3], ['nested', 2.2],
 ];
 
 // walls a room's furniture stands against: no door is cut there (it would open onto the back of a
@@ -224,6 +228,8 @@ function specialSize(kind) {
     case 'tilted_room': return [2, 3];
     case 'frozen_party': return [3, 2];
     case 'mirror_room': return [2, 2];
+    case 'enfilade': return [5, 1];
+    case 'nested': return [3, 3];
     default: return [1 + (kind.length % 2), 1 + ((kind.length >> 1) % 2)];
   }
 }
@@ -288,6 +294,7 @@ function generateLayout(seed, cx, cz, variant) {
       if (z === 'warehouse') c.roomStyle = 'concrete';
       if (z === 'lowrooms' && hash01(i, j, 14, seed) < 0.13) { c.ceil = CRAWL; c.crawl = true; }
       if (zone === 'pads') c.zone = 'halls';
+      macroCell(c, seed);
     }
   }
   const cell = (li, lj) => cells[lj * N + li];
@@ -302,8 +309,10 @@ function generateLayout(seed, cx, cz, variant) {
       const i = c.i, j = c.j;
       // north edge: between (i, j-1) and (i, j)
       const zN = zoneAt(seed, i, j - 1), zW = zoneAt(seed, i - 1, j);
-      edgesN[lj * N + li] = baseWall(seed, variant, i, j, 'n', c.zone, zN === 'pads' ? 'halls' : zN);
-      edgesW[lj * N + li] = baseWall(seed, variant, i, j, 'w', c.zone, zW === 'pads' ? 'halls' : zW);
+      // the macro structure (spines, halls) owns its edges; the seeded maze fills in the rest
+      const mN = macroEdge(seed, i, j, 'n'), mW = macroEdge(seed, i, j, 'w');
+      edgesN[lj * N + li] = mN >= 0 ? mN : baseWall(seed, variant, i, j, 'n', c.zone, zN === 'pads' ? 'halls' : zN);
+      edgesW[lj * N + li] = mW >= 0 ? mW : baseWall(seed, variant, i, j, 'w', c.zone, zW === 'pads' ? 'halls' : zW);
     }
   }
 
@@ -324,9 +333,10 @@ function generateLayout(seed, cx, cz, variant) {
     else if (h2 < 0.14) c.lightMode = 'buzz';
     c.lightTone = c.zone === 'maintenance' ? 2 : c.zone === 'office' ? 1 : c.zone === 'manila' ? 3 : c.zone === 'lounge' ? 3 : c.zone === 'warehouse' ? (h2 < 0.5 ? 2 : 1) : 0;
     c.lightRot = c.zone === 'warehouse' ? 1 : c.zone === 'corridors' ? (corrAxis(seed, c.i, c.j) === 'x' ? 1 : 0) : (c.i + c.j) % 2;
+    macroLight(c, seed);
   }
 
-  const layout = { seed, cx, cz, variant, cells, edgesN, edgesW, block, pillars: [], specials: [], spawns: [], decor: [], vents: [], holes: [] };
+  const layout = { seed, cx, cz, variant, cells, edgesN, edgesW, block, pillars: [], specials: [], spawns: [], decor: [], vents: [], holes: [], narrows: [] };
 
   // --- arrival complex (fixed plan) ---
   applyPlan(layout, seed);
@@ -351,8 +361,10 @@ function generateLayout(seed, cx, cz, variant) {
     const [w, h] = specialSize(kind);
     const rx = rng.int(1, N - 1 - w), rz = rng.int(1, N - 1 - h);
     if (canPlace(layout, rx, rz, w, h)) {
-      const doors = kind === 'endless_hall' || kind === 'door_corridor' ? 0 : kind === 'tilted_room' ? 1 : rng.int(1, 2);
-      placeRoom(layout, rng, kind, rx, rz, w, h, { doors, avoid: DOOR_AVOID[kind] });
+      const doors = kind === 'endless_hall' || kind === 'door_corridor' || kind === 'enfilade' ? 0 : kind === 'tilted_room' ? 1 : rng.int(1, 2);
+      const room = placeRoom(layout, rng, kind, rx, rz, w, h, { doors, avoid: DOOR_AVOID[kind] });
+      if (kind === 'enfilade') enfilade(layout, room, seed);
+      else if (kind === 'nested') nestedRoom(layout, room, rng, seed);
     }
   }
 
@@ -364,6 +376,15 @@ function generateLayout(seed, cx, cz, variant) {
       // pillars sit on the NW corner of their cell: keep them off the corners of reserved neighbours
       if ((li > 0 && cell(li - 1, lj).reserved) || (lj > 0 && cell(li, lj - 1).reserved) || (li > 0 && lj > 0 && cell(li - 1, lj - 1).reserved)) continue;
       if (planCell(c.i - 1, c.j) || planCell(c.i, c.j - 1) || planCell(c.i - 1, c.j - 1)) continue;
+      // corridors stay clear; halls get their own colonnades (only on corners inside the hall)
+      if (c.hall) {
+        const hl = c.hall, di = c.i - hl.i0, dj = c.j - hl.j0;
+        if (di < 1 || dj < 1) continue;
+        if (hl.style === 'pillared' && di % 2 === 1 && dj % 2 === 1) layout.pillars.push({ li, lj, size: 0.62 });
+        else if (hl.style === 'tall' && di % 2 === 0 && dj % 2 === 0) layout.pillars.push({ li, lj, size: 0.95, tall: true });
+        continue;
+      }
+      if (c.spine || isMacro(seed, c.i - 1, c.j) || isMacro(seed, c.i, c.j - 1) || isMacro(seed, c.i - 1, c.j - 1)) continue;
       if (c.zone === 'pillars' && (c.i + c.j) % 2 === 0 && hash01(c.i, c.j, 41, seed) < 0.8) layout.pillars.push({ li, lj, size: 0.7 });
       else if (c.zone === 'atrium' && (c.i & 1) === 0 && (c.j & 1) === 0 && hash01(c.i, c.j, 41, seed) < 0.85) layout.pillars.push({ li, lj, size: 0.95, tall: true });
       else if ((c.zone === 'halls' || c.zone === 'lounge') && hash01(c.i, c.j, 42, seed) < 0.035) layout.pillars.push({ li, lj, size: 0.5 });
@@ -378,7 +399,8 @@ function generateLayout(seed, cx, cz, variant) {
       const n = edgesN[lj * N + li], w = edgesW[lj * N + li];
       const s = edgesN[(lj + 1) * N + li], e = edgesW[lj * N + li + 1];
       const closed = [n, w, s, e].filter((x) => x === W.FULL).length;
-      if (closed === 4) {
+      // (a sealed cell beside a squeeze stays sealed: a door there would open onto its thick wall)
+      if (closed === 4 && !narrowAt(seed, c.i, c.j - 1) && !narrowAt(seed, c.i - 1, c.j) && !narrowAt(seed, c.i, c.j + 1) && !narrowAt(seed, c.i + 1, c.j)) {
         const k = Math.floor(hash01(c.i, c.j, 51, seed) * 4);
         const free = (a, b) => !cell(a, b).reserved && !cell(a, b).landmark;
         if (k === 0 && planEdge('n', c.i, c.j) < 0) edgesN[lj * N + li] = W.DOOR;
@@ -390,6 +412,14 @@ function generateLayout(seed, cx, cz, variant) {
   }
   // re-assert the plan (nothing above may close an exit)
   applyPlanEdges(layout);
+  // squeezes: thick walls fill the cell beside the passage, so its side edges stay solid
+  for (const c of cells) {
+    if (!c.narrow) continue;
+    if (c.reserved || c.landmark) { c.narrow = null; continue; }
+    if (c.narrow === 'x') { edgesN[c.lj * N + c.li] = W.FULL; if (c.lj < N - 1) edgesN[(c.lj + 1) * N + c.li] = W.FULL; }
+    else { edgesW[c.lj * N + c.li] = W.FULL; if (c.li < N - 1) edgesW[c.lj * N + c.li + 1] = W.FULL; }
+    layout.narrows.push({ li: c.li, lj: c.lj, ax: c.narrow });
+  }
 
   // --- warehouse racks (static shelving on cell edges, blocks navigation) ---
   for (let lj = 0; lj < N; lj++) {
@@ -401,7 +431,7 @@ function generateLayout(seed, cx, cz, variant) {
       if ((c.i & 3) === 0 || (c.j & 3) === 3) continue; // cross aisles / main aisles
       const up = lj > 0 ? cell(li, lj - 1) : null;
       if (up && (up.reserved || up.landmark)) continue;
-      if (planCell(c.i, c.j - 1)) continue;
+      if (planCell(c.i, c.j - 1) || isMacro(seed, c.i, c.j - 1)) continue;
       layout.decor.push({ kind: 'rack', li, lj, h: hash01(c.i, c.j, 44, seed) });
       block[lj * N + li] |= 1;
       // stock on both faces of the bay: boxes and crates on the decks (absolute heights, no floor checks)
@@ -419,7 +449,7 @@ function generateLayout(seed, cx, cz, variant) {
 
   // --- doors that open onto the wall behind them (a cased door, ajar, on a solid wall face) ---
   for (const c of cells) {
-    if (c.reserved || c.landmark || c.crawl || c.ceil < HEIGHT - 0.01) continue;
+    if (c.reserved || c.landmark || c.crawl || c.narrow || c.ceil < HEIGHT - 0.01) continue;
     const hdw = hash01(c.i, c.j, 46, seed);
     if (hdw > 0.022 || !['halls', 'office', 'manila', 'dark', 'lounge', 'corridors'].includes(c.zone)) continue;
     const idx = c.lj * N + c.li;
@@ -429,6 +459,8 @@ function generateLayout(seed, cx, cz, variant) {
     if (pil(c.li, c.lj) || (side === 'N' ? pil(c.li + 1, c.lj) : pil(c.li, c.lj + 1))) continue;
     layout.decor.push({ kind: 'walldoor', li: c.li, lj: c.lj, side, hinge: hash01(c.i, c.j, 47, seed) < 0.5 ? -1 : 1 });
   }
+
+  macroDecor(layout, seed);
 
   // --- generic prop spawns per cell ---
   for (const c of cells) {
@@ -441,7 +473,7 @@ function generateLayout(seed, cx, cz, variant) {
     const li = rng.int(0, N - 1), lj = rng.int(0, N - 1);
     const idx = lj * N + li;
     const c = cell(li, lj);
-    if (c.landmark || c.crawl || c.special?.pit) continue;
+    if (c.landmark || c.crawl || c.narrow || c.special?.pit) continue;
     if (planCell(c.i, c.j - 1) || planCell(c.i - 1, c.j)) continue;
     const busy = (sd) => layout.decor.some((d) => (d.kind === 'clip' || d.kind === 'walldoor') && d.li === li && d.lj === lj && d.side === sd);
     if (edgesN[idx] === W.FULL && !busy('N')) layout.vents.push({ li, lj, side: 'N' });
@@ -449,6 +481,68 @@ function generateLayout(seed, cx, cz, variant) {
   }
   return layout;
 }
+
+// ---------------------------------------------------------------------------
+// Macro structure on a cell (see macro.js): corridor / hall membership, ceiling, zone clean-up
+const MACRO_REZONE = new Set(['warehouse', 'lowrooms', 'atrium']);
+const SPINE_CEIL = { low: LOW_CEIL, narrow: LOW_CEIL, vault: TALL };
+function macroCell(c, seed) {
+  const sx = spineX(seed, c.i, c.j), sz = spineZ(seed, c.i, c.j), hl = hallAt(seed, c.i, c.j);
+  if (!sx && !sz && !hl) return;
+  if (MACRO_REZONE.has(c.zone)) { c.zone = 'halls'; c.floor = 'carpet'; c.roomStyle = undefined; }
+  c.crawl = false;
+  if (hl) { c.hall = hl; c.ceil = hl.style === 'tall' ? TALL : HEIGHT; return; }
+  c.spine = sx || sz;
+  c.spineX = sx; c.spineZ = sz;
+  c.ceil = Math.max(SPINE_CEIL[sx?.style] || HEIGHT, SPINE_CEIL[sz?.style] || HEIGHT);
+  if (sx && sz) { if (c.ceil < HEIGHT) c.ceil = HEIGHT; return; } // crossroads: never squeezed or lowered
+  if (c.spine.style === 'narrow') c.narrow = sx ? 'x' : 'z';
+}
+// lighting rhythm of corridors and halls, dying fixtures in failing sectors
+function macroLight(c, seed) {
+  const sp = c.spine, hl = c.hall;
+  if (sp) {
+    const k = sp.k, len = sp.b - sp.a;
+    const beat = sp.style === 'rhythm' || sp.style === 'vault' || sp.style === 'narrow';
+    c.light = !beat || k % 2 === 0 ? 1 : 0;
+    c.lightRot = sp.ax === 0 ? 1 : 0;
+    const h = hash01(c.i, c.j, 9041, seed);
+    if (sp.style === 'doors') c.lightMode = 'on';
+    // streaks of dead tubes down the corridor, one of them still stuttering
+    else if (hash01(sp.seg, Math.floor(k / 5), 9040, seed) < 0.2) c.lightMode = k % 5 === 2 ? 'flicker' : 'dead';
+    // the last fixtures before a dead end are going
+    else if ((k >= len - 1 && endType(seed, sp, 1) === W.FULL) || (k <= 1 && endType(seed, sp, 0) === W.FULL)) c.lightMode = h < 0.5 ? 'flicker' : 'dead';
+  } else if (hl) {
+    const di = c.i - hl.i0, dj = c.j - hl.j0, h = hash01(c.i, c.j, 9042, seed);
+    c.lightRot = 1;
+    if (hl.style === 'empty') { c.light = di % 2 === 0 && dj % 2 === 0 ? 1 : 0; if (h < 0.3) c.lightMode = 'dead'; }
+    else if (hl.style === 'pillared') { c.light = 1; if (h < 0.12) c.lightMode = 'dead'; }
+    else if (hl.style === 'tall') { c.light = (di + dj) % 2 === 0 ? 1 : 0; c.lightTone = h < 0.5 ? 1 : 0; }
+    else {
+      // dark hall: a single stuttering fixture in the middle, the odd survivor elsewhere
+      const mid = c.i === Math.floor((hl.i0 + hl.i1) / 2) && c.j === Math.floor((hl.j0 + hl.j1) / 2);
+      c.light = mid || h < 0.08 ? 1 : 0;
+      c.lightMode = mid ? 'flicker' : 'on';
+    }
+  }
+  const f = failAt(seed, c.i, c.j);
+  if (f > 0 && c.light) {
+    const h = hash01(c.i, c.j, 9050, seed);
+    if (h < f * 0.72) c.lightMode = 'dead';
+    else if (h < f * 0.9) c.lightMode = 'flicker';
+    else if (h < f) c.lightMode = 'buzz';
+    if (hash01(c.i, c.j, 9051, seed) < f * 0.7 && c.lightTone === 0) c.lightTone = 7; // sick green-white tubes
+  }
+}
+// axis of the squeeze through global cell (i, j), or null
+function narrowAt(seed, i, j) {
+  const sx = spineX(seed, i, j), sz = spineZ(seed, i, j);
+  if (sx && !sz && sx.style === 'narrow') return 'x';
+  if (sz && !sx && sz.style === 'narrow') return 'z';
+  return null;
+}
+// is global cell (i, j) part of the macro structure (corridor / hall)
+function isMacro(seed, i, j) { return !!(spineX(seed, i, j) || spineZ(seed, i, j) || hallAt(seed, i, j)); }
 
 // base wall of the N ('n') or W ('w') edge of global cell (i, j); zA: this cell's zone, zB: the neighbour's
 function baseWall(seed, variant, i, j, axis, zA, zB) {
@@ -522,7 +616,7 @@ function applyPlanEdges(layout) {
 function canPlace(layout, rx, rz, w, h) {
   for (let j = rz; j < rz + h; j++) for (let i = rx; i < rx + w; i++) {
     const c = layout.cells[j * CHUNK + i];
-    if (c.reserved || c.landmark || nearPlan(c.i, c.j)) return false;
+    if (c.reserved || c.landmark || c.spine || nearPlan(c.i, c.j)) return false;
   }
   return true;
 }
@@ -606,6 +700,62 @@ function placeRoom(layout, rng, kind, rx, rz, w, h, opts = {}) {
   }
   layout.specials.push(room);
   return room;
+}
+
+// a row of rooms with every door in line (partitions and both ends): door after door after door,
+// the far rooms' tubes failing
+function enfilade(layout, room, seed) {
+  const N = CHUNK;
+  for (let i = room.rx; i <= room.rx + room.w; i++) layout.edgesW[room.rz * N + i] = W.DOOR;
+  for (let i = room.rx; i < room.rx + room.w; i++) {
+    const c = layout.cells[room.rz * N + i], k = i - room.rx;
+    c.lightRot = 1;
+    c.lightTone = k === room.w - 1 ? 3 : 0;
+    c.lightMode = k === 2 ? 'flicker' : k >= 3 && hash01(c.i, c.j, 9070, seed) < 0.6 ? 'dead' : 'on';
+  }
+}
+// a sealed little room in the middle of a room, one door; inside, a chair facing the wall
+function nestedRoom(layout, room, rng, seed) {
+  const N = CHUNK, li = room.rx + 1, lj = room.rz + 1;
+  layout.edgesN[lj * N + li] = W.FULL; layout.edgesN[(lj + 1) * N + li] = W.FULL;
+  layout.edgesW[lj * N + li] = W.FULL; layout.edgesW[lj * N + li + 1] = W.FULL;
+  const d = Math.floor(hash01(room.rx, room.rz, 9071, seed) * 4);
+  if (d === 0) layout.edgesN[lj * N + li] = W.DOOR;
+  else if (d === 1) layout.edgesN[(lj + 1) * N + li] = W.DOOR;
+  else if (d === 2) layout.edgesW[lj * N + li] = W.DOOR;
+  else layout.edgesW[lj * N + li + 1] = W.DOOR;
+  const c = layout.cells[lj * N + li];
+  c.lightMode = 'flicker'; c.lightTone = 3;
+  const cx = li * CELL + CELL / 2, cz = lj * CELL + CELL / 2;
+  // the chair faces the wall opposite the door
+  const face = [0, Math.PI, Math.PI / 2, -Math.PI / 2][d], off = [[0, 0.75], [0, -0.75], [0.75, 0], [-0.75, 0]][d];
+  sp(layout, 'chair_wood', cx + off[0], cz + off[1], face + rng.range(-0.05, 0.05));
+  if (rng.chance(0.5)) sp(layout, rng.weighted(LOOT_RARE), cx - off[0] * 0.4 + 0.3, cz - off[1] * 0.4 + 0.3, rng.next() * 6.28);
+}
+
+// set-pieces of the macro structure: hanging EXIT signs down the corridors, doors onto the wall at dead
+// ends, a door high up in the wall of a tall hall where nobody can reach it
+function macroDecor(layout, seed) {
+  const N = CHUNK, { cells, edgesN, edgesW, decor } = layout;
+  const taken = (c) => decor.some((d) => d.li === c.li && d.lj === c.lj && (d.kind === 'walldoor' || d.kind === 'clip'));
+  for (const c of cells) {
+    if (c.reserved || c.landmark) continue;
+    const sp0 = c.spine, idx = c.lj * N + c.li;
+    if (sp0 && !c.narrow && !(c.spineX && c.spineZ)) {
+      if (sp0.k % 8 === 4 && c.ceil <= HEIGHT + 0.01) decor.push({ kind: 'exitsign', li: c.li, lj: c.lj, ax: sp0.ax });
+      if (sp0.k === 0 && c.ceil >= HEIGHT - 0.01 && !taken(c) && hash01(c.i, c.j, 9060, seed) < 0.5) {
+        const side = sp0.ax === 0 ? 'W' : 'N';
+        if ((side === 'W' ? edgesW[idx] : edgesN[idx]) === W.FULL) decor.push({ kind: 'walldoor', li: c.li, lj: c.lj, side, hinge: hash01(c.i, c.j, 47, seed) < 0.5 ? -1 : 1 });
+      }
+    }
+    const hl = c.hall;
+    if (hl && hl.style === 'tall' && c.j === hl.j0 && edgesN[idx] === W.FULL && !taken(c) && hash01(c.i, c.j, 9061, seed) < 0.2) {
+      const zN = zoneAt(seed, c.i, c.j - 1);
+      if (zN !== 'atrium' && zN !== 'warehouse' && !spineX(seed, c.i, c.j - 1) && !spineZ(seed, c.i, c.j - 1)) {
+        decor.push({ kind: 'walldoor', li: c.li, lj: c.lj, side: 'N', hinge: hash01(c.i, c.j, 47, seed) < 0.5 ? -1 : 1, y: 3.1 + hash01(c.i, c.j, 9062, seed) * 0.7 });
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -710,6 +860,18 @@ function spawnZoneProps(layout, c, rng, seed) {
     if (hash01(c.i, c.j, 62, seed) < 0.22) sp(layout, rng.weighted(LOOT_RARE), cx + r() * 0.6, cz + r() * 0.6, rng.next() * 6.28);
     return;
   }
+  // squeezes: room for nothing but the odd bottle; corridors are kept clear, small things stand by the walls
+  if (c.narrow) {
+    if (hash01(c.i, c.j, 62, seed) < 0.1) sp(layout, rng.weighted(LOOT_RARE), cx, cz, rng.next() * 6.28);
+    return;
+  }
+  if (c.spine) {
+    const side = hash01(c.i, c.j, 63, seed) < 0.5 ? -1 : 1, ax = c.spine.ax;
+    const wx = ax === 0 ? cx + r() : cx + side * 1.0, wz = ax === 0 ? cz + side * 1.0 : cz + r();
+    if (h < 0.07 && c.ceil >= 2.2) sp(layout, rng.pick(['chair_wood', 'chair_folding', 'box_small', 'trash_can', 'wet_floor_sign', 'traffic_cone', 'paper_stack', 'bucket', 'stool']), wx, wz, rng.next() * 6.28);
+    if (hash01(c.i, c.j, 62, seed) < 0.04) sp(layout, rng.weighted(LOOT_RARE), wx, wz, rng.next() * 6.28);
+    return;
+  }
   // rare, deliberate liminal set-pieces: one piece of furniture sunk into the carpet, or shoved into a solid
   // wall. They own their cell (nothing else spawns there) so they never tangle with other furniture.
   const hd = hash01(c.i, c.j, 64, seed);
@@ -727,6 +889,12 @@ function spawnZoneProps(layout, c, rng, seed) {
       layout.decor.push({ kind: 'clip', li: c.li, lj: c.lj, type: rng.pick(['desk', 'chair_wood', 'filing_cabinet', 'bookshelf', 'couch']), side, slide: rng.range(-0.5, 0.5), yaw: rng.range(-0.18, 0.18) });
       return;
     }
+  }
+  // great halls: the emptiness is the point, one lonely object at most
+  if (c.hall) {
+    if (h < 0.025) sp(layout, rng.pick(['chair_wood', 'chair_office', 'wet_floor_sign', 'box_small', 'trash_can', 'lamp_floor']), cx + r(), cz + r(), rng.next() * 6.28);
+    if (hash01(c.i, c.j, 62, seed) < 0.03) sp(layout, rng.weighted(LOOT_RARE), cx + r(), cz + r(), rng.next() * 6.28);
+    return;
   }
   // furniture vignettes (the bulk of the haulable loot)
   const vt = ZONE_VIGNETTES[c.zone];

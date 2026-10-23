@@ -108,12 +108,17 @@ export class Combat {
 
   // fparms weights: wind-up and jab extension per side
   armState() {
-    const o = { windR: 0, jabR: 0, windL: 0, jabL: 0 };
-    if (this.winding) o[this.windSide < 0 ? 'windL' : 'windR'] = 0.25 + this.charge * 0.75;
+    // punchT: the swing clock (fparms shapes the snap-out, overshoot and recoil); impactId bumps on a hit
+    const o = { windR: 0, jabR: 0, windL: 0, jabL: 0, punchT: -1, punchSide: 1, punchPow: 0.5, impactId: this.impactId || 0 };
+    if (this.winding) {
+      o[this.windSide < 0 ? 'windL' : 'windR'] = 0.25 + this.charge * 0.75;
+      o.punchSide = this.windSide < 0 ? -1 : 1; o.punchPow = this.charge;
+    }
     const sw = this.swing;
     if (sw) {
       const t = sw.t, e = t < 0.38 ? Math.sin((t / 0.38) * Math.PI / 2) : Math.max(0, 1 - (t - 0.38) / 0.62) ** 1.6;
       o[sw.side < 0 ? 'jabL' : 'jabR'] = e;
+      o.punchT = Math.min(1, t); o.punchSide = sw.side < 0 ? -1 : 1; o.punchPow = sw.power;
     }
     return o;
   }
@@ -172,12 +177,14 @@ export class Combat {
       w.fx.dustBurst(hit.point, 4, [0.7, 0.66, 0.5], 0.3);
       juice.shake(0.12 + sw.power * 0.15);
       juice.hitstop(25);
+      this.impactId = (this.impactId || 0) + 1;
     }
   }
 
   _landed(point, sw, mat, quiet = false) {
     const w = this.p.world;
     const pw = sw.power;
+    this.impactId = (this.impactId || 0) + 1; // the viewmodel fist recoils
     juice.hitstop(35 + pw * 70);
     juice.shake(0.16 + pw * 0.34);
     if (pw > 0.7) juice.flash(0.08);

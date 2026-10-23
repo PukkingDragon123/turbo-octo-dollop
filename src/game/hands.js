@@ -28,6 +28,14 @@ const WEIGHT = {
   wrench: 1, water_tester: 0.5, almond_water: 0.6, almond_milk: 0.5, noise_maker: 0.5, battery: 0.3, gear: 0.5, pipe_short: 0.8,
   fuse: 0.6, sample_jar: 0.5, camera_disposable: 0.3, screws: 0.3, fabric_scrap: 0.2, tape_roll: 0.3,
 };
+// grip from the held model's thickness (its middle bounding dimension)
+function gripOf(o) {
+  o.updateMatrixWorld(true);
+  _box.setFromObject(o);
+  if (_box.isEmpty()) return 0.75;
+  const s = _box.getSize(_s), d = [s.x, s.y, s.z].sort((a, b) => a - b);
+  return clamp(1.05 - (d[1] - 0.02) * 4.5, 0.35, 1);
+}
 export function itemWeight(type) { return itemDef(type).weight ?? WEIGHT[type] ?? 0.4; }
 
 const _box = new THREE.Box3(), _m = new THREE.Matrix4(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
@@ -71,6 +79,9 @@ export class Hands {
     return clamp(1 - L.weight * 0.012, 0.85, 1);
   }
 
+  // how far the fingers close round what each hand holds (1 = a thin handle, ~0.35 = a fat box)
+  grip(side) { const h = this[side]; return h.type === '__tool' ? 0.8 : h.grip ?? 0.75; }
+
   rightItem() { const i = this.layout.right; return i >= 0 ? this.p.inv.slots[i] : null; }
   leftItem() { const i = this.layout.left; return i >= 0 ? this.p.inv.slots[i] : null; }
 
@@ -98,6 +109,7 @@ export class Hands {
       if (side === 'L') { o.position.x *= -1; o.rotation.y *= -1; o.rotation.z *= -1; }
     }
     o.traverse((c) => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; } });
+    h.grip = gripOf(o);
     h.obj = o; h.built = m;
     if (item) applyItemVisual(type, item.state, m);
     anchor.add(o);

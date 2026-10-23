@@ -1,5 +1,6 @@
-// The R.O.O.M. waiting room (HQ, Sublevel B4): one very small, very dark room. A curved reception desk
-// with nobody behind it, a buzzing aquarium, four waiting chairs and the dimensional elevator. Clones
+// The R.O.O.M. waiting room (HQ, Sublevel B4): one small, dim room. A curved reception desk with Gloria
+// the robot receptionist behind it (talk to her to start the shift: she opens the elevator), a buzzing
+// aquarium, four waiting chairs and the dimensional elevator. Clones
 // arrive by falling through a hatch in the ceiling; a trapdoor in the floor drops them elsewhere (into the
 // host's room when joining a shift, into the robot pit on EXIT). Everything scripted (drop-in, the call
 // panel, the shift code, the trapdoor) is played by the lobby director (world/lobby_director.js); the
@@ -15,9 +16,12 @@ import { EnvGeo, fr } from '../env/builder.js';
 import { Q } from '../../physics/physics.js';
 import { modelHalfHeight } from '../../entities/catalog.js';
 import { makeDevice } from '../../game/devicekinds.js';
-import { CrtScreen, text } from '../../ui/crt.js';
+import { CrtScreen } from '../../ui/crt.js';
 import * as Critters from '../../entities/optional.js';
 import { HQElevator } from '../hq_elevator.js';
+import { ReceptionistBot } from '../../entities/receptionist.js';
+import { canvasTex } from '../../entities/wardrobe.js';
+import { FONT } from '../../ui/fonts.js';
 import { LobbyDirector } from '../lobby_director.js';
 import { CAR } from '../../entities/elevator.js';
 
@@ -35,7 +39,7 @@ const ROOM = {
   floorHole: TRAP, ceilHole: HATCH, grid: { nx: 1, nz: 2, sx: 3.0, sz: 2.7, cx0: 0, cz0: -1.35 },
 };
 const ROOMS = [ROOM];
-const LIGHT_SCALE = 0.3; // "lights on" in here is still dim
+const LIGHT_SCALE = 0.24; // "lights on" in here is still dim: the warm accents (desk lamp, picture lights, aquarium) carry the room
 
 export class LobbyLevel {
   constructor(world, desc) {
@@ -67,8 +71,8 @@ export class LobbyLevel {
     this.field.uniforms.uGrid.value.set(3, H - 0.04, 10, H);
     const pp = engine.post.params;
     // sodium-sick office grade: green-grey shadows, crushed blacks, heavy vignette and grain
-    pp.uTint.value.setRGB(0.97, 1.0, 0.93);
-    pp.uSat.value = 0.82;
+    pp.uTint.value.setRGB(1.0, 0.97, 0.9);
+    pp.uSat.value = 0.9;
     pp.uGrain.value = 0.075;
     pp.uVignette.value = 0.66;
     pp.uExposure.value = 1.0;
@@ -165,14 +169,25 @@ export class LobbyLevel {
   }
 
   _buildDevices() {
-    // the reception desk (nobody behind it), its CRT still on
+    // the reception desk, Gloria behind it, her service bell on the counter
     this.recDesk = this._dev('reception_desk', 'reception_desk', 0, 0, -1.55, 0);
+    {
+      const A = this.recDesk.anchors || this.recDesk.model?.anchors || {};
+      const rp = A.receptionist, at = new THREE.Vector3(rp ? rp.x : 0, 0, -1.55 + (rp ? rp.z : -0.8));
+      this.receptionist = new ReceptionistBot(this.world, 'receptionist', { lobby: this, ...this._roomLightsFor(at.clone().setY(1.3), 2, 0.8) });
+      this.receptionist.root.position.copy(at);
+      this.receptionist.build();
+      this.world.addDevice(this.receptionist);
+      const b = A.bell;
+      this._dev('service_bell', 'bell', b ? b.x : 0.3, b ? b.y : 1.075, -1.55 + (b ? b.z : 0.3), 0, { onRing: () => { const r = this.receptionist; if (r) { r.attend = 1; r.anim.twitch = { t: 0, dir: 1 }; } } });
+    }
     if (this.recDesk.model.screens?.main?.mesh) {
       this.recScreen = new CrtScreen(256, 192, 'green');
       this.recScreen.attach(this.recDesk.model.screens.main.mesh, 1.2);
     }
     this.aquarium = this._dev('aquarium', 'aquarium', -2.55, 0, 0.25, PI / 2, { critterModels: Critters });
     this._elevator(0, ROOM.z1 - T / 2);
+    this._buildDressing();
     // real lights: the aquarium's blue glow (the brightest thing in here) and a red bulb up the drop shaft
     const addPL = (c, i, d, x, y, z) => { const l = new THREE.PointLight(c, i, d, 2); l.position.set(x, y, z); this.world.group.add(l); return l; };
     this.aquaLight = addPL(0x58c8ff, 0, 3.6, -2.15, 1.3, 0.25);
@@ -190,6 +205,116 @@ export class LobbyLevel {
     this.world.addDevice(el);
     this.elevator = el;
     this.elevatorSteel = [el.mats.steel, el.mats.brass];
+  }
+
+  // ---------------------------------------------------------------
+  // dressing: the walnut feature wall with the cast-brass R.O.O.M. letters behind Gloria (picture-lit),
+  // a green banker's lamp on the counter, framed company prints, a wall clock and two potted plants
+  _buildDressing() {
+    const g = this.world.group, add = (o) => { g.add(o); this.world.registerDynamic(o); return o; };
+    const std = (o) => new THREE.MeshStandardMaterial({ roughness: 0.6, ...o });
+    const brass = std({ color: 0xb08a48, roughness: 0.35, metalness: 0.85 });
+    const B = (w, h, d, m, x, y, z, p) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); p.add(b); return b; };
+    // feature wall: walnut panel + brass frame + raised gilt letters (separate alpha layer with a drop shadow)
+    const fw = new THREE.Group(); fw.position.set(0, 2.2, -2.6);
+    const W = 2.7, Hh = 0.78;
+    const wood = canvasTex(1024, 384, (c, w, h) => {
+      const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#2a170c'); gr.addColorStop(0.5, '#3a2112'); gr.addColorStop(1, '#22120a');
+      c.fillStyle = gr; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < 260; i++) { c.strokeStyle = `rgba(${20 + Math.random() * 40 | 0},${10 + Math.random() * 18 | 0},4,${0.15 + Math.random() * 0.25})`; c.lineWidth = 0.6 + Math.random() * 2; const y = Math.random() * h; c.beginPath(); c.moveTo(0, y); c.bezierCurveTo(w * 0.3, y + (Math.random() - 0.5) * 30, w * 0.7, y + (Math.random() - 0.5) * 30, w, y + (Math.random() - 0.5) * 16); c.stroke(); }
+      for (const x of [w / 3, (2 * w) / 3]) { c.fillStyle = 'rgba(0,0,0,0.45)'; c.fillRect(x - 1, 0, 2, h); }
+      const v = c.createRadialGradient(w / 2, h * 0.45, h * 0.2, w / 2, h / 2, w * 0.6); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.45)'); c.fillStyle = v; c.fillRect(0, 0, w, h);
+    });
+    const dk = std({ color: 0x24140a }), front = std({ map: wood, roughness: 0.45 });
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(W, Hh, 0.03), [dk, dk, dk, dk, front, dk]);
+    panel.position.z = 0.015; fw.add(panel);
+    for (const [w, h, x, y] of [[W + 0.06, 0.03, 0, Hh / 2 + 0.015], [W + 0.06, 0.03, 0, -Hh / 2 - 0.015], [0.03, Hh, -W / 2 - 0.015, 0], [0.03, Hh, W / 2 + 0.015, 0]]) B(w, h, 0.045, brass, x, y, 0.022, fw);
+    const letters = (shadow) => canvasTex(2048, 640, (c, w, h) => {
+      c.clearRect(0, 0, w, h); c.textAlign = 'center'; c.textBaseline = 'middle';
+      const col = (y0, y1) => { if (shadow) return 'rgba(0,0,0,0.85)'; const gr = c.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, '#fff2c4'); gr.addColorStop(0.45, '#e2b35a'); gr.addColorStop(0.55, '#a8772c'); gr.addColorStop(1, '#f0cf7e'); return gr; };
+      if (shadow) { c.filter = 'blur(10px)'; }
+      c.font = `700 300px ${FONT.main}`; c.fillStyle = col(130, 420);
+      const t = 'R . O . O . M .'; c.fillText(t, w / 2, 265);
+      c.fillStyle = shadow ? 'rgba(0,0,0,0.7)' : '#d9b064';
+      c.fillRect(w / 2 - 600, 448, 1200, 5);
+      for (const s of [-1, 1]) { c.beginPath(); c.arc(w / 2 + s * 630, 450, 12, 0, Math.PI * 2); c.fill(); }
+      c.font = `italic 600 86px ${FONT.main}`; c.fillStyle = col(500, 590);
+      c.fillText('Research Office for Otherworldly Matters', w / 2, 545);
+    });
+    const shadowMat = new THREE.MeshBasicMaterial({ map: letters(true), transparent: true, depthWrite: false, opacity: 0.8 });
+    const goldTex = letters(false);
+    const goldMat = std({ map: goldTex, emissiveMap: goldTex, emissive: 0xffffff, emissiveIntensity: 0.16, metalness: 0.55, roughness: 0.3, transparent: true, alphaTest: 0.25 });
+    const LW = W * 0.9, LH = LW * 640 / 2048;
+    const sh = new THREE.Mesh(new THREE.PlaneGeometry(LW, LH), shadowMat); sh.position.set(0.02, -0.03, 0.032); fw.add(sh);
+    const gl = new THREE.Mesh(new THREE.PlaneGeometry(LW, LH), goldMat); gl.position.set(0, 0, 0.042); fw.add(gl);
+    // brass picture lights above the panel, washing it with warm light
+    const glowM = new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 2.4, 1.4) });
+    for (const x of [-0.7, 0.7]) {
+      B(0.04, 0.05, 0.12, brass, x, Hh / 2 + 0.08, 0.06, fw);
+      const hood = B(0.62, 0.05, 0.08, brass, x, Hh / 2 + 0.07, 0.15, fw); hood.rotation.x = 0.35;
+      const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.02), glowM); strip.position.set(x, Hh / 2 + 0.045, 0.16); strip.rotation.x = PI / 2 + 0.35; fw.add(strip);
+    }
+    add(fw);
+    const wash = new THREE.SpotLight(0xffc98a, 7, 4.2, 0.95, 0.85, 2);
+    wash.position.set(0, 2.72, -2.2); wash.target.position.set(0, 1.9, -2.6);
+    g.add(wash, wash.target);
+    this.wash = wash;
+    // green banker's lamp on the counter ledge (left of Gloria): the warm pool of light at the desk
+    const lamp = new THREE.Group(); lamp.position.set(-0.62, 1.075, -1.36); lamp.rotation.y = 0.35;
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.075, 0.025, 20), brass); base.position.y = 0.012; lamp.add(base);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.3, 8), brass); stem.position.set(0, 0.16, -0.02); lamp.add(stem);
+    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.24, 20, 1, true, 0, PI), std({ color: 0x1d5a2c, roughness: 0.18, metalness: 0.1, side: THREE.DoubleSide, emissive: 0x0b2a12, emissiveIntensity: 1 }));
+    shade.rotation.set(0, 0, PI / 2); shade.position.set(0, 0.31, 0.01); lamp.add(shade);
+    const bulb = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.05), new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 3, 1.6) })); bulb.rotation.x = PI / 2; bulb.position.set(0, 0.3, 0.01); lamp.add(bulb);
+    add(lamp);
+    this.deskLamp = new THREE.PointLight(0xffb066, 1.6, 3.2, 2);
+    this.deskLamp.position.set(-0.6, 1.25, -1.42); g.add(this.deskLamp);
+    this.receptionist?.rig.set(2, this.deskLamp.position, 0xffb066, 1.1, 4);
+    // framed company prints (east wall over the chairs, west wall over the aquarium)
+    const PRINTS = [
+      ['TEAMWORK', 'Many clones. One mission.', '#24384e'],
+      ['PUNCTUALITY', 'The elevator waits for no one.', '#4a2a22'],
+      ['CONTINUITY', 'You have always worked here.', '#2c3f2c'],
+    ];
+    const print = ([t, s, bg], w, h, x, y, z, ry) => {
+      const tex = canvasTex(512, Math.round(512 * h / w), (c, cw, ch) => {
+        c.fillStyle = '#e9dfc6'; c.fillRect(0, 0, cw, ch);
+        c.fillStyle = bg; c.fillRect(28, 28, cw - 56, ch - 56);
+        c.strokeStyle = '#c9a55a'; c.lineWidth = 3; c.strokeRect(40, 40, cw - 80, ch - 80);
+        c.fillStyle = 'rgba(255,240,210,0.12)'; c.beginPath(); c.arc(cw / 2, ch * 0.4, cw * 0.25, 0, PI * 2); c.fill();
+        c.fillStyle = '#e8c35a'; c.beginPath(); c.ellipse(cw / 2, ch * 0.44, 46, 56, 0, 0, PI * 2); c.fill(); c.beginPath(); c.arc(cw / 2, ch * 0.31, 34, 0, PI * 2); c.fill();
+        c.fillStyle = '#16120c'; c.beginPath(); c.arc(cw / 2 - 11, ch * 0.3, 4.5, 0, PI * 2); c.arc(cw / 2 + 11, ch * 0.3, 4.5, 0, PI * 2); c.fill();
+        c.textAlign = 'center'; c.fillStyle = '#f3e6c4';
+        c.font = `700 ${Math.round(cw * 0.1)}px ${FONT.main}`; c.fillText(t, cw / 2, ch * 0.72);
+        c.font = `italic 600 ${Math.round(cw * 0.055)}px ${FONT.main}`; c.fillStyle = '#d9c79c'; c.fillText(s, cw / 2, ch * 0.8);
+        c.font = `600 ${Math.round(cw * 0.032)}px ${FONT.main}`; c.fillStyle = 'rgba(240,225,190,0.6)'; c.fillText('R.O.O.M.  ·  INTERNAL USE ONLY', cw / 2, ch - 54);
+      });
+      const fr = new THREE.Group(); fr.position.set(x, y, z); fr.rotation.y = ry;
+      B(w + 0.05, h + 0.05, 0.03, std({ color: 0x1a120c, roughness: 0.5 }), 0, 0, 0.015, fr);
+      const pic = new THREE.Mesh(new THREE.PlaneGeometry(w, h), std({ map: tex, roughness: 0.35 })); pic.position.z = 0.032; fr.add(pic);
+      add(fr);
+    };
+    print(PRINTS[0], 0.46, 0.62, 2.9, 1.72, -1.0, -PI / 2);
+    print(PRINTS[1], 0.46, 0.62, 2.9, 1.72, 1.62, -PI / 2);
+    print(PRINTS[2], 0.6, 0.44, -2.9, 2.1, 0.25, PI / 2);
+    this._dev('wall_clock', 'clock_rec', 2.909, 2.05, 0.32, -PI / 2);
+    // potted plants in two corners
+    const leafG = (() => { const p = new THREE.PlaneGeometry(0.075, 0.55, 1, 6); const P = p.attributes.position; for (let i = 0; i < P.count; i++) { const y = P.getY(i) + 0.275, k = y / 0.55; P.setX(i, P.getX(i) * Math.sin(Math.min(1, k * 1.15) * PI) * 1.1); P.setY(i, y); P.setZ(i, k * k * 0.12); } p.computeVertexNormals(); return p; })();
+    const leafM = std({ color: 0x3b6a2c, roughness: 0.55, side: THREE.DoubleSide }), potM = std({ color: 0x2a2624, roughness: 0.4, metalness: 0.1 }), soilM = std({ color: 0x1a120a, roughness: 1 });
+    for (const [x, z, s] of [[2.55, -2.25, 1.1], [-2.5, 2.25, 0.95]]) {
+      const pl = new THREE.Group(); pl.position.set(x, 0, z); pl.scale.setScalar(s);
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.13, 0.38, 20), potM); pot.position.y = 0.19; pl.add(pot);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.012, 6, 24), brass); rim.rotation.x = PI / 2; rim.position.y = 0.38; pl.add(rim);
+      const soil = new THREE.Mesh(new THREE.CircleGeometry(0.16, 20), soilM); soil.rotation.x = -PI / 2; soil.position.y = 0.36; pl.add(soil);
+      for (let i = 0; i < 13; i++) {
+        const lf = new THREE.Mesh(leafG, leafM), a = i * 2.4 + x, r = 0.03 + (i % 3) * 0.03;
+        lf.position.set(Math.cos(a) * r, 0.36, Math.sin(a) * r);
+        lf.rotation.set(0, -a + PI / 2, 0); lf.rotateX(-(0.12 + (i % 4) * 0.12)); lf.scale.setScalar(0.8 + (i % 5) * 0.12);
+        pl.add(lf);
+      }
+      add(pl);
+      this.world.physics.addStaticBox(x, 0.2 * s, z, 0.17 * s, 0.2 * s, 0.17 * s, { kind: 'static' });
+    }
   }
 
   _roomLightsFor(at, n = 2, k = 0.5) {
@@ -317,7 +442,7 @@ export class LobbyLevel {
     // four waiting chairs along the east wall, a side table between them
     for (const z of [-0.95, -0.3, 0.95, 1.6]) S('chair_wood', 2.45, 0, z, -PI / 2 + (Math.random() - 0.5) * 0.08);
     S('table_round', 2.4, 0, 0.32, 0);
-    S('chair_office', 0, 0, -2.38, 0.35); // behind the desk, turned slightly away
+    S('chair_office', 0, 0, -2.39, 0); // under Gloria, backrest behind her
   }
 
   startAudio() {
@@ -334,6 +459,8 @@ export class LobbyLevel {
     this.field.uniforms.uLightScale.value = LIGHT_SCALE * k;
     this.elevator?.setLightLevel(k);
     if (this.elevator) this.elevator.panel.lampK = Math.min(1, k * 1.2);
+    if (this.wash) this.wash.intensity = 7 * k;
+    if (this.deskLamp) this.deskLamp.intensity = 1.6 * Math.min(1, k * 1.4);
   }
   setTint(r, g, b) { this.field.tint.setRGB(r, g, b); this.field.forceRefresh(); }
 
@@ -370,9 +497,10 @@ export class LobbyLevel {
     if (this.aquaLight) this.aquaLight.intensity = (0.15 + this.lightK * 0.9) * (0.92 + Math.sin(t * 1.3) * 0.06 + Math.sin(t * 5.1) * 0.02);
     if (this.recScreen && this.recScreen.time - this.recScreen.lastDraw > 0.3) {
       this.recScreen.draw(dt, (ctx, w, h, pal, tt) => {
-        text(ctx, 'R.O.O.M. RECEPTION', 10, 8, 26, pal.hi);
-        text(ctx, Math.floor(tt) % 11 === 0 ? 'WE SEE YOU' : 'PLEASE WAIT', 10, 48, 22, pal.fg);
-        text(ctx, `CLONES WAITING: ${g.roster.size}`, 10, 80, 22, pal.dim);
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillStyle = pal.hi; ctx.font = `700 27px ${FONT.main}`; ctx.fillText('R.O.O.M. Reception', 12, 10);
+        ctx.fillStyle = pal.fg; ctx.font = `italic 600 24px ${FONT.main}`; ctx.fillText(Math.floor(tt) % 11 === 0 ? 'We see you.' : 'Please wait to be seen.', 12, 52);
+        ctx.fillStyle = pal.dim; ctx.font = `600 22px ${FONT.main}`; ctx.fillText(`Clones waiting: ${g.roster.size}`, 12, 88);
       });
     } else this.recScreen?.draw(dt, () => {});
     // trapdoor leaves

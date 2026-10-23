@@ -1,6 +1,6 @@
 // The local clone: first-person controller, camera feel, physics grabbing, interaction,
 // inventory & item use, flashlight, sleeping, death & spectating, pose replication.
-// Controls: RMB = interact (tap) / grab-and-pull (hold; the pull gets stronger the longer it is held),
+// Controls: RMB = interact (tap) / grab with the hands and drag (hold; the pull gets stronger the longer it is held),
 // Shift while carrying = throw far, LMB = punch (hold to wind up) / use the right-hand item / the drawn
 // multitool ([Q]; hold to charge power), E = interact, G = drop (hold: drop everything).
 // Carried items live in the hands (game/hands.js), vitals on the mechanical heart + brain (ui/vitals3d.js),
@@ -23,12 +23,17 @@ import { QTE } from './qte.js';
 import { VitalsHUD } from '../ui/vitals3d.js';
 import { juice } from '../gfx/juice.js';
 import { floatText } from '../ui/floattext.js';
+import { Inspector } from './inspect.js';
 
 const STAND_HH = 0.38, CROUCH_HH = 0.12, RADIUS = 0.3;
 const EYE_STAND = 1.36, EYE_CROUCH = 0.8; // matches the robot clone's eyes (doll/robotrig.js)
 const WALK = 2.9, SPRINT = 5.1, CROUCH_SPEED = 1.45;
 const GRAVITY = 15.5, JUMP_V = 4.9;
-const REACH = 2.7, GRAB_REACH = 3.4;
+const REACH = 2.7;
+// physics grabbing is done with the arms (no beam): reach out to ARM_REACH, the object is pulled in on a spring
+// to the hold distance (by its size; the wheel adjusts it), the grip slips past GRIP_BREAK
+const GRAB_REACH = 2.1, HOLD_MIN = 0.7, HOLD_MAX = 1.5, GRIP_BREAK = 2.6;
+const holdDist = (p) => clamp(0.72 + (p.radius || 0.2) * 1.1, HOLD_MIN, 1.25); // small things close, furniture at full reach
 export const CONTROLS = { tapTime: 0.22, pullStart: 0.5, pullMax: 1.7, pullRamp: 0.8, dropAllTime: 0.6, mtReserve: 0.25, mtTrickle: 0.002 };
 const PATCH_TIME = { bandage: 2.6, medkit: 3.4, plasma_syringe: 2.4 };
 
@@ -140,29 +145,8 @@ export class LocalPlayer {
     this.flashlight.target = this.flashTarget;
     this.flashFlicker = 0;
 
-    // grab beam: a glowing tube (rebuilt in place every frame) + a core line + a glow at the grip point
-    const SEG = 24, RAD = 6;
-    this.beamSeg = SEG;
-    this.beamRad = RAD;
-    const tubeGeo = new THREE.BufferGeometry();
-    tubeGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((SEG + 1) * RAD * 3), 3));
-    const idx = [];
-    for (let i = 0; i < SEG; i++) for (let j = 0; j < RAD; j++) {
-      const a = i * RAD + j, b = i * RAD + ((j + 1) % RAD), c = (i + 1) * RAD + j, d = (i + 1) * RAD + ((j + 1) % RAD);
-      idx.push(a, c, b, b, c, d);
-    }
-    tubeGeo.setIndex(idx);
-    this.beamTube = new THREE.Mesh(tubeGeo, new THREE.MeshBasicMaterial({ color: 0x6fd8ff, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    this.beamTube.frustumCulled = false;
-    this.beamTube.visible = false;
-    const beamGeo = new THREE.BufferGeometry();
-    beamGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((SEG + 1) * 3), 3));
-    this.beam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0xe0faff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
-    this.beam.frustumCulled = false;
-    this.beam.visible = false;
-    this.beamGlow = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 8), new THREE.MeshBasicMaterial({ color: 0xbff4ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
-    this.beamGlow.visible = false;
-    engine.scene.add(this.beam, this.beamTube, this.beamGlow);
+    this.strain = 0; // physics-grab effort (0..1): heavy things drag, the arms shake
+    this.inspect = new Inspector(this);
   }
 
   get id() { return net.selfId; }
@@ -300,6 +284,7 @@ export class LocalPlayer {
       if (this.grab && !this.terminal) this.releaseGrab(false);
       if (qteLock) { this._endHold(); this.combat.cancel(); }
       this.focus = null;
+      this.inspect.update(dt, null, null, false);
     }
     this._updateFlashlight(dt);
     this._updateViewmodel(dt);
@@ -348,7 +333,7 @@ export class LocalPlayer {
     // carrying heavy things slows you down
     if (this.grab) {
       const p = this.world.props.get(this.grab.id);
-      if (p) speed *= clamp(1.15 - p.mass / 70, 0.45, 1);
+      if (p) speed *= clamp(1.15 - p.mass / 70, 0.45, 1) * (1 - this.strain * 0.3); // dragging with effort
     }
     if (this.watchOpen) speed *= 0.75;
     speed *= this.hands.speedFactor; // an armful of stuff is heavy
@@ -547,6 +532,7 @@ export class LocalPlayer {
     }
     this.focus = focus;
     this.lookHit = hit;
+    this.inspect.update(dt, focus, hit); // floating name on hover, a line of flavour text on [E] / tap / click
 
     // hold-E devices (e.g. cranks)
     if (focus && input.hit('interact') && !this.watchOpen) {
@@ -595,7 +581,9 @@ export class LocalPlayer {
       return;
     }
     audio.play('grab', { volume: 0.5 });
-    this.arms.throwKick = Math.max(this.arms.throwKick || 0, 0.3); // the hand snatches it
+    // the hand that ends up holding it reaches down, snatches it and pulls it in
+    const L = this.hands.compute();
+    this.arms.gesture?.(L.armful ? 'snatch' : 'pickup', L.armful ? 'both' : L.left === slot ? 'L' : 'R');
     this.game.healthity?.onPickup(item.type, itemName(item.type));
     this.game.onItemPicked?.(item);
   }
@@ -655,7 +643,9 @@ export class LocalPlayer {
     if (input.hit('throw')) { this.releaseGrab(true, true); return; }
     if (!input.mouseDown(2)) { this.releaseGrab(false); return; }
     const w = input.consumeWheel();
-    if (w) this.grab.dist = clamp(this.grab.dist - w * 0.25, 0.8, GRAB_REACH);
+    if (w) this.grab.hold = clamp(this.grab.hold - w * 0.15, HOLD_MIN, HOLD_MAX);
+    // the hands draw what they caught in to arm's length (a spring, not a tractor beam)
+    this.grab.dist = damp(this.grab.dist, this.grab.hold, 5, dt);
     const target = _v.copy(cam.position).addScaledVector(_fwd, this.grab.dist);
     this.grab.target = target.clone();
     if (this.grab.remote) {
@@ -673,12 +663,17 @@ export class LocalPlayer {
       }
       return;
     }
+    const g = this.grab;
     const p = this.world.props.get(this.grab.id);
     if (!p || p.dead || p.frozen) { this.grab = null; return; }
     // stop if the object is far away from where we're pulling (stuck / too heavy)
     const gp = this.grab.lp.clone().applyQuaternion(p.root.quaternion).add(p.root.position);
     this.grab.point = gp;
-    if (gp.distanceTo(cam.position) > GRAB_REACH + 1.6 + (this.grabPower - 1) * 0.6) {
+    // effort: how far the grip lags behind where the hands pull, weighted by mass (heavy furniture drags)
+    const lagD = g.target ? gp.distanceTo(g.target) : 0;
+    this.strain = damp(this.strain, clamp((lagD - 0.12) / 0.55, 0, 1) * clamp(0.35 + p.mass / 30, 0.35, 1), 6, dt);
+    if (gp.distanceTo(cam.position) > GRIP_BREAK + (this.grabPower - 1) * 0.3) {
+      floatText.notice('Lost your grip', { duration: 1.1, color: '#ffb040' });
       this.releaseGrab(false);
       return;
     }
@@ -695,16 +690,21 @@ export class LocalPlayer {
   _startGrab() {
     const cam = engine.camera;
     _fwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
-    const hit = this.world.physics.raycast(cam.position, _fwd, GRAB_REACH, Q.grab, null, (c) => c !== this.collider);
+    let hit = this.world.physics.raycast(cam.position, _fwd, REACH + 0.5, Q.grab, null, (c) => c !== this.collider);
+    if (hit && hit.dist > GRAB_REACH) {
+      // the arms only reach so far
+      if (hit.ud?.kind === 'prop' && hit.ud.prop?.body && engine.time - (this._farT || -9) > 1.2) { this._farT = engine.time; floatText.notice('Out of reach — step closer', { duration: 1.1 }); }
+      hit = null;
+    }
     if (hit && hit.ud) {
       if (hit.ud.kind === 'prop' && hit.ud.prop.body && !hit.ud.prop.frozen && !hit.ud.prop.def.static) {
         const p = hit.ud.prop;
         const inv = p.root.quaternion.clone().invert();
         const lp = hit.point.clone().sub(p.root.position).applyQuaternion(inv);
-        this.grab = { id: p.id, lp, dist: clamp(hit.dist, 0.9, GRAB_REACH), sendT: 0, t: 0 };
+        this.grab = { id: p.id, lp, dist: clamp(hit.dist, 0.6, GRAB_REACH), hold: holdDist(p), sendT: 0, t: 0 };
         audio.play('grab', { volume: 0.4, pos: hit.point });
       } else if (hit.ud.kind === 'remote' && hit.ud.remote && !hit.ud.remote.dead) {
-        this.grab = { remote: hit.ud.remote.id, dist: clamp(hit.dist, 1.0, 2.5), sendT: 0, t: 0 };
+        this.grab = { remote: hit.ud.remote.id, dist: clamp(hit.dist, 0.8, GRAB_REACH), hold: 1.0, sendT: 0, t: 0 };
         audio.play('grab', { volume: 0.4, pos: hit.point });
       }
     }
@@ -712,15 +712,22 @@ export class LocalPlayer {
       // thin tent parts are easy to miss: grab one the ray passes close to by its centre
       const part = this.game.tools._campPartNearRay(hit ? hit.dist : GRAB_REACH);
       if (part?.body) {
-        this.grab = { id: part.id, lp: new THREE.Vector3(), dist: clamp(part.root.position.distanceTo(cam.position), 0.9, GRAB_REACH), sendT: 0, t: 0 };
+        this.grab = { id: part.id, lp: new THREE.Vector3(), dist: clamp(part.root.position.distanceTo(cam.position), 0.6, GRAB_REACH), hold: holdDist(part), sendT: 0, t: 0 };
         audio.play('grab', { volume: 0.4, pos: part.root.position });
       }
     }
-    if (this.grab) { this.grabPower = CONTROLS.pullStart; this.combat.cancel(); }
+    if (this.grab) {
+      this.grabPower = CONTROLS.pullStart; this.strain = 0; this.combat.cancel();
+      const sides = this._grabHands();
+      this.arms.gesture?.('grab', sides.two ? 'both' : sides.R ? 'R' : 'L');
+    }
   }
 
   releaseGrab(doThrow, far = false) {
     if (!this.grab) return;
+    const hs = this._grabHands();
+    if (!doThrow) this.arms.gesture?.('release', hs.two ? 'both' : hs.R ? 'R' : 'L');
+    this.strain = 0;
     if (this.grab.remote) {
       if (doThrow) {
         _fwd.set(0, 0, -1).applyQuaternion(engine.camera.quaternion);
@@ -745,56 +752,75 @@ export class LocalPlayer {
     this.grab = null;
   }
 
-  _updateBeam() {
+  // which hands take hold: big / heavy things get both, otherwise the free hand (right first)
+  _grabHands() {
     const g = this.grab;
-    const show = !!(g && (g.point || g.remote) && !this.dead);
-    this.beam.visible = show;
-    this.beamTube.visible = show;
-    this.beamGlow.visible = show;
-    if (!show) return;
-    const cam = engine.camera;
-    const start = _v.set(0.2, -0.22, -0.42).applyQuaternion(cam.quaternion).add(cam.position).clone();
-    let end;
+    const H = this.hands;
+    const freeR = !H.R.type, freeL = !H.L.type;
+    let two = false, size = 0.35;
+    if (g && g.id != null && this.world) {
+      const p = this.world.props.get(g.id);
+      if (p) { two = (p.radius || 0.2) > 0.24 || (p.mass || 1) > 9; size = clamp(((p.radius || 0.2) - 0.05) / 0.45, 0, 1); }
+    } else if (g?.remote) { two = true; size = 0.6; }
+    if (two) return { R: true, L: true, two: true, size };
+    if (freeR || !freeL) return { R: true, L: false, two: false, size };
+    return { R: false, L: true, two: false, size };
+  }
+
+  // camera-space wrist targets for the grab: each grip point is projected through the world camera and placed
+  // at the same screen spot in the viewmodel, at a depth that grows with how far the hand has to reach
+  _toVM(world, out, side) {
+    const cam = engine.camera, vm = engine.vmCamera;
+    _v2.copy(world).applyMatrix4(cam.matrixWorldInverse);
+    const dist = Math.max(0.25, -_v2.z);
+    const tm = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)), tv = Math.tan(THREE.MathUtils.degToRad(vm.fov / 2));
+    let nx = _v2.x / (dist * tm * cam.aspect), ny = _v2.y / (dist * tm);
+    if (_v2.z > -0.1) { nx = Math.sign(nx || side) * 0.8; ny = -0.6; }
+    nx = side > 0 ? clamp(nx, -0.3, 0.85) : clamp(nx, -0.85, 0.3);
+    ny = clamp(ny, -0.95, 0.02); // never above the crosshair: the forearms would sweep across the view
+    const z = 0.4 + 0.22 * clamp((dist - 0.45) / 1.3, 0, 1);
+    return out.set(nx * z * tv * vm.aspect, ny * z * tv, -z).multiplyScalar((z - 0.06) / z);
+  }
+
+  _updateReach() {
+    const g = this.grab;
+    const R = this._reachOut || (this._reachOut = { R: new THREE.Vector3(), L: new THREE.Vector3(), c: new THREE.Vector3() });
+    if (!g || this.dead || !this.world) return null;
+    const hs = this._grabHands();
+    let grip = null, center = null, half = 0;
     if (g.remote) {
       const r = this.game.remotes.get(g.remote);
-      end = r ? r.pos.clone().add(_v2.set(0, 0.7, 0)) : start.clone();
-    } else end = g.point;
-    // the beam sags toward where we are pulling, like a stretched rope of light
-    const mid = g.target ? g.target.clone().lerp(start, 0.35) : start.clone().lerp(end, 0.5);
-    const SEG = this.beamSeg, RAD = this.beamRad;
-    const line = this.beam.geometry.attributes.position.array;
-    const tube = this.beamTube.geometry.attributes.position.array;
-    const t0 = engine.time;
-    const pts = [];
-    for (let i = 0; i <= SEG; i++) {
-      const t = i / SEG;
-      const a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
-      const wob = Math.sin(t * Math.PI) * 0.015 * Math.sin(t0 * 35 + i * 0.9);
-      const p = new THREE.Vector3(start.x * a + mid.x * b + end.x * c + wob, start.y * a + mid.y * b + end.y * c + wob, start.z * a + mid.z * b + end.z * c);
-      pts.push(p);
-      line[i * 3] = p.x; line[i * 3 + 1] = p.y; line[i * 3 + 2] = p.z;
+      if (!r) return null;
+      center = grip = R.c.copy(r.pos).add(_v.set(0, 0.95, 0));
+      half = 0.2;
+    } else {
+      const p = this.world.props.get(g.id);
+      if (!p || !g.point) return null;
+      grip = g.point;
+      if (hs.two) {
+        // hug it: both palms on the sides facing us, near the top edge (bounds measured once per grab)
+        if (!g.bounds) {
+          const b = new THREE.Box3().setFromObject(p.root), sz = b.getSize(new THREE.Vector3());
+          g.bounds = { hx: sz.x / 2, hz: sz.z / 2, cy: b.getCenter(new THREE.Vector3()).y - p.root.position.y, top: b.max.y - p.root.position.y };
+        }
+        const B = g.bounds, cam = engine.camera;
+        _right.set(1, 0, 0).applyQuaternion(cam.quaternion).setY(0).normalize();
+        _v2.subVectors(cam.position, p.root.position).setY(0).normalize();
+        half = clamp(Math.abs(_right.x) * B.hx + Math.abs(_right.z) * B.hz, 0.12, 0.42);
+        const front = Math.abs(_v2.x) * B.hx + Math.abs(_v2.z) * B.hz;
+        center = R.c.copy(p.root.position).addScaledVector(_v2, front * 0.5);
+        center.y += B.cy + (B.top - B.cy) * 0.55;
+      } else center = R.c.copy(grip);
     }
-    const tan = new THREE.Vector3(), n1 = new THREE.Vector3(), n2 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-    for (let i = 0; i <= SEG; i++) {
-      tan.subVectors(pts[Math.min(SEG, i + 1)], pts[Math.max(0, i - 1)]).normalize();
-      n1.crossVectors(tan, up);
-      if (n1.lengthSq() < 1e-4) n1.set(1, 0, 0);
-      n1.normalize();
-      n2.crossVectors(tan, n1).normalize();
-      const gpw = 0.6 + (this.grabPower - 0.5) * 0.8;
-      const r = (0.012 + Math.sin((i / SEG) * Math.PI) * 0.012) * gpw + Math.sin(t0 * 20 + i) * 0.003 * gpw;
-      for (let j = 0; j < RAD; j++) {
-        const ang = (j / RAD) * Math.PI * 2;
-        const k = (i * RAD + j) * 3;
-        tube[k] = pts[i].x + (n1.x * Math.cos(ang) + n2.x * Math.sin(ang)) * r;
-        tube[k + 1] = pts[i].y + (n1.y * Math.cos(ang) + n2.y * Math.sin(ang)) * r;
-        tube[k + 2] = pts[i].z + (n1.z * Math.cos(ang) + n2.z * Math.sin(ang)) * r;
-      }
-    }
-    this.beam.geometry.attributes.position.needsUpdate = true;
-    this.beamTube.geometry.attributes.position.needsUpdate = true;
-    this.beamGlow.position.copy(end);
-    this.beamGlow.scale.setScalar(0.8 + Math.sin(t0 * 30) * 0.25);
+    const out = { reachR: null, reachL: null, twoHanded: hs.two, gripSize: hs.size, strain: this.strain };
+    if (hs.two) {
+      if (g.remote) _right.set(1, 0, 0).applyQuaternion(engine.camera.quaternion);
+      out.reachR = this._toVM(_v.copy(center).addScaledVector(_right, half), R.R, 1);
+      out.reachL = this._toVM(_v.copy(center).addScaledVector(_right, -half), R.L, -1);
+      if (out.reachR.x - out.reachL.x < 0.1) { const m = (out.reachR.x + out.reachL.x) / 2; out.reachR.x = m + 0.05; out.reachL.x = m - 0.05; }
+    } else if (hs.R) out.reachR = this._toVM(grip, R.R, 1);
+    else out.reachL = this._toVM(grip, R.L, -1);
+    return out;
   }
 
   // ---------------- hands, items & tools ----------------
@@ -904,14 +930,17 @@ export class LocalPlayer {
         this._droppedAll = true;
         let k = 0;
         for (let i = 0; i < this.inv.slots.length; i++) if (this.inv.slots[i]) this.dropItem(this.inv.remove(i), false, k++);
-        if (k) audio.play('suit_rustle', { volume: 0.6 });
+        if (k) { audio.play('suit_rustle', { volume: 0.6 }); this.arms.gesture?.('drop', 'both'); }
       }
       return;
     }
     if (this.dropHold > 0 && !this._droppedAll) {
       const L = this.hands.compute();
       const i = L.armful ? L.pile[L.pile.length - 1] : L.right >= 0 ? L.right : L.left;
-      if (i >= 0 && i != null) this.dropItem(this.inv.remove(i), false);
+      if (i >= 0 && i != null) {
+        this.arms.gesture?.('drop', L.armful ? 'both' : i === L.left ? 'L' : 'R');
+        this.dropItem(this.inv.remove(i), false);
+      }
     }
     this.dropHold = 0;
     this._droppedAll = false;
@@ -1017,6 +1046,7 @@ export class LocalPlayer {
       case 'throw': {
         const it = this.inv.remove(this.inv.slots.indexOf(item));
         this.dropItem(it, true);
+        this.arms.throwKick = 1;
         audio.play('dart_throw', { volume: 0.6 });
         break;
       }
@@ -1147,17 +1177,28 @@ export class LocalPlayer {
   _updateViewmodel(dt) {
     const s = this.survival;
     const ua = this.useAction;
-    let use = 0;
-    if (ua && !ua.patch) use = Math.sin(Math.min(1, ua.t / ua.dur) * Math.PI);
+    // eat / drink / heal progress drives the hand-to-mouth animation (patching the heart is the vitals' cradle)
+    const useT = ua && !ua.patch ? Math.min(1, ua.t / ua.dur) : -1;
+    const useKind = ua?.def?.use === 'drink' ? 'drink' : ua?.def?.use === 'heal' ? 'heal' : 'eat';
     this.arms.throwKick = damp(this.arms.throwKick || 0, 0, 8, dt);
     const H = this.hands, V = this.vitals, ko = !!this.combat.ko;
     H.hidden = V.busy;
     const cs = this.combat.armState();
     const sway = new THREE.Vector2(this.lookDelta?.x || 0, this.lookDelta?.y || 0);
+    // camera-local acceleration (the hands lag behind when the clone speeds up, swing on when it stops)
+    const aim = this.vel;
+    const acc = { x: (aim.x - (this._pvx || 0)) / Math.max(dt, 1e-3), z: (aim.z - (this._pvz || 0)) / Math.max(dt, 1e-3) };
+    this._pvx = aim.x; this._pvz = aim.z;
+    _v.set(acc.x, 0, acc.z).applyAxisAngle(_v2.set(0, 1, 0), -this.yaw);
+    const accel = { x: clamp(_v.x, -30, 30), z: clamp(_v.z, -30, 30) };
+    const reach = this._updateReach();
     const st = {
       bob: this.bob, speed: this.realSpeed || 0, sprint: this.sprinting,
       watchRaised: V.busy ? 0 : this.watchRaised,
-      grab: this.grab ? 1 : 0, use, throwCharge: this.arms.throwKick,
+      grab: this.grab ? 1 : 0, useT, useKind, throwCharge: this.arms.throwKick,
+      gripR: H.grip('R'), gripL: H.grip('L'), accel,
+      punchT: cs.punchT, punchSide: cs.punchSide, punchPow: cs.punchPow, impactId: cs.impactId,
+      reachR: reach?.reachR || null, reachL: reach?.reachL || null, twoHanded: !!reach?.twoHanded, gripSize: reach?.gripSize ?? 0.4, strain: reach ? this.strain : 0,
       holdingItem: !!H.R.type, holdL: !!H.L.type, armful: H.layout.armful ? 1 : 0,
       cradle: V.patchCradle, reach: V.patchReach,
       windR: cs.windR, jabR: cs.jabR, windL: cs.windL, jabL: cs.jabL,
@@ -1170,12 +1211,8 @@ export class LocalPlayer {
     this.arms.update(dt, st);
     H.update(dt, { bob: this.bob, phase: this.stepPhase, sway, landing: this.landKick, visible: armsOn });
     const ui = this.game.ui;
-    const aim = this.vel;
-    const acc = { x: (aim.x - (this._pvx || 0)) / Math.max(dt, 1e-3), z: (aim.z - (this._pvz || 0)) / Math.max(dt, 1e-3) };
-    this._pvx = aim.x; this._pvz = aim.z;
-    _v.set(acc.x, 0, acc.z).applyAxisAngle(_v2.set(0, 1, 0), -this.yaw);
     V.update(dt, {
-      survival: s, dead: this.dead, insaneT: s.insaneT, sway, accel: { x: clamp(_v.x, -30, 30), z: clamp(_v.z, -30, 30) },
+      survival: s, dead: this.dead, insaneT: s.insaneT, sway, accel,
       visible: !this.dead && !s.sleeping && !this.terminal && !ui.customizing && !ui.menuOpen && !!this.world && this.game.state === 'playing',
     });
     // viewmodel lighting
@@ -1183,7 +1220,6 @@ export class LocalPlayer {
     this.vmHemi.color.copy(lc).multiplyScalar(1.1);
     this.vmHemi.intensity = 0.15 + Math.min(1.0, this.lightLevel * 0.8);
     this.vmDir.intensity = 0.1 + Math.min(0.8, this.lightLevel * 0.6);
-    this._updateBeam();
   }
 
   _updateAvatar(dt) {
@@ -1382,9 +1418,7 @@ export class LocalPlayer {
   dispose() {
     this.detachWorld();
     this.arms.root.removeFromParent();
-    this.beam.removeFromParent();
-    this.beamTube.removeFromParent();
-    this.beamGlow.removeFromParent();
+    this.inspect.dispose();
     this.hands.dispose();
     this.vitals.dispose();
   }

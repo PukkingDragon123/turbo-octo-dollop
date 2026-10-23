@@ -95,7 +95,15 @@ export function obstacles(level, x0, z0, x1, z1, out = []) {
       if (ox + h.x1 < x0 - 1 || ox + h.x0 > x1 + 1 || oz + h.z1 < z0 - 1 || oz + h.z0 > z1 + 1) continue;
       out.push(aabbRect(ox + h.x0 - 0.15, oz + h.z0 - 0.15, ox + h.x1 + 0.15, oz + h.z1 + 0.15));
     }
+    // squeezes: the thick walls either side of the passage (passage 1.1 m wide down the cell's middle)
+    for (const n of L.narrows || []) {
+      const nx = ox + n.li * CELL, nz = oz + n.lj * CELL;
+      if (nx + CELL < x0 - 1 || nx > x1 + 1 || nz + CELL < z0 - 1 || nz > z1 + 1) continue;
+      if (n.ax === 'x') { out.push(aabbRect(nx, nz, nx + CELL, nz + CELL / 2 - 0.55 + pad)); out.push(aabbRect(nx, nz + CELL / 2 + 0.55 - pad, nx + CELL, nz + CELL)); }
+      else { out.push(aabbRect(nx, nz, nx + CELL / 2 - 0.55 + pad, nz + CELL)); out.push(aabbRect(nx + CELL / 2 + 0.55 - pad, nz, nx + CELL, nz + CELL)); }
+    }
     for (const d of L.decor) {
+      if (d.kind === 'walldoor' && d.y) continue; // a door high up in the wall leaves the floor free
       if (d.kind === 'walldoor') {
         // keep the floor in front of a wall door (and its swung leaf) clear
         const wx = ox + d.li * CELL, wz = oz + d.lj * CELL;

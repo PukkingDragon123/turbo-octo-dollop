@@ -3,10 +3,14 @@
 // plus the chunky corporate wrist terminal strapped to the left forearm (its 4:3 'watchScreen' plane
 // receives the watch UI canvas). Camera space: forearms point along -Z.
 //
-// buildFirstPersonArms(cosmetics, opts) -> { root, rightHand, leftHand, watchScreen, update(dt, st), dispose }
+// buildFirstPersonArms(cosmetics, opts) -> { root, rightHand, leftHand, watchScreen, update(dt, st), gesture(name, side), dispose }
 //   st (all optional): bob, speed, sprint, watchRaised, grab, use, throwCharge, holdingItem, holdL (left hand item),
 //   armful, cradle, reach (0..1 two-handed poses), windR/jabR/windL/jabL (punch wind-up / extension),
-//   tremble (QTE shake), grabPower (strained pull), sway, landing, phase
+//   tremble (QTE shake), grabPower (strained pull), sway (look delta, rad/frame), accel {x,z} (camera-local m/s²),
+//   landing, phase; punchT/punchSide/punchPow/impactId (swing clock 0..1, -1 = none; impactId changes on a hit);
+//   useT (0..1 progress, -1 = none) + useKind ('eat' | 'drink' | 'heal'); gripR/gripL (held-item grip 0..1, 1 = thin);
+//   physics grab: reachR / reachL (wrist targets, camera space, or null), twoHanded, gripSize (0..1), strain (0..1)
+//   gesture: 'pickup' | 'snatch' | 'drop' | 'grab' | 'release', side 'R' | 'L' | 'both'
 import * as THREE from 'three';
 import { clamp, lerp, smooth, damp, Spring } from './kit.js';
 import { labelTexture } from '../../gfx/textures.js';
@@ -269,100 +273,295 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
     rightHand.quaternion.copy(wq).invert(); rightHand.position.set(0, -0.012, -0.045);
     leftHand.quaternion.copy(rightHand.quaternion); leftHand.position.set(0, -0.012, -0.045);
   }
+  // ---------------------------------------------------------------- motion
+  // Every pose weight rides a critically damped (or slightly underdamped) spring, so blends ease in and out
+  // and settle instead of snapping. On top of the blended pose: view sway with rotational lag, movement
+  // inertia, breathing, smooth-noise tremble (no per-frame random jitter), timed gestures and a physics-grab
+  // reach that puts the palm on the grip point.
   const st = {
-    phase: 0, t: 0, prevCharge: 0, release: 0,
+    phase: 0, t: 0, prevCharge: 0, release: 0, brPh: 0,
     sR: { x: POSE.R.h.clone(), v: V(0, 0, 0) }, sL: { x: POSE.L.h.clone(), v: V(0, 0, 0) },
-    sway: V(0, 0, 0), swayV: V(0, 0, 0), land: new Spring(160, 9, 0), curl: 0, bob: 0,
-    w: { watch: 0, grab: 0, use: 0, thr: 0, hold: 0, holdL: 0, armful: 0, cradle: 0, reach: 0 },
+    sway: V(0, 0, 0), swayV: V(0, 0, 0), lag: V(0, 0, 0), lagV: V(0, 0, 0),
+    land: new Spring(160, 9, 0), bob: 0, w: {}, reachR: V(0.1, -0.12, -0.5), reachL: V(-0.1, -0.12, -0.5), impactId: 0, gest: [],
   };
-  const tmp = { h: V(0, 0, 0), d: V(0, 0, 0), u: V(0, 0, 0) };
-  const blendPose = (out, bP, w) => { out.h.lerp(bP.h, w); out.d.lerp(bP.d, w); out.u.lerp(bP.u, w); };
+  let DT = 0;
+  const W = (name, target, k = 260, z = 1) => {
+    const s = st.w[name] || (st.w[name] = { x: target, v: 0 });
+    const n = Math.max(1, Math.ceil(DT * 120)), hh = DT / n, d = 2 * z * Math.sqrt(k);
+    for (let i = 0; i < n; i++) { s.v += ((target - s.x) * k - d * s.v) * hh; s.x += s.v * hh; }
+    return s.x;
+  };
+  const sm = (x) => smooth(clamp(x, 0, 1));
+  const sn = (t, s) => Math.sin(t * 1.9 + s) * 0.5 + Math.sin(t * 3.1 + s * 1.7) * 0.3 + Math.sin(t * 5.3 + s * 2.3) * 0.2;
+  const tmp = { h: V(0, 0, 0), d: V(0, 0, 0), u: V(0, 0, 0) }, _p = { h: V(0, 0, 0), d: V(0, 0, 0), u: V(0, 0, 0) };
+  const blendPose = (out, bP, w) => { if (w > 0.0005) { out.h.lerp(bP.h, w); out.d.lerp(bP.d, w); out.u.lerp(bP.u, w); } };
   const stepSpring = (sp, target, dt, k, z) => {
     const n = Math.max(1, Math.ceil(dt / (1 / 120))), hh = dt / n, d = 2 * z * Math.sqrt(k);
     for (let i = 0; i < n; i++) { _v1.subVectors(target, sp.x).multiplyScalar(k).addScaledVector(sp.v, -d); sp.v.addScaledVector(_v1, hh); sp.x.addScaledVector(sp.v, hh); }
     if (sp.x.distanceToSquared(target) > 0.25) { sp.x.copy(target); sp.v.set(0, 0, 0); }
     return sp.x;
   };
+  // roll the forearm about its own axis (pronation / supination)
+  const roll = (o, a) => { if (Math.abs(a) > 1e-4) o.u.applyAxisAngle(_v3.copy(o.d).normalize(), a); };
+
+  // timed gestures with anticipation and settle: pickup / drop / grab (wind-up before the lunge) / release
+  const GDUR = { pickup: 0.62, drop: 0.5, grab: 0.2, release: 0.42, snatch: 0.36 };
+  const gOut = { R: { h: V(), pitch: 0, open: 0, close: 0 }, L: { h: V(), pitch: 0, open: 0, close: 0 } };
+  function gesture(name, side = 'R') {
+    if (side === 'both') { gesture(name, 'R'); gesture(name, 'L'); return; }
+    if (side !== 'L') side = 'R';
+    st.gest = st.gest.filter((g) => g.side !== side || g.name === 'release');
+    st.gest.push({ name, side, t: 0, dur: GDUR[name] || 0.5 });
+  }
+  function evalGestures(dt) {
+    for (const o of [gOut.R, gOut.L]) { o.h.set(0, 0, 0); o.pitch = 0; o.open = 0; o.close = 0; }
+    for (let i = st.gest.length - 1; i >= 0; i--) {
+      const g = st.gest[i];
+      g.t += dt;
+      const u = g.t / g.dur;
+      if (u >= 1) { st.gest.splice(i, 1); continue; }
+      const o = gOut[g.side], s = g.side === 'R' ? 1 : -1;
+      if (g.name === 'pickup' || g.name === 'snatch') {
+        // lift and draw back a hair, reach down-forward with the fingers spread, snatch, pull it in, settle
+        const big = g.name === 'pickup' ? 1 : 0.55;
+        const ant = u < 0.16 ? Math.sin((u / 0.16) * PI) : 0;
+        const r = u < 0.16 ? 0 : u < 0.42 ? sm((u - 0.16) / 0.26) : 1 - sm((u - 0.42) / 0.58);
+        o.h.x -= s * 0.05 * r * big; o.h.y += 0.012 * ant - 0.12 * r * big; o.h.z += 0.022 * ant - 0.12 * r * big;
+        o.pitch -= 0.45 * r;
+        if (u < 0.42) o.open = Math.max(o.open, sm(u / 0.2)); else o.close = Math.max(o.close, 1 - sm((u - 0.42) / 0.5));
+      } else if (g.name === 'drop') {
+        const r = u < 0.38 ? sm(u / 0.38) : 1 - sm((u - 0.38) / 0.62);
+        o.h.y -= 0.07 * r; o.h.z -= 0.1 * r; o.h.x -= s * 0.02 * r;
+        o.pitch -= 0.5 * r;
+        if (u > 0.28 && u < 0.78) o.open = Math.max(o.open, Math.sin(((u - 0.28) / 0.5) * PI));
+      } else if (g.name === 'grab') {
+        const a = Math.sin(u * PI);
+        o.h.z += 0.035 * a; o.h.y += 0.01 * a; o.open = Math.max(o.open, a);
+      } else if (g.name === 'release') {
+        const a = Math.sin(u * PI) * (1 - u * 0.4);
+        o.open = Math.max(o.open, a); o.pitch += 0.28 * a; o.h.z += 0.03 * a; o.h.y += 0.015 * a;
+      }
+    }
+  }
+
+  // physics grab: the wrist goes to the grip point (camera space), the forearm aims from a virtual shoulder
+  // (so its cut end stays off screen); one hand: palm over the grip; two hands: palms in, hugging the sides
+  const SHO = { R: V(0.3, -0.5, 0.6), L: V(-0.3, -0.5, 0.6) };
+  const U1 = { R: V(-0.25, 0.95, 0.18), L: V(0.25, 0.95, 0.18) };
+  const U2 = { R: V(0.85, 0.45, 0.2), L: V(-0.85, 0.45, 0.2) };
+  function reachPose(o, S, w, two) {
+    if (w < 0.0005) return;
+    const tg = S === 'R' ? st.reachR : st.reachL;
+    _p.h.copy(tg);
+    _p.d.subVectors(tg, SHO[S]).normalize();
+    _p.u.copy(U1[S]).lerp(U2[S], two);
+    blendPose(o, _p, w);
+  }
+  // eat / drink / heal: hand to the mouth (bites, or the bottle tipping with swallow pulses); healing brings
+  // both hands together low in front, winding the dressing round
+  function usePose(o, S, w, kind, tilt, t) {
+    if (w < 0.0005) return;
+    if (kind === 'heal') {
+      const s = S === 'R' ? 1 : -1, a = t * 7.5 + (S === 'R' ? 0 : PI);
+      _p.h.set(s * 0.05 + Math.cos(a) * 0.016, -0.24 + Math.sin(a) * 0.012, -0.36);
+      _p.d.set(-s * 0.5, 0.32, -0.8); _p.u.set(-s * 0.3, 0.9, 0.3);
+      blendPose(o, _p, w);
+      return;
+    }
+    if (S !== 'R') return;
+    blendPose(o, POSE.use, w);
+    if (kind === 'drink') {
+      o.d.y += 0.4 * tilt * w; o.d.z += 0.22 * tilt * w;
+      o.h.y += (0.018 + Math.sin(t * 6.5) * 0.003) * tilt * w; o.h.x -= 0.01 * tilt * w;
+    } else {
+      const chew = Math.max(0, Math.sin(t * 9));
+      o.h.y += chew * 0.007 * w; o.h.z += chew * 0.004 * w;
+    }
+  }
+  // punches: wind-up loads deeper and lower with the fist turned out; the jab (may exceed 1 = follow-through
+  // overshoot) crosses toward the centre line with the fist rolling over; the other fist comes up to guard
+  function punchPose(o, S, wind, jab, pow, other) {
+    const s = S === 'R' ? 1 : -1;
+    let r = 0;
+    if (wind > 0.001 && jab < 0.999) {
+      const k = wind * (1 - clamp(jab, 0, 1));
+      blendPose(o, POSE['wind' + S], k);
+      const c = sm((wind - 0.25) / 0.75) * (1 - clamp(jab, 0, 1));
+      o.h.z += 0.045 * c; o.h.y -= 0.018 * c; o.h.x += s * 0.02 * c;
+      r += s * 0.28 * c;
+    }
+    if (jab > 0.001) {
+      blendPose(o, POSE['jab' + S], jab);
+      const j = clamp(jab, 0, 1);
+      o.h.x -= s * 0.035 * (0.4 + pow * 0.6) * j; o.h.y += 0.012 * pow * j;
+      r -= s * 0.38 * (0.5 + 0.5 * pow) * j;
+    }
+    if (other > 0.001) { const g = clamp(other, 0, 1); o.h.z += 0.04 * g; o.h.y += 0.022 * g; o.h.x -= s * 0.025 * g; }
+    return r;
+  }
+  // per-arm motion layer: view sway (position + forearm turn), movement inertia, gestures
+  function motion(o, S, k) {
+    o.h.x += st.sway.x * k; o.h.y += st.sway.y * k;
+    o.d.x += st.sway.x * 2.4 * k; o.d.y += st.sway.y * 1.6 * k;
+    o.u.x += st.sway.x * 2.0 * k;
+    o.h.addScaledVector(st.lag, k);
+    o.h.add(gOut[S].h);
+  }
+
   function update(dt, s = {}) {
     dt = clamp(dt || 0, 0, 0.1);
+    DT = dt;
     st.t += dt;
-    const w = st.w;
-    w.watch = damp(w.watch, clamp(s.watchRaised || 0, 0, 1), 10, dt);
-    w.grab = damp(w.grab, clamp(s.grab || 0, 0, 1), 12, dt);
-    w.use = damp(w.use, clamp(s.use || 0, 0, 1), 9, dt);
-    w.thr = damp(w.thr, clamp(s.throwCharge || 0, 0, 1), 12, dt);
-    w.hold = damp(w.hold, s.holdingItem ? 1 : 0, 10, dt);
-    w.holdL = damp(w.holdL, s.holdL ? 1 : 0, 10, dt);
-    w.armful = damp(w.armful, clamp(s.armful || 0, 0, 1), 8, dt);
-    w.cradle = damp(w.cradle, clamp(s.cradle || 0, 0, 1), 14, dt);
-    w.reach = damp(w.reach, clamp(s.reach || 0, 0, 1), 14, dt);
-    const windR = clamp(s.windR || 0, 0, 1), jabR = clamp(s.jabR || 0, 0, 1), windL = clamp(s.windL || 0, 0, 1), jabL = clamp(s.jabL || 0, 0, 1);
-    const both = Math.max(w.armful, w.cradle, w.reach);
-    const shakeAmt = (s.tremble || 0) * 0.006 + (s.grabPower || 0) * 0.0025 + (windR + windL > 0.9 ? 0.002 : 0);
+    const t = st.t;
+    evalGestures(dt);
+    const wWatch = W('watch', clamp(s.watchRaised || 0, 0, 1), 220);
+    const wHold = W('hold', s.holdingItem ? 1 : 0, 200);
+    const wHoldL = W('holdL', s.holdL ? 1 : 0, 200);
+    const wArm = W('armful', clamp(s.armful || 0, 0, 1), 150);
+    const wCradle = W('cradle', clamp(s.cradle || 0, 0, 1), 420);
+    const wVReach = W('vreach', clamp(s.reach || 0, 0, 1), 420);
+    const wThr = clamp(W('thr', clamp(s.throwCharge || 0, 0, 1), 420), 0, 1.05);
+    // physics grab: lunge to the grip (slightly underdamped going in), ease home on release
+    const hasR = !!s.reachR, hasL = !!s.reachL;
+    if (hasR) st.reachR.copy(s.reachR);
+    if (hasL) st.reachL.copy(s.reachL);
+    const gR = W('gR', hasR ? 1 : 0, hasR ? 300 : 170, hasR ? 0.78 : 1);
+    const gL = W('gL', hasL ? 1 : 0, hasL ? 300 : 170, hasL ? 0.78 : 1);
+    const wGrab = W('grab', s.grab && !hasR && !hasL ? 1 : 0, 300);
+    const two = W('two', s.twoHanded ? 1 : 0, 200);
+    const strain = clamp(W('strain', clamp(Math.max(s.strain || 0, (s.grabPower || 0) * 0.3), 0, 1), 120), 0, 1);
+    // use: anticipation dip, raise, act, lower, settle (useT = 0..1 progress; legacy 'use' = weight)
+    const ut = s.useT ?? -1, kind = s.useKind || 'eat';
+    let ue = 0, dip = 0;
+    if (ut >= 0) {
+      if (ut < 0.12) dip = Math.sin((ut / 0.12) * PI);
+      ue = ut < 0.1 ? 0 : ut < 0.32 ? sm((ut - 0.1) / 0.22) : ut < 0.82 ? 1 : 1 - sm((ut - 0.82) / 0.18);
+    } else if (s.use) ue = clamp(s.use, 0, 1);
+    const wUse = W('use', ue, 320, 0.72);
+    const wDip = W('dip', dip, 520);
+    const tilt = W('tilt', kind === 'drink' && ut > 0.3 && ut < 0.8 ? 1 : 0, 150, 0.9);
+    const heal = kind === 'heal' ? wUse : 0;
+    // punches
+    const windR = clamp(s.windR || 0, 0, 1), windL = clamp(s.windL || 0, 0, 1);
+    let jabR = clamp(s.jabR || 0, 0, 1), jabL = clamp(s.jabL || 0, 0, 1);
+    const pT = s.punchT ?? -1, pPow = clamp(s.punchPow ?? 0.5, 0, 1);
+    if (pT >= 0) {
+      // snap out (ease-out cubic), overshoot past full reach, recoil home
+      const e = pT < 0.3 ? 1 - (1 - pT / 0.3) ** 3 : pT < 0.46 ? 1 + 0.08 * Math.sin(((pT - 0.3) / 0.16) * PI) : 1 - sm((pT - 0.46) / 0.54);
+      if ((s.punchSide ?? 1) < 0) jabL = e; else jabR = e;
+    }
+    if (s.impactId && s.impactId !== st.impactId) {
+      // knuckles landed: the fist kicks back along the arm
+      st.impactId = s.impactId;
+      const sp = (s.punchSide ?? 1) < 0 ? st.sL : st.sR;
+      sp.v.z += 1.3 + pPow * 1.5; sp.v.y += 0.45;
+    }
+    const both = Math.max(wArm, wCradle, wVReach, heal);
     const charge = s.throwCharge || 0;
     if (st.prevCharge > 0.25 && charge < 0.05) st.release = 1;
     st.prevCharge = charge;
     st.release = Math.max(0, st.release - dt * 3.2);
+    // locomotion bob, breathing
     const speed = s.speed || 0, sprint = s.sprint ? 1 : 0;
     st.bob = damp(st.bob, clamp(s.bob ?? clamp(speed / 3, 0, 1), 0, 1), 8, dt);
     st.phase += dt * (speed > 0.1 ? lerp(1.6, 2.4, sprint) * clamp(0.6 + speed / 4, 0.6, 1.4) : 0.5);
     const ph = st.phase * TAU;
+    st.brPh += dt * 1.45 * (1 + strain * 1.1 + sprint * 0.7);
+    const idle = 1 - clamp(speed / 1.5, 0, 1);
+    const brY = Math.sin(st.brPh) * 0.0045 * (0.55 + idle * 0.45) * (1 + strain * 0.7), brZ = Math.sin(st.brPh - 0.9) * 0.0024;
     if (s.landing) st.land.v -= s.landing * 2.6;
     const land = st.land.step(dt, 0);
+    // view sway from the turn RATE (rad/s): the hands trail the look and swing back past centre
     const sw = s.sway || { x: 0, y: 0 };
-    _v1.set(-clamp(sw.x, -40, 40) * 0.0012, clamp(sw.y, -40, 40) * 0.0012, 0);
-    st.swayV.addScaledVector(_v1.sub(st.sway).multiplyScalar(110).addScaledVector(st.swayV, -12), dt);
-    st.sway.addScaledVector(st.swayV, dt).clampLength(0, 0.06);
+    const idt = dt > 0 ? 1 / Math.max(dt, 1 / 240) : 0;
+    const heavy = 1 + strain * 0.5 + wArm * 0.4;
+    _v1.set(-clamp((sw.x || 0) * idt, -14, 14) * 0.0042 * heavy, clamp((sw.y || 0) * idt, -14, 14) * 0.0036 * heavy, 0);
+    st.swayV.addScaledVector(_v1.sub(st.sway).multiplyScalar(140 / heavy).addScaledVector(st.swayV, -13), dt);
+    st.sway.addScaledVector(st.swayV, dt).clampLength(0, 0.07);
+    // movement inertia: accelerate and the hands lag behind, stop and they swing on
+    const ac = s.accel || { x: 0, z: 0 };
+    _v1.set(clamp(-(ac.x || 0) * 0.0011, -0.03, 0.03), 0, clamp(-(ac.z || 0) * 0.0011, -0.03, 0.03));
+    st.lagV.addScaledVector(_v1.sub(st.lag).multiplyScalar(90).addScaledVector(st.lagV, -9), dt);
+    st.lag.addScaledVector(st.lagV, dt).clampLength(0, 0.05);
     const bobX = Math.sin(ph) * 0.014 * st.bob, bobY = -Math.abs(Math.cos(ph)) * 0.02 * st.bob;
     const run = sprint * st.bob;
+    // smooth tremble (QTE panic, heavy strain, a fully loaded haymaker) + effort tugs while dragging
+    const trAmt = (s.tremble || 0) * 0.006 + strain * 0.0032 + (windR + windL > 0.9 ? 0.0022 : (windR + windL) * 0.0008);
+    const tug = Math.max(0, Math.sin(t * 2.6)) ** 2 * strain;
+
+    // ---- right arm
     tmp.h.copy(POSE.R.h); tmp.d.copy(POSE.R.d); tmp.u.copy(POSE.R.u);
-    blendPose(tmp, POSE.hold, w.hold);
-    blendPose(tmp, POSE.lowR, w.watch * 0.8 * (1 - w.grab) * (1 - w.use));
-    blendPose(tmp, POSE.grab, w.grab);
-    blendPose(tmp, POSE.use, w.use);
-    blendPose(tmp, POSE.armR, w.armful);
-    blendPose(tmp, POSE.cradleR, w.cradle);
-    blendPose(tmp, POSE.reachR, w.reach);
-    blendPose(tmp, POSE.windR, windR * (1 - jabR));
-    blendPose(tmp, POSE.jabR, jabR);
-    blendPose(tmp, POSE.throw, w.thr);
+    blendPose(tmp, POSE.hold, wHold);
+    blendPose(tmp, POSE.lowR, wWatch * 0.8 * (1 - wGrab) * (1 - wUse) * (1 - gR));
+    blendPose(tmp, POSE.grab, wGrab);
+    reachPose(tmp, 'R', gR, two);
+    usePose(tmp, 'R', wUse, kind, tilt, t);
+    blendPose(tmp, POSE.armR, wArm);
+    blendPose(tmp, POSE.cradleR, wCradle);
+    blendPose(tmp, POSE.reachR, wVReach);
+    const rollR = punchPose(tmp, 'R', windR, jabR, pPow, jabL);
+    blendPose(tmp, POSE.throw, wThr);
     if (st.release > 0) blendPose(tmp, POSE.release, Math.sin(st.release * PI));
-    const tremble = (w.thr > 0.85 ? (Math.random() - 0.5) * 0.004 : 0) + (Math.random() - 0.5) * shakeAmt;
-    tmp.h.y += (Math.random() - 0.5) * shakeAmt;
-    tmp.h.x += bobX + st.sway.x + tremble; tmp.h.y += bobY + st.sway.y - land * 0.05 + Math.sin(ph) * 0.035 * run + Math.sin(st.t * 1.6) * 0.004;
-    tmp.h.z += Math.cos(ph) * 0.05 * run;
-    if (w.use > 0.5) tmp.h.y += Math.sin(st.t * 9) * 0.008 * w.use;
-    const snapR = Math.max(jabR, windR * 0.6);
-    placeArm('R', stepSpring(st.sR, tmp.h, dt, lerp(140, 900, snapR), lerp(0.45, 0.72, snapR)), tmp.d, tmp.u);
+    motion(tmp, 'R', 1);
+    tmp.h.x += bobX + sn(t * 23, 1) * trAmt;
+    tmp.h.y += bobY - land * 0.05 + Math.sin(ph) * 0.035 * run + brY + sn(t * 27, 4) * trAmt - wDip * 0.024 * (1 - heal) - tug * 0.008 * gR;
+    tmp.h.z += Math.cos(ph) * 0.05 * run + brZ - wDip * 0.01 + tug * 0.02 * gR;
+    tmp.d.x += Math.sin(ph) * 0.03 * st.bob; tmp.d.y += brY * 1.5;
+    roll(tmp, rollR);
+    const snapR = Math.max(clamp(jabR, 0, 1), windR * 0.6);
+    placeArm('R', stepSpring(st.sR, tmp.h, dt, lerp(lerp(150, 240, gR) * (1 - strain * 0.3), 1100, snapR), lerp(lerp(0.5, 0.62, gR), 0.5, snapR)), tmp.d, tmp.u);
+
+    // ---- left arm
     tmp.h.copy(POSE.L.h); tmp.d.copy(POSE.L.d); tmp.u.copy(POSE.L.u);
-    blendPose(tmp, POSE.holdL, w.holdL);
-    blendPose(tmp, POSE.armL, w.armful);
-    blendPose(tmp, POSE.cradleL, w.cradle);
-    blendPose(tmp, POSE.reachL, w.reach);
-    blendPose(tmp, POSE.windL, windL * (1 - jabL));
-    blendPose(tmp, POSE.jabL, jabL);
-    tmp.h.x += (Math.random() - 0.5) * shakeAmt; tmp.h.y += (Math.random() - 0.5) * shakeAmt;
-    blendPose(tmp, POSE.watch, smooth(w.watch));
-    const ww = 1 - w.watch * 0.85;
-    tmp.h.x += (bobX + st.sway.x) * ww; tmp.h.y += (bobY + st.sway.y - land * 0.05) * ww + Math.sin(st.t * 1.6 + 1) * 0.004 * ww - Math.sin(ph) * 0.035 * run * ww;
-    tmp.h.z -= Math.cos(ph) * 0.05 * run * ww;
-    tmp.h.y -= (w.thr * 0.08 + w.use * 0.06) * (1 - w.watch) * (1 - both);
-    const snapL = Math.max(jabL, windL * 0.6);
-    placeArm('L', stepSpring(st.sL, tmp.h, dt, lerp(lerp(140, 260, w.watch), 900, snapL), lerp(lerp(0.45, 0.8, w.watch), 0.72, snapL)), tmp.d, tmp.u);
-    const fistR = Math.max(windR, jabR), fistL = Math.max(windL, jabL);
-    const curl = clamp(Math.max(w.hold * 0.9 + w.use * 0.5 - w.grab * 0.6 + w.thr * 0.6, fistR * 1.0, (w.cradle + w.armful) * 0.4), -0.5, 1);
-    st.curl = damp(st.curl, curl, 12, dt);
-    bones.fingR.rotation.x = -0.15 - st.curl * 1.1; bones.fingTR.rotation.x = -0.12 - st.curl * 1.0; bones.ixR.rotation.x = -0.1 - st.curl * 1.15;
-    bones.thumbR.rotation.z = (w.grab * 0.5) - st.curl * 0.2;
-    const curlL = clamp(Math.max(w.holdL * 0.9, fistL, (w.cradle + w.armful) * 0.4), 0, 1) * (1 - w.watch);
-    st.curlL = damp(st.curlL || 0, curlL, 12, dt);
-    bones.fingL.rotation.x = -0.3 - w.watch * 0.1 - st.curlL * 0.95; bones.fingTL.rotation.x = -0.28 - st.curlL * 0.9; bones.ixL.rotation.x = -0.22 - w.watch * 0.08 - st.curlL * 1.0;
-    bones.wrR.rotation.set(-0.15 * w.grab + 0.1 * w.hold + 0.25 * jabR, 0, 0);
-    bones.wrL.rotation.set(-0.1 * w.watch, 0, 0);
+    blendPose(tmp, POSE.holdL, wHoldL);
+    reachPose(tmp, 'L', gL, two);
+    usePose(tmp, 'L', heal, kind, tilt, t);
+    blendPose(tmp, POSE.armL, wArm);
+    blendPose(tmp, POSE.cradleL, wCradle);
+    blendPose(tmp, POSE.reachL, wVReach);
+    const rollL = punchPose(tmp, 'L', windL, jabL, pPow, jabR);
+    tmp.h.x += sn(t * 25, 7) * trAmt; tmp.h.y += sn(t * 21, 9) * trAmt;
+    blendPose(tmp, POSE.watch, smooth(clamp(wWatch, 0, 1)));
+    const ww = 1 - wWatch * 0.85;
+    motion(tmp, 'L', ww);
+    const brYL = Math.sin(st.brPh - 0.35) * 0.0045 * (0.55 + idle * 0.45) * (1 + strain * 0.7);
+    tmp.h.x += bobX * ww;
+    tmp.h.y += (bobY - land * 0.05 + brYL) * ww - Math.sin(ph) * 0.035 * run * ww - tug * 0.008 * gL;
+    tmp.h.z -= Math.cos(ph) * 0.05 * run * ww - brZ * ww - tug * 0.02 * gL;
+    tmp.h.y -= (wThr * 0.08 + (wUse - heal) * 0.06) * (1 - wWatch) * (1 - both);
+    tmp.d.x += Math.sin(ph) * 0.03 * st.bob * ww;
+    roll(tmp, rollL);
+    const snapL = Math.max(clamp(jabL, 0, 1), windL * 0.6);
+    placeArm('L', stepSpring(st.sL, tmp.h, dt, lerp(lerp(lerp(150, 260, wWatch), 240, gL) * (1 - strain * 0.3), 1100, snapL), lerp(lerp(lerp(0.5, 0.8, wWatch), 0.62, gL), 0.5, snapL)), tmp.d, tmp.u);
+
+    // ---- fingers: fist for punches; wrapped round a held item by its thickness (grip 1 = thin handle);
+    // open on the reach, closing round the grip on contact (tighter under strain); spread on release
+    const fistR = Math.max(windR, clamp(jabR, 0, 1)), fistL = Math.max(windL, clamp(jabL, 0, 1));
+    const contR = W('cR', hasR && gR > 0.55 && st.sR.x.distanceTo(st.reachR) < 0.07 + 0.04 * two ? 1 : 0, 420, 0.75);
+    const contL = W('cL', hasL && gL > 0.55 && st.sL.x.distanceTo(st.reachL) < 0.07 + 0.04 * two ? 1 : 0, 420, 0.75);
+    const wrap = lerp(0.95, 0.5, clamp(s.gripSize ?? 0.4, 0, 1)) + strain * 0.15;
+    let cR = Math.max(wHold * lerp(0.6, 1.0, clamp(s.gripR ?? 0.75, 0, 1)) + wUse * 0.45 + wThr * 0.6 - wGrab * 0.6, fistR, (wCradle + wArm) * 0.4);
+    cR = lerp(lerp(cR, -0.35, clamp(gR, 0, 1) * (1 - contR)), wrap, clamp(gR, 0, 1) * contR);
+    cR = lerp(lerp(cR, -0.45, gOut.R.open), 1, gOut.R.close);
+    let cL = Math.max(wHoldL * lerp(0.6, 1.0, clamp(s.gripL ?? 0.75, 0, 1)), fistL, (wCradle + wArm) * 0.4, heal * 0.5);
+    cL = lerp(lerp(cL, -0.35, clamp(gL, 0, 1) * (1 - contL)), wrap, clamp(gL, 0, 1) * contL);
+    cL = lerp(lerp(cL, -0.45, gOut.L.open), 1, gOut.L.close) * (1 - wWatch);
+    const fR = W('fR', clamp(cR, -0.5, 1.1), 520, 0.62), tR = W('tR', clamp(cR, -0.5, 1.1), 300, 0.75), iR = W('iR', clamp(cR, -0.5, 1.1), 640, 0.6);
+    const fL = W('fL', clamp(cL, -0.5, 1.1), 520, 0.62), tL = W('tL', clamp(cL, -0.5, 1.1), 300, 0.75), iL = W('iL', clamp(cL, -0.5, 1.1), 640, 0.6);
+    bones.fingR.rotation.x = -0.15 - fR * 1.1; bones.fingTR.rotation.x = -0.12 - tR * 1.0; bones.ixR.rotation.x = -0.1 - iR * 1.15;
+    bones.thumbR.rotation.z = wGrab * 0.5 + clamp(gR, 0, 1) * (0.5 - contR * 0.4) - fR * 0.2;
+    bones.fingL.rotation.x = -0.3 - wWatch * 0.1 - fL * 0.95; bones.fingTL.rotation.x = -0.28 - tL * 0.9; bones.ixL.rotation.x = -0.22 - wWatch * 0.08 - iL * 1.0;
+    bones.thumbL.rotation.z = -(clamp(gL, 0, 1) * (0.5 - contL * 0.4) - fL * 0.2);
+    // ---- wrists: flex into the grip, extend on release, pour when drinking, strain shudder
+    const shud = sn(t * 11, 3) * 0.05 * strain;
+    const wrR = W('wrR', -0.15 * wGrab + 0.1 * wHold + 0.25 * clamp(jabR, 0, 1) + gOut.R.pitch - 0.22 * gR * contR + 0.3 * tilt * wUse + shud * gR + Math.max(0, Math.sin(t * 9)) * 0.06 * wUse * (kind === 'eat' ? 1 : 0), 380, 0.7);
+    const wrL = W('wrL', -0.1 * wWatch + gOut.L.pitch - 0.22 * gL * contL + shud * gL, 380, 0.7);
+    bones.wrR.rotation.set(wrR, -st.sway.x * 1.5, 0);
+    bones.wrL.rotation.set(wrL, -st.sway.x * 1.5 * ww, 0);
   }
   update(0, {});
   return {
-    root, rightHand, leftHand, watchScreen, update,
+    root, rightHand, leftHand, watchScreen, update, gesture,
     dispose() { for (const m of meshes) m.geometry.dispose(); skeleton.dispose(); screenTex.dispose(); screenMat.dispose(); },
   };
 }

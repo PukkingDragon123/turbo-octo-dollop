@@ -4,15 +4,16 @@
 //   holoLineMaterial(color)    the matching wireframe-edge material
 //   buildHologram(object3d, mats, size)  -> Group: every mesh of the model as a holo shell + its feature edges,
 //                              centred and scaled to fit `size` metres (geometry is shared, never cloned)
-//   holoCone(radius, height, mat)  -> the projector light cone (open, additive)
+//   holoCone(r0, r1, height, mat)  -> the projector light cone (open, additive; fades from the emitter up)
 import * as THREE from 'three';
 
 const PI = Math.PI;
 
 const VERT = /* glsl */`
   uniform float uTime; uniform float uGlitch;
-  varying vec3 vW; varying vec3 vN; varying vec3 vV;
+  varying vec3 vW; varying vec3 vN; varying vec3 vV; varying float vH;
   void main() {
+    vH = uv.y;
     vec4 wp = modelMatrix * vec4(position, 1.0);
     // horizontal tearing: slices of the hologram jump sideways while glitching
     float slice = floor(wp.y * 28.0 + floor(uTime * 9.0) * 7.0);
@@ -23,15 +24,15 @@ const VERT = /* glsl */`
     gl_Position = projectionMatrix * viewMatrix * wp;
   }`;
 const FRAG = /* glsl */`
-  uniform vec3 uColor; uniform float uTime; uniform float uAlpha;
-  varying vec3 vW; varying vec3 vN; varying vec3 vV;
+  uniform vec3 uColor; uniform float uTime; uniform float uAlpha; uniform float uConeFade;
+  varying vec3 vW; varying vec3 vN; varying vec3 vV; varying float vH;
   void main() {
     float fres = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
     float scan = 0.45 + 0.55 * step(0.42, fract(vW.y * 110.0 - uTime * 1.7));
     float band = smoothstep(0.0, 0.06, 0.06 - abs(fract(vW.y * 1.4 - uTime * 0.45) - 0.5));
     float flick = 0.86 + 0.14 * sin(uTime * 41.0) * sin(uTime * 17.3);
     float a = (0.16 + fres * 0.95) * scan * flick + band * 0.4;
-    a *= uAlpha;
+    a *= uAlpha * mix(1.0, (1.0 - vH) * (1.0 - vH), uConeFade);
     gl_FragColor = vec4(uColor * a * 1.7, a);
   }`;
 const LFRAG = /* glsl */`
@@ -46,7 +47,7 @@ const LFRAG = /* glsl */`
 
 function mk(frag, color) {
   const m = new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uAlpha: { value: 1 }, uGlitch: { value: 0 }, uColor: { value: new THREE.Color(color) } },
+    uniforms: { uTime: { value: 0 }, uAlpha: { value: 1 }, uGlitch: { value: 0 }, uConeFade: { value: 0 }, uColor: { value: new THREE.Color(color) } },
     vertexShader: VERT, fragmentShader: frag,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
   });
@@ -112,6 +113,7 @@ export function buildHologram(obj, mats, size = 0.34) {
 }
 
 export function holoCone(r0, r1, h, mat) {
+  if (mat.uniforms?.uConeFade) mat.uniforms.uConeFade.value = 1; // bright at the emitter, fading up the beam
   const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, h, 28, 1, true), mat);
   m.userData.noProbe = true;
   m.renderOrder = 4;

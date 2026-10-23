@@ -15,19 +15,20 @@ import { Placer } from './placement.js';
 import { Avatar } from '../../../entities/avatar.js';
 import { ITEM } from '../../../game/itemdefs.js';
 
-const TILE = { blood: 0, oil: 1, mold: 2, smear: 3, ash: 4 };
+const TILE = { blood: 0, oil: 1, mold: 2, smear: 3, ash: 4, prints: 5, stain: 6, scuff: 7 };
+const NT = 8; // tiles in the decal atlas
 const cellOf = (rec, li, lj) => rec.layout.cells[lj * CHUNK + li];
 const x0Of = (rec, li) => (rec.cx * CHUNK + li) * CELL;
 const z0Of = (rec, lj) => (rec.cz * CHUNK + lj) * CELL;
 const isDamp = (c) => c.wet > 0 || c.zone === 'flooded' || c.zone === 'maintenance';
-const open = (c) => c && !c.special && !c.reserved && !c.landmark && !c.pit && !c.crawl;
+const open = (c) => c && !c.special && !c.reserved && !c.landmark && !c.pit && !c.crawl && !c.narrow;
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _n = new THREE.Vector3();
 
 // ----------------------------------------------------------------------------- materials
 let _decalMat = null, _tuftMat = null, _glowMat = null;
 function decalMat() {
   if (_decalMat) return _decalMat;
-  const W = 640, H = 128;
+  const W = 1024, H = 128;
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const c = cv.getContext('2d');
@@ -49,6 +50,29 @@ function decalMat() {
   for (let k = 0; k < 7; k++) { c.globalAlpha = 0.5 + Math.random() * 0.5; c.fillRect(384, 30 + k * 9 + Math.random() * 4, 128, 3 + Math.random() * 5); }
   c.globalAlpha = 1;
   blob(576, 64, 30, 'rgba(30,28,26,0.85)', 24, 30); blob(576, 64, 10, 'rgba(70,66,60,0.7)', 20, 40);
+  // 5 a pair of dirty shoe prints (sole + heel, tread bars), one stride apart
+  for (const [px, py, flip] of [[640 + 44, 34, -1], [640 + 84, 92, 1]]) {
+    c.save(); c.translate(px, py); c.rotate(flip * 0.06);
+    c.fillStyle = 'rgba(46,34,20,0.55)';
+    c.beginPath(); c.ellipse(0, -8, 13, 20, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(0, 22, 10, 10, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(20,14,8,0.35)';
+    for (let k = -22; k < 10; k += 5) c.fillRect(-11, k, 22, 2);
+    c.restore();
+  }
+  // 6 tide-marked stain: pale centre, darker dried rim
+  for (let k = 0; k < 7; k++) {
+    const a = Math.random() * 6.28, d = Math.random() * 14, r = 26 + Math.random() * 16;
+    c.fillStyle = 'rgba(88,64,30,0.13)'; c.beginPath(); c.ellipse(832 + Math.cos(a) * d, 64 + Math.sin(a) * d, r, r * 0.8, a, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = 'rgba(70,48,20,0.32)'; c.lineWidth = 2 + Math.random() * 2; c.stroke();
+  }
+  // 7 black heel scuffs
+  c.lineCap = 'round';
+  for (let k = 0; k < 9; k++) {
+    const x = 910 + Math.random() * 100, y = 20 + Math.random() * 88, l = 10 + Math.random() * 26, a = Math.random() * 0.8 - 0.4;
+    c.strokeStyle = `rgba(18,16,14,${0.35 + Math.random() * 0.35})`; c.lineWidth = 1.5 + Math.random() * 3;
+    c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + l * 0.5, y + 4 * Math.sin(a * 5), x + l * Math.cos(a), y + l * Math.sin(a)); c.stroke();
+  }
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
@@ -93,10 +117,47 @@ function shroom(g, gCap, x, z, h, r, capCol, stemCol, rng, lean = 0) {
 function decal(g, x, z, w, d, rot, tile, y = 0.006, col = [1, 1, 1]) {
   g.setRGB(...col);
   g.autoCell(x, z);
-  const c = Math.cos(rot), s = Math.sin(rot), u0 = tile / 5, u1 = (tile + 1) / 5;
+  const c = Math.cos(rot), s = Math.sin(rot), u0 = tile / NT, u1 = (tile + 1) / NT;
   const P = [[-w, -d, u0, 0], [w, -d, u1, 0], [w, d, u1, 1], [-w, d, u0, 1]].map(([px, pz, u, v]) => g.v(x + px * c - pz * s, y, z + px * s + pz * c, 0, 1, 0, u, v));
   g.quad(P[0], P[3], P[2], P[1]);
 }
+// everyday grime: tide-marked stains on the carpet, heel scuffs at the doorways, tracks of dirty shoe prints
+// down the long corridors -- and across the empty halls, stopping dead in the middle
+function grime(level, rec, gD) {
+  const seed = level.seed, N = CHUNK, L = rec.layout;
+  for (const c of L.cells) {
+    if (!open(c) || c.water) continue;
+    const x0 = x0Of(rec, c.li), z0 = z0Of(rec, c.lj), h = (k) => hash01(c.i, c.j, 6300 + k, seed);
+    if (h(0) < (c.zone === 'dark' || c.zone === 'flooded' ? 0.3 : 0.14)) {
+      const tint = c.floor === 'concrete' ? [0.5, 0.5, 0.5] : [1, 1, 1];
+      decal(gD, x0 + 0.5 + h(1) * 2, z0 + 0.5 + h(2) * 2, 0.25 + h(3) * 0.4, 0.22 + h(4) * 0.35, h(5) * 6.28, TILE.stain, 0.0045, tint);
+    }
+    // scuffs both sides of a doorway on this cell's N / W edge
+    for (const [t, ax] of [[L.edgesN[c.lj * N + c.li], 'x'], [L.edgesW[c.lj * N + c.li], 'z']]) {
+      if ((t !== 2 && t !== 3) || h(ax === 'x' ? 6 : 7) > 0.45) continue;
+      for (const sd of [-1, 1]) {
+        const off = 0.35 * sd, jit = (h(8) - 0.5) * 0.4;
+        if (ax === 'x') decal(gD, x0 + CELL / 2 + jit, z0 + off, 0.3, 0.18, h(9) * 0.6, TILE.scuff, 0.0047);
+        else decal(gD, x0 + off, z0 + CELL / 2 + jit, 0.3, 0.18, Math.PI / 2 + h(9) * 0.6, TILE.scuff, 0.0047);
+      }
+    }
+    // shoe-print tracks along a corridor (per segment, so a track runs on for a while)
+    const sp = c.spine;
+    if (sp && !(c.spineX && c.spineZ) && hash01(sp.seg, sp.line, 6310, seed) < 0.45) {
+      const lat = (hash01(sp.seg, sp.line, 6311, seed) - 0.5) * 1.0, dir = hash01(sp.seg, 0, 6312, seed) < 0.5 ? 0 : Math.PI;
+      for (let k = 0; k < 4; k++) {
+        const u = (k + 0.5) * (CELL / 4), w = Math.sin((c.i + c.j) * 1.7 + k) * 0.06;
+        if (sp.ax === 0) decal(gD, x0 + u, z0 + CELL / 2 + lat + w, 0.15, 0.18, -Math.PI / 2 + dir + w, TILE.prints, 0.005, [0.9, 0.9, 0.9]);
+        else decal(gD, x0 + CELL / 2 + lat + w, z0 + u, 0.15, 0.18, dir + w, TILE.prints, 0.005, [0.9, 0.9, 0.9]);
+      }
+    } else if (c.hall && h(10) < 0.09) {
+      // a few steps into the hall that stop in the middle of the floor
+      const a = h(11) * 6.28, dx = Math.cos(a), dz = Math.sin(a);
+      for (let k = 0; k < 3; k++) decal(gD, x0 + CELL / 2 - dx * k * 0.75, z0 + CELL / 2 - dz * k * 0.75, 0.15, 0.18, Math.atan2(dz, dx) - Math.PI / 2, TILE.prints, 0.005, [0.9, 0.9, 0.9]);
+    }
+  }
+}
+
 // jittered box chunk (limbs, stones, logs)
 function lump(g, cx, cy, cz, sx, sy, sz, rotY, col, rng) {
   g.setRGB(...col);
@@ -192,6 +253,7 @@ export function decorateBiome(level, rec) {
     for (let k = 0; k < 3; k++) lump(gT, camp.x + (cr.next() - 0.5) * 0.2, 0.04, camp.z + (cr.next() - 0.5) * 0.2, 0.2, 0.03, 0.035, cr.next() * 3, [0.06, 0.05, 0.04], cr);
     if (camp.torn) tornClone(level, rec, gT, new THREE.Vector3(camp.x - 1.0, 0, camp.z + 1.0), cr, false);
   }
+  grime(level, rec, gD);
   if (!gD.isEmpty()) bakeInto(level, rec, gD, decalMat(), { quant: 0.3, mix: [1, 0.4] });
   if (!gT.isEmpty()) bakeInto(level, rec, gT, tuftMat(), { quant: 0.2, mix: [1, 0.4] });
   if (!gG.isEmpty()) bakeInto(level, rec, gG, glowMat(), { quant: 0.2, mix: [1, 0.4] });

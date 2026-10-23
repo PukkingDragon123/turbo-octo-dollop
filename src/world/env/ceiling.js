@@ -5,6 +5,8 @@
 import { CELL, HEIGHT } from '../levels/yellow/layout.js';
 import { hash01 } from '../../core/rng.js';
 import { fr } from './builder.js';
+import * as THREE from 'three';
+import * as Fx from './fixtures.js';
 
 const H = HEIGHT;
 const TILE = CELL / 5;          // 0.6 m
@@ -18,7 +20,7 @@ const DAMAGE = {
 };
 
 // tile kinds
-const T_NORMAL = 0, T_TROFFER = 1, T_MISSING = 2, T_DISPLACED = 3, T_SAG = 4, T_VOID = 5;
+const T_NORMAL = 0, T_TROFFER = 1, T_MISSING = 2, T_DISPLACED = 3, T_SAG = 4, T_VOID = 5, T_DIFFUSER = 6;
 
 // G: { ceil, enamel, lens, plenum, debris } EnvGeo builders; baker: GridBaker; seed
 // cut: optional world rect {x0, z0, x1, z1} where the ceiling is torn open (no tiles, see ceilingVoid)
@@ -47,6 +49,12 @@ export function ceilingCell(G, baker, c, seed, cut = null) {
     else if (h < (dmg[0] + dmg[1] + dmg[2]) * k) kind[b * 5 + a] = T_SAG;
   }
   if (c.hole) kind[0 * 5 + 1 + ((((c.i * 7) % 3) + 3) % 3)] = T_MISSING;
+  // 2x2 supply diffuser in place of an edge tile (fixtures only where the chunk builder passes them)
+  if (G.fixture && hash01(c.i, c.j, 74, seed) < 0.3) {
+    const DIFF = [0, 4, 20, 24, 10, 14];
+    const t = DIFF[Math.floor(hash01(c.i, c.j, 75, seed) * DIFF.length)];
+    if (kind[t] === T_NORMAL) kind[t] = T_DIFFUSER;
+  }
 
   // --- regular tiles: one 6x6 vertex grid, specials left out
   const ce = G.ceil;
@@ -65,12 +73,20 @@ export function ceilingCell(G, baker, c, seed, cut = null) {
   // --- troffer (parabolic louvres in office sectors, prismatic lenses elsewhere)
   const office = c.zone === 'office' || c.lightTone === 1;
   const tg = office && G.lensLouvre ? { enamel: G.enamel, lens: G.lensLouvre } : G;
-  if (trof) troffer(tg, x0 + trof.a0 * TILE, z0 + trof.b0 * TILE, x0 + trof.a1 * TILE, z0 + trof.b1 * TILE, trof.alongX, hash01(c.i, c.j, 73, seed));
+  const fstate = trof ? fixtureState(c, seed) : null;
+  if (trof) {
+    const TX0 = x0 + trof.a0 * TILE, TZ0 = z0 + trof.b0 * TILE, TX1 = x0 + trof.a1 * TILE, TZ1 = z0 + trof.b1 * TILE, h73 = hash01(c.i, c.j, 73, seed);
+    if (fstate === 'dangle') {
+      for (let b = trof.b0; b < trof.b1; b++) for (let a = trof.a0; a < trof.a1; a++) hole(G, x0 + a * TILE, z0 + b * TILE, 0.3);
+      dangleTroffer(tg, G.metal, TX0, TZ0, TX1, TZ1, trof.alongX, h73);
+    } else troffer(tg, TX0, TZ0, TX1, TZ1, trof.alongX, h73, H, fstate === 'bare');
+  }
+  if (G.fixture) ceilingDetails(G, c, seed, kind, x0, z0);
 
   // --- damaged tiles
   for (let b = 0; b < 5; b++) for (let a = 0; a < 5; a++) {
     const t = kind[b * 5 + a];
-    if (t < T_MISSING || t === T_VOID) continue;
+    if (t < T_MISSING || t >= T_VOID) continue;
     const X0 = x0 + a * TILE, Z0 = z0 + b * TILE;
     const h2 = hash01(c.i * 5 + a, c.j * 5 + b, 72, seed);
     if (t === T_SAG) { sagTile(ce, X0, Z0, 0.03 + h2 * 0.05); continue; }
@@ -99,7 +115,7 @@ export function leakSpots(c, seed) {
 }
 
 // recessed 2x4 troffer: enamel door frame + inner return, prismatic lens set back into the housing
-export function troffer(G, X0, Z0, X1, Z1, alongX, h, H = HEIGHT) {
+export function troffer(G, X0, Z0, X1, Z1, alongX, h, H = HEIGHT, bare = false) {
   const en = G.enamel, ln = G.lens;
   const f = 0.032, y0 = H - 0.006, yl = H + 0.04;
   en.ao = 1;
@@ -119,8 +135,78 @@ export function troffer(G, X0, Z0, X1, Z1, alongX, h, H = HEIGHT) {
   en.ao = 1;
   // lens: u along the long axis, v across (0..1); the material repeats the prism texture
   const uvf = alongX ? (x, y, z) => [(x - ix0) / (ix1 - ix0), (z - iz0) / (iz1 - iz0)] : (x, y, z) => [(z - iz0) / (iz1 - iz0), (x - ix0) / (ix1 - ix0)];
-  ln.rectOriented([[ix0, yl, iz0], [ix1, yl, iz0], [ix1, yl, iz1], [ix0, yl, iz1]], D, uvf);
-  void h;
+  if (!bare) { ln.rectOriented([[ix0, yl, iz0], [ix1, yl, iz0], [ix1, yl, iz1], [ix0, yl, iz1]], D, uvf); return; }
+  // the lens has dropped out: white reflector pan, the bare tubes in their sockets (one sometimes gone)
+  en.ao = 0.8;
+  en.rectOriented([[ix0, yl, iz0], [ix1, yl, iz0], [ix1, yl, iz1], [ix0, yl, iz1]], D);
+  en.ao = 1;
+  const r = 0.0135, yt = yl - 0.02;
+  for (const f of [0.3, 0.7]) {
+    if (h > 0.6 && f > 0.5) continue;
+    if (alongX) { const zz = iz0 + (iz1 - iz0) * f; ln.tube('x', ix0 + 0.03, ix1 - 0.03, yt, zz, r, 8); en.box(ix0, yt - 0.02, zz - 0.02, ix0 + 0.03, yl, zz + 0.02, { py: true }); en.box(ix1 - 0.03, yt - 0.02, zz - 0.02, ix1, yl, zz + 0.02, { py: true }); }
+    else { const xx = ix0 + (ix1 - ix0) * f; ln.tube('z', iz0 + 0.03, iz1 - 0.03, xx, yt, r, 8); en.box(xx - 0.02, yt - 0.02, iz0, xx + 0.02, yl, iz0 + 0.03, { py: true }); en.box(xx - 0.02, yt - 0.02, iz1 - 0.03, xx + 0.02, yl, iz1, { py: true }); }
+  }
+}
+
+// state of a cell's fixture: null (intact), 'bare' (lens fallen out) or 'dangle' (dropped out of the grid on
+// one end, hanging on its whip) -- only fixtures that are dying already
+function fixtureState(c, seed) {
+  if (c.lightMode !== 'dead' && c.lightMode !== 'flicker') return null;
+  const h = hash01(c.i, c.j, 76, seed);
+  if (!c.special && c.ceil > H - 0.01 && c.ceil < H + 0.01 && h < (c.lightMode === 'flicker' ? 0.1 : 0.07)) return 'dangle';
+  if (h > 1 - (c.lightMode === 'dead' ? 0.4 : 0.15)) return 'bare';
+  return null;
+}
+
+const _m4 = new THREE.Matrix4(), _r4 = new THREE.Matrix4(), _p4 = new THREE.Matrix4();
+// a troffer that has dropped out of the grid at one end and hangs from the other, its whip cable taut
+function dangleTroffer(tg, mt, X0, Z0, X1, Z1, alongX, h) {
+  const en = tg.enamel, ln = tg.lens;
+  const e0 = en.vc, l0 = ln.vc;
+  troffer(tg, X0, Z0, X1, Z1, alongX, h, H, h > 0.7);
+  en.ao = 0.9;
+  en.box(X0, H - 0.006, Z0, X1, H + 0.1, Z1, { ny: true });
+  en.ao = 1;
+  const end = h < 0.5 ? 0 : 1, a = 0.5 + (h % 0.25) * 1.2;
+  let px, pz, free;
+  if (alongX) { px = end ? X1 : X0; pz = (Z0 + Z1) / 2; _r4.makeRotationZ(end ? a : -a); free = [end ? X0 : X1, H - 0.006, pz]; }
+  else { px = (X0 + X1) / 2; pz = end ? Z1 : Z0; _r4.makeRotationX(end ? -a : a); free = [px, H - 0.006, end ? Z0 : Z1]; }
+  _m4.makeTranslation(px, H - 0.006, pz).multiply(_r4).multiply(_p4.makeTranslation(-px, -H + 0.006, -pz));
+  en.transformRange(e0, _m4);
+  ln.transformRange(l0, _m4);
+  const f = new THREE.Vector3(...free).applyMatrix4(_m4);
+  if (mt) mt.tube('y', f.y, H + 0.3, f.x, f.z, 0.006, 6);
+}
+
+// small things on the lay-in ceiling: a supply diffuser (decided with the tile kinds), sprinkler heads on a
+// regular grid, a smoke detector, the odd speaker -- all on intact tiles
+function ceilingDetails(G, c, seed, kind, x0, z0) {
+  const F = G.fixture, m = G.metal;
+  for (let t = 0; t < 25; t++) if (kind[t] === T_DIFFUSER) {
+    const X = x0 + (t % 5) * TILE, Z = z0 + Math.floor(t / 5) * TILE;
+    Fx.ceilSquare(F, X + 0.004, Z + 0.004, X + TILE - 0.004, Z + TILE - 0.004, FACE_Y + 0.001, 0.022, 'diffuser');
+  }
+  const free = (a, b) => kind[b * 5 + a] === T_NORMAL;
+  // pendent sprinklers every other cell (~4.2 m spacing), at tile centres
+  if (m && ((c.i + c.j) & 1) === 0) {
+    const SP = [[1, 1], [3, 3], [1, 3], [3, 1]], k = Math.floor(hash01(c.i, c.j, 77, seed) * 4);
+    const [a, b] = SP[k];
+    if (free(a, b)) {
+      const X = x0 + (a + 0.5) * TILE, Z = z0 + (b + 0.5) * TILE, y = FACE_Y - 0.001;
+      m.ao = 1;
+      m.ring(X, y, Z, 0, 0.034, 8, -1);
+      m.box(X - 0.006, y - 0.03, Z - 0.006, X + 0.006, y, Z + 0.006, { py: true });
+      m.ring(X, y - 0.03, Z, 0, 0.019, 8, -1);
+    }
+  }
+  const hs = hash01(c.i, c.j, 78, seed);
+  if (hs < 0.2 || hs > 0.94) {
+    const SPOTS = [[2, 0], [0, 2], [4, 2], [2, 4]], [a, b] = SPOTS[Math.floor(hash01(c.i, c.j, 79, seed) * 4)];
+    if (free(a, b)) {
+      const X = x0 + (a + 0.5) * TILE, Z = z0 + (b + 0.5) * TILE;
+      if (hs < 0.2) Fx.smokeDetector(F, X, Z, FACE_Y - 0.001); else Fx.ceilSpeaker(F, X, Z, FACE_Y - 0.001);
+    }
+  }
 }
 
 // missing / displaced tile: the exposed T-bar flanges + webs around the opening and the dark plenum

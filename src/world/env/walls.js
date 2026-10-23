@@ -122,6 +122,32 @@ export function emitWallEdge(ctx, i, j, axis, type) {
   if (type === W.WINDOW) windowSill(ctx, axis, plane, start + 0.4, start + len - 0.4);
 }
 
+// Squeeze: thick walls fill global cell (i, j) on both sides of a passage 2 * hw wide running along `axis`
+// ('x' / 'z'). openA / openB: the passage continues into a normal cell at the low / high end (the block ends
+// get faces + skirting returns there; between two squeeze cells the blocks simply continue).
+export function narrowWalls(ctx, i, j, axis, hw, openA, openB) {
+  const style = ctx.styleOf(i, j);
+  const g = ctx.G[style] || ctx.G.wall;
+  g.wet = 0; g.ao = 1;
+  const A = (axis === 'x' ? i : j) * CELL, B = A + CELL;          // along the passage
+  const c = ((axis === 'x' ? j : i) + 0.5) * CELL;                // passage centre line
+  const lo = c - CELL / 2 + T / 2, hi = c + CELL / 2 - T / 2;     // side wall faces
+  for (const [w0, w1, side] of [[lo, c - hw, 1], [c + hw, hi, -1]]) {
+    const inner = side > 0 ? w1 : w0;
+    face(g, axis, inner, side, columns(A, B), rows(0, H));
+    skirt(ctx, style, axis, inner, side, A, B, openA, openB);
+    // ends facing into the next cell
+    const cross = axis === 'x' ? 'z' : 'x';
+    for (const [at, dir, open] of [[A, -1, openA], [B, 1, openB]]) {
+      if (!open) continue;
+      face(g, cross, at, dir, columns(w0, w1, 0.05), rows(0, H));
+      skirt(ctx, style, cross, at, dir, w0, w1, side < 0, side > 0);
+    }
+    if (axis === 'x') ctx.colliders.push({ min: { x: A, y: 0, z: w0 }, max: { x: B, y: H, z: w1 } });
+    else ctx.colliders.push({ min: { x: w0, y: 0, z: A }, max: { x: w1, y: H, z: B } });
+  }
+}
+
 // EMT conduit along a block wall under the ceiling: tube on spacer straps, a drop to a junction box
 function conduit(ctx, fr, A, B, h) {
   const m = ctx.G.metal;

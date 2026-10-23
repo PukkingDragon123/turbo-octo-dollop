@@ -636,7 +636,7 @@ export class Watch {
     const bx = 14, bw = AW - 20, by = gy + 10;
     a.disc(9, by + 4, 5, P.red);
     rulePx(a, bx, bx + bw, by + 8, P.dim);
-    a.rect(bx, by + 2, Math.round(bw * f), 5, P.fg);
+    segBar(a, bx, by + 2, bw, 5, f, P.fg);
     for (let i = 1; i < 4; i++) a.vline(bx + Math.round(bw * i / 4), by + 9, by + 11, P.dim);
     text(a, `${fmt$(e.escape)} / ${short$(e.quota)}`, 4, by + 13, P.fg, { font: FONT3 });
     // level rules

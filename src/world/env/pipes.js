@@ -7,6 +7,7 @@ const H = HEIGHT;
 
 // G: { pipe, insul, metal } builders; solidW / solidE: is there a wall on the cell's west / east edge
 // along: 'x' (pipes run along x near the north side) or 'z' (along z near the west side)
+// solidA / solidB may also be 'through': the run continues straight into the next cell (no end piece)
 export function pipeRun(G, i, j, h, solidA, solidB, along = 'x') {
   const x0 = i * CELL, z0 = j * CELL;
   const S = along === 'x' ? x0 : z0;          // run start coordinate
@@ -18,7 +19,7 @@ export function pipeRun(G, i, j, h, solidA, solidB, along = 'x') {
     { r: 0.06, y: H - 0.2, c: 0.68, g: 'pipe' },
   ];
   if (h > 0.6) pipes.pop();
-  const a0 = solidA ? S + 0.08 : S + 0.32, a1 = solidB ? S + CELL - 0.08 : S + CELL - 0.32;
+  const a0 = solidA === 'through' ? S : solidA ? S + 0.08 : S + 0.32, a1 = solidB === 'through' ? S + CELL : solidB ? S + CELL - 0.08 : S + CELL - 0.32;
   for (let k = 0; k < pipes.length; k++) {
     const p = pipes[k];
     const g = G[p.g];
@@ -29,6 +30,7 @@ export function pipeRun(G, i, j, h, solidA, solidB, along = 'x') {
     tube(g, along, sA, sB, p.y, c, p.r, 14);
     // ends: into the wall (escutcheon) or up into the plenum (elbow + riser)
     for (const [end, solid, dir] of [[sA, solidA, -1], [sB, solidB, 1]]) {
+      if (solid === 'through') continue;
       if (solid) {
         const m = G.metal;
         ring(m, along, end + (dir < 0 ? 0.004 : -0.004), p.y, c, p.r * 1.0, p.r + 0.035, dir);

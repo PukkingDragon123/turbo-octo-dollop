@@ -12,9 +12,9 @@ import { hash01 } from '../../../core/rng.js';
 import { EnvGeo, fr } from '../../env/builder.js';
 import { GridBaker } from '../../env/gridbake.js';
 import { ceilingCell } from '../../env/ceiling.js';
-import { emitWallEdge, pillar, T } from '../../env/walls.js';
+import { emitWallEdge, pillar, narrowWalls, T } from '../../env/walls.js';
 import { pipeRun } from '../../env/pipes.js';
-import { fixtureMaterial } from '../../env/fixtures.js';
+import { fixtureMaterial, hangingExit } from '../../env/fixtures.js';
 import { lightVolumes } from '../../env/haze.js';
 import { floatingDebris } from '../../env/debris.js';
 import { tallCeiling, pendantTroffer, lowCeiling, ceilingStep } from '../../env/tall.js';
@@ -30,8 +30,9 @@ export const LIGHT_TONES = [
   new THREE.Color(1.0, 0.12, 0.08),  // 4 red
   new THREE.Color(0.8, 0.95, 1.05),  // 5 pool
   new THREE.Color(1.0, 0.8, 0.86),   // 6 party / playroom
+  new THREE.Color(0.84, 1.0, 0.74),  // 7 dying tubes: sick green-white (failing sectors)
 ];
-const TONE_INT = [1.0, 1.05, 0.75, 0.95, 0.9, 1.25, 1.0];
+const TONE_INT = [1.0, 1.05, 0.75, 0.95, 0.9, 1.25, 1.0, 0.82];
 
 // ---------------------------------------------------------------------------
 // light helpers shared with the level (registration + baking queries)
@@ -263,6 +264,12 @@ export function buildChunk(level, cx, cz) {
     if (cW.ceil !== c.ceil) ceilingStep(gWall, rec.colliders, c.i, c.j, 'z', tW, cW, c, styleOfCell);
   }
   for (const k of ['wall', 'manila', 'concrete']) G[k].wetFn = null;
+  // squeezes: thick walls either side of a 1.1 m passage
+  for (const n of layout.narrows) {
+    const i = cx * N + n.li, j = cz * N + n.lj, x = n.ax === 'x';
+    const nbA = x ? info(i - 1, j) : info(i, j - 1), nbB = x ? info(i + 1, j) : info(i, j + 1);
+    narrowWalls(ctx, i, j, n.ax, 0.55, nbA.narrow !== n.ax, nbB.narrow !== n.ax);
+  }
   for (const p of layout.pillars) {
     const i = cx * N + p.li, j = cz * N + p.lj;
     let h = HEIGHT;
@@ -278,7 +285,11 @@ export function buildChunk(level, cx, cz) {
       const i = cx * N + d.li, j = cz * N + d.lj;
       pipeRun(G, i, j, hash01(i, j, 81, seed), solidW(i, j), solidW(i + 1, j), 'x');
     } else if (d.kind === 'walldoor') {
-      wallDoor(G, rec, cx * N + d.li, cz * N + d.lj, d.side, d.hinge);
+      wallDoor(G, rec, cx * N + d.li, cz * N + d.lj, d.side, d.hinge, d.y || 0);
+    } else if (d.kind === 'exitsign') {
+      // hanging EXIT sign down a corridor, a metre off the troffer, faces looking along the corridor
+      const c = layout.cells[d.lj * N + d.li], ax = d.ax === 0;
+      hangingExit(G.fixture, (c.i + 0.5) * CELL + (ax ? 1.0 : 0), (c.j + 0.5) * CELL + (ax ? 0 : 1.0), c.ceil - 0.002, ax);
     } else if (d.kind === 'rack') {
       // warehouse racking on the cell's N edge line; posts shared with the bay to the west
       const i = cx * N + d.li, j = cz * N + d.lj;
@@ -286,8 +297,20 @@ export function buildChunk(level, cx, cz) {
       rackBay(G, i * CELL, (i + 1) * CELL, j * CELL, !hasRack(i - 1, j), true, rec.colliders, d.h);
     }
   }
+  // service corridors: the pipe rack runs on down the corridor (crossroads and corridor ends turn it up)
+  const piped = (o, sp) => o && !o.reserved && o.spine?.pipes && o.spine.seg === sp.seg && !(o.spineX && o.spineZ);
   for (const c of layout.cells) {
-    if (c.zone !== 'maintenance' || c.reserved) continue;
+    const sp = c.spine;
+    if (!piped(c, sp)) continue;
+    const ax = sp.ax === 0, h = hash01(c.i, c.j, 85, seed);
+    const pA = ax ? info(c.i - 1, c.j) : info(c.i, c.j - 1), pB = ax ? info(c.i + 1, c.j) : info(c.i, c.j + 1);
+    const endA = piped(pA, sp) ? 'through' : ax ? solidW(c.i, c.j) : solidN(c.i, c.j);
+    const endB = piped(pB, sp) ? 'through' : ax ? solidW(c.i + 1, c.j) : solidN(c.i, c.j + 1);
+    // two pipes all the way (h > 0.6), a gate valve now and then (h < 0.7)
+    pipeRun(G, c.i, c.j, h < 0.85 ? 0.75 + h * 0.2 : 0.65, endA, endB, ax ? 'x' : 'z');
+  }
+  for (const c of layout.cells) {
+    if (c.zone !== 'maintenance' || c.reserved || c.spine) continue;
     const h = hash01(c.i, c.j, 82, seed);
     if (h < 0.1 && layout.edgesW[c.lj * N + c.li] === W.FULL) pipeRun(G, c.i, c.j, h * 10, solidN(c.i, c.j), solidN(c.i, c.j + 1), 'z');
     if (c.floor === 'concrete') {
@@ -461,11 +484,11 @@ export function buildChunk(level, cx, cz) {
 let _doorLeaf = null;
 function doorLeafMat() { return _doorLeaf || (_doorLeaf = Mat.make('trim', { color: 0xd8c4a8 })); }
 const _wm = new THREE.Matrix4(), _wl = new THREE.Matrix4();
-function wallDoor(G, rec, i, j, side, hinge) {
+function wallDoor(G, rec, i, j, side, hinge, y0 = 0) {
   const uc = 1.0, dw = 0.46, dh = 2.04, cw = 0.065;
-  // local frame: wall face at w = 0 (room at +w), u along the wall, y up
-  if (side === 'N') _wm.makeTranslation(i * CELL, 0, j * CELL + T / 2);
-  else _wm.makeTranslation(i * CELL + T / 2, 0, (j + 1) * CELL).multiply(_wl.makeRotationY(Math.PI / 2));
+  // local frame: wall face at w = 0 (room at +w), u along the wall, y up (y0 > 0: a door high up in the wall)
+  if (side === 'N') _wm.makeTranslation(i * CELL, y0, j * CELL + T / 2);
+  else _wm.makeTranslation(i * CELL + T / 2, y0, (j + 1) * CELL).multiply(_wl.makeRotationY(Math.PI / 2));
   const tr = G.trim, dr = G.door, mt = G.metal;
   const t0 = tr.vc;
   tr.ao = 1;

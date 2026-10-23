@@ -61,7 +61,7 @@ export function hazardTex() {
     grime(g, w, h, 0.5, 3);
   }, { repeat: [1, 1] });
 }
-function stencilTex(lines, { w = 512, h = 256, bg = '#e8b414', fg = '#16130e', font = 'VT323, monospace', size = 0.3, border = true } = {}) {
+function stencilTex(lines, { w = 512, h = 256, bg = '#e8b414', fg = '#16130e', font = FONT.main, size = 0.3, border = true } = {}) {
   return canvasTex(w, h, (g) => {
     g.fillStyle = bg; g.fillRect(0, 0, w, h);
     if (border) { g.strokeStyle = fg; g.lineWidth = h * 0.05; g.strokeRect(h * 0.06, h * 0.06, w - h * 0.12, h - h * 0.12); }
@@ -498,9 +498,9 @@ export class WardrobeBooth {
       g.fillStyle = '#120806'; g.fillRect(0, 0, w, h);
       g.textAlign = 'center'; g.textBaseline = 'middle';
       g.shadowColor = '#ff7a20'; g.shadowBlur = 14;
-      g.fillStyle = '#ffb43a'; g.font = '78px VT323, monospace';
+      g.fillStyle = '#ffb43a'; g.font = `78px ${FONT.main}`;
       g.fillText('WARDROBE', w / 2, h * 0.42);
-      g.shadowBlur = 0; g.fillStyle = '#c8301e'; g.font = '26px VT323, monospace';
+      g.shadowBlur = 0; g.fillStyle = '#c8301e'; g.font = `26px ${FONT.main}`;
       g.fillText('AUTO-OUTFITTER MK.II  ·  BAY 07', w / 2, h * 0.84);
     });
     this.signMat = new THREE.MeshBasicMaterial({ map: signTex, color: new THREE.Color(1.7, 1.7, 1.7) });
@@ -625,7 +625,7 @@ export class WardrobeChamber {
       }
       // hazard band near the floor
       for (let x = 0; x < w; x += 32) { g.fillStyle = (x / 32) % 2 ? '#16130e' : '#e8b414'; g.beginPath(); g.moveTo(x, h * 0.84); g.lineTo(x + 32, h * 0.84); g.lineTo(x + 22, h * 0.94); g.lineTo(x - 10, h * 0.94); g.fill(); }
-      g.fillStyle = '#e8b414'; g.font = '34px VT323, monospace';
+      g.fillStyle = '#e8b414'; g.font = `34px ${FONT.main}`;
       for (let i = 0; i < 4; i++) g.fillText('BAY 07 · KEEP ARMS INSIDE THE HARNESS', i * w / 4 + 20, h * 0.32);
       grime(g, w, h, 0.8, 5);
     }, { repeat: [3, 1] });
@@ -725,11 +725,11 @@ export class WardrobeChamber {
     for (let y = 0; y < h; y += 4) g.fillRect(0, y, w, 2);
     const col = alert ? '#ff5a3a' : '#4dff7a';
     g.fillStyle = col; g.shadowColor = col; g.shadowBlur = 10;
-    g.font = '40px VT323, monospace'; g.textAlign = 'left';
+    g.font = `40px ${FONT.main}`; g.textAlign = 'left';
     g.fillText('R.O.O.M. OUTFITTING BAY 07', 24, 52);
-    g.font = '58px VT323, monospace';
+    g.font = `58px ${FONT.main}`;
     g.fillText(String(line1).slice(0, 22), 24, 130);
-    g.font = '34px VT323, monospace';
+    g.font = `34px ${FONT.main}`;
     g.fillText(String(line2).slice(0, 30), 24, 190);
     g.shadowBlur = 0;
     g.fillText('> _', 24, 236);
@@ -799,31 +799,53 @@ export class Sparks {
 // panels, the floor hatch + drop shaft, panel controls (knob / toggle / fader / selector), crates,
 // debris (bolts, oil, ripped parts), steam and dust motes. All procedural.
 // =====================================================================================================
-// signage type roles (ui/fonts.js): art-deco display for sign titles, CRT pixel type for the small print
-export const PLEX = FONT.deco, VT = FONT.crt;
-// green phosphor palette + helpers shared by every readout of the factory (Pip-Boy-like terminals)
-export const PHOS = { hi: '#9dffb2', mid: '#5cf07e', soft: '#b8ffc8', dim: '#2c6a3c', bg: '#010603' };
-// bracket corners instead of a boxed border
+// signage type: ONE face everywhere (FONT.main, Cormorant Garamond). The old pixel/CRT faces are gone.
+export const PLEX = FONT.main, VT = FONT.main;
+// gilt-on-enamel palette shared by every plate, dial and readout of the factory (was green phosphor)
+export const PHOS = { hi: '#f6dfa4', mid: '#d6aa58', soft: '#fff3d8', dim: '#6b5634', bg: '#0d0a07' };
+// art-deco corner ornaments (double gilt corner + a small diamond) instead of a boxed border
 export function brackets(g, x, y, w, h, len = 40, color = PHOS.mid, lw = 4, glow = 10) {
-  g.save(); g.strokeStyle = color; g.lineWidth = lw; g.shadowColor = color; g.shadowBlur = glow; g.lineCap = 'square';
+  g.save(); g.strokeStyle = color; g.fillStyle = color; g.shadowColor = color; g.shadowBlur = glow * 0.6; g.lineCap = 'round';
   for (const [cx, cy, sx, sy] of [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]]) {
+    g.lineWidth = lw * 0.8;
     g.beginPath(); g.moveTo(cx + sx * len, cy); g.lineTo(cx, cy); g.lineTo(cx, cy + sy * len); g.stroke();
+    const o = lw * 2.2; g.lineWidth = Math.max(1, lw * 0.35);
+    g.beginPath(); g.moveTo(cx + sx * len * 0.7, cy + sy * o); g.lineTo(cx + sx * o, cy + sy * o); g.lineTo(cx + sx * o, cy + sy * len * 0.7); g.stroke();
+    const d = lw * 1.3, px = cx + sx * (o + d * 1.6), py = cy + sy * (o + d * 1.6);
+    g.beginPath(); g.moveTo(px, py - d); g.lineTo(px + d, py); g.lineTo(px, py + d); g.lineTo(px - d, py); g.closePath(); g.fill();
   }
   g.restore();
 }
+// finish pass for enamel / glass faces: soft vignette + a little wear (no scanlines)
 export function scanlines(g, w, h, a = 0.25) {
-  g.fillStyle = `rgba(0,0,0,${a})`;
-  for (let y = 0; y < h; y += 4) g.fillRect(0, y, w, 2);
   const v = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.75);
-  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, `rgba(0,0,0,${0.35 + a})`);
   g.fillStyle = v; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(255,240,210,${Math.random() * 0.05})`; g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 3, 1); }
 }
-// dark phosphor screen background with a faint glow in the middle
+// dark lacquered enamel with a warm bloom in the middle
 export function phosphorBg(g, w, h) {
-  g.fillStyle = PHOS.bg; g.fillRect(0, 0, w, h);
+  const l = g.createLinearGradient(0, 0, 0, h); l.addColorStop(0, '#19110b'); l.addColorStop(1, '#0a0705');
+  g.fillStyle = l; g.fillRect(0, 0, w, h);
   const r = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7);
-  r.addColorStop(0, 'rgba(40,150,70,0.18)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+  r.addColorStop(0, 'rgba(150,100,40,0.14)'); r.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = r; g.fillRect(0, 0, w, h);
+}
+// gilt lettering: dark engraved edge, gold gradient body, optional warm glow
+export function giltText(g, s, x, y, maxW, size, { weight = 700, italic = false, glow = 0, dim = false } = {}) {
+  const font = `${italic ? 'italic ' : ''}${weight} {s}px ${FONT.main}`;
+  let sz = size; g.font = font.replace('{s}', sz);
+  while (g.measureText(s).width > maxW && sz > 8) { sz -= 2; g.font = font.replace('{s}', sz); }
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  const gr = g.createLinearGradient(0, y - sz * 0.42, 0, y + sz * 0.42);
+  if (dim) { gr.addColorStop(0, '#8a7656'); gr.addColorStop(1, '#5a4a32'); } else { gr.addColorStop(0, '#fff6d6'); gr.addColorStop(0.42, '#f1c766'); gr.addColorStop(0.58, '#b27b2c'); gr.addColorStop(1, '#f8dc92'); }
+  g.save();
+  g.lineJoin = 'round'; g.lineWidth = Math.max(2, sz * 0.05); g.strokeStyle = 'rgba(30,16,4,0.9)';
+  g.strokeText(s, x + sz * 0.015, y + sz * 0.03);
+  if (glow && !dim) { g.shadowColor = 'rgba(255,186,90,0.9)'; g.shadowBlur = glow; }
+  g.fillStyle = gr; g.fillText(s, x, y);
+  g.restore();
+  return sz;
 }
 export { mesh as kitMesh, rbox as kitRbox, M4 as kitM4 };
 
@@ -917,53 +939,84 @@ export function wrapLines(g, text, maxW) {
   return out;
 }
 
-// a heavy backlit sign box hanging from two chains (pivot = ceiling point). The face is a LiveTex used as
-// map + emissiveMap so only the painted letters glow. Hover brightens it; kick() makes it swing.
+// a heavy enamel sign box in a brass frame ringed with marquee bulbs, hanging from two chains (pivot =
+// ceiling point). The face is a LiveTex used as map + emissiveMap so only the gilt letters glow. Hover
+// brightens it and runs a chase through the bulbs; kick() makes it swing.
+const _bulbGeo = new THREE.SphereGeometry(0.017, 10, 8);
+const _bulbMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+const _sockGeo = new THREE.CylinderGeometry(0.02, 0.022, 0.016, 10).rotateX(Math.PI / 2);
 export class HangPanel {
-  constructor({ w = 1.5, h = 0.42, accent = PHOS.hi } = {}) {
+  constructor({ w = 1.5, h = 0.42, bulbs = true } = {}) {
     const F = factoryMats();
-    this.w = w; this.h = h; this.accent = accent;
+    this.w = w; this.h = h;
     this.root = new THREE.Group(); this.root.rotation.order = 'YXZ';
     this.body = new THREE.Group(); this.root.add(this.body);
-    mesh(rbox(w + 0.1, h + 0.1, 0.12, 0.025), F.dark, this.body, 0, 0, -0.01);
-    const hz = mesh(new THREE.BoxGeometry(w + 0.1, 0.035, 0.125), F.hazard, this.body, 0, -h / 2 - 0.068, -0.01);
-    hz.material = F.hazard;
+    const fw = bulbs ? 0.075 : 0.035, W2 = w + fw * 2, H2 = h + fw * 2;
+    this.fw = fw;
+    mesh(rbox(W2 + 0.03, H2 + 0.03, 0.1, 0.02), F.dark, this.body, 0, 0, -0.02);
+    // brass frame band (the bulbs sit in it) + a thin inner lip around the enamel
+    for (const [bw, bh, x, y] of [[W2, fw, 0, (h + fw) / 2], [W2, fw, 0, -(h + fw) / 2], [fw, h, -(w + fw) / 2, 0], [fw, h, (w + fw) / 2, 0]]) mesh(new THREE.BoxGeometry(bw, bh, 0.03), F.brass, this.body, x, y, 0.04).castShadow = false;
+    for (const [bw, bh, x, y] of [[w + 0.012, 0.008, 0, h / 2 + 0.002], [w + 0.012, 0.008, 0, -h / 2 - 0.002], [0.008, h, -w / 2 - 0.002, 0], [0.008, h, w / 2 + 0.002, 0]]) mesh(new THREE.BoxGeometry(bw, bh, 0.012), F.dark, this.body, x, y, 0.056).castShadow = false;
     const ch = Math.round(1024 * h / w);
     this.face = new LiveTex(1024, ch);
-    this.mat = new THREE.MeshStandardMaterial({ map: this.face.tex, emissiveMap: this.face.tex, emissive: 0xffffff, emissiveIntensity: 1, roughness: 0.32, metalness: 0.1 });
-    this.hit = mesh(new THREE.PlaneGeometry(w, h), this.mat, this.body, 0, 0, 0.052);
-    this.hit.castShadow = false;
+    this.mat = new THREE.MeshStandardMaterial({ map: this.face.tex, emissiveMap: this.face.tex, emissive: 0xffffff, emissiveIntensity: 1, roughness: 0.26, metalness: 0.15 });
+    mesh(new THREE.PlaneGeometry(w, h), this.mat, this.body, 0, 0, 0.052).castShadow = false;
     // glass sheen
     mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.06, roughness: 0.05, metalness: 0, clearcoat: 1, depthWrite: false }), this.body, 0, 0, 0.058).castShadow = false;
-    for (const s of [-1, 1]) {
-      mesh(new THREE.TorusGeometry(0.025, 0.007, 6, 12), F.steel, this.body, s * (w / 2 - 0.12), h / 2 + 0.08, 0);
+    // click target: the whole sign including the frame
+    this.hit = mesh(new THREE.PlaneGeometry(W2, H2), new THREE.MeshBasicMaterial({ visible: false }), this.body, 0, 0, 0.07);
+    // marquee bulbs along the frame band
+    this.bulbs = null;
+    if (bulbs) {
+      const pts = [], step = 0.088, pw = w + fw, ph = h + fw;
+      const nx = Math.max(2, Math.round(pw / step)), ny = Math.max(1, Math.round(ph / step));
+      for (let i = 0; i < nx; i++) pts.push([-pw / 2 + (pw * i) / nx, ph / 2]);
+      for (let i = 0; i < ny; i++) pts.push([pw / 2, ph / 2 - (ph * i) / ny]);
+      for (let i = 0; i < nx; i++) pts.push([pw / 2 - (pw * i) / nx, -ph / 2]);
+      for (let i = 0; i < ny; i++) pts.push([-pw / 2, -ph / 2 + (ph * i) / ny]);
+      const n = pts.length;
+      this.bulbs = new THREE.InstancedMesh(_bulbGeo, _bulbMat, n);
+      const socks = new THREE.InstancedMesh(_sockGeo, F.dark, n);
+      const m4 = new THREE.Matrix4();
+      pts.forEach(([x, y], i) => { m4.makeTranslation(x, y, 0.066); this.bulbs.setMatrixAt(i, m4); m4.makeTranslation(x, y, 0.058); socks.setMatrixAt(i, m4); this.bulbs.setColorAt(i, new THREE.Color(0, 0, 0)); });
+      this.bulbs.castShadow = false; socks.castShadow = false;
+      this.body.add(this.bulbs, socks);
+      this.bulbDead = pts.map(() => Math.random() < 0.06);
     }
+    for (const s of [-1, 1]) mesh(new THREE.TorusGeometry(0.025, 0.007, 6, 12), F.steel, this.body, s * (w / 2 - 0.12), h / 2 + fw + 0.03, 0);
     const cg = cyl(0.007, 1, 'y', 6).translate(0, 0.5, 0);
-    this.chains = [-1, 1].map((s) => { const m = mesh(cg, F.steel, this.body, s * (w / 2 - 0.12), h / 2 + 0.1, 0); m.castShadow = false; return m; });
-    this.glow = 0; this.on = 1; this.base = 1;
+    this.chains = [-1, 1].map((s) => { const m = mesh(cg, F.steel, this.body, s * (w / 2 - 0.12), h / 2 + fw + 0.05, 0); m.castShadow = false; return m; });
+    this.top = h / 2 + fw + 0.05;
+    this.glow = 0; this.on = 1; this.base = 1; this.dim = false;
     this.sw = { x: 0, z: 0, vx: 0, vz: 0 };
     this.t = Math.random() * 10;
+    this._c = new THREE.Color();
   }
-  setText(title, sub = '', { dim = false, tag = '' } = {}) {
-    const acc = dim ? PHOS.dim : this.accent;
+  // big = the title marquee (letter-spaced, no rule)
+  setText(title, sub = '', { dim = false, big = false } = {}) {
+    this.dim = dim;
     this.face.draw((g, w, h) => {
-      g.fillStyle = '#020604'; g.fillRect(0, 0, w, h);
-      const vg = g.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, w * 0.6);
-      vg.addColorStop(0, dim ? 'rgba(20,60,30,0.10)' : 'rgba(40,140,70,0.16)'); vg.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = vg; g.fillRect(0, 0, w, h);
-      brackets(g, 18, 18, w - 36, h - 36, Math.min(60, h * 0.26), acc, dim ? 3 : 5, dim ? 0 : 14);
-      g.fillStyle = acc; g.shadowColor = acc; g.shadowBlur = dim ? 0 : 24; g.textBaseline = 'middle';
-      fitText(g, title, w / 2, h * (sub ? 0.42 : 0.52), w - 140, Math.round(h * 0.44), `{s}px ${PLEX}`);
+      phosphorBg(g, w, h);
+      for (let i = 0; i < 90; i++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,230,190' : '0,0,0'},${Math.random() * 0.06})`; g.beginPath(); g.arc(Math.random() * w, Math.random() * h, 1 + Math.random() * 4, 0, TAU); g.fill(); }
+      const gold = dim ? '#5e4c30' : '#d8ad5c';
+      g.strokeStyle = gold; g.lineWidth = 5; g.strokeRect(18, 18, w - 36, h - 36);
+      g.lineWidth = 1.5; g.strokeRect(30, 30, w - 60, h - 60);
+      brackets(g, 30, 30, w - 60, h - 60, Math.min(70, h * 0.22), gold, 4, dim ? 0 : 10);
+      const ty = big ? h * (sub ? 0.43 : 0.52) : h * (sub ? 0.42 : 0.52);
+      const t = big ? title.split('').join(' ') : title;
+      giltText(g, t, w / 2, ty, w - 170, Math.round(h * (big ? 0.5 : 0.46)), { glow: 26, dim });
       if (sub) {
-        g.shadowBlur = dim ? 0 : 10;
-        g.fillStyle = acc; g.fillRect(w * 0.2, h * 0.64, w * 0.6, 2);
-        g.fillStyle = dim ? PHOS.dim : PHOS.soft; fitText(g, sub, w / 2, h * 0.79, w - 160, Math.round(h * 0.2), `{s}px ${VT}`);
+        g.fillStyle = gold;
+        const ry = h * 0.67;
+        g.fillRect(w * 0.3, ry, w * 0.4, 2);
+        for (const s of [-1, 1]) { const x = w / 2 + s * w * 0.21; g.beginPath(); g.moveTo(x, ry - 6); g.lineTo(x + 6, ry + 1); g.lineTo(x, ry + 8); g.lineTo(x - 6, ry + 1); g.closePath(); g.fill(); }
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillStyle = dim ? '#7a6a52' : '#efe2c2';
+        fitText(g, sub, w / 2, h * 0.8, w - 180, Math.round(h * 0.17), `italic 600 {s}px ${FONT.main}`);
       }
-      g.shadowBlur = 0;
-      if (tag) { g.fillStyle = acc; g.font = `${Math.round(h * 0.14)}px ${VT}`; g.textAlign = 'left'; g.fillText(tag, 34, 44); }
-      scanlines(g, w, h, 0.22);
+      scanlines(g, w, h, 0.05);
     });
-    this.base = dim ? 0.5 : 1;
+    this.base = dim ? 0.45 : 1;
   }
   // pivot at (x, ceilY, z), panel centre at height y
   place(x, y, z, ceilY, yaw = 0) {
@@ -971,14 +1024,26 @@ export class HangPanel {
     this.root.rotation.y = yaw;
     const drop = ceilY - y;
     this.body.position.set(0, -drop, 0);
-    for (const c of this.chains) c.scale.y = Math.max(0.05, drop - this.h / 2 - 0.1);
+    for (const c of this.chains) c.scale.y = Math.max(0.05, drop - this.top);
   }
   kick(a = 1) { this.sw.vx += (Math.random() - 0.5) * 0.5 * a; this.sw.vz += (Math.random() - 0.5) * 0.9 * a; }
   update(dt, hover = false) {
     this.t += dt;
     this.glow += ((hover ? 1 : 0) - this.glow) * (1 - Math.exp(-10 * dt));
     const fl = this.on < 1 ? (Math.random() < 0.5 ? 0.1 : 1) * this.on : 1;
-    this.mat.emissiveIntensity = this.base * fl * (0.75 + 0.95 * this.glow + 0.04 * Math.sin(this.t * 31) * Math.sin(this.t * 7));
+    this.mat.emissiveIntensity = this.base * fl * (0.7 + 0.8 * this.glow + 0.03 * Math.sin(this.t * 31) * Math.sin(this.t * 7));
+    if (this.bulbs) {
+      const n = this.bulbs.count, c = this._c, chase = Math.floor(this.t * 9);
+      for (let i = 0; i < n; i++) {
+        let k = this.dim ? (i % 5 === 0 ? 0.5 : 0.05) : 1.15 + 0.08 * Math.sin(this.t * 3 + i);
+        if (this.glow > 0.05) k = (i + chase) % 3 === 0 ? 1.2 + 2.6 * this.glow : 0.7;
+        if (this.bulbDead[i]) k = Math.random() < 0.01 ? 1 : 0.03;
+        k *= fl;
+        c.setRGB(k * 1.9, k * 1.35, k * 0.62);
+        this.bulbs.setColorAt(i, c);
+      }
+      this.bulbs.instanceColor.needsUpdate = true;
+    }
     const s = this.sw, L = Math.max(0.5, -this.body.position.y);
     const k = 9.8 / L;
     s.vx += (-k * s.x - 1.2 * s.vx) * dt; s.vz += (-k * s.z - 1.2 * s.vz) * dt;
@@ -986,6 +1051,102 @@ export class HangPanel {
     this.root.rotation.x = s.x + Math.sin(this.t * 0.7) * 0.004;
     this.root.rotation.z = s.z + Math.sin(this.t * 0.53 + 1) * 0.006;
     this.body.position.z = this.glow * 0.02;
+  }
+}
+
+// gear outline (extruded): `teeth` trapezoid teeth between rRoot and rOut, a centre hole and optional
+// round lightening holes on a ring. Centred on z.
+export function gearGeo(rOut, rRoot, teeth, depth, { hole = 0, holes = 0, holeR = 0, holeAt = 0, bevel = 0.004 } = {}) {
+  const s = new THREE.Shape(), da = TAU / teeth;
+  for (let i = 0; i < teeth; i++) {
+    const a = i * da;
+    const P = [[rRoot, a], [rOut, a + da * 0.2], [rOut, a + da * 0.45], [rRoot, a + da * 0.65]];
+    P.forEach(([r, b], j) => { const x = Math.cos(b) * r, y = Math.sin(b) * r; if (i === 0 && j === 0) s.moveTo(x, y); else s.lineTo(x, y); });
+  }
+  s.closePath();
+  const circ = (cx, cy, r) => { const p = new THREE.Path(); p.absarc(cx, cy, r, 0, TAU, true); return p; };
+  if (hole > 0) s.holes.push(circ(0, 0, hole));
+  for (let i = 0; i < holes; i++) { const a = (i / holes) * TAU + da * 0.3; s.holes.push(circ(Math.cos(a) * holeAt, Math.sin(a) * holeAt, holeR)); }
+  const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: bevel > 0, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 1, curveSegments: 20 });
+  g.translate(0, 0, -depth / 2);
+  g.computeVertexNormals();
+  return g;
+}
+
+// the SETTINGS sign of the hub: a big brass cog hanging on two chains with an engraved enamel roundel and a
+// gilt name plate under it. Same interface as HangPanel (root/body/chains/hit/place/kick/update/setText):
+// it idles round slowly, spins up under the pointer and ratchets.
+export class GearSign {
+  constructor({ r = 0.27 } = {}) {
+    const F = factoryMats();
+    this.r = r; this.w = r * 2; this.h = r * 2 + 0.2;
+    this.root = new THREE.Group(); this.root.rotation.order = 'YXZ';
+    this.body = new THREE.Group(); this.root.add(this.body);
+    // yoke + axle housing (static) the cog turns on
+    mesh(cyl(0.05, 0.12, 'z', 20), F.dark, this.body, 0, 0, -0.03);
+    mesh(new THREE.BoxGeometry(0.05, r + 0.08, 0.03), F.dark, this.body, 0, (r + 0.08) / 2, -0.07);
+    mesh(new THREE.BoxGeometry(r * 1.2, 0.04, 0.04), F.dark, this.body, 0, r + 0.08, -0.07);
+    this.cog = new THREE.Group(); this.body.add(this.cog);
+    this.cogMat = F.brass.clone();
+    mesh(gearGeo(r, r * 0.84, 14, 0.055, { hole: 0.05, holes: 6, holeR: r * 0.17, holeAt: r * 0.55 }), this.cogMat, this.cog);
+    mesh(new THREE.TorusGeometry(r * 0.72, 0.008, 6, 48), F.dark, this.cog, 0, 0, 0.032).castShadow = false;
+    // the roundel: a cog icon engraved on dark enamel (static, so it reads)
+    const ro = new LiveTex(256, 256, (g, w, h) => {
+      g.fillStyle = '#120c07'; g.beginPath(); g.arc(w / 2, h / 2, w / 2, 0, TAU); g.fill();
+      g.strokeStyle = '#d8ad5c'; g.lineWidth = 6; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 8, 0, TAU); g.stroke();
+      g.fillStyle = '#e9c069'; g.beginPath();
+      for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU, rr = i % 2 ? 62 : 80; g.lineTo(w / 2 + Math.cos(a) * rr, h / 2 + Math.sin(a) * rr); }
+      g.closePath(); g.fill();
+      g.fillStyle = '#120c07'; g.beginPath(); g.arc(w / 2, h / 2, 30, 0, TAU); g.fill();
+    });
+    this.roMat = new THREE.MeshStandardMaterial({ map: ro.tex, emissiveMap: ro.tex, emissive: 0xffffff, emissiveIntensity: 0.4, roughness: 0.3, metalness: 0.2 });
+    mesh(new THREE.CircleGeometry(0.062, 32), this.roMat, this.body, 0, 0, 0.04).castShadow = false;
+    // name plate under the cog
+    const pw = r * 2.1, ph = 0.13;
+    this.plate = new LiveTex(512, Math.round(512 * ph / pw));
+    this.mat = new THREE.MeshStandardMaterial({ map: this.plate.tex, emissiveMap: this.plate.tex, emissive: 0xffffff, emissiveIntensity: 1, roughness: 0.3, metalness: 0.15 });
+    const py = -r - 0.035 - ph / 2;
+    mesh(rbox(pw + 0.03, ph + 0.03, 0.03, 0.008), F.brass, this.body, 0, py, -0.005);
+    mesh(new THREE.PlaneGeometry(pw, ph), this.mat, this.body, 0, py, 0.012).castShadow = false;
+    mesh(new THREE.BoxGeometry(0.02, 0.05, 0.01), F.dark, this.body, 0, -r - 0.012, -0.01);
+    this.hit = mesh(new THREE.PlaneGeometry(r * 2.2, r * 2 + ph + 0.06), new THREE.MeshBasicMaterial({ visible: false }), this.body, 0, -ph / 2 - 0.02, 0.07);
+    const cg = cyl(0.007, 1, 'y', 6).translate(0, 0.5, 0);
+    this.chains = [-1, 1].map((s) => { const m = mesh(cg, F.steel, this.body, s * r * 0.55, r + 0.1, -0.07); m.castShadow = false; return m; });
+    this.top = r + 0.1; this.h = 2 * this.top;
+    this.glow = 0; this.on = 1; this.base = 1; this.spin = 0; this.ticks = 0;
+    this.sw = { x: 0, z: 0, vx: 0, vz: 0 };
+    this.t = Math.random() * 10;
+  }
+  setText(title = 'SETTINGS', sub = '') {
+    void sub;
+    this.plate.draw((g, w, h) => {
+      phosphorBg(g, w, h);
+      g.strokeStyle = '#d8ad5c'; g.lineWidth = 3; g.strokeRect(8, 8, w - 16, h - 16);
+      giltText(g, title.split('').join(' '), w / 2, h * 0.54, w - 60, Math.round(h * 0.62), { glow: 18 });
+    });
+  }
+  place(x, y, z, ceilY, yaw = 0) { HangPanel.prototype.place.call(this, x, y, z, ceilY, yaw); }
+  kick(a = 1) { this.sw.vx += (Math.random() - 0.5) * 0.3 * a; this.sw.vz += (Math.random() - 0.5) * 0.5 * a; this.spin += 2.5 * a; }
+  // returns true when a tooth ratchets past (the menu plays a tick)
+  update(dt, hover = false) {
+    this.t += dt;
+    this.glow += ((hover ? 1 : 0) - this.glow) * (1 - Math.exp(-10 * dt));
+    const fl = this.on < 1 ? (Math.random() < 0.5 ? 0.1 : 1) * this.on : 1;
+    this.mat.emissiveIntensity = fl * (0.7 + 0.8 * this.glow);
+    this.roMat.emissiveIntensity = fl * (0.35 + 0.9 * this.glow);
+    this.cogMat.emissive.setRGB(0.25 * this.glow, 0.16 * this.glow, 0.04 * this.glow);
+    this.spin = this.spin * Math.exp(-2.5 * dt);
+    const w = 0.22 + 2.4 * this.glow + this.spin;
+    const prev = Math.floor(this.cog.rotation.z / (TAU / 14));
+    this.cog.rotation.z -= w * dt;
+    const tick = Math.floor(this.cog.rotation.z / (TAU / 14)) !== prev && this.glow > 0.3;
+    const s = this.sw, L = Math.max(0.5, -this.body.position.y), k = 9.8 / L;
+    s.vx += (-k * s.x - 1.2 * s.vx) * dt; s.vz += (-k * s.z - 1.2 * s.vz) * dt;
+    s.x += s.vx * dt; s.z += s.vz * dt;
+    this.root.rotation.x = s.x + Math.sin(this.t * 0.7) * 0.004;
+    this.root.rotation.z = s.z + Math.sin(this.t * 0.53 + 1) * 0.006;
+    this.body.position.z = this.glow * 0.03;
+    return tick;
   }
 }
 

@@ -655,7 +655,7 @@ export class YellowLevel {
   // nav: pits and crawlspaces cost extra (monsters prefer to walk around)
   cellCost(i, j) {
     const c = cellInfo(this.seed, i, j, this.variantFn);
-    return c.pit ? 12 : c.crawl ? 3 : 0;
+    return c.pit ? 12 : c.crawl ? 3 : c.narrow ? 2 : 0;
   }
 
   waterDepth(x, z) {

@@ -309,7 +309,14 @@ export class Crusher extends Device {
     return _v.x > -CX - 0.05 && _v.x < CX + 0.05 && _v.z > CZ0 - 0.05 && _v.z < CZ1 + 0.12 && _v.y > BED - 0.2 && _v.y < CTOP;
   }
 
-  get online() { return this.mission.padsOnline; }
+  get online() { return this.mission.padsOnline && !this.hidden; }
+
+  // not in the world until the arrival director phases it out of the hall wall (game/arrival.js)
+  setHidden(h) {
+    this.hidden = !!h;
+    this.root.visible = !h;
+    for (const c of this.colliders) c?.setEnabled?.(!h);
+  }
   nearLocal(r = 12) { return this.root.position.distanceTo(this.world.game.local.pos) < r; }
 
   _scan() {
@@ -327,6 +334,7 @@ export class Crusher extends Device {
   // ------------------------------------------------------------------ interaction
   prompt() {
     const k = input.keyName('interact');
+    if (this.hidden) return null;
     if (!this.online) return 'ASSET COMPACTOR — OFFLINE. Build your camp first.';
     if (this.cycle) return 'COMPACTING... stand clear!';
     const c = this.contents;
@@ -522,6 +530,7 @@ export class Crusher extends Device {
   update(dt) {
     const w = this.world, g = this.mission.game;
     this.t += dt;
+    if (this.hidden) return;
     this._scanT -= dt;
     if (this._scanT <= 0) { this._scanT = 0.25; this.contents = this._scan(); }
     if (net.isHost) this._hostUpdate(dt);

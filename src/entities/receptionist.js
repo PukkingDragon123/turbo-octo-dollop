@@ -5,11 +5,11 @@
 // under eyelid shutters (one LED older and dimmer), a crooked synthetic wig, a headset, a polyester
 // blazer over the plastic torso, a silk scarf and a printed paper name badge. She types, breathes,
 // blinks, tracks the nearest clone, twitches now and then and turns to stare at you whenever nobody is
-// looking. Her lines are projected as a flickering cyan scanline hologram from a shoulder projector.
+// looking. Her lines float over the counter as the game's 3D text (ui/floattext.js, one font).
 //
-// Talking to her ([E]) replaces the old dispatch lever: she greets you by name, explains the job the
-// first time, offers "Dispatch now?" and, on a second [E], presses the gate button that opens the HQ
-// elevator (host-authoritative through the lobby's elevator; level.requestDispatch() does the same).
+// She starts the shift: the lobby director has her greet each arrival; talking to her ([E] or a click)
+// makes her offer to open the elevator and, on a second [E], she presses the gate button (host /
+// solo only, host-authoritative through the lobby's elevator; clients are told the host decides).
 //
 // Root origin: on the floor under her seat, facing +Z (towards the visitors). ~26 draw calls: geometry
 // is merged per moving part and material; all fingers are two InstancedMeshes.
@@ -21,6 +21,7 @@ import { profile } from '../core/profile.js';
 import { Device } from '../game/devices.js';
 import { GBin, T } from './elevator.js';
 import { VLRig, vlPatch } from './vlights.js';
+import { floatText } from '../ui/floattext.js';
 
 const PI = Math.PI, TAU = PI * 2;
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -731,7 +732,6 @@ export function buildReceptionistModel(rig) {
 
 // ------------------------------------------------------------------------------------------ animation rig
 const DOWN = V(0, -1, 0);
-const _hl = V(), _ha = V(), _hv = V();
 const _a = V(), _b = V(), _c = V(), _d = V(), _w = V(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m1 = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _m3 = new THREE.Matrix4();
 // two-bone IK in torso space (shoulder group parent = torso)
 function solveArm(a, L1, L2, target, pole, handQ) {
@@ -909,144 +909,19 @@ export class ReceptionistAnimator {
   press() { this.pressT = 0; }
 }
 
-// ------------------------------------------------------------------------------------------ hologram
-// Her words, projected from the shoulder projector as a flickering cyan scanline panel floating above the
-// counter, turned towards whoever is reading it. Text is typed out; scanlines roll, rows jitter, a glitch
-// band sweeps through now and then and the whole panel shimmers.
-const HOLO_VS = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
-const HOLO_FS = `
-uniform sampler2D map; uniform float uTime, uAlpha, uGlitch; uniform vec3 uColor;
-varying vec2 vUv;
-float h(float n){ return fract(sin(n) * 43758.5453); }
-void main(){
-  vec2 uv = vUv;
-  float row = floor(uv.y * 90.0);
-  float tick = floor(uTime * 20.0);
-  uv.x += (h(row * 1.7 + tick) - 0.5) * 0.004 * (0.4 + uGlitch);
-  float bandY = fract(uTime * 0.37);
-  float band = smoothstep(0.035, 0.0, abs(uv.y - bandY)) * step(0.55, h(floor(uTime * 3.0)));
-  uv.x += band * 0.025 * (h(tick) - 0.5);
-  vec4 t = texture2D(map, uv);
-  vec4 tr = texture2D(map, uv + vec2(0.003, 0.0));
-  vec4 tb = texture2D(map, uv - vec2(0.003, 0.0));
-  float scan = 0.62 + 0.38 * sin(vUv.y * 260.0 - uTime * 9.0);
-  float edge = smoothstep(0.0, 0.05, vUv.x) * smoothstep(1.0, 0.95, vUv.x) * smoothstep(0.0, 0.1, vUv.y) * smoothstep(1.0, 0.9, vUv.y);
-  float fill = 0.07 + 0.05 * sin(vUv.y * 40.0 + uTime * 2.0);
-  float flick = 0.82 + 0.18 * h(tick * 0.37);
-  // a smoky dark-teal pane (so it reads against bright office walls) with glowing cyan type
-  float ink = clamp(t.r, 0.0, 1.0);
-  vec3 pane = vec3(0.01, 0.07, 0.08) + uColor * fill * 0.6;
-  vec3 col = mix(pane, uColor * 2.4, ink) + vec3(0.3, -0.05, -0.05) * tr.r * 0.6 + vec3(-0.05, 0.0, 0.35) * tb.r * 0.6;
-  col += uColor * band * 0.5;
-  float a = clamp(mix(0.55, 1.0, ink) * edge * mix(1.0, scan, 0.6) * flick * uAlpha, 0.0, 1.0);
-  gl_FragColor = vec4(col, a);
-}`;
-class Holo {
-  constructor() {
-    this.c = canvas(1024, 288);
-    this.x = this.c.getContext('2d');
-    this.tex = ctex(this.c, false);
-    this.mat = new THREE.ShaderMaterial({
-      uniforms: { map: { value: this.tex }, uTime: { value: 0 }, uAlpha: { value: 0 }, uGlitch: { value: 0 }, uColor: { value: new THREE.Color(0.16, 0.95, 0.88) } },
-      vertexShader: HOLO_VS, fragmentShader: HOLO_FS, transparent: true, depthWrite: false, blending: THREE.NormalBlending, side: THREE.DoubleSide, fog: false, toneMapped: false,
-    });
-    this.panel = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.26), this.mat);
-    this.panel.renderOrder = 5;
-    this.panel.frustumCulled = false;
-    // the projection cone from the lens to the panel's lower edge (vertices updated every frame)
-    const bg = new THREE.BufferGeometry();
-    bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9 * 3), 3));
-    bg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0.5, 0, 0, 1, 1, 1, 0.5, 0, 1, 1, 0.5, 1.2, 0.5, 0, 0.5, 1.2, 0, 1]), 2));
-    this.beamMat = new THREE.ShaderMaterial({
-      uniforms: { uAlpha: { value: 0 }, uTime: { value: 0 } },
-      vertexShader: HOLO_VS,
-      fragmentShader: `uniform float uAlpha, uTime; varying vec2 vUv; void main(){ float a = pow(clamp(vUv.y, 0.0, 1.0), 2.2) * (0.7 + 0.3 * sin(vUv.y * 190.0 - uTime * 16.0)) * uAlpha * 0.09; gl_FragColor = vec4(vec3(0.15, 0.9, 0.85) * a, a); }`,
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false, toneMapped: false,
-    });
-    this.beam = new THREE.Mesh(bg, this.beamMat);
-    this.beam.frustumCulled = false;
-    this.beam.renderOrder = 4;
-    this.alpha = 0; this.want = 0; this.key = ''; this.t = 0;
-  }
-  // lines: [title, body] ; typed: chars of body revealed
-  draw(title, body, typed, t) {
-    const key = `${title}|${body}|${typed}|${Math.floor(t * 2) % 2}`;
-    if (key === this.key) return;
-    this.key = key;
-    const x = this.x, W = 1024, H = 288;
-    x.clearRect(0, 0, W, H);
-    x.fillStyle = '#000'; x.fillRect(0, 0, W, H);
-    x.strokeStyle = '#fff'; x.lineWidth = 4; x.strokeRect(10, 10, W - 20, H - 20);
-    x.lineWidth = 2; x.strokeRect(22, 22, W - 44, H - 44);
-    for (const [px, py] of [[10, 10], [W - 10, 10], [10, H - 10], [W - 10, H - 10]]) { x.fillStyle = '#fff'; x.fillRect(px - 8, py - 8, 16, 16); }
-    x.fillStyle = '#fff'; x.textBaseline = 'top';
-    x.font = 'bold 44px "VT323", "IBM Plex Mono", monospace';
-    x.fillText(title, 44, 34);
-    x.fillRect(44, 82, Math.min(W - 88, x.measureText(title).width + 30), 3);
-    x.font = '50px "VT323", "IBM Plex Mono", monospace';
-    const words = String(body || '').split(' '), lines = [];
-    let cur = '';
-    for (const w of words) { const tst = cur ? cur + ' ' + w : w; if (x.measureText(tst).width > W - 100 && cur) { lines.push(cur); cur = w; } else cur = tst; }
-    if (cur) lines.push(cur);
-    let left = typed;
-    const shown = [];
-    for (const ln of lines) { if (left <= 0) break; shown.push(ln.slice(0, left)); left -= ln.length + 1; }
-    const vis = shown.slice(-3);
-    vis.forEach((ln, i) => x.fillText(ln, 44, 100 + i * 54));
-    if (Math.floor(t * 3) % 2 === 0) { const last = vis[vis.length - 1] || ''; x.fillRect(46 + x.measureText(last).width, 100 + Math.max(0, vis.length - 1) * 54 + 6, 22, 40); }
-    this.tex.needsUpdate = true;
-  }
-  update(dt, lens, at, viewer, glitch) {
-    this.t += dt;
-    this.alpha += (this.want - this.alpha) * (1 - Math.exp(-dt * (this.want > this.alpha ? 9 : 5)));
-    const on = this.alpha > 0.01;
-    this.panel.visible = on; this.beam.visible = on;
-    if (!on) return;
-    // power-on: the panel unfolds vertically with a stutter
-    const unfold = Math.min(1, this.alpha * 1.4);
-    const jit = (Math.random() - 0.5) * 0.004 * (1 + glitch * 4);
-    this.panel.position.copy(at);
-    this.panel.position.y += Math.sin(this.t * 1.7) * 0.012 + jit;
-    this.panel.position.x += jit * 0.6;
-    if (viewer) {
-      const dx = viewer.x - this.panel.position.x, dz = viewer.z - this.panel.position.z;
-      this.panel.rotation.set(0, Math.atan2(dx, dz), 0);
-      const pitch = Math.atan2(viewer.y - this.panel.position.y, Math.hypot(dx, dz));
-      this.panel.rotateX(-pitch * 0.6);
-    }
-    this.panel.scale.set(1, unfold * (Math.random() < 0.03 ? 0.8 : 1), 1);
-    this.mat.uniforms.uTime.value = this.t;
-    this.mat.uniforms.uAlpha.value = this.alpha * (Math.random() < 0.02 ? 0.4 : 1);
-    this.mat.uniforms.uGlitch.value = glitch;
-    // beam: lens -> lower corners of the panel
-    this.panel.updateMatrixWorld(true);
-    const L = this.panel.localToWorld(_a.set(-0.46, -0.13, 0)), R = this.panel.localToWorld(_b.set(0.46, -0.13, 0)), C = this.panel.localToWorld(_c.set(0, -0.13, 0));
-    const pa = this.beam.geometry.attributes.position.array;
-    const put = (i, v) => { pa[i * 3] = v.x; pa[i * 3 + 1] = v.y; pa[i * 3 + 2] = v.z; };
-    put(0, lens); put(1, L); put(2, R); put(3, lens); put(4, R); put(5, C); put(6, lens); put(7, C); put(8, L);
-    this.beam.geometry.attributes.position.needsUpdate = true;
-    this.beam.geometry.computeBoundingSphere();
-    this.beamMat.uniforms.uAlpha.value = this.alpha;
-    this.beamMat.uniforms.uTime.value = this.t;
-  }
-  dispose() { this.tex.dispose(); this.mat.dispose(); this.beamMat.dispose(); this.panel.geometry.dispose(); this.beam.geometry.dispose(); }
-}
-
 // ------------------------------------------------------------------------------------------ device
+// Her lines hang over the counter as the game's 3D floating text (ui/floattext.js), anchored on her head.
 const LINES = {
-  intro1: 'Good morning, {N}. Welcome to R.O.O.M. I am Gloria, your receptionist.',
-  intro2: 'The company needs furniture. Your first assignment: build your camp.',
-  again: 'Welcome back, {N}.',
-  offer: 'Dispatch now? Press [{K}] to confirm.',
-  confirm: 'Very good, {N}. Opening the gate. Please step into the car.',
-  hurry: 'The elevator leaves in {S} seconds, {N}. Please step inside.',
-  missed: 'Nobody boarded. I have recalled the car. Talk to me when you are ready.',
+  welcome: 'Welcome to Sublevel B4, {N}. I am Gloria. Tell me when you are ready and I will open the elevator.',
+  welcomeBack: 'Welcome back, {N}. Your shift is waiting. Tell me when you are ready to go down.',
+  welcomeClient: 'Welcome, {N}. Your shift host will tell me when to open the elevator.',
+  orient: 'The company needs furniture. Your first assignment: build your camp.',
+  offer: 'Shall I open the elevator, {N}? Everyone in this room goes down. [{K}] to confirm.',
+  confirm: 'Very good, {N}. Opening the elevator. Please step inside.',
+  board: 'The car leaves in {S} seconds. Everyone in the room goes.',
+  hurry: 'The car leaves in {S} seconds, {N}. Please step inside.',
   transit: 'The car is in transit. Please wait.',
-  cancel: 'Of course. Take your time, {N}.',
-};
-const HOLO_TITLE = {
-  intro1: 'GOOD MORNING, {N}', intro2: 'ORIENTATION', again: 'WELCOME BACK, {N}', offer: 'DISPATCH NOW?', confirm: 'DISPATCH CONFIRMED',
-  hurry: 'ELEVATOR DEPARTING', missed: 'CAR RECALLED', transit: 'CAR IN TRANSIT', cancel: 'RECEPTION',
+  hostOnly: 'Only your shift host can send the car down, {N}.',
 };
 const introduced = new Set(); // per page session: who already heard the orientation
 
@@ -1064,25 +939,23 @@ export class ReceptionistBot extends Device {
     this.P = buildReceptionistModel(this.rig);
     this.root.add(this.P.root);
     this.anim = new ReceptionistAnimator(this.P);
-    // holographic speech panel (world space: it billboards to the reader)
-    this.holo = new Holo();
-    world.group?.add(this.holo.panel, this.holo.beam);
     this.root.traverse((o) => { if (o.isMesh) o.userData.noProbe = true; });
     this.queue = [];          // pending lines for the local speaker
-    this.say = null;          // { id, n, s, t, dur }
-    this.offerT = 0;          // local: dispatch offer open
+    this.say = null;          // { id, text, t, dur }
+    this.bubble = null;
+    this.offerT = 0;          // local: "open the elevator?" offer open
     this.cool = 0;
     this.watchedT = 0; this.unwatchedT = 0; this.obsT = 0; this._obs = true;
     this.stare = false; this.stareHold = 0;
     this.attend = 0;
     this.keyT = 0;
-    this.holoT = 0;
+    this.ph = 'idle';
   }
 
   build() {
     this.root.updateMatrixWorld(true);
     const ud = { kind: 'device', device: this };
-    // torso + head (prompt target), and the display pole
+    // torso + head (prompt / click target)
     const boxes = [[0, 1.05, 0.02, 0.2, 0.28, 0.16]];
     for (const [x, y, z, hx, hy, hz] of boxes) {
       const c = this.root.localToWorld(V(x, y, z));
@@ -1091,53 +964,65 @@ export class ReceptionistBot extends Device {
   }
 
   get elevator() { return this.lobby?.elevator; }
+  _name(player) { return String(player?.name || this.world.game?.local?.name || 'EMPLOYEE').slice(0, 24); }
 
-  // same as confirming "Dispatch now?" with her (host: opens the gate; client: asks the host)
+  // same as confirming with her (host: opens the elevator for everyone in the room)
   requestDispatch(name) {
-    const n = String(name || this.world.game?.local?.name || 'EMPLOYEE').slice(0, 24);
+    if (net.mode === 'client') return false;
     this.offerT = 0;
     this.queue.length = 0;
-    this.send('dispatch', { n });
+    this.send('dispatch', { n: String(name || this._name()).slice(0, 24) });
     return true;
   }
 
   prompt() {
     const k = input.keyName('interact');
     const ph = this.elevator?.state.ph;
-    if (ph === 'depart') return null;
-    if (this.offerT > 0 && ph !== 'board') return `[${k}] Yes, dispatch me`;
-    return `[${k}] Talk to the receptionist`;
+    if (ph === 'depart' || ph === 'exit' || this.lobby?.director?.busy) return null;
+    if (this.offerT > 0 && ph === 'idle') return `[${k}] Yes, open the elevator`;
+    return `[${k}] Talk to Gloria`;
+  }
+
+  // the lobby director calls this once the clone is on its feet
+  greet() {
+    const g = this.world.game, name = this._name();
+    this.attend = 1;
+    this.anim.twitch = { t: 0, dir: 1 };
+    this._local([net.mode === 'client' ? 'welcomeClient' : g?.continued ? 'welcomeBack' : 'welcome'], name, true);
   }
 
   interact(player) {
     if (this.cool > 0) return;
     this.cool = 0.6;
-    const name = String(player?.name || this.world.game?.local?.name || 'EMPLOYEE').slice(0, 24);
+    const name = this._name(player);
     const ph = this.elevator?.state.ph;
-    if (ph === 'board') { this._local(['hurry'], name); return; }
-    if (ph === 'depart') { this._local(['transit'], name); return; }
+    if (ph === 'board') { this._local(['hurry'], name, true); return; }
+    if (ph === 'depart' || ph === 'exit') { this._local(['transit'], name, true); return; }
+    if (net.mode === 'client') { this._local(['hostOnly'], name, true); return; }
     if (this.offerT > 0) {
       this.offerT = 0;
       this.queue.length = 0;
+      audio.play('button_press', { pos: this.root.position.clone().setY(1.0), volume: 0.5 });
       this.send('dispatch', { n: name });
       return;
     }
-    const first = !introduced.has(name);
+    const first = !introduced.has(name) && !this.world.game?.continued;
     introduced.add(name);
-    this._local(first ? ['intro1', 'intro2', 'offer'] : ['again', 'offer'], name);
-    this.offerT = first ? 22 : 14;
+    this._local(first ? ['orient', 'offer'] : ['offer'], name);
+    this.offerT = first ? 16 : 10;
   }
 
-  // queue lines for the local player; each is broadcast so others see/hear her talk
-  _local(ids, name) {
-    this.queue = ids.map((id) => ({ id, n: name }));
+  // queue lines for the local player; each is broadcast so others see/hear her talk (quiet: local only)
+  _local(ids, name, quiet = false) {
+    this.queue = ids.map((id) => ({ id, n: name, quiet }));
     this._next();
   }
   _next() {
     const q = this.queue.shift();
     if (!q) return;
-    this.send('say', { id: q.id, n: q.n, s: this.elevator?.secondsLeft?.() ?? 0 });
-    this._speak(q.id, q.n, this.elevator?.secondsLeft?.() ?? 0, true);
+    const s = this.elevator?.secondsLeft?.() ?? 0;
+    if (!q.quiet) this.send('say', { id: q.id, n: q.n, s });
+    this._speak(q.id, q.n, s, !q.quiet || q.id !== 'board');
   }
 
   hostAction(a, d, from) {
@@ -1145,8 +1030,9 @@ export class ReceptionistBot extends Device {
       this.setState({ say: { id: d.id, n: String(d.n || '').slice(0, 24), s: d.s | 0, from, k: (this.state.say?.k || 0) + 1 } });
     } else if (a === 'dispatch') {
       const name = String(d?.n || 'EMPLOYEE').slice(0, 24);
-      const ok = this.elevator?.hostBoard(name, from);
-      const id = ok ? 'confirm' : 'transit';
+      // only the shift host (or a solo clone) sends the car down
+      const ok = (!from || from === net.selfId) && !!this.elevator?.hostBoard();
+      const id = ok ? 'confirm' : from && from !== net.selfId ? 'hostOnly' : 'transit';
       this.setState({ say: { id, n: name, s: 0, from: null, k: (this.state.say?.k || 0) + 1, press: ok ? 1 : 0 } });
     }
   }
@@ -1154,26 +1040,25 @@ export class ReceptionistBot extends Device {
   onState(s, fullSync) {
     if (!s.say || fullSync) return;
     if (s.say.from === net.selfId) return; // the speaker already played it locally
-    this._speak(s.say.id, s.say.n, s.say.s, s.say.from == null && s.say.id !== 'missed' ? this._isMine(s.say.n) : false);
+    this._speak(s.say.id, s.say.n, s.say.s, s.say.from == null ? this._isMine(s.say.n) : false);
     if (s.say.press) this.anim.press();
   }
   _isMine(n) { return n && n === String(this.world.game?.local?.name || '').slice(0, 24); }
 
-  // host: announce through her (e.g. nobody boarded)
+  // host: announce through her
   hostSay(id, n = '') { this.setState({ say: { id, n, s: 0, from: null, k: (this.state.say?.k || 0) + 1 } }); }
 
   _speak(id, n, secs, mine) {
     const N = (n || 'EMPLOYEE');
     const fill = (s) => s.replace('{N}', N).replace('{S}', String(secs)).replace('{K}', input.keyName('interact'));
     const text = fill(LINES[id] || '');
-    const dur = 1.2 + text.length * 0.052;
-    this.say = { id, text, title: fill(HOLO_TITLE[id] || 'RECEPTION'), t: 0, dur };
+    if (!text) return;
+    const dur = 1.4 + text.length * 0.05;
+    this.say = { id, text, t: 0, dur };
     const head = this.P.head.getWorldPosition(V());
     audio.play('healthity_talk', { pos: head, volume: 0.55, length: Math.min(3.4, dur), pitch: 0.7 });
-    if (mine) {
-      this.world.game?.ui?.feed?.(text, 'hq', 'RECEPTION');
-      this._tts(text);
-    }
+    this.bubble = floatText.say(text, { at: this.P.head, speaker: 'GLORIA', color: '#ffd9a0', offset: V(0, 0.42, 0.3), size: 1.15, duration: dur + 1.4 });
+    if (mine) this._tts(text);
   }
 
   _tts(text) {
@@ -1181,7 +1066,8 @@ export class ReceptionistBot extends Device {
     const synth = window.speechSynthesis;
     if (!synth || typeof SpeechSynthesisUtterance === 'undefined') return;
     try {
-      const u = new SpeechSynthesisUtterance(text.replace(/R\.O\.O\.M\./g, 'Room'));
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(text.replace(/R\.O\.O\.M\./g, 'Room').replace(/\[[^\]]*\]/g, ''));
       u.pitch = 0.9; u.rate = 0.98;
       u.volume = Math.max(0, Math.min(1, (profile.settings.master ?? 1) * (profile.settings.sfx ?? 1)));
       const vs = synth.getVoices?.() || [];
@@ -1232,13 +1118,20 @@ export class ReceptionistBot extends Device {
     this.offerT = Math.max(0, this.offerT - dt);
     const g = this.world.game;
     const near = g?.local?.pos ? g.local.pos.distanceTo(this.root.position) : 0;
+    // the elevator opened (every peer): she announces the departure once her current line is done
+    const ph = this.elevator?.state.ph || 'idle';
+    if (ph !== this.ph) {
+      this.ph = ph;
+      this.offerT = 0;
+      if (ph === 'board') { this.queue.push({ id: 'board', n: '', quiet: true }); if (!this.say) this._next(); }
+    }
     if (near > 28) return; // far away: freeze (saves the IK + instancing work)
     // speech
     if (this.say) {
       this.say.t += dt;
       if (this.say.t > this.say.dur) { this.say = null; this._next(); }
     }
-    // observation -> stare when nobody looks, glitch back when caught
+    // observation -> stare when nobody looks, twitch back when caught
     this.obsT -= dt;
     if (this.obsT <= 0) { this.obsT = 0.25; this._obs = this._observed(); }
     if (this._obs) { this.watchedT += dt; this.unwatchedT = 0; } else { this.unwatchedT += dt; this.watchedT = 0; }
@@ -1258,27 +1151,16 @@ export class ReceptionistBot extends Device {
       onTwitch: () => this._servo(0.45),
       onKey: () => { if (near < 7 && (this.keyT -= 1) <= 0) { this.keyT = 2; audio.play('ui_type', { pos: this.P.head.getWorldPosition(_c).setY(0.8), volume: 0.12 }); } },
     });
-    // hologram: what she says, the dispatch offer, the countdown
-    const el = this.elevator;
-    let title = null, body = '', typed = 999;
-    if (this.say) { title = this.say.title; body = this.say.text; typed = Math.floor(Math.max(0, this.say.t - 0.2) * 38); }
-    else if (el?.state.ph === 'board') { title = 'ELEVATOR DEPARTING'; body = `Departs in ${el.secondsLeft()} seconds. Everyone inside the car goes.`; }
-    else if (this.offerT > 0) { title = 'DISPATCH NOW?'; body = `Press [${input.keyName('interact')}] to confirm.`; }
-    this.holo.want = title ? 1 : 0;
-    if (title) this.holo.draw(title, body, typed, this.anim.t);
-    const lens = this.P.projGlow.getWorldPosition(_hl);
-    const at = this.root.localToWorld(_ha.set(0.78, 1.56, 0.55));
-    const viewer = g?.local?.world ? _hv.set(g.local.pos.x, g.local.pos.y + 1.36, g.local.pos.z) : null;
-    this.holo.update(dt, lens, at, viewer, this.anim.twitch ? 1 : this.stare ? 0.5 : 0);
-    this.P.projGlow.material.color.setRGB(0.4 + this.holo.alpha * 0.6, 1.4 + this.holo.alpha * 1.4, 1.5 + this.holo.alpha * 1.4);
+    // the shoulder lamp brightens while she speaks or waits for an answer
+    const k = this.say ? 0.8 + 0.2 * Math.sin(this.anim.t * 9) : this.offerT > 0 ? 0.6 + 0.4 * Math.sin(this.anim.t * 4) : 0.25;
+    this.P.projGlow.material.color.setRGB(0.5 + k * 1.6, 0.36 + k * 1.2, 0.12 + k * 0.4);
   }
 
   _servo(v) { audio.play('_tick_small', { pos: this.P.head.getWorldPosition(_c), volume: v }); audio.play('android_servo', { pos: _c, volume: v * 0.8 }); }
 
   dispose() {
     super.dispose();
-    this.holo.dispose();
-    this.holo.panel.removeFromParent(); this.holo.beam.removeFromParent();
+    this.bubble?.close();
     this.P.root.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); });
     for (const m of Object.values(this.P.M)) m.dispose?.();
     this.P.lidMesh.material.dispose();

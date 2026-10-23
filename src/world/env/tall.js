@@ -78,7 +78,7 @@ export function pendantTroffer(G, c, seed, ceilY) {
 }
 
 // suspended acoustic ceiling at a lower height: built at the standard height, then shifted down
-const CEIL_KEYS = ['ceil', 'enamel', 'lens', 'lensLouvre', 'plenum'];
+const CEIL_KEYS = ['ceil', 'enamel', 'lens', 'lensLouvre', 'plenum', 'fixture', 'metal'];
 export function lowCeiling(G, baker, c, seed) {
   const v0 = {};
   for (const k of CEIL_KEYS) if (G[k]) v0[k] = G[k].vc;

@@ -19,6 +19,10 @@ const R = {
   alarm: [592, 176, 150, 216],
   jbox: [748, 176, 160, 160],
   plainRed: [728, 4, 56, 56],
+  // ceiling fixtures (seen from below)
+  diffuser: [788, 4, 168, 168],
+  smoke: [912, 180, 108, 108],
+  speaker: [912, 292, 108, 108],
 };
 
 let _atlas = null;
@@ -121,6 +125,46 @@ function atlas() {
     g.fillStyle = '#6a6e6a'; g.beginPath(); g.arc(x + w / 2, y + h / 2, 22, 0, 7); g.fill();
     noise(x, y, w, h, 14);
   }
+  // 4-way supply diffuser: stepped square cones around a dark throat, dust smudged around the slots
+  {
+    const [x, y, w, h] = R.diffuser;
+    g.fillStyle = '#e2ddd0'; g.fillRect(x, y, w, h);
+    for (let k = 0; k < 5; k++) {
+      const m = 8 + k * 14, s = w - m * 2;
+      const gr = g.createLinearGradient(x + m, y + m, x + m + s, y + m + s);
+      gr.addColorStop(0, k % 2 ? '#d4cebf' : '#f1ede4'); gr.addColorStop(1, k % 2 ? '#a8a294' : '#c9c3b5');
+      g.fillStyle = gr; g.fillRect(x + m, y + m, s, s);
+      g.strokeStyle = 'rgba(30,26,20,0.75)'; g.lineWidth = 3; g.strokeRect(x + m + 1.5, y + m + 1.5, s - 3, s - 3);
+    }
+    g.fillStyle = '#211e19'; g.fillRect(x + w / 2 - 12, y + h / 2 - 12, 24, 24);
+    // dust halo where the supply air hits the tile
+    const dg = g.createRadialGradient(x + w / 2, y + h / 2, w * 0.3, x + w / 2, y + h / 2, w * 0.52);
+    dg.addColorStop(0, 'rgba(60,52,40,0)'); dg.addColorStop(0.7, 'rgba(60,52,40,0.18)'); dg.addColorStop(1, 'rgba(60,52,40,0)');
+    g.fillStyle = dg; g.fillRect(x, y, w, h);
+    noise(x, y, w, h, 10);
+  }
+  // smoke detector: off-white disc, vent ring, test button, a red LED (emissive)
+  {
+    const [x, y, w, h] = R.smoke, cx = x + w / 2, cy = y + h / 2;
+    g.fillStyle = '#e9e5da'; g.fillRect(x, y, w, h);
+    g.strokeStyle = 'rgba(0,0,0,0.22)'; g.lineWidth = 2;
+    for (const r of [44, 34, 22]) { g.beginPath(); g.arc(cx, cy, r, 0, 7); g.stroke(); }
+    g.fillStyle = 'rgba(40,36,30,0.55)';
+    for (let k = 0; k < 16; k++) { const a = (k / 16) * Math.PI * 2; g.save(); g.translate(cx + Math.cos(a) * 39, cy + Math.sin(a) * 39); g.rotate(a); g.fillRect(-4, -1.5, 8, 3); g.restore(); }
+    g.fillStyle = '#d6d0c2'; g.beginPath(); g.arc(cx, cy, 14, 0, 7); g.fill();
+    g.fillStyle = '#7a1008'; g.beginPath(); g.arc(cx + 26, cy - 8, 3.5, 0, 7); g.fill();
+    ge.fillStyle = '#ff2a10'; ge.beginPath(); ge.arc(cx + 26, cy - 8, 3.5, 0, 7); ge.fill();
+    noise(x, y, w, h, 6);
+  }
+  // ceiling speaker: round perforated grille
+  {
+    const [x, y, w, h] = R.speaker, cx = x + w / 2, cy = y + h / 2;
+    g.fillStyle = '#e6e2d6'; g.fillRect(x, y, w, h);
+    g.fillStyle = 'rgba(25,22,18,0.7)';
+    for (let yy = -40; yy <= 40; yy += 7) for (let xx = -40; xx <= 40; xx += 7) if (xx * xx + yy * yy < 38 * 38) { g.beginPath(); g.arc(cx + xx, cy + yy, 1.8, 0, 7); g.fill(); }
+    g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, 46, 0, 7); g.stroke();
+    noise(x, y, w, h, 6);
+  }
   const mk = (cv, srgb) => { const t = new THREE.CanvasTexture(cv); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 8; t.flipY = false; t.needsUpdate = true; return t; };
   _atlas = { map: mk(c, true), emis: mk(e, true) };
   return _atlas;
@@ -176,3 +220,58 @@ export function grille(F, fr, u, y) { fixture(F, fr, u, y, 0.46, 0.31, 0.018, 'g
 export function thermostat(F, fr, u, y = 1.5) { fixture(F, fr, u, y, 0.13, 0.085, 0.03, 'thermo', { bevel: 0.008 }); }
 export function pullStation(F, fr, u, y = 1.22) { fixture(F, fr, u, y, 0.1, 0.145, 0.045, 'alarm', { bevel: 0.006, sideRegion: 'plainRed' }); }
 export function junctionBox(F, fr, u, y) { fixture(F, fr, u, y, 0.12, 0.12, 0.05, 'jbox', { bevel: 0.004, sideRegion: 'plainDark', color: 0xd0d4d0 }); }
+
+// --- ceiling fixtures (face down; y = the ceiling face) -------------------------------------------------------
+// round fixture: short drum (side band) and a face mapped to an atlas region
+export function ceilDisc(F, x, z, y, r, depth, region, seg = 12) {
+  const pu = auv('plain', 0.5, 0.5);
+  F.setRGB(1, 1, 1); F.ao = 1;
+  F.autoCell(x, z);
+  const t0 = F.I.n, y1 = y - depth;
+  const b0 = F.vc;
+  for (let k = 0; k <= seg; k++) {
+    const a = (k / seg) * Math.PI * 2, nx = Math.cos(a), nz = Math.sin(a);
+    F.v(x + nx * r, y, z + nz * r, nx, 0, nz, pu[0], pu[1]);
+    F.v(x + nx * r, y1, z + nz * r, nx, 0, nz, pu[0], pu[1]);
+  }
+  for (let k = 0; k < seg; k++) F.quad(b0 + k * 2, b0 + k * 2 + 1, b0 + k * 2 + 3, b0 + k * 2 + 2);
+  const c0 = F.vc;
+  const cuv = auv(region, 0.5, 0.5);
+  F.v(x, y1, z, 0, -1, 0, cuv[0], cuv[1]);
+  for (let k = 0; k <= seg; k++) {
+    const a = (k / seg) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+    const uv = auv(region, 0.5 + ca * 0.5, 0.5 + sa * 0.5);
+    F.v(x + ca * r, y1, z + sa * r, 0, -1, 0, uv[0], uv[1]);
+  }
+  for (let k = 0; k < seg; k++) F.tri(c0, c0 + 1 + k, c0 + 2 + k);
+  F._fixWinding(t0);
+}
+export function smokeDetector(F, x, z, y) { ceilDisc(F, x, z, y, 0.068, 0.038, 'smoke'); }
+export function ceilSpeaker(F, x, z, y) { ceilDisc(F, x, z, y, 0.105, 0.012, 'speaker', 14); }
+// square fixture in place of a lay-in tile (supply diffuser): a 2 cm drop with the face mapped to the region
+export function ceilSquare(F, x0, z0, x1, z1, y, depth, region) {
+  F.setRGB(1, 1, 1); F.ao = 1;
+  const pu = auv('plain', 0.5, 0.5);
+  F.chamferBox(x0, y - depth, z0, x1, y, z1, Math.min(0.006, depth * 0.45), 'ny', { py: true }, () => pu);
+  const b = Math.min(0.006, depth * 0.45), yy = y - depth - 0.0004;
+  const uvf = (x, _y, z) => auv(region, (x - x0 - b) / (x1 - x0 - 2 * b), 1 - (z - z0 - b) / (z1 - z0 - 2 * b));
+  F.rectOriented([[x0 + b, yy, z0 + b], [x1 - b, yy, z0 + b], [x1 - b, yy, z1 - b], [x0 + b, yy, z1 - b]], [0, -1, 0], uvf);
+}
+// double-faced EXIT sign hanging from the ceiling on a stem, faces looking along `alongX` (x) or z
+export function hangingExit(F, x, z, yTop, alongX) {
+  const w = 0.34, h = 0.19, d = 0.05, yc = yTop - 0.16 - h / 2;
+  const fr = alongX ? { axis: 'z', plane: x - d / 2, side: 1 } : { axis: 'x', plane: z - d / 2, side: 1 };
+  fixture(F, fr, alongX ? z : x, yc, w, h, d, 'exit', { bevel: 0.006, sideRegion: 'exitSide' });
+  // back face
+  const rs = -rightSign(fr), n = alongX ? [-1, 0, 0] : [0, 0, -1];
+  const u0 = (alongX ? z : x) - w / 2 + 0.006, u1 = u0 + w - 0.012, y0 = yc - h / 2 + 0.006, y1 = yc + h / 2 - 0.006;
+  const uvf = (px, py, pz) => { let s = ((alongX ? pz : px) - u0) / (u1 - u0); if (rs < 0) s = 1 - s; return auv('exit', Math.min(1, Math.max(0, s)), (py - y0) / (y1 - y0)); };
+  const p = (u, y) => (alongX ? [x - d / 2 - 0.0004, y, u] : [u, y, z - d / 2 - 0.0004]);
+  F.rectOriented([p(u0, y0), p(u1, y0), p(u1, y1), p(u0, y1)], n, uvf);
+  // stem + canopy
+  const pu = auv('plain', 0.5, 0.5);
+  F.setColor(0xd8d4ca);
+  F.box(x - 0.012, yc + h / 2, z - 0.012, x + 0.012, yTop - 0.01, z + 0.012, { py: true }, 0, () => pu);
+  F.box(x - 0.05, yTop - 0.012, z - 0.05, x + 0.05, yTop, z + 0.05, { py: true }, 0, () => pu);
+  F.setRGB(1, 1, 1);
+}
