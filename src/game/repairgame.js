@@ -8,6 +8,7 @@
 //   repair.open({ onDone, onCancel, title }), repair.close(), repair.update(dt), repair.active
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { engine } from '../core/engine.js';
 import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
@@ -209,11 +210,27 @@ export class RepairGame {
     const chip = keep(new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.45 }));
     const pin = keep(new THREE.MeshStandardMaterial({ color: 0xc9c4b4, roughness: 0.3, metalness: 1 }));
     const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(keep(geo), mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; sc.add(m); return m; };
+    // DIP chips: moulded bodies with a pin-1 notch, gull-wing legs merged into one mesh
+    const pinGeos = [], legGeo = new THREE.BoxGeometry(0.0016, 0.0042, 0.0014), footGeo = new THREE.BoxGeometry(0.0016, 0.0022, 0.0034);
+    const notchMat = keep(new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.7 }));
     for (const [x, y, w] of [[-0.115, 0.095, 0.06], [-0.04, 0.095, 0.045], [0.12, 0.0, 0.04]]) {
       const vert = x > 0.1;
       add(new RoundedBoxGeometry(vert ? 0.014 : w, vert ? w : 0.014, 0.006, 2, 0.0012), chip, x, y, 0.004);
-      for (let k = 0; k < 6; k++) { const o = (k / 5 - 0.5) * (w - 0.008); if (vert) { add(new THREE.BoxGeometry(0.004, 0.0015, 0.002), pin, x - 0.009, y + o, 0.002); add(new THREE.BoxGeometry(0.004, 0.0015, 0.002), pin, x + 0.009, y + o, 0.002); } else { add(new THREE.BoxGeometry(0.0015, 0.004, 0.002), pin, x + o, y - 0.009, 0.002); add(new THREE.BoxGeometry(0.0015, 0.004, 0.002), pin, x + o, y + 0.009, 0.002); } }
+      const n = add(new THREE.CylinderGeometry(0.0022, 0.0022, 0.0012, 12), notchMat, vert ? x : x - w / 2 + 0.004, vert ? y + w / 2 - 0.004 : y, 0.0071, Math.PI / 2);
+      void n;
+      for (let k = 0; k < 6; k++) {
+        const o = (k / 5 - 0.5) * (w - 0.008);
+        for (const sd of [-1, 1]) {
+          const m4 = new THREE.Matrix4().makeRotationZ(vert ? Math.PI / 2 : 0);
+          const px = vert ? x + sd * 0.0085 : x + o, py = vert ? y + o : y + sd * 0.0085;
+          pinGeos.push(legGeo.clone().applyMatrix4(m4).translate(px, py, 0.0035));
+          pinGeos.push(footGeo.clone().applyMatrix4(m4).translate(vert ? px + sd * 0.0012 : px, vert ? py : py + sd * 0.0012, 0.0012));
+        }
+      }
     }
+    legGeo.dispose(); footGeo.dispose();
+    add(mergeGeometries(pinGeos), pin, 0, 0, 0);
+    for (const g of pinGeos) g.dispose();
     const capMat = keep(new THREE.MeshStandardMaterial({ color: 0x1d3f7a, roughness: 0.4 })), capTop = keep(new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.9 }));
     const stripe = keep(new THREE.MeshStandardMaterial({ color: 0xd8dde6, roughness: 0.45 }));
     for (const [x, y, r, burst] of [[0.03, 0.098, 0.009, false], [0.06, 0.1, 0.011, true], [0.085, -0.1, 0.008, false], [-0.09, -0.1, 0.01, false]]) {
@@ -230,6 +247,7 @@ export class RepairGame {
     const legGeo = keep(new THREE.CylinderGeometry(0.0005, 0.0005, 0.03, 5));
     for (let i = 0; i < 5; i++) {
       const tex = keep(labelTex(4, 64, (c, w, h) => { c.fillStyle = '#d8c39a'; c.fillRect(0, 0, w, h); bands[i % 3].forEach((col, j) => { c.fillStyle = col; c.fillRect(0, h * [0.2, 0.32, 0.44, 0.74][j], w, h * 0.07); }); }));
+      tex.userData.paint();
       add(resGeo, keep(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 })), -0.05 + i * 0.022, -0.1, 0.005, 0, 0, Math.PI / 2);
       add(legGeo, pin, -0.05 + i * 0.022, -0.1, 0.0035, 0, 0, Math.PI / 2);
     }
