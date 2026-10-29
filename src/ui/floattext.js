@@ -2,7 +2,7 @@
 //   floatText.say(text, { at, offset, speaker, duration, size, scene, slot })
 //       world text that hangs near a speaker (Object3D or Vector3), types itself out, bobs, fades.
 //   floatText.notice(text, { duration, speaker, paper })
-//       text that floats in front of the camera, lower centre; several stack upwards.
+//       text that floats in front of the camera, just above the crosshair; several stack upwards.
 // slot picks a font slot other than the default (e.g. 'label' for hover pop-ups; see fonts.js).
 // Both return a handle { set(text), close() }. Call floatText.update(dt, camera) once per frame.
 import * as THREE from 'three';
@@ -10,7 +10,9 @@ import { engine } from '../core/engine.js';
 import { font } from './fonts.js';
 
 const W = 1024, H = 352; // tall enough for a speaker name over four lines
-const NOTICE_BASE = -0.86; // bottom of the notice stack, in screen half-heights below centre
+// bottom of the notice stack, in screen half-heights above centre: just over the crosshair and under the
+// heart/brain gauges, clear of the arm that comes up whenever a notice makes the clone glance at its watch
+const NOTICE_BASE = 0.2;
 export const FLOAT = { typeRate: 40, popTime: 0.5, fade: 0.45, bobAmp: 0.012, worldScale: 0.0013, noticeScale: 0.0008 };
 const INK = '#eee5d1';        // every line of floating text is this one colour
 const PAPER_INK = '#2a2118';  // except on a paper scrap
@@ -190,7 +192,14 @@ class Bubble {
     return ph * FLOAT.noticeScale * (this.o.size || 1) / (Math.tan(Math.PI / 6) * 1.2);
   }
   set(text) { this.text = String(text); this.shown = 0; this.t = Math.min(this.t, FLOAT.popTime); this._st = null; this._layout(); }
-  close() { if (this.closing < 0) this.closing = 0; }
+  // fast: replaced by a newer line at the same spot. A closing bubble stays where it is even if the point it
+  // was given (a shared Vector3, e.g. the hover-label anchor) moves on to the next thing.
+  close(fast = false) {
+    if (this.closing >= 0) return;
+    this.closing = 0;
+    this.fastClose = fast;
+    if (this.o.at?.isVector3) this.o.at = this.o.at.clone();
+  }
   update(dt, cam, stackY) {
     this.t += dt;
     const total = this.lines.join(' ').length;
@@ -205,7 +214,7 @@ class Bubble {
     // flip up like a card standing on its baseline, with a slight swing
     let flip = (1 - easeOutBack(pin)) * -1.25, rise = 0;
     if (this.closing >= 0) {
-      this.closing += dt;
+      this.closing += this.fastClose ? dt * 2.5 : dt;
       const k = Math.min(1, this.closing / FLOAT.fade);
       const e = k * k;
       a *= 1 - k; s *= 1 - e * 0.12; flip += e * 0.55; rise = e;
@@ -255,7 +264,7 @@ class FloatText {
   }
   say(text, o = {}) {
     // one bubble per speaker object: replace instead of stacking
-    if (o.at) for (const b of this.items) if (!b.notice && b.o.at === o.at && b.closing < 0) b.close();
+    if (o.at) for (const b of this.items) if (!b.notice && b.o.at === o.at && b.closing < 0) b.close(true);
     return this._add(new Bubble(text, o, false), o.scene);
   }
   notice(text, o = {}) {
