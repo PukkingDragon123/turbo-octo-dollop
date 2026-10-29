@@ -13,7 +13,9 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { FONT } from '../ui/fonts.js';
+import { FONT, font as fontOf, weightOf } from '../ui/fonts.js';
+import * as Mat from '../gfx/materials.js';
+import { hatchFrame, hatchDoor } from '../world/menu_props.js';
 
 const PI = Math.PI, TAU = PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -61,14 +63,14 @@ export function hazardTex() {
     grime(g, w, h, 0.5, 3);
   }, { repeat: [1, 1] });
 }
-function stencilTex(lines, { w = 512, h = 256, bg = '#e8b414', fg = '#16130e', font = FONT.main, size = 0.3, border = true } = {}) {
+function stencilTex(lines, { w = 512, h = 256, bg = '#e8b414', fg = '#16130e', font = FONT.sign, size = 0.3, border = true } = {}) {
   return canvasTex(w, h, (g) => {
     g.fillStyle = bg; g.fillRect(0, 0, w, h);
     if (border) { g.strokeStyle = fg; g.lineWidth = h * 0.05; g.strokeRect(h * 0.06, h * 0.06, w - h * 0.12, h - h * 0.12); }
     g.fillStyle = fg; g.textAlign = 'center'; g.textBaseline = 'middle';
     lines.forEach((l, i) => {
       const s = Array.isArray(l) ? l[1] : size;
-      g.font = `${Math.round(h * s)}px ${font}`;
+      g.font = `${weightOf('sign')} ${Math.round(h * s)}px ${font}`;
       g.fillText(Array.isArray(l) ? l[0] : l, w / 2, h * ((i + 1) / (lines.length + 1)));
     });
     grime(g, w, h, 0.35, lines.length + 7);
@@ -93,9 +95,10 @@ export function wardrobeMats() {
   });
   _M = {
     hazardTex: hz,
-    paint: new THREE.MeshStandardMaterial({ color: 0xe39a17, roughness: 0.42, metalness: 0.3 }),
-    steel: new THREE.MeshStandardMaterial({ color: 0x8b9094, roughness: 0.34, metalness: 0.85 }),
-    dark: new THREE.MeshStandardMaterial({ color: 0x2b2e31, roughness: 0.55, metalness: 0.6 }),
+    // worn, textured metals (chipped paint, scratches, grime) instead of flat colours
+    paint: Mat.make('metal_yellow', { color: 0xe39a17 }),
+    steel: Mat.make('steel'),
+    dark: Mat.make('metal_dark', { color: 0x3a3e42 }),
     chrome: new THREE.MeshStandardMaterial({ color: 0xe6eaee, roughness: 0.12, metalness: 1.0 }),
     rubber: new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.82, metalness: 0.0 }),
     hazard: new THREE.MeshStandardMaterial({ map: hz, roughness: 0.55, metalness: 0.2 }),
@@ -498,9 +501,9 @@ export class WardrobeBooth {
       g.fillStyle = '#120806'; g.fillRect(0, 0, w, h);
       g.textAlign = 'center'; g.textBaseline = 'middle';
       g.shadowColor = '#ff7a20'; g.shadowBlur = 14;
-      g.fillStyle = '#ffb43a'; g.font = `78px ${FONT.main}`;
+      g.fillStyle = '#ffb43a'; g.font = fontOf('sign', 78);
       g.fillText('WARDROBE', w / 2, h * 0.42);
-      g.shadowBlur = 0; g.fillStyle = '#c8301e'; g.font = `26px ${FONT.main}`;
+      g.shadowBlur = 0; g.fillStyle = '#c8301e'; g.font = fontOf('sign', 26);
       g.fillText('AUTO-OUTFITTER MK.II  ·  BAY 07', w / 2, h * 0.84);
     });
     this.signMat = new THREE.MeshBasicMaterial({ map: signTex, color: new THREE.Color(1.7, 1.7, 1.7) });
@@ -625,7 +628,7 @@ export class WardrobeChamber {
       }
       // hazard band near the floor
       for (let x = 0; x < w; x += 32) { g.fillStyle = (x / 32) % 2 ? '#16130e' : '#e8b414'; g.beginPath(); g.moveTo(x, h * 0.84); g.lineTo(x + 32, h * 0.84); g.lineTo(x + 22, h * 0.94); g.lineTo(x - 10, h * 0.94); g.fill(); }
-      g.fillStyle = '#e8b414'; g.font = `34px ${FONT.main}`;
+      g.fillStyle = '#e8b414'; g.font = fontOf('sign', 34);
       for (let i = 0; i < 4; i++) g.fillText('BAY 07 · KEEP ARMS INSIDE THE HARNESS', i * w / 4 + 20, h * 0.32);
       grime(g, w, h, 0.8, 5);
     }, { repeat: [3, 1] });
@@ -725,11 +728,11 @@ export class WardrobeChamber {
     for (let y = 0; y < h; y += 4) g.fillRect(0, y, w, 2);
     const col = alert ? '#ff5a3a' : '#4dff7a';
     g.fillStyle = col; g.shadowColor = col; g.shadowBlur = 10;
-    g.font = `40px ${FONT.main}`; g.textAlign = 'left';
+    g.font = fontOf('sign', 40); g.textAlign = 'left';
     g.fillText('R.O.O.M. OUTFITTING BAY 07', 24, 52);
-    g.font = `58px ${FONT.main}`;
+    g.font = fontOf('sign', 58);
     g.fillText(String(line1).slice(0, 22), 24, 130);
-    g.font = `34px ${FONT.main}`;
+    g.font = fontOf('sign', 34);
     g.fillText(String(line2).slice(0, 30), 24, 190);
     g.shadowBlur = 0;
     g.fillText('> _', 24, 236);
@@ -799,8 +802,10 @@ export class Sparks {
 // panels, the floor hatch + drop shaft, panel controls (knob / toggle / fader / selector), crates,
 // debris (bolts, oil, ripped parts), steam and dust motes. All procedural.
 // =====================================================================================================
-// signage type: ONE face everywhere (FONT.main, Cormorant Garamond). The old pixel/CRT faces are gone.
-export const PLEX = FONT.main, VT = FONT.main;
+// signage type: the user-picked font slots (ui/fonts.js), never a hard-coded family
+export const PLEX = FONT.sign, VT = FONT.terminal;
+// fitText() template for a font slot: `${weight} {s}px ${family}`
+export const FT = (slot) => `${weightOf(slot)} {s}px ${FONT[slot] || FONT.sign}`;
 // gilt-on-enamel palette shared by every plate, dial and readout of the factory (was green phosphor)
 export const PHOS = { hi: '#f6dfa4', mid: '#d6aa58', soft: '#fff3d8', dim: '#6b5634', bg: '#0d0a07' };
 // art-deco corner ornaments (double gilt corner + a small diamond) instead of a boxed border
@@ -831,19 +836,13 @@ export function phosphorBg(g, w, h) {
   r.addColorStop(0, 'rgba(150,100,40,0.14)'); r.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = r; g.fillRect(0, 0, w, h);
 }
-// gilt lettering: dark engraved edge, gold gradient body, optional warm glow
-export function giltText(g, s, x, y, maxW, size, { weight = 700, italic = false, glow = 0, dim = false } = {}) {
-  const font = `${italic ? 'italic ' : ''}${weight} {s}px ${FONT.main}`;
-  let sz = size; g.font = font.replace('{s}', sz);
-  while (g.measureText(s).width > maxW && sz > 8) { sz -= 2; g.font = font.replace('{s}', sz); }
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  const gr = g.createLinearGradient(0, y - sz * 0.42, 0, y + sz * 0.42);
-  if (dim) { gr.addColorStop(0, '#8a7656'); gr.addColorStop(1, '#5a4a32'); } else { gr.addColorStop(0, '#fff6d6'); gr.addColorStop(0.42, '#f1c766'); gr.addColorStop(0.58, '#b27b2c'); gr.addColorStop(1, '#f8dc92'); }
-  g.save();
-  g.lineJoin = 'round'; g.lineWidth = Math.max(2, sz * 0.05); g.strokeStyle = 'rgba(30,16,4,0.9)';
-  g.strokeText(s, x + sz * 0.015, y + sz * 0.03);
-  if (glow && !dim) { g.shadowColor = 'rgba(255,186,90,0.9)'; g.shadowBlur = glow; }
-  g.fillStyle = gr; g.fillText(s, x, y);
+// painted lettering in one flat ink with a single soft shadow (fits the width by shrinking)
+export function giltText(g, s, x, y, maxW, size, { slot = 'sign', dim = false, ink = null } = {}) {
+  let sz = size; g.font = fontOf(slot, sz);
+  while (g.measureText(s).width > maxW && sz > 8) { sz -= 2; g.font = fontOf(slot, sz); }
+  g.save(); g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.shadowColor = 'rgba(0,0,0,0.5)'; g.shadowBlur = sz * 0.06; g.shadowOffsetY = sz * 0.03;
+  g.fillStyle = ink || (dim ? '#7a6a52' : '#d9c8a0'); g.fillText(s, x, y);
   g.restore();
   return sz;
 }
@@ -881,10 +880,10 @@ export function factoryMats() {
   const cash = canvasTex(256, 128, (g, w, h) => {
     g.fillStyle = '#7f9a72'; g.fillRect(0, 0, w, h);
     g.strokeStyle = '#3e5638'; g.lineWidth = 4; g.strokeRect(6, 6, w - 12, h - 12);
-    g.fillStyle = '#3e5638'; g.font = `bold 44px ${PLEX}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('100', w / 2, h / 2);
+    g.fillStyle = '#3e5638'; g.font = fontOf('receipt', 44); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('100', w / 2, h / 2);
     g.beginPath(); g.arc(46, h / 2, 26, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(w - 46, h / 2, 26, 0, Math.PI * 2); g.stroke();
     g.fillStyle = '#c9b88a'; g.fillRect(w / 2 - 22, 0, 44, h);
-    g.fillStyle = '#5b4a2a'; g.font = `bold 16px ${PLEX}`; g.fillText('$10K', w / 2, h / 2);
+    g.fillStyle = '#5b4a2a'; g.font = fontOf('receipt', 16); g.fillText('$10K', w / 2, h / 2);
   });
   const straw = canvasTex(128, 128, (g, w, h) => {
     g.fillStyle = '#6e5a2e'; g.fillRect(0, 0, w, h);
@@ -894,15 +893,15 @@ export function factoryMats() {
     ...W,
     floor: new THREE.MeshStandardMaterial({ map: concrete, color: 0x8b8a86, roughness: 0.86, metalness: 0.05 }),
     wall: new THREE.MeshStandardMaterial({ map: corr, color: 0x8a9096, roughness: 0.62, metalness: 0.55 }),
-    beam: new THREE.MeshStandardMaterial({ color: 0x34383c, roughness: 0.55, metalness: 0.6 }),
-    yellow: new THREE.MeshStandardMaterial({ color: 0xd49a12, roughness: 0.5, metalness: 0.3 }),
-    rust: new THREE.MeshStandardMaterial({ color: 0x5b3a26, roughness: 0.8, metalness: 0.4 }),
+    beam: Mat.make('metal_dark', { color: 0x40464a }),
+    yellow: Mat.make('metal_yellow', { color: 0xd49a12 }),
+    rust: Mat.make('rust'),
     wood: new THREE.MeshStandardMaterial({ map: wood, roughness: 0.82, metalness: 0 }),
     cash: new THREE.MeshStandardMaterial({ map: cash, roughness: 0.75 }),
     straw: new THREE.MeshStandardMaterial({ map: straw, roughness: 1 }),
     brass: new THREE.MeshStandardMaterial({ color: 0xb08a48, roughness: 0.32, metalness: 1 }),
-    gunmetal: new THREE.MeshStandardMaterial({ color: 0x24262a, roughness: 0.5, metalness: 0.8 }),
-    cabinet: new THREE.MeshStandardMaterial({ color: 0x556058, roughness: 0.6, metalness: 0.5 }),
+    gunmetal: Mat.make('metal_dark', { color: 0x2c2e32 }),
+    cabinet: Mat.make('metal_green', { color: 0x6a7a6e }),
     knob: new THREE.MeshStandardMaterial({ color: 0x18181a, roughness: 0.35, metalness: 0.2 }),
     redPaint: new THREE.MeshStandardMaterial({ color: 0xb01c14, roughness: 0.4, metalness: 0.1 }),
     oil: new THREE.MeshStandardMaterial({ color: 0x0b0806, roughness: 0.05, metalness: 0.3 }),
@@ -946,7 +945,8 @@ const SIGN_PAINTS = {
 };
 // a weathered enamel / steel sign face: faded paint, painted letters (one may have flaked off, leaving only
 // its cleaner ghost), chips down to rust, cracks, rust bleeding round the bolts and grime streaks below them
-export function rustySign(g, w, h, { title = '', sub = '', seed = 1, paint = 'green', ghost = -1, big = false, bolts = [], dim = false, spacing = 0.06 } = {}) {
+export function rustySign(g, w, h, { title = '', sub = '', seed = 1, paint = 'green', ghost = -1, big = false, bolts = [], dim = false, spacing = 0.06, slot = null, subSlot = 'sign' } = {}) {
+  const tSlot = slot || (big ? 'title' : 'sign');
   const R = srng(seed), [bgc, ink] = SIGN_PAINTS[paint] || SIGN_PAINTS.green, u = Math.min(w, h) / 200;
   g.save();
   g.fillStyle = bgc; g.fillRect(0, 0, w, h);
@@ -961,8 +961,8 @@ export function rustySign(g, w, h, { title = '', sub = '', seed = 1, paint = 'gr
   const ins = Math.round(Math.min(w, h) * 0.085);
   g.globalAlpha = dim ? 0.35 : 0.75; g.strokeStyle = ink; g.lineWidth = Math.max(2, h * 0.02); g.strokeRect(ins, ins, w - ins * 2, h - ins * 2); g.globalAlpha = 1;
   // lettering, one character at a time (slight misregistration, one ghost)
-  const line = (txt, cy, size, weight, sp, maxW, italic = false) => {
-    const font = (s) => `${italic ? 'italic ' : ''}${weight} ${Math.round(s)}px ${FONT.main}`;
+  const line = (txt, cy, size, sp, maxW, sl) => {
+    const font = (px) => fontOf(sl, px);
     g.font = font(size); g.textBaseline = 'middle'; g.textAlign = 'left';
     const chars = [...txt], gap = size * sp;
     let tw = chars.reduce((a, c) => a + g.measureText(c).width, 0) + gap * (chars.length - 1);
@@ -976,10 +976,10 @@ export function rustySign(g, w, h, { title = '', sub = '', seed = 1, paint = 'gr
     });
     return size;
   };
-  if (title) line(title, h * (sub ? 0.43 : 0.53), h * (big ? 0.5 : 0.44), 700, big ? 0.22 : spacing, w - ins * 2 - w * 0.06);
+  if (title) line(title, h * (sub ? 0.43 : 0.53), h * (big ? 0.5 : 0.44), big ? 0.22 : spacing, w - ins * 2 - w * 0.06, tSlot);
   if (sub) {
     g.fillStyle = ink; g.globalAlpha = dim ? 0.3 : 0.7; g.fillRect(w * 0.3, h * 0.665, w * 0.4, Math.max(1.5, h * 0.01)); g.globalAlpha = 1;
-    line(sub, h * 0.79, h * 0.15, 600, 0.04, w - ins * 2 - w * 0.12, true);
+    line(sub, h * 0.79, h * 0.15, 0.04, w - ins * 2 - w * 0.12, subSlot);
   }
   // paint wear on the letters: fine flecks of the base colour
   for (let i = 0; i < 900 * u; i++) { g.fillStyle = R() < 0.6 ? bgc : 'rgba(70,40,20,0.7)'; g.fillRect(R() * w, R() * h, (0.6 + R() * 2.2) * u, (0.6 + R() * 1.6) * u); }
@@ -1215,10 +1215,8 @@ export class Hatch {
     this.root = new THREE.Group();
     const B = new Batch();
     const fw = 0.12;
-    for (const s of [-1, 1]) {
-      B.box(w + fw * 2, 0.04, fw, F.hazard, 0, 0.02, s * (w / 2 + fw / 2));
-      B.box(fw, 0.04, w, F.hazard, s * (w / 2 + fw / 2), 0.02, 0);
-    }
+    this.root.add(hatchFrame(w).object); // modelled angle-iron frame with hazard paint + bolts
+    void fw;
     // shaft walls + ribs + lamps
     const sw = w + 0.04;
     const sd = depth - 3;   // the shaft opens into the cell's ceiling
@@ -1247,13 +1245,12 @@ export class Hatch {
     this.bulb.castShadow = false;
     // doors (hinged on the x edges, opening downward)
     this.doors = [];
-    const dg = new THREE.BoxGeometry(w / 2 - 0.01, 0.05, w - 0.01);
+    const leaf = hatchDoor(w).object;
     for (const s of [-1, 1]) {
       const piv = new THREE.Group(); piv.position.set(s * w / 2, 0.0, 0); this.root.add(piv);
-      const d = mesh(dg, F.yellow, piv, -s * (w / 4), 0.025, 0);
-      const st = mesh(new THREE.PlaneGeometry(w / 2 - 0.04, w - 0.06), F.hazard, piv, -s * (w / 4), 0.051, 0, -Math.PI / 2, 0, 0);
-      st.castShadow = false;
-      void d;
+      const d = s > 0 ? leaf : leaf.clone();
+      if (s < 0) d.scale.x = -1;
+      piv.add(d);
       this.doors.push({ piv, s, a: 0, v: 0 });
     }
     this.open = 0;

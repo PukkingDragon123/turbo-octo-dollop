@@ -22,6 +22,7 @@ import { HQElevator } from '../hq_elevator.js';
 import { ReceptionistBot } from '../../entities/receptionist.js';
 import { canvasTex } from '../../entities/wardrobe.js';
 import { FONT } from '../../ui/fonts.js';
+import { featurePanel, bankerLamp, pictureFrame, planter, hatchFlap } from '../env/lobbyprops.js';
 import { LobbyDirector } from '../lobby_director.js';
 import { CAR } from '../../entities/elevator.js';
 
@@ -218,17 +219,7 @@ export class LobbyLevel {
     // feature wall: walnut panel + brass frame + raised gilt letters (separate alpha layer with a drop shadow)
     const fw = new THREE.Group(); fw.position.set(0, 2.2, -2.6);
     const W = 2.7, Hh = 0.78;
-    const wood = canvasTex(1024, 384, (c, w, h) => {
-      const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#2a170c'); gr.addColorStop(0.5, '#3a2112'); gr.addColorStop(1, '#22120a');
-      c.fillStyle = gr; c.fillRect(0, 0, w, h);
-      for (let i = 0; i < 260; i++) { c.strokeStyle = `rgba(${20 + Math.random() * 40 | 0},${10 + Math.random() * 18 | 0},4,${0.15 + Math.random() * 0.25})`; c.lineWidth = 0.6 + Math.random() * 2; const y = Math.random() * h; c.beginPath(); c.moveTo(0, y); c.bezierCurveTo(w * 0.3, y + (Math.random() - 0.5) * 30, w * 0.7, y + (Math.random() - 0.5) * 30, w, y + (Math.random() - 0.5) * 16); c.stroke(); }
-      for (const x of [w / 3, (2 * w) / 3]) { c.fillStyle = 'rgba(0,0,0,0.45)'; c.fillRect(x - 1, 0, 2, h); }
-      const v = c.createRadialGradient(w / 2, h * 0.45, h * 0.2, w / 2, h / 2, w * 0.6); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.45)'); c.fillStyle = v; c.fillRect(0, 0, w, h);
-    });
-    const dk = std({ color: 0x24140a }), front = std({ map: wood, roughness: 0.45 });
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(W, Hh, 0.03), [dk, dk, dk, dk, front, dk]);
-    panel.position.z = 0.015; fw.add(panel);
-    for (const [w, h, x, y] of [[W + 0.06, 0.03, 0, Hh / 2 + 0.015], [W + 0.06, 0.03, 0, -Hh / 2 - 0.015], [0.03, Hh, -W / 2 - 0.015, 0], [0.03, Hh, W / 2 + 0.015, 0]]) B(w, h, 0.045, brass, x, y, 0.022, fw);
+    fw.add(featurePanel(W, Hh).object); // walnut board, raised moulding, stepped brass frame, picture-light arms
     const letters = (shadow) => canvasTex(2048, 640, (c, w, h) => {
       c.clearRect(0, 0, w, h); c.textAlign = 'center'; c.textBaseline = 'middle';
       const col = (y0, y1) => { if (shadow) return 'rgba(0,0,0,0.85)'; const gr = c.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, '#fff2c4'); gr.addColorStop(0.45, '#e2b35a'); gr.addColorStop(0.55, '#a8772c'); gr.addColorStop(1, '#f0cf7e'); return gr; };
@@ -250,9 +241,7 @@ export class LobbyLevel {
     // brass picture lights above the panel, washing it with warm light
     const glowM = new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 2.4, 1.4) });
     for (const x of [-0.7, 0.7]) {
-      B(0.04, 0.05, 0.12, brass, x, Hh / 2 + 0.08, 0.06, fw);
-      const hood = B(0.62, 0.05, 0.08, brass, x, Hh / 2 + 0.07, 0.15, fw); hood.rotation.x = 0.35;
-      const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.02), glowM); strip.position.set(x, Hh / 2 + 0.045, 0.16); strip.rotation.x = PI / 2 + 0.35; fw.add(strip);
+      const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.54, 0.022), glowM); strip.position.set(x, Hh / 2 + 0.092, 0.152); strip.rotation.x = PI / 2 + 0.35; fw.add(strip);
     }
     add(fw);
     const wash = new THREE.SpotLight(0xffc98a, 7, 4.2, 0.95, 0.85, 2);
@@ -261,8 +250,7 @@ export class LobbyLevel {
     this.wash = wash;
     // green banker's lamp on the counter ledge (left of Gloria): the warm pool of light at the desk
     const lamp = new THREE.Group(); lamp.position.set(-0.62, 1.075, -1.36); lamp.rotation.y = 0.35;
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.075, 0.025, 20), brass); base.position.y = 0.012; lamp.add(base);
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.3, 8), brass); stem.position.set(0, 0.16, -0.02); lamp.add(stem);
+    lamp.add(bankerLamp().object);
     const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.24, 20, 1, true, 0, PI), std({ color: 0x1d5a2c, roughness: 0.18, metalness: 0.1, side: THREE.DoubleSide, emissive: 0x0b2a12, emissiveIntensity: 1 }));
     shade.rotation.set(0, 0, PI / 2); shade.position.set(0, 0.31, 0.01); lamp.add(shade);
     const bulb = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.05), new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 3, 1.6) })); bulb.rotation.x = PI / 2; bulb.position.set(0, 0.3, 0.01); lamp.add(bulb);
@@ -290,8 +278,8 @@ export class LobbyLevel {
         c.font = `600 ${Math.round(cw * 0.032)}px ${FONT.main}`; c.fillStyle = 'rgba(240,225,190,0.6)'; c.fillText('R.O.O.M.  ·  INTERNAL USE ONLY', cw / 2, ch - 54);
       });
       const fr = new THREE.Group(); fr.position.set(x, y, z); fr.rotation.y = ry;
-      B(w + 0.05, h + 0.05, 0.03, std({ color: 0x1a120c, roughness: 0.5 }), 0, 0, 0.015, fr);
-      const pic = new THREE.Mesh(new THREE.PlaneGeometry(w, h), std({ map: tex, roughness: 0.35 })); pic.position.z = 0.032; fr.add(pic);
+      fr.add(pictureFrame(w, h).object);
+      const pic = new THREE.Mesh(new THREE.PlaneGeometry(w, h), std({ map: tex, roughness: 0.35 })); pic.position.z = 0.012; fr.add(pic);
       add(fr);
     };
     print(PRINTS[0], 0.46, 0.62, 2.9, 1.72, -1.0, -PI / 2);
@@ -301,11 +289,11 @@ export class LobbyLevel {
     // potted plants in two corners
     const leafG = (() => { const p = new THREE.PlaneGeometry(0.075, 0.55, 1, 6); const P = p.attributes.position; for (let i = 0; i < P.count; i++) { const y = P.getY(i) + 0.275, k = y / 0.55; P.setX(i, P.getX(i) * Math.sin(Math.min(1, k * 1.15) * PI) * 1.1); P.setY(i, y); P.setZ(i, k * k * 0.12); } p.computeVertexNormals(); return p; })();
     const leafM = std({ color: 0x3b6a2c, roughness: 0.55, side: THREE.DoubleSide }), potM = std({ color: 0x2a2624, roughness: 0.4, metalness: 0.1 }), soilM = std({ color: 0x1a120a, roughness: 1 });
+    const potObj = planter().object;
+    void potM; void soilM;
     for (const [x, z, s] of [[2.55, -2.25, 1.1], [-2.5, 2.25, 0.95]]) {
       const pl = new THREE.Group(); pl.position.set(x, 0, z); pl.scale.setScalar(s);
-      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.13, 0.38, 20), potM); pot.position.y = 0.19; pl.add(pot);
-      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.012, 6, 24), brass); rim.rotation.x = PI / 2; rim.position.y = 0.38; pl.add(rim);
-      const soil = new THREE.Mesh(new THREE.CircleGeometry(0.16, 20), soilM); soil.rotation.x = -PI / 2; soil.position.y = 0.36; pl.add(soil);
+      pl.add(potObj.clone());
       for (let i = 0; i < 13; i++) {
         const lf = new THREE.Mesh(leafG, leafM), a = i * 2.4 + x, r = 0.03 + (i % 3) * 0.03;
         lf.position.set(Math.cos(a) * r, 0.36, Math.sin(a) * r);
@@ -342,11 +330,12 @@ export class LobbyLevel {
     // ladder rungs (nobody climbs up)
     for (let k = 0; k < 9; k++) { const r = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.4, 6), steel); r.rotation.z = PI / 2; r.position.set(0, H + 0.4 + k * 0.32, HATCH.z1 - 0.05); g.add(r); }
     // hatch flaps (hinged on the hatch's x edges, fall open downwards)
+    const flapObj = hatchFlap(0.598, HATCH.z1 - HATCH.z0 - 0.01).object;
     this.flaps = [-1, 1].map((s) => {
       const piv = new THREE.Group();
       piv.position.set(s * (HATCH.x1 - HATCH.x0) / 2, H - 0.012, 0);
-      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.598, 0.02, HATCH.z1 - HATCH.z0 - 0.01), steel);
-      plate.position.x = -s * 0.3;
+      const plate = flapObj.clone();
+      if (s < 0) plate.scale.x = -1;
       piv.add(plate);
       g.add(piv);
       this.world.registerDynamic(piv);

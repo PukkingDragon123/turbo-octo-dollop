@@ -209,3 +209,34 @@ export function partsBoard() {
   }
   return k.done();
 }
+
+// floor hatch of the drop shaft: an angle-iron frame round the opening (w x w, top at y = 0.04) ...
+export function hatchFrame(w) {
+  const k = new DKit('hatch_frame', { wear: { chip: 0.5, rust: 0.6, grime: 0.8, dust: 0.5 }, ao: { res: 32 } });
+  k.atlas(512, 256);
+  const HZ = hazardReg(k), fw = 0.12;
+  for (const s of [-1, 1]) {
+    k.box('paint', w + fw * 2, 0.04, fw, 0, 0.02, s * (w / 2 + fw / 2), { ...YEL, r: 0.006 });
+    k.box('paint', fw, 0.04, w, s * (w / 2 + fw / 2), 0.02, 0, { ...YEL, r: 0.006 });
+    k.label(HZ, w + fw * 2 - 0.02, fw - 0.02, 0, 0.0405, s * (w / 2 + fw / 2), { rot: [-HP, 0, 0] });
+    k.label(HZ, w - 0.02, fw - 0.02, s * (w / 2 + fw / 2), 0.0405, 0, { rot: [-HP, 0, HP] });
+    for (let i = 0; i < 6; i++) {
+      const t = -w / 2 + (i + 0.5) * (w / 6);
+      P.hexBolt(k, t, 0.041, s * (w / 2 + fw / 2), { dir: 'y', r: 0.008, rust: 0.9 });
+      P.hexBolt(k, s * (w / 2 + fw / 2), 0.041, t, { dir: 'y', r: 0.008, rust: 0.9 });
+    }
+  }
+  return k.done();
+}
+// ... and one door leaf: hinge on local x = 0, the leaf lies toward -x (mirror it with scale.x = -1)
+export function hatchDoor(w) {
+  const k = new DKit('hatch_door', { wear: { chip: 0.55, rust: 0.55, grime: 0.7, dust: 0.5 }, ao: { res: 32 } });
+  k.atlas(512, 256);
+  const HZ = hazardReg(k), lw = w / 2 - 0.01, ld = w - 0.01;
+  k.box('paint', lw, 0.045, ld, -lw / 2 - 0.005, 0.0225, 0, { ...YEL, r: 0.008, dent: 0.004 });
+  k.label(HZ, lw - 0.08, ld - 0.08, -lw / 2 - 0.005, 0.0456, 0, { rot: [-HP, 0, 0] });
+  for (let i = 0; i < 8; i++) for (const s of [-1, 1]) P.rivet(k, -0.03 - i * ((lw - 0.06) / 7), 0.046, s * (ld / 2 - 0.025), { dir: 'y', r: 0.006, rust: 0.8 });
+  for (const z of [-ld / 2 + 0.12, 0, ld / 2 - 0.12]) k.cyl('metal', 0.018, 0.14, 0, 0.03, z, { ...RUSTY, axis: 'z', seg: 12, bev: 0.003, bevSeg: 1 });
+  k.tor('metal', 0.05, 0.008, -lw + 0.08, 0.05, 0, { ...STEEL, arc: PI, rot: [0, HP, 0], ts: 12, rs: 5 });
+  return k.done();
+}
