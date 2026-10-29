@@ -1168,14 +1168,13 @@ export class GearSign {
     });
     mesh(new THREE.CircleGeometry(0.062, 32), new THREE.MeshStandardMaterial({ map: ro.tex, transparent: true, roughness: 0.8, metalness: 0.2 }), this.body, 0, 0, 0.04).castShadow = false;
     // the tag, hanging crooked off a single screw
-    const pw = r * 2.0, ph = 0.13;
-    this.tag = new THREE.Group(); this.tag.position.set(-pw / 2 + 0.03, -r - 0.03, 0.01); this.tag.rotation.z = -0.1; this.body.add(this.tag);
+    const pw = r * 2.1, ph = 0.16;
+    this.tag = new THREE.Group(); this.tag.position.set(-pw / 2 + 0.03, -r * 0.55, 0.05); this.tag.rotation.z = -0.1; this.body.add(this.tag);
     this.plate = new LiveTex(512, Math.round((512 * ph) / pw));
     this.mat = new THREE.MeshStandardMaterial({ map: this.plate.tex, bumpMap: this.plate.tex, bumpScale: 1, roughness: 0.82, metalness: 0.25 });
     mesh(new THREE.PlaneGeometry(pw, ph), this.mat, this.tag, pw / 2 - 0.03, -ph / 2 - 0.005, 0.004).castShadow = false;
     mesh(new THREE.PlaneGeometry(pw, ph), new THREE.MeshStandardMaterial({ map: rustTex(), roughness: 0.9, side: THREE.BackSide }), this.tag, pw / 2 - 0.03, -ph / 2 - 0.005, 0.002);
     mesh(cyl(0.012, 0.012, 'z', 6), F.rust, this.tag, 0, -0.02, 0.01);
-    mesh(new THREE.BoxGeometry(0.03, 0.05, 0.01), iron, this.body, -pw / 2 + 0.03, -r - 0.005, -0.005);
     this.hit = mesh(new THREE.PlaneGeometry(r * 2.2, r * 2 + ph + 0.06), new THREE.MeshBasicMaterial({ visible: false }), this.body, 0, -ph / 2 - 0.02, 0.07);
     const cg = cyl(0.007, 1, 'y', 6).translate(0, 0.5, 0);
     this.chains = [-1, 1].map((s) => { const m = mesh(cg, F.steel, this.body, s * r * 0.55, r + 0.1, -0.07); m.castShadow = false; return m; });
@@ -1185,7 +1184,7 @@ export class GearSign {
     this.t = Math.random() * 10;
   }
   setText(title = 'SETTINGS') {
-    this.plate.draw((g, w, h) => rustySign(g, w, h, { title: title.toUpperCase(), seed: 23, paint: 'steel', spacing: 0.2, bolts: [[0.05, 0.3, false]] }));
+    this.plate.draw((g, w, h) => rustySign(g, w, h, { title: title.toUpperCase(), seed: 23, paint: 'yellow', spacing: 0.1, bolts: [[0.05, 0.3, false]] }));
   }
   place(x, y, z, ceilY, yaw = 0) { HangPanel.prototype.place.call(this, x, y, z, ceilY, yaw); }
   kick(a = 1) { this.sw.vx += (Math.random() - 0.5) * 0.3 * a; this.sw.vz += (Math.random() - 0.5) * 0.5 * a; this.spin += 1.6 * a; }

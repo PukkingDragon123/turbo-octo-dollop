@@ -35,6 +35,7 @@ import {
   Junk, Puffs, Motes, kitMesh as mesh, kitRbox as rbox, PHOS, brackets, scanlines, phosphorBg, rustySign, rustTex,
 } from '../entities/wardrobe.js';
 import { FONT } from '../ui/fonts.js';
+import { factorySet, signLampShade, machinePlate, plaqueBoard, partsBoard } from './menu_props.js';
 import { getPart } from '../entities/doll/doll_avatar.js';
 import { buildHatPart, buildVisorPart, buildAccPart, buildPackPart } from '../entities/doll/robotcos.js';
 import { buildRobotHead } from '../entities/doll/robotbody.js';
@@ -193,29 +194,12 @@ export class MenuScene {
     B.add(new THREE.PlaneGeometry(44, 10), F.wall, new THREE.Matrix4().makeTranslation(0, 5, -10));
     B.add(new THREE.PlaneGeometry(34, 10), F.wall, new THREE.Matrix4().makeRotationY(PI / 2).setPosition(-16, 5, -1));
     B.add(new THREE.PlaneGeometry(34, 10), F.wall, new THREE.Matrix4().makeRotationY(-PI / 2).setPosition(16, 5, -1));
-    // I-beam columns
-    for (let x = -12; x <= 12; x += 6) for (const z of [-3.4, 4.6]) {
-      if (Math.abs(x) < 1 && z > 0) continue;
-      B.box(0.32, 7.2, 0.04, F.beam, x, 3.6, z); B.box(0.04, 7.2, 0.3, F.beam, x, 3.6, z); B.box(0.32, 0.3, 0.32, F.yellow, x, 0.15, z);
-    }
-    // roof trusses + main rail (I-beam) + background rail
-    for (let x = -14; x <= 14; x += 3.5) B.box(0.18, 0.36, 22, F.beam, x, 7.2, -1);
-    B.box(30, 0.05, 0.22, F.beam, 0, RAIL_Y + 0.12, 0); B.box(30, 0.05, 0.22, F.beam, 0, RAIL_Y - 0.12, 0); B.box(30, 0.24, 0.035, F.beam, 0, RAIL_Y, 0);
-    for (let x = -12; x <= 12; x += 4) B.box(0.06, 7.2 - RAIL_Y, 0.06, F.beam, x, (7.2 + RAIL_Y) / 2, 0);
-    B.box(30, 0.2, 0.18, F.beam, 0, 4.5, -5.6);
-    for (let x = -12; x <= 12; x += 4) B.box(0.05, 2.7, 0.05, F.beam, x, 5.85, -5.6);
-    // pipes along the back wall
-    for (const [y, r] of [[5.6, 0.12], [5.25, 0.08], [6.1, 0.18]]) B.add(cyl(r, 32, 'x', 12), F.rust, new THREE.Matrix4().makeTranslation(0, y, -9.6));
     // floor markings: walkway lines + the hatch keep-out box
     for (const z of [2.9, -2.4]) B.box(26, 0.004, 0.08, F.yellow, 0, 0.002, z);
     for (const s of [-1, 1]) { B.box(2.6, 0.004, 0.07, F.yellow, 0, 0.003, s * 1.3); B.box(0.07, 0.004, 2.6, F.yellow, s * 1.3, 0.003, 0); }
-    // drums, scrap bin, spare-part shelves in the gloom
-    for (const [x, z] of [[-7.5, -3], [-7.0, -2.6], [8.2, 4.1], [6.6, -7.8], [-9.6, 3.8]]) { B.add(cyl(0.29, 0.88, 'y', 16), F.rust, new THREE.Matrix4().makeTranslation(x, 0.44, z)); }
-    B.box(0.9, 0.05, 0.7, F.rust, 2.2, 0.025, 1.2);
-    for (const s of [-1, 1]) { B.box(0.9, 0.5, 0.04, F.rust, 2.2, 0.25, 1.2 + s * 0.33); B.box(0.04, 0.5, 0.7, F.rust, 2.2 + s * 0.43, 0.25, 1.2); }
-    for (const x of [-11, -8.5, 9.5, 12]) { for (let y = 0.5; y < 3; y += 0.9) B.box(2.2, 0.05, 0.7, F.beam, x, y, -9.3); for (const s of [-1, 1]) B.box(0.05, 3, 0.05, F.beam, x + s * 1.1, 1.5, -9.0); }
-    // pedestals of the outfitting arms
-    for (const b of ARM_BASE) { B.add(cyl(0.2, b.y, 'y', 18, 0.26), F.beam, new THREE.Matrix4().makeTranslation(b.x, b.y / 2, b.z)); B.add(cyl(0.3, 0.05, 'y', 18), F.hazard, new THREE.Matrix4().makeTranslation(b.x, 0.025, b.z)); }
+    // columns, trusses, crane rail, pipes, drums, bin, shelving, pedestals, lamp housings: modelled props
+    this.props = factorySet({ railY: RAIL_Y, armBase: ARM_BASE }).object;
+    S.add(this.props);
     B.build(S);
     // high windows (faint night light) + the line sign
     const win = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.05, 0.08, 0.12) });
@@ -224,12 +208,11 @@ export class MenuScene {
     this.lineSign = this._plane(7, 1.3, new THREE.MeshStandardMaterial({ map: sign.tex, roughness: 0.85, metalness: 0.2 }), S, 0, 5.3, -9.9);
     // ceiling floodlight fixtures in 4 banks (lenses glow when the bank is on)
     this.bankFix = [];
-    const fixG = new THREE.BoxGeometry(1.6, 0.14, 0.5), lensG = new THREE.PlaneGeometry(1.5, 0.4);
+    const lensG = new THREE.PlaneGeometry(1.5, 0.4);
     for (let b = 0; b < 4; b++) {
       const lens = new THREE.MeshBasicMaterial({ color: 0x060504 });
       for (const [x, z] of [[-4.5 + b * 3, 2.2], [-4.5 + b * 3, -2.2]]) {
-        mesh(fixG, F.dark, S, x, 6.6, z);
-        this._plane(1.5, 0.4, lens, S, x, 6.52, z, PI / 2);
+        this._plane(1.5, 0.4, lens, S, x, 6.598, z, PI / 2);
       }
       this.bankFix.push(lens);
     }
@@ -237,9 +220,7 @@ export class MenuScene {
     // work lamp cage over the hook
     this.lampLens = new THREE.MeshBasicMaterial({ color: 0x050403 });
     const lamp = new THREE.Group(); lamp.position.set(0.6, 6.55, 1.4); S.add(lamp);
-    mesh(new THREE.ConeGeometry(0.32, 0.32, 18, 1, true), F.dark, lamp, 0, 0, 0);
     this._plane(0.4, 0.4, this.lampLens, lamp, 0, -0.12, 0, PI / 2).geometry = new THREE.CircleGeometry(0.26, 18);
-    mesh(cyl(0.01, 0.65, 'y', 6), F.steel, lamp, 0, 0.48, 0);
   }
 
   _buildLights() {
@@ -258,14 +239,13 @@ export class MenuScene {
     this.stLight = new THREE.SpotLight(0xffe6c4, 0, 7, 0.8, 0.6, 2); S.add(this.stLight, this.stLight.target);
     this.shaftLight = new THREE.PointLight(0xff4a2a, 0, 7, 2); this.shaftLight.position.set(0, -3, 0); S.add(this.shaftLight);
     // the only light on the hub signs: a caged work lamp on a bracket above and in front of them
-    const sl = (this.signLamp = new THREE.SpotLight(0xffd8a8, 0, 9, 0.66, 0.5, 2));
-    sl.position.set(1.7, 4.75, 2.5); sl.target.position.set(1.45, 2.3, 0.38);
+    const sl = (this.signLamp = new THREE.SpotLight(0xffd8a8, 0, 9.5, 0.74, 0.45, 2));
+    sl.position.set(1.7, 4.75, 2.5); sl.target.position.set(1.5, 2.1, 0.38);
     S.add(sl, sl.target);
     const cage = new THREE.Group(); cage.position.copy(sl.position); cage.lookAt(sl.target.position); S.add(cage);
-    mesh(new THREE.ConeGeometry(0.16, 0.2, 14, 1, true).rotateX(-PI / 2), this.F.dark, cage, 0, 0, -0.02).material.side = THREE.DoubleSide;
+    cage.add(signLampShade().object);
     this.signBulb = new THREE.MeshBasicMaterial({ color: 0x000000 });
     mesh(new THREE.SphereGeometry(0.045, 10, 8), this.signBulb, cage, 0, 0, 0.04).castShadow = false;
-    for (let i = 0; i < 4; i++) mesh(new THREE.TorusGeometry(0.11, 0.004, 4, 16, PI), this.F.steel, cage, 0, 0, 0.06, 0, 0, (i / 4) * PI).castShadow = false;
     mesh(cyl(0.012, 2.4, 'y', 6), this.F.steel, S, 1.7, 4.75 + 1.2, 2.5).castShadow = false;
   }
 
@@ -456,12 +436,8 @@ export class MenuScene {
     const C = (this.gearC = V(0, 1.55, 0)), R = 0.8;
     const iron = new THREE.MeshStandardMaterial({ color: 0x5a5048, roughness: 0.42, metalness: 0.55 });
     this.setFill = new THREE.PointLight(0xffd6a0, 0, 4.5, 2); this.setFill.position.set(0.3, 2.0, 1.1); g.add(this.setFill);
-    const B = new Batch();
-    B.box(2.5, 2.2, 0.06, F.cabinet, 0, 1.62, -0.2, 0, 0, 0, 0.02);
-    for (const s of [-1, 1]) { B.box(0.14, 0.56, 0.14, F.beam, s * 0.95, 0.28, -0.2); B.box(0.08, 2.2, 0.02, F.beam, s * 1.21, 1.62, -0.16); }
-    for (let i = 0; i < 9; i++) for (const y of [0.58, 2.66]) B.add(new THREE.SphereGeometry(0.013, 8, 6), F.steel, new THREE.Matrix4().makeTranslation(-1.1 + i * 0.275, y, -0.165));
-    B.add(cyl(0.05, 0.22, 'z', 20), F.dark, new THREE.Matrix4().makeTranslation(C.x, C.y, -0.08));
-    B.build(g);
+    const mp = machinePlate(2.5, 2.2, 1.62).object; mp.position.z = -0.17; g.add(mp);
+    mesh(cyl(0.05, 0.22, 'z', 20), F.dark, g, C.x, C.y, -0.08);
     // the ring gear (turns)
     this.gear = new THREE.Group(); this.gear.position.copy(C); g.add(this.gear);
     mesh(gearGeo(R, R - 0.055, 40, 0.07, { hole: 0.275 }), iron, this.gear);
@@ -661,7 +637,7 @@ export class MenuScene {
     const g = (this.troG = new THREE.Group());
     g.position.set(5.2, 0, -6.6); g.rotation.y = -0.3;
     this.scene.add(g);
-    this.troBoard = mesh(rbox(4.4, 3.2, 0.08, 0.02), this.F.gunmetal, g, 0, 2.3, -0.05);
+    this.troBoard = plaqueBoard(4.4, 3.2).object; this.troBoard.position.set(0, 2.3, -0.012); g.add(this.troBoard);
     mesh(new THREE.BoxGeometry(6, 5, 0.2), this.F.wall, g, 0, 2.5, -0.2);
     this.troHead = this._tex(1024, 128);
     this.troHeadM = this._plane(2.6, 0.32, this._emTexMat(this.troHead.tex, 0.8), g, 0, 3.98, 0.0);
@@ -717,7 +693,7 @@ export class MenuScene {
     const g = (this.rack = new THREE.Group());
     this.scene.add(g);
     this.rackInner = new THREE.Group(); g.add(this.rackInner);
-    this.rackBoard = mesh(rbox(1, 1, 0.05, 0.015), this.F.gunmetal, this.rackInner, 0, 0, -0.03);
+    this.rackBoard = partsBoard().object; this.rackInner.add(this.rackBoard);
     this.rackHead = this._tex(1024, 160);
     this.rackHeadM = this._plane(1, 0.16, new THREE.MeshStandardMaterial({ map: this.rackHead.tex, bumpMap: this.rackHead.tex, bumpScale: 1, roughness: 0.82, metalness: 0.2 }), this.rackInner, 0, 0, 0.005);
     const arrowG = new THREE.ConeGeometry(0.06, 0.11, 3); arrowG.rotateZ(-PI / 2);
@@ -740,7 +716,7 @@ export class MenuScene {
     this.cells = [];
     const L = this._rackLayout(list.length);
     this.rackBoard.scale.set(L.w, L.h, 1);
-    this.rackBoard.position.set(0, -0.06, -0.03);
+    this.rackBoard.position.set(0, -0.06, -0.012);
     this.rackHeadM.position.set(0, L.h / 2 + 0.06, 0.006); this.rackHeadM.scale.set(L.w, 1, 1);
     this.arrows[0].position.set(-L.w / 2 + 0.07, L.h / 2 + 0.06, 0.04); this.arrows[1].position.set(L.w / 2 - 0.07, L.h / 2 + 0.06, 0.04);
     this.rackHead.draw((x, w, h) => rustySign(x, w, h, { title: sec.title, sub: `${String(this.secIdx + 1).padStart(2, '0')} of ${SECTIONS.length} \u00b7 ${sec.sub.toLowerCase()} \u00b7 swipe \u25c4 \u25ba`, seed: 40 + this.secIdx, paint: 'blue', spacing: 0.12 }));
