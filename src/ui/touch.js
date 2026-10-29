@@ -1,5 +1,5 @@
 // On-screen controls for phones and tablets: soft smoked-glass discs with thin ivory / gold rings, simple
-// line icons and small Cormorant Garamond labels (FONT.main); a gentle press dip, gold rims for toggles.
+// line icons and small labels in the 'hint' font slot; a gentle press dip, gold rims for toggles.
 // Left thumb: a floating analog stick (push it all the way to sprint). Right thumb: drag anywhere to look,
 // tap to interact, and a cluster of buttons: JUMP, USE (E), GRAB (RMB: tap = use, hold = grab and pull),
 // PUNCH (LMB: punch / use the right-hand item / the drawn multitool; THROW while carrying), TOOL ([Q]),
@@ -8,7 +8,7 @@
 // Shift far-throw). The layout is computed in pixels for the current viewport + safe area so nothing
 // overlaps, from 360 px portrait phones to landscape tablets.
 import { input } from '../core/input.js';
-import { FONT } from './fonts.js';
+import { FONT, weightOf } from './fonts.js';
 
 // line icons (24 x 24, stroked in currentColor)
 const ICON = {
@@ -38,7 +38,7 @@ const ICON = {
 const svg = (name) => `<svg class="t-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[name] || ICON.item}"/></svg>`;
 
 const CSS = `
-#touch.glass { --ink: #f3e7c8; --gold: 236,206,140; font-family: ${FONT.main}; }
+#touch.glass { --ink: #f3e7c8; --gold: 236,206,140; font-family: ${FONT.hint}; }
 #touch.glass .t-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
   width: var(--w); height: var(--h); border-radius: 50%; color: var(--ink); filter: none;
   background: radial-gradient(120% 100% at 50% 22%, rgba(255,247,226,0.17), rgba(255,247,226,0.04) 45%, rgba(14,11,8,0.34) 100%);
@@ -48,7 +48,7 @@ const CSS = `
 #touch.glass .t-btn > * { pointer-events: none; }
 #touch.glass .t-btn .t-ico { width: 44%; height: 44%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
   filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.55)); }
-#touch.glass .t-btn .t-lbl { font: italic 600 var(--fs) ${FONT.main}; letter-spacing: 0.06em; line-height: 1; opacity: 0.9;
+#touch.glass .t-btn .t-lbl { font: ${weightOf('hint')} var(--fs) ${FONT.hint}; letter-spacing: 0.06em; line-height: 1; opacity: 0.9;
   text-shadow: 0 1px 3px rgba(0,0,0,0.7); white-space: nowrap; }
 #touch.glass .t-btn.on { transform: translate(-50%, -50%) scale(0.9); transition-duration: 0.06s;
   background: radial-gradient(120% 100% at 50% 30%, rgba(var(--gold),0.38), rgba(var(--gold),0.1) 55%, rgba(14,11,8,0.4));
@@ -71,14 +71,14 @@ const CSS = `
 #touch.glass .t-stick.sprint .t-knob { background: radial-gradient(110% 100% at 50% 25%, rgba(255,228,160,0.7), rgba(var(--gold),0.3) 55%, rgba(14,11,8,0.3));
   box-shadow: inset 0 0 0 1.5px rgba(var(--gold),1), 0 0 18px rgba(var(--gold),0.55); }
 #touch.glass .t-ctx { padding: 0.32em 0.85em 0.38em; border-radius: 0.8em; color: var(--ink); white-space: nowrap;
-  font: italic 600 var(--cfs, 15px) ${FONT.main}; letter-spacing: 0.03em; text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+  font: ${weightOf('hint')} var(--cfs, 15px) ${FONT.hint}; letter-spacing: 0.03em; text-shadow: 0 1px 3px rgba(0,0,0,0.7);
   background: rgba(14,11,8,0.5); box-shadow: inset 0 0 0 1px rgba(var(--gold),0.5); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
 #touch.glass .t-ctx::after { content: ''; position: absolute; right: 1.1em; bottom: -5px; width: 9px; height: 9px; transform: rotate(45deg);
   background: rgba(14,11,8,0.5); box-shadow: inset -1px -1px 0 rgba(var(--gold),0.5); }
 #touch.glass .t-ctx.show { animation: tg-ctx 0.22s cubic-bezier(0.3, 1.4, 0.5, 1); }
 @keyframes tg-ctx { from { transform: translateY(6px); opacity: 0; } }
 #touch.glass .t-tab { display: flex; align-items: center; gap: 0.35em; padding: 0.3em 0.85em; border-radius: 1em; color: var(--ink);
-  font: italic 600 var(--cfs, 15px) ${FONT.main}; letter-spacing: 0.05em; background: rgba(14,11,8,0.42); box-shadow: inset 0 0 0 1px rgba(var(--gold),0.4);
+  font: ${weightOf('hint')} var(--cfs, 15px) ${FONT.hint}; letter-spacing: 0.05em; background: rgba(14,11,8,0.42); box-shadow: inset 0 0 0 1px rgba(var(--gold),0.4);
   -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); transition: background 0.18s, box-shadow 0.18s; }
 #touch.glass .t-tab > * { pointer-events: none; }
 #touch.glass .t-tab .t-ico { width: 1.15em; height: 1.15em; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }

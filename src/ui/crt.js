@@ -1,6 +1,7 @@
 // Retro phosphor CRT screens drawn on canvases (used in-world on devices, the wristwatch,
 // the radio...). Fallout-style amber/green terminal look with scanlines and glow.
 import * as THREE from 'three';
+import { FONT as SLOTS } from './fonts.js';
 
 export const PALETTES = {
   amber: { fg: '#ffb43a', dim: '#a8701c', bg: '#140b02', hi: '#fff0c0', bad: '#ff5a3a', good: '#ffd060' },
@@ -9,7 +10,7 @@ export const PALETTES = {
   red: { fg: '#ff4a3a', dim: '#8a1f18', bg: '#120202', hi: '#ffd0c8', bad: '#ffffff', good: '#ffb040' },
 };
 
-export const FONT = '"VT323", "IBM Plex Mono", monospace';
+export const FONT = SLOTS.terminal; // the 'terminal' font slot (fonts.js)
 
 export class CrtScreen {
   constructor(w = 512, h = 384, palette = 'amber') {
@@ -54,7 +55,7 @@ export class CrtScreen {
     ctx.fillRect(0, 0, w, h);
     if (this.on) {
       ctx.shadowColor = pal.fg;
-      ctx.shadowBlur = 6;
+      ctx.shadowBlur = 3;
       fn(ctx, w, h, pal, this.time);
     }
     ctx.restore();
@@ -93,7 +94,7 @@ export function text(ctx, str, x, y, size, color, align = 'left', glow = true) {
   ctx.fillStyle = color;
   if (!glow) ctx.shadowBlur = 0;
   ctx.fillText(str, x, y);
-  if (!glow) ctx.shadowBlur = 6;
+  if (!glow) ctx.shadowBlur = 3;
 }
 
 export function bar(ctx, x, y, w, h, frac, color, dim) {

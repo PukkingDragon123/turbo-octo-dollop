@@ -5,14 +5,14 @@
 //   or call tagInspect(obj, name, desc). Physics userData may carry `inspect` too.
 // Defaults: INSPECT_DEFAULTS by prop type / device kind / device id, then the item's name (+ a line by its
 // category). Lobby objects (fish tank, reception desk, chairs, elevator) are tagged at runtime by kind, type
-// and object name, so level files stay untouched. Labels are floatText.say bubbles (FONT.main, small).
+// and object name, so level files stay untouched. Labels are floatText.say bubbles in the 'label' font slot, small.
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
 import { input } from '../core/input.js';
 import { floatText } from '../ui/floattext.js';
 import { itemDef, itemName } from './itemdefs.js';
 
-export const INSPECT = { range: 3.4, hoverDelay: 0.2, linger: 0.3, descTime: 5, nameSize: 0.5, descSize: 0.55, color: '#efe2c0', rescan: 6 };
+export const INSPECT = { range: 3.4, hoverDelay: 0.2, linger: 0.3, descTime: 5, nameSize: 0.5, descSize: 0.55, rescan: 6 };
 
 export const INSPECT_DEFAULTS = {
   // HQ lobby
@@ -177,7 +177,7 @@ export class Inspector {
   _showName() {
     const t = this.target;
     this.label?.close();
-    this.label = floatText.say(t.info.name, { at: this.anchor, offset: ZERO, size: this._size(INSPECT.nameSize), color: INSPECT.color, duration: 600 });
+    this.label = floatText.say(t.info.name, { at: this.anchor, offset: ZERO, size: this._size(INSPECT.nameSize), slot: 'label', duration: 600 });
     this.labelKind = 'name';
   }
 
@@ -185,7 +185,7 @@ export class Inspector {
     const t = this.target;
     if (!t.info.desc) { if (this.labelKind !== 'name') this._showName(); return; }
     // replaces the name bubble (same anchor): the name rides above the line, small caps between hairlines
-    this.label = floatText.say(t.info.desc, { at: this.anchor, offset: ZERO, speaker: t.info.name, size: this._size(INSPECT.descSize), color: INSPECT.color, duration: INSPECT.descTime });
+    this.label = floatText.say(t.info.desc, { at: this.anchor, offset: ZERO, speaker: t.info.name, size: this._size(INSPECT.descSize), slot: 'label', duration: INSPECT.descTime });
     this.labelKind = 'desc';
   }
 

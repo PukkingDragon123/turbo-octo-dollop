@@ -2,7 +2,7 @@
 // glowing type in the CRT / mono font roles, and no boxes: underline rules, bracket corners, segmented tick
 // bars and small procedural line pictograms.
 //   PH                         palette (intensity levels of one phosphor)
-//   ptext(ctx, s, x, y, size, o)   glowing text  o: { c, align, role: 'crt'|'mono', blur, base, weight }
+//   ptext(ctx, s, x, y, size, o)   glowing text  o: { c, align, role: font slot (default 'terminal'), blur, base, weight }
 //   rule(ctx, x0, x1, y, c)    underline rule with end ticks      brackets(ctx, x, y, w, h, len, c)
 //   ticks(ctx, x, y, w, h, f, c, n)  segmented tick bar           icon(ctx, name, cx, cy, s, c)  pictogram
 //   phosphorFx(ctx, w, h, t)   extra CRT life on top of CrtScreen's scanlines: phosphor noise, flicker, edge burn
@@ -11,7 +11,7 @@ import { FONT } from './fonts.js';
 export const PH = { bg: '#010a04', fg: '#4dff7a', hi: '#c8ffd4', mid: '#33d460', dim: '#1d8a3c', faint: '#0e4220', ghost: '#072812' };
 export const PH_PAL = { fg: PH.fg, dim: PH.dim, bg: PH.bg, hi: PH.hi, bad: PH.hi, good: PH.fg };
 
-export function pfont(size, role = 'crt', weight = '') { return `${weight ? weight + ' ' : ''}${size}px ${FONT[role] || FONT.crt}`; }
+export function pfont(size, role = 'terminal', weight = '') { return `${weight ? weight + ' ' : ''}${size}px ${FONT[role] || FONT.terminal}`; }
 
 export function ptext(ctx, s, x, y, size, o = {}) {
   ctx.font = pfont(size, o.role, o.weight);
@@ -19,7 +19,7 @@ export function ptext(ctx, s, x, y, size, o = {}) {
   ctx.textBaseline = o.base || 'top';
   const c = o.c || PH.fg;
   ctx.fillStyle = c;
-  const blur = o.blur ?? Math.round(size * 0.3);
+  const blur = o.blur ?? Math.round(size * 0.12); // a faint phosphor bloom, not a glow
   if (blur) { ctx.shadowColor = c; ctx.shadowBlur = blur; }
   ctx.fillText(String(s), x, y);
   ctx.shadowBlur = 0;

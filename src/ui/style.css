@@ -426,3 +426,18 @@ canvas.px, #ui canvas { image-rendering: pixelated; image-rendering: crisp-edges
 #death .c, #death .s { font-style: italic; color: var(--lux-ink) !important; text-shadow: 0 1px 6px #000 !important; background: none !important; border: none !important; border-image: none !important; }
 #clickstart { font-style: italic; color: var(--lux-ink) !important; letter-spacing: 0.12em; text-shadow: 0 1px 6px #000 !important; }
 #voiceind { font-style: italic; }
+
+/* ===== Plain text pass: the 'hint' font slot (set into --lux-font by fonts.js), one ink, no glow, no colour
+   shifts on hover, no blur-in. Italics off because a picked font may not have them. */
+#ui .crt .sub, #ui .crt .hint, #ui .crt label, #prompt, #progress .label, #timing .lbl, #loading .l,
+#death .c, #death .s, #clickstart, #voiceind { font-style: normal !important; }
+#ui .crt .btn, #pxlobby .lp-start { transition: opacity 0.2s !important; }
+#ui .crt .btn:hover, #ui .crt .btn:focus-visible, #ui .crt .btn.sel { color: var(--lux-ink) !important; letter-spacing: 0.08em !important; }
+#ui .crt .btn::before { background: var(--lux-ink) !important; }
+#ui .kbd { color: var(--lux-ink) !important; border-color: rgba(239, 230, 210, 0.4) !important; }
+#progress .fill { background: var(--lux-ink) !important; box-shadow: none !important; }
+#loading .bar div { background: var(--lux-ink) !important; }
+#death .t { text-shadow: none !important; animation: plainin 1.2s ease-out !important; }
+#prompt:not(:empty) { animation: plainprompt 0.3s ease-out !important; }
+@keyframes plainprompt { from { opacity: 0; transform: translate(-50%, 4px); } }
+@keyframes plainin { from { opacity: 0; } }
