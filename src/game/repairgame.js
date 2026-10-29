@@ -216,8 +216,7 @@ export class RepairGame {
     for (const [x, y, w] of [[-0.115, 0.095, 0.06], [-0.04, 0.095, 0.045], [0.12, 0.0, 0.04]]) {
       const vert = x > 0.1;
       add(new RoundedBoxGeometry(vert ? 0.014 : w, vert ? w : 0.014, 0.006, 2, 0.0012), chip, x, y, 0.004);
-      const n = add(new THREE.CylinderGeometry(0.0022, 0.0022, 0.0012, 12), notchMat, vert ? x : x - w / 2 + 0.004, vert ? y + w / 2 - 0.004 : y, 0.0071, Math.PI / 2);
-      void n;
+      add(new THREE.CylinderGeometry(0.0022, 0.0022, 0.0012, 12), notchMat, vert ? x : x - w / 2 + 0.004, vert ? y + w / 2 - 0.004 : y, 0.0071, Math.PI / 2);
       for (let k = 0; k < 6; k++) {
         const o = (k / 5 - 0.5) * (w - 0.008);
         for (const sd of [-1, 1]) {
