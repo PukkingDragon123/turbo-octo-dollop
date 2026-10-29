@@ -616,7 +616,8 @@ function applyPlanEdges(layout) {
 function canPlace(layout, rx, rz, w, h) {
   for (let j = rz; j < rz + h; j++) for (let i = rx; i < rx + w; i++) {
     const c = layout.cells[j * CHUNK + i];
-    if (c.reserved || c.landmark || c.spine || nearPlan(c.i, c.j)) return false;
+    // corridors stay unbroken, great halls stay empty (only the tall ones get a room standing inside)
+    if (c.reserved || c.landmark || c.spine || (c.hall && c.hall.style !== 'tall') || nearPlan(c.i, c.j)) return false;
   }
   return true;
 }
