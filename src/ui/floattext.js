@@ -12,7 +12,7 @@ import { font } from './fonts.js';
 const W = 1024, H = 352; // tall enough for a speaker name over four lines
 // bottom of the notice stack, in screen half-heights above centre: just over the crosshair and under the
 // heart/brain gauges, clear of the arm that comes up whenever a notice makes the clone glance at its watch
-const NOTICE_BASE = 0.2;
+const NOTICE_BASE = 0.08;
 export const FLOAT = { typeRate: 40, popTime: 0.5, fade: 0.45, bobAmp: 0.012, worldScale: 0.0013, noticeScale: 0.0008 };
 const INK = '#eee5d1';        // every line of floating text is this one colour
 const PAPER_INK = '#2a2118';  // except on a paper scrap
