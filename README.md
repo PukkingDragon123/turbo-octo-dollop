@@ -2,9 +2,9 @@
 
 **Research Office for Otherworldly Matters** is a 1–4 player co-op survival-horror game set in the Backrooms. It runs in the browser and is inspired by R.E.P.O., Lethal Company and PEAK.
 
-R.O.O.M. is a shady 1990s corporation. It sends disposable clones into strange dimensions to study anomalies, collect samples, take photos and restart generators, all on a 7-day clock before reality collapses. Your clones are chubby sack-doll employees in yellow hazmat gear.
+R.O.O.M. is a shady 1990s corporation. It prints cheap, uncanny robot clones and sends them into strange dimensions to scavenge, feed the crusher and pay off their own escape, on a 7-day clock before reality collapses.
 
-Everything is procedural: geometry, textures, animation, sound and music are all generated at runtime. The game ships with zero image or audio files.
+Almost everything is procedural: geometry, textures, animation, sound and music are generated at runtime. The only bundled assets are open-licensed fonts.
 
 ## Play
 
@@ -14,11 +14,9 @@ npm run dev        # http://localhost:5173
 npm run build      # static build in dist/ (deployable to any static host)
 ```
 
-* **First dimension**: pick Level 0, the Poolrooms or the Grasslands on the main menu; the dispatch lever sends you there.
-* **Solo shift**: play offline.
-* **Host shift**: creates a 5-character shift code. Up to three friends enter it under **Join shift**.
-  * Multiplayer is peer-to-peer WebRTC (PeerJS).
-  * Joining needs internet access to the public PeerJS signalling server.
+* **Main menu**: a dark clone factory. Your robot clone hangs on the assembly line under a caged work lamp, and the menu is a set of old rusted signs: **NEW MISSION**, **CONTINUE** (when a run is saved), **COMMENDATIONS** (achievements and the cosmetics they unlock) and a seized cog for **SETTINGS**. Click the robot to strip it down and swap parts in the workshop. New Mission drops you through a floor hatch into the HQ lobby.
+* **Host / join**: in the lobby, the elevator's call panel hosts a shift (its code shows on the floor display) or joins one with a friend's code; friends drop in from the ceiling. Up to 4 clones.
+  * Multiplayer is peer-to-peer WebRTC (PeerJS) and needs internet access to the public PeerJS signalling server. The published artifact build is solo only.
 * **Proximity voice chat**: positional 3D audio, muffled through walls. Monsters can hear you talk.
   * Choose open mic, push-to-talk (**V**) or off in Settings.
   * The living can't hear the dead, but the dead hear everyone.
@@ -30,18 +28,21 @@ A GitHub Pages workflow (`.github/workflows/deploy.yml`) builds and deploys on e
 | Action | Keys |
 |---|---|
 | Move / sprint / crouch / jump | WASD / Shift / Ctrl or C / Space |
-| Interact / pick up | tap **RMB** (or **E**) |
-| Grab and pull physics objects (and teammates) | hold **RMB**: the longer you hold, the harder you pull. While holding: **Shift** = throw far, **LMB** = throw, **wheel** = distance, **R + mouse** = rotate |
-| Punch | **LMB** (hold to wind up a haymaker). Hard hits knock teammates out into a ragdoll for ~2 s |
-| Use the item in your right hand (eat, drink, heal, swing a crowbar, light, throw) | **LMB** |
-| Built-in multitool: attach / detach / dismantle what you aim at, or the camp part you carry | **Q** draws it, hold **LMB** to charge power (a full charge zaps), **R** switches ATTACH / DISMANTLE |
+| Interact, talk, pick up | tap **RMB** (or **E**) |
+| Grab and drag with your arms (props, furniture, teammates) | hold **RMB**: the longer you hold, the harder you pull. While holding: **Shift** = throw, **wheel** = distance, **R + mouse** = rotate |
+| Punch | **LMB** (hold to wind up). Hard hits knock teammates into a ragdoll for a moment |
+| Use the item in your hand (eat, drink, heal, swing, light) | **LMB** |
+| Built-in multitool (attach, detach, dismantle) | **Q** draws it, hold **LMB** to charge, **R** switches mode |
 | Swap hands / pick the right-hand item | **1–5** / wheel |
 | Drop an item (hold: drop everything) | **G** |
 | Flashlight | **F** |
-| Wristwatch | **Tab**. Switch tabs with **Q/E**. **LMB** takes a photo in the CAMERA tab |
+| Wristwatch (apps, tasks, money, map) | **Tab**. Switch apps with **Q/E** |
+| Read your latest mission receipt | **X** |
 | Emotes | **H** wave, **J** dance, **B** point |
 | Third-person view | **T** |
 | Pause | **Esc** |
+
+Pointing at most things shows a small floating label with their name; click for a line about them (try the fish tank).
 
 #### Phones and tablets
 
@@ -52,11 +53,13 @@ Touch devices get on-screen controls styled like the knobs of a 1990s field term
 * **Buttons**: JUMP, USE (shows what it will do), GRAB (tap = use, hold = grab and pull; ROT appears while carrying), PUNCH (punch / use the right-hand item / the multitool; THROW while carrying), TOOL (multitool), DUCK, plus WATCH, LIGHT, NEXT (swap hands), DROP, VIEW and MENU along the top. ◀ ▶ switch watch tabs. Quick-time events turn the whole screen into a tap / hold area.
 * Phones start on the LOW graphics preset unless you pick one in Settings.
 
+#### Text and fonts
+
+There are no text boxes. Speech, hints and labels float in the 3D world as plain lettering in one ink colour with a soft shadow, and they type themselves out. Every kind of text has its own font slot in `src/ui/fonts.js` (speech, speaker names, hints, hover labels, menu signs, title, handwritten notes, receipts, terminals, watch, wall writing, posters). Change a slot's family there, add its `@fontsource` import, and every caller follows.
+
 #### Healthity
 
-You start without one. On Level 0 two crates wait between the lift and the camp: one holds basic supplies, the other knocks from the inside. Open it and a broken **Healthity MK-VII** (a yellowed, cracked 1979 medical unit with doll eyes on a little CRT and a receipt printer for a mouth) slumps out, sparking. Press **E** on it to repair it: the view zooms into its opened chassis, where you drag each loose wire onto the post of its colour (a wrong post shorts out) and hold on every joint to zap it with your multitool. Then it reboots, floats up and prints your orders as a **receipt** out of its mouth: take it (**E** on Healthity, or pick it up off the floor) to read it up close, and press **X** to read it again. The boxes tick as you finish tasks, and a new receipt prints when the orders change. Healthity talks in floating text next to itself with a synthesized voice (toggle in Settings), gives tips for the current task, warns about low health, sanity and battery, and charges your multitool (**E** when the battery is not full).
-
-All messages in the game (HQ radio, pickups, warnings, achievements) are floating 3D text instead of screen boxes.
+You don't have one at first. After the elevator throws you out on Level 0, a broken **Healthity** medical unit is spat out of a wall with a REPAIR ME note taped to it. Read the note, open its chassis and fix the wiring: drag each loose wire onto the post of its colour and hold on each joint to solder it. It reboots, floats up and prints your orders as a **receipt** (press **X** to read it again). It talks in floating text with a synthesized voice (toggle in Settings), gives tips, warns about low health, sanity and battery, and charges your multitool.
 
 #### (Almost) no HUD
 
@@ -69,28 +72,23 @@ What you carry sits in your hands: one item in the right hand, a second in the l
 
 ## The game loop
 
-1. **HQ lobby (Sublevel B4)**
-   * Reception with a receptionist who turns to watch you when nobody is looking, and GREET-O-TRON 9000, a beige CRT-headed service robot that tracks you, stamps forms and greets you by name ([E]). Its grin gets too wide when nobody is looking.
-   * Open office with working CRT terminals: shift roster, orientation, achievements and lore.
-   * Locker room: customize your clone in front of a real mirror.
-   * Break room:
-     * Vending machines that sometimes jam until you hit them with something.
-     * Water cooler.
-     * Aquarium with swimming fish. It shatters if you throw something heavy at it, and the fish flop around.
-     * Darts with real scoring on a scoreboard.
-     * Couch, a training-video TV, coffee machine and fridge.
-   * Cloning lab with creepy half-finished clones floating in tubes.
-   * Uncanny touches: a waiting-room chair slowly sinks into the floor, and posters, clocks and the Employee of the Month change when nobody is looking.
-   * Pull the **dispatch lever**. Anything inside the hazard-striped zone comes with you.
-2. **Level 0 (`src/game/campmission.js`)** introduces one system at a time. The HQ receptionist announces each stage on the wristwatch and Healthity explains it:
-   1. **Build your camp.** A **TENT KIT** crate waits at the camp clearing. Open it ([E]) and five parts spill out: two tent poles, the canvas, the stakes and a camp lamp. Drag each part onto its glowing ghost marker and attach it with the **built-in multitool** (empty hand + RMB). When the last part clicks in, the tent pops up and the lamp lights the camp.
-   2. **Stay fed.** The stomach growls: from now on **hunger and thirst** drain (bars top left). Eat or drink something.
-   3. **Make quota.** Furniture is money. Drag it into the **teleport pad hall**, put it on the pads and pull the lever: the pads charge up, the items beam away and their value uploads to your watch as team money (couch $210, desk $160, office chair $70, clutter a few dollars). Money can't buy anything.
-   4. **Get out.** The quota is the main mission ($1500 solo, +$900 per extra clone). When it is met, an exit room opens in a corner of the camp for 180 seconds. Get inside: the shift is complete and the team returns to HQ.
-   * The 7-day clock still runs: when Day 7 ends, the dimension collapses and the run is lost.
-3. **Death (Level 0)**: dead clones spectate for a few seconds, then a new clone is printed at the camp automatically. Each re-clone costs **half of the team's money**. Their body and dropped items stay where they died.
-4. **Other dimensions** (Poolrooms, Grasslands) still run the older generator / field radio mission, with credits for research and a paid cloning pad. Supply-crate ordering is discontinued everywhere.
-5. Only cosmetics and achievements persist between runs.
+1. **Factory menu** → **NEW MISSION**: the hatch opens and your clone falls into the lobby.
+2. **HQ lobby**: a small, dim reception with tables, four chairs, a fish tank and a service bell. **Gloria**, the humanoid robot receptionist, sits at the desk. Nothing starts until you talk to her. She checks you in and opens the elevator; step in and press **START** (or **EXIT**, which drops the car into the robot furnace pit).
+3. **The ride**: a violent elevator trip through other dimensions and doorways, ending with the car flinging you out.
+4. **Arrival on Level 0** (`src/game/arrival.js`), a sequence of short cutscenes:
+   * you clip through the wall and tumble onto the carpet, and the wall seals behind you;
+   * a supply crate glitches up through the floor (open it and the supplies stay inside, resting on the foam, so you pick them out one by one);
+   * broken Healthity is spat out of a wall with its repair note;
+   * the **crusher** phases out of the wall of the next hall;
+   * the **company store** and **field ops** kiosks slide out of the camp wall.
+5. **Missions** (`src/game/campmission.js`) arrive on printed receipts, one system at a time:
+   1. **Build your base**: open the tent kit, drag each part onto its glowing marker and attach it.
+   2. **Get food**: hunger and thirst start draining; eat or drink something.
+   3. **Earn $1,000**: drop loot into the crusher and press its button. The press cubes it and beams it away, and the value uploads to your watch.
+   * After that the quest tree (field ops kiosk) and the green **company store** open: the store shows three spinning holograms of its items, and purchases beam through the wall to the crusher's chamber.
+   * The real goal is the **escape fund**: $1,000,000 on Level 0. When it is full an exit appears next to the camp for a short time.
+6. **Death**: a new clone is printed at the camp after a few seconds. Each re-clone costs **half of the team's money**.
+7. Achievements and the cosmetics they unlock persist between runs; an unfinished run can be continued from the menu.
 
 ### The seven-day reality collapse
 
@@ -117,14 +115,8 @@ When Day 7 ends, the dimension is gone and so is anyone still inside it.
 * **Survival** (`src/game/survival.js`): health, **sanity**, **hunger**, **thirst**, stamina and bleeding (light or heavy; it costs health until bandaged). Clones killed by a huge hit are torn apart into robot parts (limbs, plates, gears, wire) in a spray of plasma and oil.
   * Blood pressure, infection, fractures and sleep / microsleep are still in the code but switched off by one flag, `ADVANCED_SURVIVAL`.
   * `survival.needsActive`: hunger and thirst only drain while it is on (Level 0 switches it on once the camp is built).
-* **Healthity**: an old floating medical unit you repair on Level 0. It warns you about your condition, prints mission receipts, charges your multitool and gives terrible corporate wellness advice. You can pat it.
-* **Wristwatch**: a retro corporate terminal with these tabs:
-  * **STATUS**: vitals with a live EKG.
-  * **CAMERA**: research photos.
-  * **RESEARCH**: your photos and samples.
-  * **MAP**: explored cells, the generators, the radio and the exit.
-  * **MSG**: message log.
-  * **TASKS**: objectives.
+* **Healthity**: an old floating medical unit you repair on arrival. It warns you about your condition, prints mission receipts, charges your multitool and gives terrible corporate wellness advice. You can pat it.
+* **Wristwatch**: a plain screen of apps that unlock as you progress: STATUS (vitals with a live EKG), TASKS, BANK (money and the escape fund), MAP, SCANNER (study creatures), RADIO and FLASH+.
 * **The Bacteria** (based on Kane Pixels' Backrooms films): a tall, black, wet stick figure with unnatural stop-motion procedural animation.
   * It **hunts by sound**: footsteps, impacts, generators, welding, crates crashing in and voice chat.
   * It stalks at the edge of your light and freezes when watched.
@@ -141,7 +133,7 @@ When Day 7 ends, the dimension is gone and so is anyone still inside it.
 ### Level 0: the Yellow Rooms
 
 * An endless world generated in 24 m chunks from a seed, identical on every peer.
-* **Arrival complex** (the same for every seed): the personnel lift stands in an alcove on the north side of a 15 × 15 m **camp clearing** under warm light. A 6 m wide passage leads east to the 18 × 24 m, 6.6 m tall **teleport pad hall**, which has wide exits to the maze on three sides. Blue TELEPORT PADS plates with arrows hang on maze walls up to ~100 m out.
+* **Arrival complex** (the same for every seed): a sealed alcove on the north side of a 15 × 15 m **camp clearing** under warm light. A 6 m wide passage leads east to the 18 × 24 m, 6.6 m tall **crusher hall**, which has wide exits to the maze on three sides.
 * Sectors:
   * classic yellow halls, cubicle offices, concrete maintenance areas, flooded sectors with reflective water, pillar halls, dark zones and manila rooms;
   * **atriums**: vast open halls with 6 m ceilings, giant pillars and hanging lights;
@@ -223,7 +215,7 @@ When Day 7 ends, the dimension is gone and so is anyone still inside it.
   | `src/entities` | Procedural models: avatar, creatures, furniture, items, devices |
   | `src/game` | Gameplay systems |
   | `src/world` | Lobby, level registry, Yellow Rooms generator and navigation |
-  | `src/ui` | HUD, menus, CRT terminals, wristwatch |
+  | `src/ui` | Floating text, font slots, menus, terminals, wristwatch, touch controls |
 * **Adding dimensions**:
   * New levels plug into `src/world/levels/registry.js`.
   * Poolrooms, Grasslands and Endless Hotel are already registered as upcoming levels.

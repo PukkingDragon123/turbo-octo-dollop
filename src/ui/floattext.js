@@ -246,7 +246,7 @@ class Bubble {
 }
 
 class FloatText {
-  constructor() { this.items = []; }
+  constructor() { this.items = []; this.watchRaise = 0; } // watchRaise 0..1: screen notices fade back while the watch is up
   _add(b, scene) {
     b.fixedScene = scene || null;
     (scene || (b.notice ? noticeLayer().scene : null) || engine.view?.scene || engine.scene).add(b.mesh);
@@ -275,6 +275,7 @@ class FloatText {
       let c = cam;
       if (b.notice && !b.fixedScene) { const L = noticeLayer(); if (b.mesh.parent !== L.scene) L.scene.add(b.mesh); c = L.camera; }
       if (!b.update(dt, c, y)) { b.dispose(); this.items.splice(i, 1); continue; }
+      if (b.notice && !b.fixedScene) b.mat.opacity *= 1 - 0.8 * this.watchRaise;
       if (b.notice && b.closing < 0) stack += b.plateNdc() + 0.035;
     }
   }

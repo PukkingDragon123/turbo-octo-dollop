@@ -797,6 +797,7 @@ export class UI {
       const small = Math.min(window.innerWidth, window.innerHeight) < 600 ? 1 : 0.7;
       engine.vmFocusW = raise * raise * (3 - 2 * raise) * small * (l.watchOpen ? 1 : 0.15);
     } else engine.vmFocusW = 0;
+    floatText.watchRaise = l.watchOpen && !portrait ? raise : 0; // keep notices off the raised watch face
     // post fx from survival state
     const P = engine.post.params;
     P.uDamage.value = damp(P.uDamage.value, Math.max(s.damageFlash, s.health < 30 ? 0.35 + Math.sin(g.time * 3) * 0.1 : 0, s.bleed >= 2 ? 0.25 : 0), 6, dt);
