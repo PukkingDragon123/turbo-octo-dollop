@@ -170,6 +170,46 @@ function lump(g, cx, cy, cz, sx, sy, sz, rotY, col, rng) {
   for (const [a, b, cc, d] of [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]) { tri(g, V[a], V[b], V[cc]); tri(g, V[a], V[cc], V[d]); }
 }
 
+// fieldstone: jittered icosphere (watertight: the jitter hashes the unit direction), sooted on the side
+// facing `soot` (the fire), lichen-dark low down
+const _ico = (() => { const g = new THREE.IcosahedronGeometry(1, 1), p = g.attributes.position, out = []; for (let i = 0; i < p.count; i++) out.push(new THREE.Vector3().fromBufferAttribute(p, i)); g.dispose(); return out; })();
+function rock(g, cx, cy, cz, sx, sy, sz, rotY, col, rng, soot = null) {
+  const c = Math.cos(rotY), s = Math.sin(rotY), seed = rng.next() * 100;
+  const P = _ico.map((d) => {
+    const j = 0.82 + 0.36 * hash01(Math.round(d.x * 97 + seed), Math.round(d.y * 89), Math.round(d.z * 83));
+    const lx = d.x * sx * j, ly = d.y * sy * j * (d.y < 0 ? 0.55 : 1), lz = d.z * sz * j;
+    return new THREE.Vector3(cx + lx * c - lz * s, Math.max(0.002, cy + ly), cz + lx * s + lz * c);
+  });
+  for (let i = 0; i < P.length; i += 3) {
+    const mx = (P[i].x + P[i + 1].x + P[i + 2].x) / 3, my = (P[i].y + P[i + 1].y + P[i + 2].y) / 3, mz = (P[i].z + P[i + 1].z + P[i + 2].z) / 3;
+    let k = 0.86 + 0.28 * hash01(Math.round(mx * 300), Math.round(my * 300), Math.round(mz * 300));
+    if (soot) { const dx = soot.x - mx, dz = soot.z - mz, l = Math.hypot(dx, dz) || 1, nx = mx - cx, nz = mz - cz, nl = Math.hypot(nx, nz) || 1; k *= 1 - 0.55 * Math.max(0, (nx * dx + nz * dz) / (nl * l)); }
+    if (my < cy) k *= 0.8;
+    g.setRGB(col[0] * k, col[1] * k, col[2] * k);
+    tri(g, P[i], P[i + 1], P[i + 2]);
+  }
+}
+// charred log: 7-sided jittered prism along local X with capped, glowing-dead ends
+function charLog(g, cx, cy, cz, len, r, rotY, rng) {
+  const c = Math.cos(rotY), s = Math.sin(rotY), N = 7, seg = 4, ring = [];
+  for (let j = 0; j <= seg; j++) {
+    const x = -len / 2 + (len * j) / seg, rr = r * (j === 0 || j === seg ? 0.8 : 0.92 + rng.next() * 0.16), row = [];
+    for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2, y = Math.sin(a) * rr, z = Math.cos(a) * rr; row.push(new THREE.Vector3(cx + x * c - z * s, Math.max(0.002, cy + y), cz + x * s + z * c)); }
+    ring.push(row);
+  }
+  for (let j = 0; j < seg; j++) for (let i = 0; i < N; i++) {
+    const a = ring[j][i], b = ring[j][(i + 1) % N], cc = ring[j + 1][(i + 1) % N], d = ring[j + 1][i];
+    const k = 0.7 + 0.6 * rng.next(), ash = rng.chance(0.25);
+    g.setRGB(ash ? 0.32 * k : 0.06 * k, ash ? 0.31 * k : 0.05 * k, ash ? 0.29 * k : 0.04 * k);
+    tri(g, a, b, cc); tri(g, a, cc, d);
+  }
+  for (const [row, flip] of [[ring[0], true], [ring[seg], false]]) {
+    const m = row.reduce((v, p) => v.add(p), new THREE.Vector3()).multiplyScalar(1 / N);
+    g.setRGB(0.16, 0.12, 0.09);
+    for (let i = 0; i < N; i++) { const a = row[i], b = row[(i + 1) % N]; if (flip) tri(g, m, b, a); else tri(g, m, a, b); }
+  }
+}
+
 // deterministic abandoned-camp spot of a chunk (both decorate and populate need it)
 function campSpot(level, rec) {
   if (hash01(rec.cx, rec.cz, 8181, level.seed) > 0.13) return null;
@@ -248,9 +288,9 @@ export function decorateBiome(level, rec) {
     decal(gD, camp.x, camp.z, 0.5, 0.5, cr.next() * 6, TILE.ash, 0.006);
     for (let k = 0; k < 9; k++) {
       const a = (k / 9) * Math.PI * 2;
-      lump(gT, camp.x + Math.cos(a) * 0.42, 0.05, camp.z + Math.sin(a) * 0.42, 0.07, 0.05, 0.06, a, [0.42, 0.41, 0.38].map((v) => v * (0.8 + cr.next() * 0.3)), cr);
+      rock(gT, camp.x + Math.cos(a) * 0.42, 0.045, camp.z + Math.sin(a) * 0.42, 0.075, 0.055, 0.065, a, [0.42, 0.41, 0.38].map((v) => v * (0.8 + cr.next() * 0.3)), cr, camp);
     }
-    for (let k = 0; k < 3; k++) lump(gT, camp.x + (cr.next() - 0.5) * 0.2, 0.04, camp.z + (cr.next() - 0.5) * 0.2, 0.2, 0.03, 0.035, cr.next() * 3, [0.06, 0.05, 0.04], cr);
+    for (let k = 0; k < 3; k++) charLog(gT, camp.x + (cr.next() - 0.5) * 0.2, 0.035, camp.z + (cr.next() - 0.5) * 0.2, 0.38, 0.032, cr.next() * 3, cr);
     if (camp.torn) tornClone(level, rec, gT, new THREE.Vector3(camp.x - 1.0, 0, camp.z + 1.0), cr, false);
   }
   grime(level, rec, gD);
