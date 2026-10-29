@@ -8,11 +8,41 @@ import * as THREE from 'three';
 import { engine } from '../core/engine.js';
 import { FONT } from './fonts.js';
 
-const W = 1024, H = 256;
+const W = 1024, H = 352; // tall enough for a speaker name over four lines
 const NOTICE_BASE = -0.86; // bottom of the notice stack, in screen half-heights below centre
 export const FLOAT = { typeRate: 40, popTime: 0.5, fade: 0.45, bobAmp: 0.012, worldScale: 0.0013, noticeScale: 0.0008 };
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
+const GS = 192, GOX = 56, GOY = 132; // per-letter scratch canvas and the baseline origin inside it
+
+// shared rough-ink textures (built once): dry specks that bite out of the ink, and soft pools where it lay heavier
+let _ink = null;
+function inkTextures() {
+  if (_ink) return _ink;
+  let seed = 7;
+  const r = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const mk = () => { const cv = document.createElement('canvas'); cv.width = cv.height = 256; return cv; };
+  const specks = mk(), pools = mk();
+  let c = specks.getContext('2d');
+  for (let i = 0; i < 1500; i++) {
+    c.fillStyle = `rgba(0,0,0,${0.35 + r() * 0.6})`;
+    c.beginPath(); c.arc(r() * 256, r() * 256, 0.4 + r() * r() * 1.6, 0, Math.PI * 2); c.fill();
+  }
+  c.lineCap = 'round'; // dry-brush streaks along the stroke direction
+  for (let i = 0; i < 26; i++) {
+    const x = r() * 256, y = r() * 256, a = -1.2 + r() * 0.5, l = 4 + r() * 10;
+    c.strokeStyle = `rgba(0,0,0,${0.25 + r() * 0.4})`; c.lineWidth = 0.5 + r() * 0.8;
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke();
+  }
+  c = pools.getContext('2d');
+  for (let i = 0; i < 40; i++) {
+    const x = r() * 256, y = r() * 256, rad = 6 + r() * 22;
+    const g = c.createRadialGradient(x, y, 0, x, y, rad);
+    g.addColorStop(0, `rgba(60,38,14,${0.18 + r() * 0.2})`); g.addColorStop(1, 'rgba(60,38,14,0)');
+    c.fillStyle = g; c.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  return (_ink = { specks, pools });
+}
 const easeOutBack = (t) => { const c = 1.9; return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2; };
 
 // any caller colour becomes a dark ink of the same hue on paper (light amber -> burnt umber)
@@ -70,18 +100,23 @@ class Bubble {
   }
   // look: one face for everything (FONT.main, Cormorant Garamond) set as raised 3D lettering: an extruded
   // bronze body under an ivory-to-gold face, floating in the air with a parallax shadow behind it.
-  // Speech is italic, notices upright. Paper scraps only when a caller asks (o.paper === true).
+  // Every letter is set by hand: its own lean, baseline, size and ink pressure, with dry specks and
+  // heavier pools in the ink, so no two lines look machine-set. Speech is italic, notices upright.
+  // Paper scraps only when a caller asks (o.paper === true).
   _style() {
     if (this._st) return this._st;
     const italic = !this.notice || this.o.italic;
     const fam = FONT.main; // one face everywhere (callers' o.font is ignored on purpose)
+    let hs = 2166136261;
+    for (let i = 0; i < this.text.length; i++) hs = Math.imul(hs ^ this.text.charCodeAt(i), 16777619);
     this._st = {
       body: `${italic ? 'italic ' : ''}600 ${this.notice ? 58 : 64}px ${fam}`,
       label: `700 30px ${FONT.main}`,
       lh: this.notice ? 62 : 68,
       depth: this.notice ? 5 : 7,
       paper: this.notice && this.o.paper === true,
-      seed: (this.text.length * 9301 + 49297) % 233280,
+      ink: inkOn(this.o.color),
+      seed: (hs >>> 0) % 233280,
     };
     return this._st;
   }
@@ -89,6 +124,35 @@ class Bubble {
     const c = this.ctx, st = this._style();
     c.font = st.body;
     this.lines = wrap(c, this.text, W - 150).slice(0, 4);
+    const lh = st.lh, top = this.o.speaker ? 44 : 10;
+    this._h = top + this.lines.length * lh + 24;
+    this._y0 = (H - this._h) / 2;
+    // place every letter once; k is its index in lines.join(' ') so typing order matches update()
+    const R = (i) => this._rand(i);
+    this.glyphs = [];
+    let k = 0;
+    this.lines.forEach((ln, i) => {
+      const lx = st.paper ? 64 : (W - c.measureText(ln).width) / 2;
+      const y = this._y0 + top + (i + 1) * lh - 10;
+      const wave = R(i * 31 + 3) * 6.28;
+      let drift = 0;
+      for (let j = 0; j < ln.length; j++, k++) {
+        const ch = ln[j], q = k * 11 + 100;
+        if (ch === ' ') { drift += (R(q) - 0.5) * 2.2; continue; }
+        const x = lx + c.measureText(ln.slice(0, j)).width + drift;
+        drift += (R(q + 1) - 0.5) * 1.3;
+        this.glyphs.push({
+          ch, k, x, w: c.measureText(ch).width,
+          y: y + Math.sin(x * 0.011 + wave) * 1.6 + (R(q + 2) - 0.5) * 3.2,
+          rot: (R(q + 3) - 0.5) * 0.1,
+          sx: 0.97 + R(q + 4) * 0.06, sy: 0.95 + R(q + 5) * 0.09,
+          a: 0.84 + R(q + 6) * 0.16,
+          p1: R(q + 7) * 256, p2: R(q + 8) * 256, p3: R(q + 9) * 256, p4: R(q + 10) * 256,
+        });
+      }
+      k++; // the line break counts as one character
+    });
+    this._freeLayers();
   }
   _rand(i) { const x = Math.sin((this._style().seed + i) * 12.9898) * 43758.5453; return x - Math.floor(x); }
   _paper(c, x0, y0, w, h) {
@@ -130,77 +194,142 @@ class Bubble {
     c.fillStyle = 'rgba(235,228,200,0.55)'; c.fillRect(-46, -12, 92, 26);
     c.restore();
   }
-  _draw(n) {
-    const c = this.ctx, st = this._style();
-    c.clearRect(0, 0, W, H);
-    const lh = st.lh, top = this.o.speaker ? 44 : 10;
-    const h = top + this.lines.length * lh + 24;
-    const y0 = (H - h) / 2;
-    if (st.paper) this._paper(c, 34, y0, W - 68, h);
+  // the typed plate lives in two layers (under: paper, name, letter bodies; face: inked letter faces) so a
+  // new letter's bronze body never covers an earlier face; both are freed once the line is fully inked
+  _initLayers() {
+    const mk = (w, h) => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; return cv; };
+    const L = this._layers = { underCan: mk(W, H), faceCan: mk(W, H) };
+    L.under = L.underCan.getContext('2d'); L.face = L.faceCan.getContext('2d');
+    this.gcan = mk(GS, GS);
+    const g = this.gctx = this.gcan.getContext('2d');
+    const ink = inkTextures();
+    this.speckPat = g.createPattern(ink.specks, 'repeat');
+    this.poolPat = g.createPattern(ink.pools, 'repeat');
     const tint = this.o.color || '#f1e7cf';
-    const face = st.paper ? inkOn(this.o.color) : null;
-    const x0 = 64;
-    if (this.o.speaker) {
-      // centred small-caps name between two hairlines
-      c.font = st.label;
-      c.letterSpacing = '7px';
-      const name = String(this.o.speaker).toUpperCase(), nw = c.measureText(name).width;
-      c.fillStyle = st.paper ? '#7a1f14' : '#d9bb7c';
-      c.shadowColor = 'rgba(0,0,0,0.85)'; c.shadowBlur = 6;
-      c.fillText(name, (W - nw) / 2, y0 + 30);
-      c.shadowBlur = 0; c.shadowColor = 'transparent';
-      c.fillRect((W - nw) / 2 - 70, y0 + 21, 52, 1.5);
-      c.fillRect((W + nw) / 2 + 18, y0 + 21, 52, 1.5);
-      c.letterSpacing = '0px';
+    this.grad = g.createLinearGradient(0, -50, 0, 14);
+    this.grad.addColorStop(0, '#fffaf0'); this.grad.addColorStop(0.55, tint); this.grad.addColorStop(1, '#b8955a');
+    this._next = 0; this._cur = -1;
+    this._drawBase(L.under);
+    return L;
+  }
+  _freeLayers() {
+    if (!this._layers) return;
+    this._layers.underCan.width = this._layers.faceCan.width = 0; // release the backing stores now (Safari)
+    this.gcan.width = 0;
+    this._layers = null;
+  }
+  _drawBase(c) {
+    const st = this._style(), R = (i) => this._rand(i);
+    const y0 = this._y0;
+    if (st.paper) this._paper(c, 34, y0, W - 68, this._h);
+    if (!this.o.speaker) return;
+    // the name in small caps between two pen strokes, each letter put down separately
+    c.font = st.label;
+    const name = String(this.o.speaker).toUpperCase(), sp = 7;
+    const ws = [...name].map((ch) => c.measureText(ch).width);
+    const nw = ws.reduce((a, b) => a + b, 0) + sp * (name.length - 1);
+    c.fillStyle = c.strokeStyle = st.paper ? '#7a1f14' : '#d9bb7c';
+    c.shadowColor = 'rgba(0,0,0,0.85)'; c.shadowBlur = 6;
+    let x = (W - nw) / 2;
+    for (let i = 0; i < name.length; i++) {
+      c.save();
+      c.translate(x, y0 + 30 + (R(i + 700) - 0.5) * 1.8);
+      c.rotate((R(i + 740) - 0.5) * 0.06);
+      c.globalAlpha = 0.85 + R(i + 780) * 0.15;
+      c.fillText(name[i], 0, 0);
+      c.restore();
+      x += ws[i] + sp;
     }
+    c.shadowBlur = 0; c.shadowColor = 'transparent';
+    c.lineCap = 'round';
+    const stroke = (xa, xb, yy, s) => {
+      c.lineWidth = 1.4 + R(s) * 0.6;
+      c.beginPath();
+      c.moveTo(xa, yy + (R(s + 1) - 0.5) * 1.5);
+      c.quadraticCurveTo((xa + xb) / 2, yy + (R(s + 2) - 0.5) * 3.5, xb, yy + (R(s + 3) - 0.5) * 1.5);
+      c.stroke();
+    };
+    stroke((W - nw) / 2 - 74, (W - nw) / 2 - 18, y0 + 21, 820);
+    stroke((W + nw) / 2 + 18, (W + nw) / 2 + 74, y0 + 21, 830);
+  }
+  _place(c, g, dx, dy) {
+    c.save();
+    c.translate(g.x + g.w / 2 + dx, g.y + dy);
+    c.rotate(g.rot); c.scale(g.sx, g.sy);
+    c.fillText(g.ch, -g.w / 2, 0);
+    c.restore();
+  }
+  // a letter's body: stacked offsets from dark bronze to near-black, soft shadow on the deepest layer
+  // (on paper: a faint bleed of ink into the fibres instead)
+  _glyphBody(c, g, alpha) {
+    const st = this._style();
     c.font = st.body;
-    const grad = c.createLinearGradient(0, y0, 0, y0 + h);
-    grad.addColorStop(0, '#fffaf0'); grad.addColorStop(0.55, tint); grad.addColorStop(1, '#b8955a');
-    let left = n;
-    this.lines.forEach((ln, i) => {
-      const y = y0 + top + (i + 1) * lh - 10;
-      const full = Math.max(0, Math.min(ln.length, Math.floor(left)));
-      const frac = left - Math.floor(left);
-      const part = ln.slice(0, full);
-      const draw = (txt, x, alpha) => {
-        if (!txt) return;
-        c.globalAlpha = alpha;
-        if (st.paper) { c.fillStyle = face; c.fillText(txt, x, y); return; }
-        // extrusion: stacked offsets from dark bronze to near-black, soft shadow on the deepest layer
-        for (let d = st.depth; d >= 1; d--) {
-          const k = d / st.depth;
-          c.shadowColor = d === st.depth ? 'rgba(0,0,0,0.75)' : 'transparent';
-          c.shadowBlur = d === st.depth ? 14 : 0; c.shadowOffsetY = d === st.depth ? 6 : 0;
-          c.fillStyle = `rgb(${Math.round(70 - k * 55)},${Math.round(52 - k * 42)},${Math.round(30 - k * 26)})`;
-          c.fillText(txt, x + d * 0.8, y + d * 1.15);
-        }
-        c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetY = 0;
-        c.fillStyle = grad;
-        c.fillText(txt, x, y);
-        // top-edge highlight
-        c.globalAlpha = alpha * 0.35;
-        c.fillStyle = '#ffffff';
-        c.fillText(txt, x - 0.6, y - 1.2);
-        c.globalAlpha = alpha;
-        c.fillStyle = grad;
-        c.fillText(txt, x, y);
-      };
-      const lx = st.paper ? x0 : (W - c.measureText(ln).width) / 2; // centred lines
-      draw(part, lx, 1);
-      // the next few characters ink in softly instead of popping
-      if (full < ln.length && left > 0) {
-        let x = lx + c.measureText(part).width;
-        for (let j = 0; j < 3 && full + j < ln.length; j++) {
-          const ch = ln[full + j];
-          const a = j === 0 ? frac : 0;
-          if (a > 0.02) draw(ch, x, a);
-          x += c.measureText(ch).width;
-        }
+    c.globalAlpha = alpha;
+    if (st.paper) {
+      c.fillStyle = st.ink; c.shadowColor = st.ink; c.shadowBlur = 2.5; c.globalAlpha = alpha * 0.3;
+      this._place(c, g, 0.4, 0.4);
+    } else {
+      for (let d = st.depth; d >= 1; d--) {
+        const k = d / st.depth;
+        c.shadowColor = d === st.depth ? 'rgba(0,0,0,0.75)' : 'transparent';
+        c.shadowBlur = d === st.depth ? 14 : 0; c.shadowOffsetY = d === st.depth ? 6 : 0;
+        c.fillStyle = `rgb(${Math.round(70 - k * 55)},${Math.round(52 - k * 42)},${Math.round(30 - k * 26)})`;
+        this._place(c, g, d * 0.8, d * 1.15);
       }
+    }
+    c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetY = 0;
+    c.globalAlpha = 1;
+  }
+  // a letter's face, inked into the glyph canvas: gilded (or ink on paper), then heavier pools where
+  // the pen pressed and dry specks where it skipped, at an offset of its own
+  _glyphFace(g) {
+    const c = this.gctx, st = this._style();
+    c.globalCompositeOperation = 'source-over';
+    c.clearRect(0, 0, GS, GS);
+    c.font = st.body;
+    const gl = { ...g, x: GOX, y: GOY };
+    if (st.paper) { c.fillStyle = st.ink; this._place(c, gl, 0, 0); } else {
+      c.globalAlpha = 0.35; c.fillStyle = '#ffffff'; this._place(c, gl, -0.6, -1.2); // top-edge highlight
+      c.globalAlpha = 1; c.fillStyle = this.grad; this._place(c, gl, 0, 0);
+    }
+    const tex = (pat, ox, oy) => { c.save(); c.translate(-ox, -oy); c.fillStyle = pat; c.fillRect(ox, oy, GS, GS); c.restore(); };
+    c.globalCompositeOperation = 'source-atop';
+    c.globalAlpha = st.paper ? 0.9 : 0.75;
+    tex(this.poolPat, g.p1, g.p2);
+    c.globalCompositeOperation = 'destination-out';
+    c.globalAlpha = st.paper ? 0.9 : 0.7;
+    tex(this.speckPat, g.p3, g.p4);
+    c.globalCompositeOperation = 'source-over';
+    c.globalAlpha = 1;
+  }
+  _draw(n) {
+    const L = this._layers || this._initLayers();
+    const done = Math.floor(n), frac = n - done;
+    // commit every letter that has fully inked in
+    while (this._next < this.glyphs.length && this.glyphs[this._next].k < done) {
+      const g = this.glyphs[this._next];
+      this._glyphBody(L.under, g, g.a);
+      if (this._cur !== this._next) this._glyphFace(g);
+      L.face.globalAlpha = g.a;
+      L.face.drawImage(this.gcan, g.x - GOX, g.y - GOY);
+      L.face.globalAlpha = 1;
+      this._next++;
+    }
+    const c = this.ctx;
+    c.clearRect(0, 0, W, H);
+    c.drawImage(L.underCan, 0, 0);
+    c.drawImage(L.faceCan, 0, 0);
+    // the next letter inks in softly instead of popping
+    const g = this.glyphs[this._next];
+    if (g && g.k === done && frac > 0.02) {
+      if (this._cur !== this._next) { this._glyphFace(g); this._cur = this._next; }
+      this._glyphBody(c, g, g.a * frac);
+      c.globalAlpha = g.a * frac;
+      c.drawImage(this.gcan, g.x - GOX, g.y - GOY);
       c.globalAlpha = 1;
-      left -= ln.length + 1;
-    });
+    }
     this.tex.needsUpdate = true;
+    if (this._next >= this.glyphs.length) this._freeLayers(); // the main canvas now holds the finished plate
   }
   // visible plate height as a fraction of the screen half-height (FOV-independent)
   plateNdc() {
@@ -208,7 +337,7 @@ class Bubble {
     const ph = (this.o.speaker ? 44 : 10) + this.lines.length * st.lh + 24;
     return ph * FLOAT.noticeScale * (this.o.size || 1) / (Math.tan(Math.PI / 6) * 1.2);
   }
-  set(text) { this.text = String(text); this.shown = 0; this.t = Math.min(this.t, FLOAT.popTime); this._layout(); }
+  set(text) { this.text = String(text); this.shown = 0; this.t = Math.min(this.t, FLOAT.popTime); this._st = null; this._layout(); }
   close() { if (this.closing < 0) this.closing = 0; }
   update(dt, cam, stackY) {
     this.t += dt;
@@ -261,6 +390,7 @@ class Bubble {
   dispose() {
     this.mesh.removeFromParent();
     this.mesh.geometry.dispose(); this.mat.dispose(); this.shadowMat.dispose(); this.tex.dispose();
+    this._freeLayers();
   }
 }
 
