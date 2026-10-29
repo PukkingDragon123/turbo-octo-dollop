@@ -6,8 +6,9 @@
 //   RADIO    HQ comms log on the R.O.O.M. band            FLASH+  flashlight overdrive status
 // Apps come from game/economy.js WATCH_APPS; HOME, STATUS, TASKS and BANK are built in, the rest are installed
 // by quests or bought at the company store (levels without an economy show STATUS / MAP / TASKS).
-// Q / E cycle the installed apps while the watch is up. The face is pixel art: drawn at 160x120 with the kit's
-// bitmap font, scaled x3 onto the canvas mapped onto the 3D watch screen, with a phosphor glow and LCD grid.
+// Q / E cycle the installed apps while the watch is up. The face is plain and flat: laid out in 160 x 120 watch
+// units, drawn 4 device px per unit (640 x 480) with real type in the 'watch' font slot (ui/watchdraw.js), one ink
+// colour and a dimmer tone of it, thin rules and simple vector shapes; no scanlines, glow or LCD grid.
 // Notices (HQ radio, pickups, warnings, achievements) make the watch beep and the clone glances at the wrist.
 import * as THREE from 'three';
 import { input } from '../core/input.js';
@@ -18,49 +19,31 @@ import { itemName } from '../game/itemdefs.js';
 import { WATCH_APPS, short$, fmt$ } from '../game/economy.js';
 import { Q, G, groups } from '../physics/physics.js';
 import { CELL, wallN, wallW, W } from '../world/levels/yellow/layout.js';
-import { Pix, text, textWidth, wrapText, FONT3, FONT5, bitmap } from './pixelart.js';
+import { S, BG, INK, DIM, LINE, TRACK, RED, SM, M, L, begin, txt, tw, wrap, rule, vrule, frame, bar, dot, ring, icon, bullet } from './watchdraw.js';
 
 const LEGACY = ['status', 'map', 'tasks'];
-const AW = 160, AH = 120, K = 3;
-
-// phosphor palette (green terminal)
-// monochrome phosphor (Pip-Boy style): every colour is an intensity of the same green
-const P = { bg: '#020f05', fg: '#4dff7a', dim: '#1f9a40', faint: '#0c3a1a', hi: '#d8ffe0', bad: '#d8ffe0', badDim: '#1f9a40', warn: '#b8ffc8', cyan: '#8dffad', red: '#4dff7a' };
-
-const MINI = {
-  heart: ['.#.#.', '#####', '#####', '.###.', '..#..'],
-  food: ['.##..', '#..#.', '####.', '.####', '..##.'],
-  drop: ['..#..', '.###.', '#####', '#####', '.###.'],
-  bolt: ['..##.', '.##..', '####.', '..##.', '.##..'],
-  coin: ['.###.', '##.##', '#.#.#', '##.##', '.###.'],
-  pulse: ['..#...', '..#...', '.#.#.#', '##..#.', '......'],
-  map: ['##.##', '#.#.#', '#.#.#', '#.#.#', '##.##'],
-  task: ['.###.', '#...#', '#.#.#', '#...#', '#####'],
-  lock: ['.###.', '#...#', '#####', '##.##', '#####'],
-  check: ['....#', '...#.', '#.#..', '.#...', '.....'],
-};
-// 9x9 app icons
-const ICON = {
-  home: ['....#....', '...###...', '..#####..', '.#######.', '#########', '.##...##.', '.##.#.##.', '.##.#.##.', '.#######.'],
-  pulse: ['.........', '....#....', '....#....', '...#.#...', '#.##..#.#', '.#....##.', '.........', '.........', '.........'],
-  task: ['.#######.', '.#.....#.', '.#.##..#.', '.#.....#.', '.#.###.#.', '.#.....#.', '.#.##..#.', '.#.....#.', '.#######.'],
-  coin: ['..#####..', '.##...##.', '##..#..##', '#..###..#', '#...#...#', '#..###..#', '##..#..##', '.##...##.', '..#####..'],
-  map: ['###.###..', '#.#.#.###', '#.###.#.#', '#.#.#.#.#', '#.#.###.#', '###.#.#.#', '..#.#.###', '..###.#..', '......#..'],
-  scan: ['##.....##', '#.......#', '...###...', '..#...#..', '..#.#.#..', '..#...#..', '...###...', '#.......#', '##.....##'],
-  radio: ['......#..', '.....#...', '#########', '#.......#', '#.###.#.#', '#.###...#', '#.###.#.#', '#.......#', '#########'],
-  bolt: ['....###..', '...###...', '..###....', '.######..', '...###...', '..###....', '.##......', '.#.......', '.........'],
-};
+const AW = 160, AH = 120; // the face in watch units
+const HOME_APPS = WATCH_APPS.filter((x) => x.id !== 'home');
+const VITALS = [['heart', 'HEALTH'], ['food', 'FOOD'], ['drop', 'WATER'], ['bolt', 'STAMINA']];
+const HQ_ROOMS = ['RECEPTION + ELEVATOR', 'OFFICE', 'LOCKERS', 'BREAK ROOM', 'CLONING LAB', 'LOADING BAY'];
+const HQ_STEPS = ['VISIT YOUR LOCKER', 'GRAB SNACKS: BREAK ROOM', 'READ THE ORIENTATION', 'HOST: START SHIFT', 'STEP INTO THE ELEVATOR'];
+const noop = () => {};
 
 const _fwd = new THREE.Vector3();
 
 export class Watch {
   constructor(game) {
     this.game = game;
-    this.screen = new CrtScreen(AW * K, AH * K, 'green');
+    this.screen = new CrtScreen(AW * S, AH * S, 'green');
     this.screen.fps = 15;
-    this.art = new Pix(AW, AH);
-    this.artCv = document.createElement('canvas');
-    this.artCv.width = AW; this.artCv.height = AH;
+    // a flat face: none of the CRT's scanlines, rolling bar or vignette (its glow shadow is cleared in _present)
+    this.screen.overlay = noop;
+    this.screen.pal = { ...this.screen.pal, bg: BG };
+    const tex = this.screen.texture;
+    tex.generateMipmaps = true; // sharp up close, no shimmer when the wrist is small on screen
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    this.screen.canvas.style.imageRendering = 'auto';
     this.app = 'status';
     this.messages = [];
     this.ekg = new Float32Array(90);
@@ -102,7 +85,9 @@ export class Watch {
 
   attach(arms) {
     if (arms?.watchScreen) {
-      this.screen.attach(arms.watchScreen, 1.5);
+      // self-lit only: a dark albedo so the scene lights don't wash the face, emissive kept under the bloom threshold
+      this.screen.attach(arms.watchScreen, 1.0);
+      arms.watchScreen.material.color.setHex(0x0c0c0c);
       arms.watchScreen.material.toneMapped = true;
     }
   }
@@ -249,168 +234,163 @@ export class Watch {
   }
 
   // ------------------------------------------------------------------ presentation
-  _present(ctx, w, h, t) {
-    const a = this.art;
-    a.clear();
-    this._draw(a, t);
-    a.toCanvas(this.artCv);
-    ctx.imageSmoothingEnabled = false;
-    ctx.shadowColor = 'rgba(77,255,122,0.85)';
-    ctx.shadowBlur = 7;
-    ctx.drawImage(this.artCv, 0, 0, w, h);
-    ctx.shadowBlur = 0;
-    // LCD dot grid between art pixels
-    ctx.fillStyle = 'rgba(0,0,0,0.28)';
-    for (let x = 0; x < w; x += K) ctx.fillRect(x, 0, 1, h);
-    for (let y = 2; y < h; y += K) ctx.fillRect(0, y, w, 1);
+  // CrtScreen.draw fills its ground and sets a glow shadow before calling this; begin() clears the shadow and the
+  // face is drawn flat in watch units (transform scale S), text at whole device pixel sizes
+  _present(c, w, h, t) {
+    begin(c);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.fillStyle = BG;
+    c.fillRect(0, 0, w, h);
+    c.setTransform(S, 0, 0, S, 0, 0);
+    this._draw(c, t);
   }
 
-  _draw(a, t) {
+  _draw(c, t) {
     const g = this.game;
     const l = g.local;
     const glance = this.peeking && !l.watchOpen;
-    // faint background raster
-    for (let y = 22; y < AH; y += 4) for (let x = 2; x < AW; x += 4) a.set(x, y, P.faint);
     // title bar: < APP > and page dots
     const list = this.installed();
     const meta = WATCH_APPS.find((x) => x.id === this.app);
     const name = glance ? 'NOTICE' : meta?.name || this.app.toUpperCase();
     if (!glance) {
-      const nw = textWidth(name, FONT5);
-      text(a, '<', 3, 2, P.dim);
-      text(a, name, 10, 2, P.hi);
-      text(a, '>', 12 + nw, 2, P.dim);
-      rulePx(a, 2, 18 + nw, 11, P.fg);
-      list.forEach((id, i) => {
-        const x = AW - 6 - (list.length - 1 - i) * 5;
-        if (id === this.app) a.rect(x - 1, 3, 3, 5, P.hi); else a.rect(x, 6, 1, 2, P.dim);
-      });
-    } else { text(a, name, 4, 2, P.hi); rulePx(a, 2, 8 + textWidth(name, FONT5), 11, P.fg); }
+      const nw = tw(c, name, M);
+      txt(c, '<', 3, 2, M, DIM);
+      txt(c, name, 10, 2, M, INK);
+      txt(c, '>', 12 + nw, 2, M, DIM);
+      rule(c, 2, 18 + nw, 11, DIM);
+      for (let i = 0; i < list.length; i++) {
+        const x = AW - 5.5 - (list.length - 1 - i) * 5;
+        if (list[i] === this.app) dot(c, x, 5.5, 1.6, INK); else dot(c, x, 6, 0.8, DIM);
+      }
+    } else { txt(c, name, 4, 2, M, INK); rule(c, 2, 8 + tw(c, name, M), 11, DIM); }
     // day + clock
-    const day = g.day?.active ? `DAY ${g.day.day}/7` : 'HQ  B4';
-    text(a, day, 4, 14, P.hi);
-    const clk = g.day?.active ? g.day.leftString() : 'ON SHIFT';
-    text(a, clk, AW - 4, 14, P.fg, { align: 'right' });
-    a.hline(2, AW - 3, 22, P.dim);
+    txt(c, g.day?.active ? `DAY ${g.day.day}/7` : 'HQ  B4', 4, 14, M, INK);
+    txt(c, g.day?.active ? g.day.leftString() : 'ON SHIFT', AW - 4, 14, M, INK, 'right');
+    rule(c, 2, AW - 2, 22.5, LINE, 0.25);
     const y0 = 25;
-    if (glance) { this._notice(a, t, y0); return; }
+    if (glance) { this._notice(c, t, y0); return; }
     switch (this.app) {
-      case 'home': this._home(a, t, y0); break;
-      case 'status': this._status(a, t, y0); break;
-      case 'map': this._map(a, t, y0); break;
-      case 'tasks': this._tasks(a, t, y0); break;
-      case 'bank': this._bank(a, t, y0); break;
-      case 'scanner': this._scanner(a, t, y0); break;
-      case 'radio': this._radio(a, t, y0); break;
-      case 'flash': this._flash(a, t, y0); break;
+      case 'home': this._home(c, t, y0); break;
+      case 'status': this._status(c, t, y0); break;
+      case 'map': this._map(c, t, y0); break;
+      case 'tasks': this._tasks(c, t, y0); break;
+      case 'bank': this._bank(c, t, y0); break;
+      case 'scanner': this._scanner(c, t, y0); break;
+      case 'radio': this._radio(c, t, y0); break;
+      case 'flash': this._flash(c, t, y0); break;
       default: break;
     }
     // a notice that arrives while the watch is up runs as a banner along the bottom
     if (this.peeking && this.notices[0]) {
       const n = this.notices[0];
       const bad = n.kind === 'bad' || n.kind === 'warn';
-      a.rect(0, AH - 11, AW, 11, P.bg);
-      a.hline(0, AW - 1, AH - 11, bad ? P.bad : P.fg);
+      c.fillStyle = BG;
+      c.fillRect(0, AH - 11, AW, 11);
+      rule(c, 0, AW, AH - 11, bad ? RED : DIM);
       const msg = `${n.from ? n.from + ': ' : ''}${n.text}`;
-      const mw = textWidth(msg, FONT5);
-      const x = mw > AW - 6 ? Math.round(AW - ((t * 30) % (mw + AW))) : 3;
-      text(a, msg, x, AH - 9, bad ? P.bad : P.hi);
+      const mw = tw(c, msg, M);
+      const x = mw > AW - 6 ? AW - ((t * 30) % (mw + AW)) : 3;
+      txt(c, msg, x, AH - 9, M, bad ? RED : INK);
     }
   }
 
-  _notice(a, t, y0) {
+  _notice(c, t, y0) {
     const n = this.notices[0];
     if (!n) return;
     const bad = n.kind === 'bad' || n.kind === 'warn';
-    const col = P.hi;
-    if (Math.floor(t * 4) % 2 || !bad) { a.rect(4, y0 + 1, 5, 5, bad ? P.bad : P.fg); a.set(5, y0 + 2, P.hi); }
-    text(a, `${(n.from || 'NOTICE').toUpperCase()}${n.n > 1 ? ' X' + n.n : ''}`, 12, y0, bad ? P.bad : P.fg);
+    dot(c, 6.5, y0 + 3.5, 2.5, bad ? RED : INK);
+    txt(c, `${(n.from || 'NOTICE').toUpperCase()}${n.n > 1 ? ' X' + n.n : ''}`, 12, y0, M, bad ? RED : DIM, 'left', AW - 16);
     // big type: the glance is short and the watch face small on a phone
-    let sc = 2;
-    let wrapped = wrapLines(n.text, (AW - 8) / 2);
-    if (wrapped.length > 4) { sc = 1; wrapped = wrapText(n.text, AW - 8); }
-    const lh = sc === 2 ? 16 : 9;
-    wrapped.slice(0, sc === 2 ? 4 : 8).forEach((ln, i) => text(a, ln, 4, y0 + 10 + i * lh, col, { scale: sc }));
+    let size = L;
+    let lines = wrap(c, n.text, AW - 8, L);
+    if (lines.length > 4) { size = M; lines = wrap(c, n.text, AW - 8, M); }
+    const lh = size === L ? 16 : 9, max = size === L ? 4 : 8;
+    for (let i = 0; i < lines.length && i < max; i++) txt(c, lines[i], 4, y0 + 10 + i * lh, size, INK, 'left', AW - 8);
     // vitals strip
     const s = this.game.local.survival;
-    glyphMini(a, 'heart', 4, AH - 8, s.health < 30 ? P.bad : P.fg);
-    segBar(a, 11, AH - 9, 50, 7, s.health / 100, s.health < 30 ? P.bad : P.fg);
-    glyphMini(a, 'coin', AW - 8, AH - 8, P.warn);
-    text(a, short$(this.game.run?.credits ?? 0), AW - 11, AH - 9, P.hi, { align: 'right' });
+    const low = s.health < 30;
+    icon(c, 'heart', 6.5, AH - 5.5, 2.5, low ? RED : DIM, true);
+    bar(c, 11, AH - 8, 50, 5, s.health / 100, low ? RED : INK);
+    icon(c, 'coin', AW - 5.5, AH - 5.5, 2.5, DIM, true);
+    txt(c, short$(this.game.run?.credits ?? 0), AW - 11, AH - 9, M, INK, 'right');
   }
 
   // ------------------------------------------------------------------ HOME: launcher grid
-  _home(a, t, y0) {
+  _home(c, t, y0) {
     const e = this.econ;
-    const apps = WATCH_APPS.filter((x) => x.id !== 'home');
-    const cols = 4, tw = 38, th = 30, x0 = 3;
-    const next = this.installed()[(this.tabIdx + 1) % this.installed().length];
-    apps.forEach((app, i) => {
-      const x = x0 + (i % cols) * (tw + 1), y = y0 + Math.floor(i / cols) * (th + 2);
+    const cols = 4, cw = 38, ch = 30, x0 = 3;
+    const inst = this.installed();
+    const next = inst[(this.tabIdx + 1) % inst.length];
+    for (let i = 0; i < HOME_APPS.length; i++) {
+      const app = HOME_APPS[i];
+      const x = x0 + (i % cols) * (cw + 1), y = y0 + Math.floor(i / cols) * (ch + 2);
       const on = e ? e.appInstalled(app.id) : LEGACY.includes(app.id);
-      const hl = app.id === next && Math.floor(t * 2) % 2;
-      if (hl) brk(a, x, y, tw, th, 4, P.hi);
-      bitmap(ICON[app.icon] || ICON.home, { '#': on ? (hl ? P.hi : P.fg) : P.faint }, a, x + 15, y + 4);
-      if (!on) bitmap(MINI.lock, { '#': P.dim }, a, x + tw - 7, y + 2);
-      const nm = app.name.slice(0, 7);
-      text(a, nm, x + Math.round((tw - textWidth(nm, FONT3)) / 2), y + 18, on ? P.hi : P.dim, { font: FONT3 });
-      if (!on && app.via) { const v = app.via.slice(0, 9); text(a, v, x + Math.round((tw - textWidth(v, FONT3)) / 2), y + 24, P.faint, { font: FONT3 }); }
-    });
-    const by = y0 + 2 * (th + 2) + 2;
-    a.hline(2, AW - 3, by, P.faint);
-    glyphMini(a, 'coin', 4, by + 4, P.warn);
-    text(a, fmt$(this.game.run?.credits ?? 0), 12, by + 3, P.hi);
-    text(a, 'Q/E APPS', AW - 4, by + 3, P.dim, { align: 'right', font: FONT3 });
+      if (app.id === next) frame(c, x, y, cw, ch, DIM); // where E goes next
+      icon(c, app.icon, x + cw / 2, y + 8.5, 4.5, on ? INK : LINE);
+      if (!on) icon(c, 'lock', x + cw - 4.5, y + 4.5, 2.2, DIM);
+      txt(c, app.name, x + cw / 2, y + 18, SM, on ? INK : DIM, 'center', cw - 3);
+      if (!on && app.via) txt(c, app.via, x + cw / 2, y + 24, SM, DIM, 'center', cw - 3);
+    }
+    const by = y0 + 2 * (ch + 2) + 2;
+    rule(c, 2, AW - 2, by, LINE, 0.25);
+    icon(c, 'coin', 6.5, by + 6.5, 2.5, DIM, true);
+    txt(c, fmt$(this.game.run?.credits ?? 0), 12, by + 3, M, INK, 'left', 100);
+    txt(c, 'Q/E APPS', AW - 4, by + 4, SM, DIM, 'right');
   }
 
-  _status(a, t, y0) {
+  // ------------------------------------------------------------------ STATUS
+  _status(c, t, y0) {
     const s = this.game.local.survival;
-    const rows = [
-      ['heart', 'HEALTH', (s.health ?? 100) / 100, s.health < 30],
-      ['food', 'FOOD', (s.hunger ?? 100) / 100, s.hunger < 25],
-      ['drop', 'WATER', (s.thirst ?? 100) / 100, s.thirst < 25],
-      ['bolt', 'STAMINA', (s.stamina ?? 40) / (s.maxStamina || 40), (s.stamina ?? 40) < 8],
-    ];
-    rows.forEach(([ic, label, f, warn], i) => {
+    for (let i = 0; i < VITALS.length; i++) {
+      let f, warn;
+      if (i === 0) { f = (s.health ?? 100) / 100; warn = s.health < 30; }
+      else if (i === 1) { f = (s.hunger ?? 100) / 100; warn = s.hunger < 25; }
+      else if (i === 2) { f = (s.thirst ?? 100) / 100; warn = s.thirst < 25; }
+      else { f = (s.stamina ?? 40) / (s.maxStamina || 40); warn = (s.stamina ?? 40) < 8; }
       const y = y0 + i * 12;
-      const blink = warn && Math.floor(t * 3) % 2;
-      const c = warn ? (blink ? P.badDim : P.bad) : P.fg;
-      glyphMini(a, ic, 3, y + 1, c);
-      text(a, label, 11, y, warn ? P.bad : P.hi);
-      segBar(a, 56, y, 82, 7, f, c);
-      text(a, `${Math.round(Math.max(0, Math.min(1, f)) * 100)}`, AW - 3, y + 1, warn ? P.bad : P.dim, { font: FONT3, align: 'right' });
-    });
+      icon(c, VITALS[i][0], 5.5, y + 3.5, 2.6, warn ? RED : DIM, true);
+      txt(c, VITALS[i][1], 11, y, M, warn ? RED : INK);
+      bar(c, 56, y + 1, 82, 5, f, warn ? RED : INK);
+      txt(c, `${Math.round(Math.max(0, Math.min(1, f)) * 100)}`, AW - 3, y + 1, SM, warn ? RED : DIM, 'right');
+    }
     // EKG
-    const ey = y0 + 50, eh = 26;
-    brk(a, 2, ey, AW - 4, eh, 5, P.dim);
-    for (let x = 6; x < AW - 4; x += 8) a.vline(x, ey + 1, ey + eh - 2, P.faint);
-    const n = this.ekg.length, ew = AW - 52;
-    let px = -1, py = -1;
+    const ey = y0 + 50, eh = 26, n = this.ekg.length, ew = AW - 52;
+    frame(c, 2, ey, AW - 4, eh, LINE);
+    c.fillStyle = TRACK;
+    for (let x = 6; x < 4 + ew; x += 8) c.fillRect(x, ey + 1, 0.25, eh - 2);
+    c.strokeStyle = INK;
+    c.lineWidth = 0.5;
+    c.beginPath();
     for (let i = 0; i < n; i++) {
       const v = this.ekg[(this.ekgI + 1 + i) % n];
-      const x = 4 + Math.round(i / (n - 1) * (ew - 2)), y = ey + Math.round(eh / 2 + 2 - v * (eh / 2 - 3));
-      if (px >= 0) a.line(px, py, x, y, i > n - 4 ? P.hi : P.fg);
-      px = x; py = y;
+      const x = 4 + i / (n - 1) * (ew - 2), y = ey + eh / 2 + 2 - v * (eh / 2 - 3);
+      if (i) c.lineTo(x, y); else c.moveTo(x, y);
     }
+    c.stroke();
     const hr = Math.round(s.heartRate || 72);
-    text(a, 'BPM', AW - 6, ey + 3, P.dim, { font: FONT3, align: 'right' });
-    text(a, `${hr}`, AW - 6, ey + 10, hr > 140 ? P.bad : P.hi, { align: 'right', scale: 1 });
-    if (Math.floor(t * (hr / 30)) % 2) glyphMini(a, 'heart', AW - 44, ey + 3, P.bad);
+    icon(c, 'heart', AW - 41.5, ey + 5.5, 2.5, hr > 140 ? RED : DIM, true);
+    txt(c, 'BPM', AW - 6, ey + 3, SM, DIM, 'right');
+    txt(c, `${hr}`, AW - 6, ey + 11, M, hr > 140 ? RED : INK, 'right');
     // conditions
     const conds = s.conditions ? s.conditions() : [];
     const line = conds.length ? conds.slice(0, 2).join(' · ') : 'ALL VITALS NOMINAL';
-    text(a, line.toUpperCase().slice(0, 30), 3, AH - 9, conds.length ? (Math.floor(t * 2) % 2 ? P.bad : P.badDim) : P.dim);
+    txt(c, line.toUpperCase().slice(0, 30), 3, AH - 9, M, conds.length ? RED : DIM, 'left', AW - 6);
   }
 
-  _map(a, t, y0) {
+  // ------------------------------------------------------------------ MAP
+  _map(c, t, y0) {
     const g = this.game;
     const lvl = g.world.level;
     const l = g.local;
     if (!lvl?.visited) {
-      text(a, 'HQ FLOORPLAN', 4, y0 + 2, P.hi);
-      text(a, 'SUBLEVEL B4 - NO MAPPING', 4, y0 + 14, P.fg);
-      const rooms = ['RECEPTION + ELEVATOR', 'OFFICE', 'LOCKERS', 'BREAK ROOM', 'CLONING LAB', 'LOADING BAY'];
-      rooms.forEach((r, i) => { a.rect(6, y0 + 28 + i * 10, 3, 3, P.dim); text(a, r, 13, y0 + 26 + i * 10, P.dim); });
+      txt(c, 'HQ FLOORPLAN', 4, y0 + 2, M, INK);
+      txt(c, 'SUBLEVEL B4 - NO MAPPING', 4, y0 + 14, M, DIM, 'left', AW - 8);
+      for (let i = 0; i < HQ_ROOMS.length; i++) {
+        c.fillStyle = DIM;
+        c.fillRect(6, y0 + 28 + i * 10, 3, 3);
+        txt(c, HQ_ROOMS[i], 13, y0 + 26 + i * 10, M, INK, 'left', AW - 17);
+      }
       return;
     }
     const top = y0, bot = AH - 2;
@@ -418,193 +398,217 @@ export class Watch {
     const R = 7;
     const cs = 7;
     const mx = AW / 2, my = (top + bot) / 2;
-    const ox = Math.round(mx - cs / 2 - (l.pos.x / CELL - cx - 0.5) * cs), oy = Math.round(my - cs / 2 - (l.pos.z / CELL - cz - 0.5) * cs);
-    const inside = (x, y) => x >= 2 && x < AW - 2 && y >= top && y < bot;
-    const put = (x, y, c) => { if (inside(x, y)) a.set(x, y, c); };
-    const hl = (x0, x1, y, c) => { for (let x = x0; x <= x1; x++) put(x, y, c); };
-    const vl = (x, y0_, y1, c) => { for (let y = y0_; y <= y1; y++) put(x, y, c); };
+    // cell (i, j) has its corner at (ox + (i - cx) * cs, oy + (j - cz) * cs); the clone sits at (mx, my)
+    const ox = mx - (l.pos.x / CELL - cx) * cs, oy = my - (l.pos.z / CELL - cz) * cs;
+    c.save();
+    c.beginPath();
+    c.rect(2, top, AW - 4, bot - top);
+    c.clip();
+    // explored floor (faint) and its walls (thin dim lines, one path)
+    const vf = lvl.variantFn;
+    c.fillStyle = TRACK;
+    c.beginPath();
     for (let dj = -R; dj <= R; dj++) {
       for (let di = -R - 4; di <= R + 4; di++) {
         const i = cx + di, j = cz + dj;
         if (!lvl.visited.has(`${i},${j}`)) continue;
         const x = ox + di * cs, y = oy + dj * cs;
-        for (let yy = 1; yy < cs; yy++) for (let xx = 1; xx < cs; xx++) if ((xx + yy) % 2 === 0) put(x + xx, y + yy, P.faint);
-        const vf = lvl.variantFn;
+        c.fillRect(x, y, cs, cs);
         const n = lvl.mapWall ? lvl.mapWall(i, j, false) : wallN(lvl.seed, i, j, vf), wv = lvl.mapWall ? lvl.mapWall(i, j, true) : wallW(lvl.seed, i, j, vf);
-        if (n && n !== W.ARCH) hl(x, x + cs, y, P.fg);
-        if (wv && wv !== W.ARCH) vl(x, y, y + cs, P.fg);
+        if (n && n !== W.ARCH) { c.moveTo(x, y); c.lineTo(x + cs, y); }
+        if (wv && wv !== W.ARCH) { c.moveTo(x, y); c.lineTo(x, y + cs); }
       }
     }
-    const toMap = (p) => [Math.round(ox + (p.x / CELL - cx) * cs), Math.round(oy + (p.z / CELL - cz) * cs)];
+    c.strokeStyle = DIM;
+    c.lineWidth = 0.5;
+    c.stroke();
     const m = lvl.mission;
     if (m) {
       for (const gen of m.generators || []) {
-        const known = lvl.visited.has(`${Math.floor(gen.root.position.x / CELL)},${Math.floor(gen.root.position.z / CELL)}`) || g.day.day >= 2;
+        const p = gen.root.position;
+        const known = lvl.visited.has(`${Math.floor(p.x / CELL)},${Math.floor(p.z / CELL)}`) || g.day.day >= 2;
         if (!known) continue;
-        const [x, y] = toMap(gen.root.position);
-        for (let yy = -2; yy <= 2; yy++) for (let xx = -2; xx <= 2; xx++) put(x + xx, y + yy, gen.running ? P.hi : P.bad);
-        put(x, y, P.bg);
+        const x = ox + (p.x / CELL - cx) * cs, y = oy + (p.z / CELL - cz) * cs;
+        c.fillStyle = gen.running ? INK : RED;
+        c.fillRect(x - 2.5, y - 2.5, 5, 5);
+        c.fillStyle = BG;
+        c.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
       }
       const radio = m.radio?.();
       if (radio) {
-        const [x, y] = toMap(radio.root.position);
-        hl(x - 2, x + 2, y - 2, P.cyan); hl(x - 2, x + 2, y + 2, P.cyan); vl(x - 2, y - 2, y + 2, P.cyan); vl(x + 2, y - 2, y + 2, P.cyan);
+        const p = radio.root.position;
+        frame(c, ox + (p.x / CELL - cx) * cs - 2.5, oy + (p.z / CELL - cz) * cs - 2.5, 5, 5, INK, 0.5);
       }
       let marks = [];
       try { marks = m.markers?.() || []; } catch (e) { marks = []; }
-      for (const mk of marks) this._marker(a, t, mk, toMap(mk.pos), mx, my, top, bot);
-      if (m.state?.exit && !marks.some((mk) => mk.kind === 'exit')) {
-        const [x, y] = toMap(new THREE.Vector3(m.state.exit.x, 0, m.state.exit.z));
-        if (Math.floor(t * 3) % 2) for (let yy = -3; yy <= 3; yy++) for (let xx = -3; xx <= 3; xx++) if (xx * xx + yy * yy <= 9) put(x + xx, y + yy, P.warn);
-        if (inside(x + 5, y - 3)) text(a, 'EXIT', x + 5, y - 3, P.warn, { font: FONT3 });
+      let exitMarked = false;
+      for (const mk of marks) {
+        if (mk.kind === 'exit') exitMarked = true;
+        this._marker(c, t, mk, ox + (mk.pos.x / CELL - cx) * cs, oy + (mk.pos.z / CELL - cz) * cs, mx, my, top, bot);
+      }
+      if (m.state?.exit && !exitMarked) {
+        const x = ox + (m.state.exit.x / CELL - cx) * cs, y = oy + (m.state.exit.z / CELL - cz) * cs;
+        dot(c, x, y, 3, INK);
+        if (x + 5 >= 2 && x + 5 < AW - 2 && y - 3 >= top && y - 3 < bot) txt(c, 'EXIT', x + 5, y - 3, SM, INK);
       }
     }
     for (const r of g.remotes.values()) {
       if (!r.inWorld) continue;
-      const [x, y] = toMap(r.pos);
-      for (const [xx, yy] of [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1]]) put(x + xx, y + yy, r.dead ? P.bad : P.cyan);
+      dot(c, ox + (r.pos.x / CELL - cx) * cs, oy + (r.pos.z / CELL - cz) * cs, 1.6, r.dead ? RED : INK);
     }
-    // player arrow (rotated triangle)
-    const ang = -l.yaw;
-    const pts = [[0, -5], [3.5, 3.5], [0, 2], [-3.5, 3.5]].map(([x, y]) => [mx + x * Math.cos(ang) - y * Math.sin(ang), my + x * Math.sin(ang) + y * Math.cos(ang)]);
-    a.poly(pts, P.hi);
-    a.set(Math.round(mx), Math.round(my), P.fg);
+    // player arrow (rotated triangle: tip (0,-5), wings (+-3.5, 3.5), notch (0, 2))
+    const ang = -l.yaw, ca = Math.cos(ang), sa = Math.sin(ang);
+    c.fillStyle = INK;
+    c.beginPath();
+    c.moveTo(mx + 5 * sa, my - 5 * ca);
+    c.lineTo(mx + 3.5 * ca - 3.5 * sa, my + 3.5 * sa + 3.5 * ca);
+    c.lineTo(mx - 2 * sa, my + 2 * ca);
+    c.lineTo(mx - 3.5 * ca - 3.5 * sa, my - 3.5 * sa + 3.5 * ca);
+    c.closePath();
+    c.fill();
+    c.restore();
     // frame + compass
-    brk(a, 1, top - 1, AW - 2, bot - top + 2, 6, P.dim);
-    a.rect(AW - 12, top + 1, 9, 9, P.bg);
-    text(a, 'N', AW - 10, top + 2, P.hi);
+    frame(c, 1, top - 1, AW - 2, bot - top + 2, LINE);
+    c.fillStyle = BG;
+    c.fillRect(AW - 12, top + 1, 9, 9);
+    txt(c, 'N', AW - 7.5, top + 2, M, INK, 'center');
   }
 
-  // a mission marker (camp / crusher / kiosk / file / gen / exit): an icon + label, or an arrow on the frame edge
-  _marker(a, t, mk, [x, y], mx, my, top, bot) {
-    const col = mk.kind === 'exit' ? P.warn : mk.kind === 'pads' || mk.kind === 'crusher' ? P.cyan : mk.kind === 'file' || mk.kind === 'gen' ? P.warn : P.hi;
+  // a mission marker (camp / crusher / kiosk / file / gen / exit): a shape + label, or an arrow on the frame edge
+  _marker(c, t, mk, x, y, mx, my, top, bot) {
     const label = String(mk.label || mk.kind).toUpperCase();
-    const L = 4, R = AW - 5, T = top + 2, B = bot - 3;
-    if (x >= L + 3 && x <= R - 3 && y >= T + 3 && y <= B - 3) {
-      if (mk.kind === 'camp') a.poly([[x - 4, y + 3], [x, y - 4], [x + 4, y + 3]], col);
-      else if (mk.kind === 'pads' || mk.kind === 'crusher') { a.frame(x - 3, y - 3, 7, 7, col); a.rect(x - 1, y - 1, 3, 3, col); }
-      else if (mk.kind === 'file') { a.rect(x - 2, y - 2, 5, 4, col); a.set(x - 2, y - 3, col); a.set(x - 1, y - 3, col); }
-      else if (mk.kind === 'gen') { a.frame(x - 2, y - 2, 5, 5, col); if (Math.floor(t * 2) % 2) a.set(x, y, col); }
-      else if (Math.floor(t * 3) % 2) a.disc(x + 0.5, y + 0.5, 3.2, col);
-      else a.ring(x + 0.5, y + 0.5, 3.6, col);
+    const Lx = 4, Rx = AW - 5, T = top + 2, B = bot - 3;
+    if (x >= Lx + 3 && x <= Rx - 3 && y >= T + 3 && y <= B - 3) {
+      c.fillStyle = INK;
+      if (mk.kind === 'camp') { c.beginPath(); c.moveTo(x - 4, y + 3); c.lineTo(x, y - 4); c.lineTo(x + 4, y + 3); c.closePath(); c.fill(); }
+      else if (mk.kind === 'pads' || mk.kind === 'crusher') { frame(c, x - 3.5, y - 3.5, 7, 7, INK, 0.5); c.fillRect(x - 1.5, y - 1.5, 3, 3); }
+      else if (mk.kind === 'file') { c.fillRect(x - 2.5, y - 2, 5, 4); c.fillRect(x - 2.5, y - 3, 2, 1); }
+      else if (mk.kind === 'gen') frame(c, x - 2.5, y - 2.5, 5, 5, INK, 0.5);
+      else dot(c, x, y, 3, INK);
       if (mk.kind === 'file' || mk.kind === 'gen') return; // small pins: no label clutter
-      const lw = textWidth(label, FONT3);
-      const lx = x + 5 + lw < R ? x + 5 : x - 5 - lw;
-      a.rect(lx - 1, y - 7, lw + 2, 7, P.bg);
-      text(a, label, lx, y - 6, col, { font: FONT3 });
+      const lw = tw(c, label, SM);
+      const lx = x + 5 + lw < Rx ? x + 5 : x - 5 - lw;
+      c.fillStyle = BG;
+      c.fillRect(lx - 1, y - 7, lw + 2, 7);
+      txt(c, label, lx, y - 6, SM, INK);
       return;
     }
     if (mk.kind === 'file' || mk.kind === 'gen') return;
     // off the map: pin an arrow to the frame, pointing toward it
     const dx = x - mx, dy = y - my;
-    const k = Math.min((dx > 0 ? R - mx : L - mx) / (dx || 1e-6), (dy > 0 ? B - my : T - my) / (dy || 1e-6));
-    const ex = Math.round(mx + dx * k), ey = Math.round(my + dy * k);
+    const k = Math.min((dx > 0 ? Rx - mx : Lx - mx) / (dx || 1e-6), (dy > 0 ? B - my : T - my) / (dy || 1e-6));
+    const ex = mx + dx * k, ey = my + dy * k;
     const ang = Math.atan2(dy, dx);
-    const pt = (r, o) => [ex + Math.cos(ang + o) * r, ey + Math.sin(ang + o) * r];
-    a.poly([pt(3, 0), pt(4, 2.5), pt(4, -2.5)], col);
-    const lw = textWidth(label, FONT3);
-    const lx = Math.max(L, Math.min(R - lw, ex - lw / 2 - Math.cos(ang) * (lw / 2 + 5)));
+    c.fillStyle = INK;
+    c.beginPath();
+    c.moveTo(ex + Math.cos(ang) * 3, ey + Math.sin(ang) * 3);
+    c.lineTo(ex + Math.cos(ang + 2.5) * 4, ey + Math.sin(ang + 2.5) * 4);
+    c.lineTo(ex + Math.cos(ang - 2.5) * 4, ey + Math.sin(ang - 2.5) * 4);
+    c.closePath();
+    c.fill();
+    const lw = tw(c, label, SM);
+    const lx = Math.max(Lx, Math.min(Rx - lw, ex - lw / 2 - Math.cos(ang) * (lw / 2 + 5)));
     const ly = Math.max(T, Math.min(B - 5, ey - 2 - Math.sin(ang) * 7));
-    a.rect(lx - 1, ly - 1, lw + 2, 7, P.bg);
-    text(a, label, lx, ly, col, { font: FONT3 });
+    c.fillStyle = BG;
+    c.fillRect(lx - 1, ly - 1, lw + 2, 7);
+    txt(c, label, lx, ly, SM, INK);
   }
 
   // ------------------------------------------------------------------ TASKS
-  _tasks(a, t, y0) {
+  _tasks(c, t, y0) {
     const g = this.game;
     const m = g.world.level?.mission;
     const e = this.econ;
     if (!m) {
       let y = y0;
-      text(a, 'HQ ORIENTATION', 4, y, P.hi);
+      txt(c, 'HQ ORIENTATION', 4, y, M, INK);
       y += 11;
-      for (const s of ['VISIT YOUR LOCKER', 'GRAB SNACKS: BREAK ROOM', 'READ THE ORIENTATION', 'HOST: START SHIFT', 'STEP INTO THE ELEVATOR']) {
-        diamond(a, 7, y + 3, P.dim, false);
-        text(a, s, 12, y, P.fg);
+      for (const s of HQ_STEPS) {
+        bullet(c, 7, y + 3.5, '');
+        txt(c, s, 12, y, M, INK, 'left', AW - 15);
         y += 10;
       }
       return;
     }
-    if (!e || !m.tasks) { this._legacyTask(a, t, y0); return; }
+    if (!e || !m.tasks) { this._legacyTask(c, t, y0); return; }
     let y = y0;
     const obj = m.objective?.();
     const main = e.main.filter((n) => n.id !== 'm_escape');
     const mainDone = e.mainDone();
-    text(a, mainDone ? 'SIDE QUESTS' : 'MAIN MISSION 1', 4, y, P.hi);
-    if (obj && !mainDone) text(a, obj.title.slice(0, 14), AW - 4, y, P.warn, { align: 'right', font: FONT3 });
+    txt(c, mainDone ? 'SIDE QUESTS' : 'MAIN MISSION 1', 4, y, M, INK);
+    if (obj && !mainDone) txt(c, obj.title.slice(0, 14), AW - 4, y + 1, SM, DIM, 'right', 68);
     y += 10;
     if (!mainDone) {
       for (const n of main) {
         const st = e.state(n), done = st === 'claimed', cur = st === 'active';
-        diamond(a, 7, y + 4, done ? P.fg : cur ? P.hi : P.dim, done || (cur && Math.floor(t * 3) % 2));
-        text(a, (n.task || n.name).toUpperCase().slice(0, 26), 13, y, done ? P.dim : cur ? P.hi : P.fg);
+        bullet(c, 7, y + 3.5, done ? 'done' : cur ? 'cur' : '');
+        txt(c, (n.task || n.name).toUpperCase().slice(0, 26), 13, y, M, done ? DIM : INK, 'left', AW - 16);
         y += 10;
       }
       if (obj?.detail) {
-        wrapText(obj.detail.toUpperCase(), AW - 8, FONT3).slice(0, 3).forEach((ln, i) => text(a, ln, 4, y + 2 + i * 7, P.fg, { font: FONT3 }));
+        const det = wrap(c, obj.detail, AW - 8, SM);
+        for (let i = 0; i < det.length && i < 3; i++) txt(c, det[i], 4, y + 2 + i * 7, SM, DIM, 'left', AW - 8);
         y += 23;
       }
-      if (typeof obj?.progress === 'number') segBar(a, 4, Math.min(y, AH - 22), AW - 8, 7, obj.progress, P.fg);
+      if (typeof obj?.progress === 'number') bar(c, 4, Math.min(y, AH - 28), AW - 8, 3, obj.progress, INK);
     } else {
       const side = e.activeSide().slice(0, 5);
-      if (!side.length) text(a, 'ALL QUESTS DONE. FILL THE FUND!', 4, y, P.fg, { font: FONT3 });
+      if (!side.length) txt(c, 'ALL QUESTS DONE. FILL THE FUND!', 4, y, SM, INK, 'left', AW - 8);
       for (const n of side) {
         const st = e.state(n), pr = e.progress(n);
-        const ready = st === 'ready';
-        text(a, n.short.slice(0, 13), 4, y, ready ? (Math.floor(t * 3) % 2 ? P.hi : P.warn) : P.fg);
-        if (ready) text(a, 'CLAIM AT CAMP', AW - 4, y + 1, P.warn, { align: 'right', font: FONT3 });
-        else { segBar(a, 76, y, 60, 7, pr.frac, P.fg); text(a, `${Math.round(pr.frac * 100)}`, AW - 3, y + 1, P.dim, { align: 'right', font: FONT3 }); }
+        txt(c, n.short.slice(0, 13), 4, y, M, INK, 'left', 70);
+        if (st === 'ready') txt(c, 'CLAIM AT CAMP', AW - 4, y + 1, SM, INK, 'right');
+        else { bar(c, 76, y + 1, 60, 5, pr.frac, INK); txt(c, `${Math.round(pr.frac * 100)}`, AW - 3, y + 1, SM, DIM, 'right'); }
         y += 10;
       }
     }
     // escape fund strip
     const by = AH - 20;
-    a.hline(2, AW - 3, by - 3, P.faint);
-    glyphMini(a, 'coin', 4, by + 1, P.warn);
-    text(a, `${short$(e.escape)} / ${short$(e.quota)}`, 12, by, P.hi);
-    text(a, 'ESCAPE', AW - 4, by, P.dim, { align: 'right', font: FONT3 });
-    segBar(a, 4, by + 10, AW - 8, 7, e.escape / e.quota, e.escape >= e.quota ? P.hi : P.red);
+    rule(c, 2, AW - 2, by - 3, LINE, 0.25);
+    icon(c, 'coin', 6.5, by + 3.5, 2.5, DIM, true);
+    txt(c, `${short$(e.escape)} / ${short$(e.quota)}`, 12, by, M, INK, 'left', 110);
+    txt(c, 'ESCAPE', AW - 4, by + 1, SM, DIM, 'right');
+    bar(c, 4, by + 11, AW - 8, 5, e.escape / e.quota, INK);
   }
 
   // older dimensions (generator / radio mission): objective + checklist + money vs quota
-  _legacyTask(a, t, y0) {
+  _legacyTask(c, t, y0) {
     const g = this.game;
     const m = g.world.level?.mission;
     let obj = null;
     try { obj = m?.objective?.() || null; } catch (e) { obj = null; }
     let y = y0;
     if (obj) {
-      a.rect(3, y, 6, 7, P.fg); a.set(5, y + 2, P.bg); a.set(6, y + 3, P.bg); a.set(5, y + 4, P.bg);
-      const title = wrapText(obj.title || 'OBJECTIVE', AW - 16);
-      title.slice(0, 2).forEach((ln, i) => text(a, ln, 12, y + i * 9, P.hi));
+      icon(c, 'flag', 6, y + 3.5, 3, INK);
+      const title = wrap(c, obj.title || 'OBJECTIVE', AW - 16, M);
+      for (let i = 0; i < title.length && i < 2; i++) txt(c, title[i], 12, y + i * 9, M, INK, 'left', AW - 16);
       y += Math.min(2, title.length) * 9 + 2;
       if (obj.detail) {
-        const det = wrapText(obj.detail, AW - 8);
-        det.slice(0, 4).forEach((ln, i) => text(a, ln, 4, y + i * 9, P.fg));
+        const det = wrap(c, obj.detail, AW - 8, M);
+        for (let i = 0; i < det.length && i < 4; i++) txt(c, det[i], 4, y + i * 9, M, DIM, 'left', AW - 8);
         y += Math.min(4, det.length) * 9 + 2;
       }
       if (typeof obj.progress === 'number') {
-        segBar(a, 4, y, AW - 30, 7, obj.progress, P.fg);
-        text(a, `${Math.round(Math.max(0, Math.min(1, obj.progress)) * 100)}%`, AW - 4, y, P.hi, { align: 'right' });
+        bar(c, 4, y + 1, AW - 30, 5, obj.progress, INK);
+        txt(c, `${Math.round(Math.max(0, Math.min(1, obj.progress)) * 100)}%`, AW - 4, y, M, INK, 'right');
         y += 11;
       }
     } else {
       for (const gen of m.generators || []) {
         const done = gen.running;
-        diamond(a, 7, y + 3, done ? P.fg : P.dim, done);
-        if (done) { a.set(5, y + 3, P.hi); a.set(6, y + 4, P.hi); a.set(7, y + 2, P.hi); }
-        text(a, `REPAIR ${String(gen.label || 'GENERATOR').toUpperCase()}`.slice(0, 22), 12, y, done ? P.dim : P.fg);
-        if (gen.state?.linked) text(a, 'LINK', AW - 4, y, P.hi, { align: 'right', font: FONT3 });
+        bullet(c, 7, y + 3.5, done ? 'done' : '');
+        txt(c, `REPAIR ${String(gen.label || 'GENERATOR').toUpperCase()}`.slice(0, 22), 12, y, M, done ? DIM : INK, 'left', AW - 34);
+        if (gen.state?.linked) txt(c, 'LINK', AW - 4, y + 1, SM, INK, 'right');
         y += 9;
       }
       if (m.state) {
         const ex = m.state.exit;
-        diamond(a, 7, y + 3, m.state.extraction ? P.fg : P.dim, !!m.state.extraction);
-        text(a, 'REQUEST EXTRACTION', 12, y, m.state.extraction ? P.dim : P.fg);
+        bullet(c, 7, y + 3.5, m.state.extraction ? 'done' : '');
+        txt(c, 'REQUEST EXTRACTION', 12, y, M, m.state.extraction ? DIM : INK);
         y += 9;
         if (ex && !ex.done && m.exitTimeLeft) {
           const left = Math.ceil(m.exitTimeLeft());
-          text(a, `EVACUATE ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`, 4, y + 1, Math.floor(t * 3) % 2 ? P.bad : P.warn, { scale: 1 });
+          txt(c, `EVACUATE ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`, 4, y + 1, M, RED);
           y += 10;
         }
       }
@@ -612,151 +616,141 @@ export class Watch {
     const q = m.quota?.need;
     const cr = g.run?.credits ?? 0;
     const by = AH - 20;
-    a.hline(2, AW - 3, by - 3, P.faint);
-    glyphMini(a, 'coin', 4, by + 1, P.warn);
-    text(a, q ? `${cr} / ${q} CR` : `${cr} CR`, 12, by, P.hi);
+    rule(c, 2, AW - 2, by - 3, LINE, 0.25);
+    icon(c, 'coin', 6.5, by + 3.5, 2.5, DIM, true);
+    txt(c, q ? `${cr} / ${q} CR` : `${cr} CR`, 12, by, M, INK, 'left', 100);
     if (q) {
       const met = cr >= q;
-      text(a, met ? 'QUOTA MET' : 'QUOTA', AW - 4, by, met ? P.hi : P.dim, { align: 'right', font: FONT3 });
-      segBar(a, 4, by + 10, AW - 8, 7, cr / q, met ? P.hi : P.warn);
+      txt(c, met ? 'QUOTA MET' : 'QUOTA', AW - 4, by + 1, SM, met ? INK : DIM, 'right');
+      bar(c, 4, by + 11, AW - 8, 5, cr / q, INK);
     }
   }
 
   // ------------------------------------------------------------------ BANK
-  _bank(a, t, y0) {
+  _bank(c, t, y0) {
     const e = this.econ, run = this.game.run || {};
-    text(a, 'CREDITS', 4, y0, P.dim, { font: FONT3 });
-    text(a, fmt$(run.credits), 4, y0 + 7, P.hi, { scale: 2 });
+    txt(c, 'CREDITS', 4, y0, SM, DIM);
+    txt(c, fmt$(run.credits), 4, y0 + 7, L, INK, 'left', AW - 8);
     if (!e) return;
     const f = Math.min(1, e.escape / e.quota);
     // escape fund: a horizontal thermometer with a bulb
     const gy = y0 + 28;
-    text(a, 'ESCAPE FUND', 4, gy, P.warn);
-    text(a, `${Math.floor(f * 100)}%`, AW - 4, gy, f >= 1 ? (Math.floor(t * 3) % 2 ? P.hi : P.warn) : P.hi, { align: 'right' });
-    const bx = 14, bw = AW - 20, by = gy + 10;
-    a.disc(9, by + 4, 5, P.red);
-    rulePx(a, bx, bx + bw, by + 8, P.dim);
-    segBar(a, bx, by + 2, bw, 5, f, P.fg);
-    for (let i = 1; i < 4; i++) a.vline(bx + Math.round(bw * i / 4), by + 9, by + 11, P.dim);
-    text(a, `${fmt$(e.escape)} / ${short$(e.quota)}`, 4, by + 13, P.fg, { font: FONT3 });
+    txt(c, 'ESCAPE FUND', 4, gy, M, INK);
+    txt(c, `${Math.floor(f * 100)}%`, AW - 4, gy, M, INK, 'right');
+    const bx = 12, bw = AW - 18, by = gy + 10;
+    dot(c, 8, by + 4.5, 4, INK);
+    bar(c, bx, by + 2.5, bw, 4, f, INK);
+    for (let i = 1; i < 4; i++) vrule(c, bx + bw * i / 4, by + 8, by + 10.5, DIM);
+    txt(c, `${fmt$(e.escape)} / ${short$(e.quota)}`, 4, by + 13, SM, INK, 'left', AW - 8);
     // level rules
     const r = e.rules, ry = by + 22;
-    a.hline(2, AW - 3, ry, P.faint);
-    text(a, `${r.name}: ${r.title}`.slice(0, 30), 4, ry + 3, P.hi, { font: FONT3 });
-    text(a, `PRICES X${r.priceMul} · ${r.hazards[0]}`.slice(0, 38), 4, ry + 10, P.dim, { font: FONT3 });
-    text(a, 'PURCHASES DO NOT DRAIN THE FUND', 4, ry + 17, P.dim, { font: FONT3 });
+    rule(c, 2, AW - 2, ry, LINE, 0.25);
+    txt(c, `${r.name}: ${r.title}`.slice(0, 30), 4, ry + 3, SM, INK, 'left', AW - 8);
+    txt(c, `PRICES X${r.priceMul} · ${r.hazards[0]}`.slice(0, 38), 4, ry + 10, SM, DIM, 'left', AW - 8);
+    txt(c, 'PURCHASES DO NOT DRAIN THE FUND', 4, ry + 17, SM, DIM, 'left', AW - 8);
     const last = this.game.world?.level?.mission?.crusher?.lastSale;
-    if (last) text(a, `LAST UPLOAD +${short$(last)}`, 4, AH - 9, P.fg);
+    if (last) txt(c, `LAST UPLOAD +${short$(last)}`, 4, AH - 9, M, INK, 'left', AW - 8);
   }
 
   // ------------------------------------------------------------------ SCANNER
-  _scanner(a, t, y0) {
+  _scanner(c, t, y0) {
     const sc = this.scan, e = this.econ, tg = sc.target;
     const cx = AW / 2, cy = y0 + 30;
-    // reticle brackets + sweeping line
     const R = 22;
-    const isDone = (x) => !!x && (e?.studied(x.kind) || x.studiedBio);
-    const col = tg ? (isDone(tg) ? P.dim : P.hi) : P.dim;
-    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-      a.hline(Math.min(cx + sx * R, cx + sx * (R - 6)), Math.max(cx + sx * R, cx + sx * (R - 6)), cy + sy * R, col);
-      a.vline(cx + sx * R, Math.min(cy + sy * R, cy + sy * (R - 6)), Math.max(cy + sy * R, cy + sy * (R - 6)), col);
+    const studied = !!tg && !!(e?.studied(tg.kind) || tg.studiedBio);
+    // reticle corners
+    c.strokeStyle = tg && !studied ? INK : DIM;
+    c.lineWidth = 0.5;
+    c.beginPath();
+    for (let k = 0; k < 4; k++) {
+      const sx = k & 1 ? 1 : -1, sy = k & 2 ? 1 : -1;
+      c.moveTo(cx + sx * (R - 6), cy + sy * R); c.lineTo(cx + sx * R, cy + sy * R); c.lineTo(cx + sx * R, cy + sy * (R - 6));
     }
+    c.stroke();
     if (!tg) {
-      const ly = cy - R + Math.round(((sc.sweep * 30) % (R * 2)));
-      a.hline(cx - R + 2, cx + R - 2, ly, P.faint);
-      a.set(cx, cy, P.dim);
-      text(a, 'NO TARGET', cx, cy + R + 4, P.dim, { align: 'center' });
-      text(a, 'AIM THE CROSSHAIR AT A THING', cx, cy + R + 14, P.faint, { align: 'center', font: FONT3 });
+      rule(c, cx - R + 2, cx + R - 2, cy - R + ((sc.sweep * 30) % (R * 2)), LINE, 0.25);
+      dot(c, cx, cy, 0.8, DIM);
+      txt(c, 'NO TARGET', cx, cy + R + 4, M, DIM, 'center');
+      txt(c, 'AIM THE CROSSHAIR AT A THING', cx, cy + R + 14, SM, DIM, 'center', AW - 8);
     } else {
-      const studied = isDone(tg);
-      // a progress ring
-      const segs = 24, done = studied ? segs : Math.floor(Math.min(1, sc.prog) * segs);
-      for (let i = 0; i < segs; i++) {
-        const ang = -Math.PI / 2 + (i / segs) * Math.PI * 2;
-        a.set(Math.round(cx + Math.cos(ang) * 12), Math.round(cy + Math.sin(ang) * 12), i < done ? P.hi : P.faint);
+      // progress ring
+      const p = studied ? 1 : Math.max(0, Math.min(1, sc.prog));
+      ring(c, cx, cy, 12, TRACK, 0.75);
+      if (p > 0) {
+        c.strokeStyle = INK;
+        c.lineWidth = 0.75;
+        c.beginPath();
+        c.arc(cx, cy, 12, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2);
+        c.stroke();
       }
-      a.disc(cx + 0.5, cy + 0.5, 2, studied ? P.fg : Math.floor(t * 6) % 2 ? P.hi : P.dim);
-      text(a, tg.label.slice(0, 22), cx, cy + R + 3, P.hi, { align: 'center' });
-      text(a, tg.info.slice(0, 30), cx, cy + R + 12, tg.cat === 'mon' ? P.bad : P.fg, { align: 'center', font: FONT3 });
+      dot(c, cx, cy, 2, studied ? DIM : INK);
+      txt(c, tg.label.slice(0, 22), cx, cy + R + 3, M, INK, 'center', AW - 6);
+      txt(c, tg.info.slice(0, 30), cx, cy + R + 12, SM, tg.info === 'HOSTILE ENTITY' ? RED : DIM, 'center', AW - 6);
       const v = e?.scanValue(tg.cat) || 0;
-      text(a, studied ? 'IN DATABASE' : sc.sent === tg.kind ? 'UPLOADING...' : `STUDY: +${short$(v)}`, cx, cy + R + 19, studied ? P.dim : P.warn, { align: 'center', font: FONT3 });
+      txt(c, studied ? 'IN DATABASE' : sc.sent === tg.kind ? 'UPLOADING...' : `STUDY: +${short$(v)}`, cx, cy + R + 19, SM, studied ? DIM : INK, 'center');
     }
-    text(a, `STUDIED ${Object.keys(this.game.run?.scans || {}).length}`, 4, AH - 9, P.dim, { font: FONT3 });
-    text(a, `RNG ${sc.dist ? sc.dist.toFixed(1) : '--'}M`, AW - 4, AH - 9, P.dim, { font: FONT3, align: 'right' });
+    txt(c, `STUDIED ${Object.keys(this.game.run?.scans || {}).length}`, 4, AH - 9, SM, DIM);
+    txt(c, `RNG ${sc.dist ? sc.dist.toFixed(1) : '--'}M`, AW - 4, AH - 9, SM, DIM, 'right');
   }
 
   // ------------------------------------------------------------------ RADIO
-  _radio(a, t, y0) {
+  _radio(c, t, y0) {
     // tuner strip
-    rulePx(a, 2, AW - 3, y0 + 12, P.dim);
-    for (let x = 6; x < AW - 6; x += 6) a.vline(x, y0 + 7, y0 + 10, P.faint);
-    const nx = 40 + Math.round(Math.sin(t * 0.3) * 3);
-    a.vline(nx, y0 + 1, y0 + 10, P.bad);
-    text(a, 'R.O.O.M. BAND 98.6', AW - 6, y0 + 3, P.hi, { align: 'right', font: FONT3 });
+    rule(c, 2, AW - 2, y0 + 12, DIM);
+    c.fillStyle = LINE;
+    for (let x = 6; x < AW - 6; x += 6) c.fillRect(x, y0 + 9, 0.25, 3);
+    vrule(c, 40 + Math.sin(t * 0.3) * 3, y0 + 1, y0 + 12, INK, 0.5);
+    txt(c, 'R.O.O.M. BAND 98.6', AW - 6, y0 + 1, SM, INK, 'right');
     // spectrum
+    c.fillStyle = DIM;
     for (let i = 0; i < 18; i++) {
-      const h = Math.round(2 + Math.abs(Math.sin(t * (3 + i * 0.7) + i)) * 6);
-      a.rect(4 + i * 3, y0 + 21 - h, 2, h, P.dim);
+      const h = 2 + Math.abs(Math.sin(t * (3 + i * 0.7) + i)) * 6;
+      c.fillRect(4 + i * 3, y0 + 22 - h, 2, h);
     }
-    text(a, 'HQ COMMS LOG', 64, y0 + 14, P.fg);
+    txt(c, 'HQ COMMS LOG', 64, y0 + 14, M, INK);
     let y = y0 + 24;
-    for (const msg of this.messages.slice(0, 6)) {
+    for (let i = 0; i < this.messages.length && i < 6; i++) {
+      const msg = this.messages[i];
       const line = `${(msg.from || '').slice(0, 9)}: ${msg.msg}`.toUpperCase();
-      text(a, line.slice(0, 38), 3, y, msg.from === 'HQ' || msg.from === 'RECEPTION' ? P.hi : P.fg, { font: FONT3 });
+      txt(c, line.slice(0, 38), 3, y, SM, msg.from === 'HQ' || msg.from === 'RECEPTION' ? INK : DIM, 'left', AW - 6);
       y += 8;
       if (y > AH - 8) break;
     }
-    if (!this.messages.length) text(a, '...STATIC...', AW / 2, y0 + 40, P.dim, { align: 'center' });
+    if (!this.messages.length) txt(c, '...STATIC...', AW / 2, y0 + 40, M, DIM, 'center');
   }
 
   // ------------------------------------------------------------------ FLASH+
-  _flash(a, t, y0) {
+  _flash(c, t, y0) {
     const l = this.game.local;
     const fi = l.inv?.find('flashlight') ?? -1;
     const ch = fi >= 0 ? (l.inv.slots[fi].state.charge ?? 1) : 0;
-    text(a, 'FLASHLIGHT OVERDRIVE', 4, y0, P.hi);
+    txt(c, 'FLASHLIGHT OVERDRIVE', 4, y0, M, INK, 'left', AW - 8);
     const on = l.flashOn && fi >= 0;
-    // beam diagram
+    // beam diagram: a torch and, when lit, its cone
     const bx = 20, by = y0 + 26;
-    a.rect(bx - 12, by - 4, 12, 8, on ? P.fg : P.dim);
-    if (on) for (let i = 0; i < 9; i++) { const yy = by - 2 - i, y2 = by + 2 + i; a.line(bx, by - 2, bx + 110, yy - i * 1.4, i % 2 ? P.faint : P.dim); a.line(bx, by + 2, bx + 110, y2 + i * 1.4, i % 2 ? P.faint : P.dim); }
-    text(a, on ? 'BOOST ACTIVE +45%' : fi >= 0 ? 'TORCH OFF [F]' : 'NO FLASHLIGHT', AW / 2 + 10, by - 3, on ? (Math.floor(t * 3) % 2 ? P.hi : P.fg) : P.dim, { align: 'center' });
-    text(a, 'CELL', 4, y0 + 48, P.dim);
-    segBar(a, 28, y0 + 48, AW - 50, 7, ch, ch < 0.2 ? P.bad : P.fg);
-    text(a, `${Math.round(ch * 100)}%`, AW - 3, y0 + 49, P.dim, { align: 'right', font: FONT3 });
+    if (on) {
+      c.fillStyle = TRACK;
+      c.beginPath();
+      c.moveTo(bx, by - 2); c.lineTo(bx + 110, by - 21); c.lineTo(bx + 110, by + 21); c.lineTo(bx, by + 2);
+      c.closePath();
+      c.fill();
+      c.strokeStyle = DIM;
+      c.lineWidth = 0.5;
+      c.beginPath();
+      c.moveTo(bx, by - 2); c.lineTo(bx + 110, by - 21);
+      c.moveTo(bx, by + 2); c.lineTo(bx + 110, by + 21);
+      c.stroke();
+    }
+    c.fillStyle = on ? INK : DIM;
+    c.fillRect(bx - 12, by - 3, 9, 6);
+    c.fillRect(bx - 3, by - 4, 3, 8);
+    txt(c, on ? 'BOOST ACTIVE +45%' : fi >= 0 ? 'TORCH OFF [F]' : 'NO FLASHLIGHT', AW / 2 + 10, by - 3, M, on ? INK : DIM, 'center');
+    txt(c, 'CELL', 4, y0 + 48, M, DIM);
+    bar(c, 28, y0 + 49, AW - 50, 5, ch, ch < 0.2 ? RED : INK);
+    txt(c, `${Math.round(ch * 100)}%`, AW - 3, y0 + 49, SM, ch < 0.2 ? RED : DIM, 'right');
     const bat = this.econ?.has('up:battery');
-    text(a, bat ? 'TOOL BATTERY: RUNTIME X2' : 'TIP: TOOL BATTERY UPGRADE', 4, y0 + 62, bat ? P.fg : P.dim, { font: FONT3 });
+    txt(c, bat ? 'TOOL BATTERY: RUNTIME X2' : 'TIP: TOOL BATTERY UPGRADE', 4, y0 + 62, SM, bat ? INK : DIM, 'left', AW - 8);
   }
 
   dispose() {}
-}
-
-// greedy wrap at 2x scale: maxW is in 1x glyph units
-function wrapLines(str, maxW) { return wrapText(str, maxW, FONT5, 1); }
-
-function glyphMini(a, name, x, y, c) { bitmap(MINI[name] || MINI.heart, { '#': c }, a, x, y); }
-
-// chunky segmented bar in the phosphor style
-function segBar(a, x, y, w, h, f, c) {
-  f = Math.max(0, Math.min(1, Number.isFinite(f) ? f : 0));
-  const segs = Math.max(4, Math.floor(w / 3));
-  const on = Math.round(f * segs);
-  for (let i = 0; i < segs; i++) {
-    const sx = x + i * 3;
-    if (i < on) a.rect(sx, y, 2, h, c);
-    else a.rect(sx, y + h - 2, 2, 2, P.faint);
-  }
-}
-
-// Fallout-style furniture: an underline rule with end ticks, bracket corners, a diamond bullet
-function rulePx(a, x0, x1, y, c) { a.hline(x0, x1, y, c); a.set(x0, y - 1, c); a.set(x1, y - 1, c); }
-function brk(a, x, y, w, h, l, c) {
-  const x1 = x + w - 1, y1 = y + h - 1;
-  a.hline(x, x + l, y, c); a.vline(x, y, y + l, c);
-  a.hline(x1 - l, x1, y, c); a.vline(x1, y, y + l, c);
-  a.hline(x, x + l, y1, c); a.vline(x, y1 - l, y1, c);
-  a.hline(x1 - l, x1, y1, c); a.vline(x1, y1 - l, y1, c);
-}
-function diamond(a, cx, cy, c, fill) {
-  for (let d = -2; d <= 2; d++) { const w = 2 - Math.abs(d); if (fill) a.hline(cx - w, cx + w, cy + d, c); else { a.set(cx - w, cy + d, c); a.set(cx + w, cy + d, c); } }
 }

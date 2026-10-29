@@ -87,11 +87,13 @@ const SETS = {
   rust: ['rust', { c0: 0x7a3b16, c1: 0x4a2410, c2: 0xa86a2c, c3: 0x5a5e60, p0: [0.55, 0, 0, 0], wear: 0.5, meters: 0.45, size: 512, seed: 21 }],
   tile: ['tiles', { c0: 0xe9ebe6, c1: 0xa9aba2, c2: 0x5a5444, c3: 0xe4e7e2, p0: [4, 4, 0.05, 0.07], p1: [0.05, 0.2, 0.14, 0.55], wear: 0.45, meters: 0.6, size: 512, seed: 37 }],
   concrete: ['concrete', { c0: 0x9a968e, c1: 0x7e7a72, c2: 0x4a4640, c3: 0xb8b2a6, p0: [90, 0.2, 0.9, 0.45], wear: 0.4, meters: 1.2, size: 512, seed: 38 }],
+  // woven canvas / nylon / webbing / cord (neutral light base: the vertex tint gives the colour)
+  cloth: ['fabric', { c0: 0xd2cec6, c1: 0xe6e2da, c2: 0xf2eee6, p0: [40, 40, 1, 0.8], p1: [0.2, 0, 0, 0], wear: 0.45, meters: 0.12, size: 512, seed: 39, bump: 2.6 }],
 };
 // mean linear albedo of each neutral base (the tint becomes the final colour)
-const TINT_REF = { paint: 0.765, metal: 0.6, plastic: 0.76, dark: 0.5, wood: 1, rust: 1, tile: 1, concrete: 1, atlas: 1 };
+const TINT_REF = { paint: 0.765, metal: 0.6, plastic: 0.76, dark: 0.5, wood: 1, rust: 1, tile: 1, concrete: 1, cloth: 1, atlas: 1 };
 // shader mode per class
-const MODE = { paint: 0, metal: 1, plastic: 2, dark: 3, wood: 4, rust: 5, tile: 5, concrete: 5, atlas: 9 };
+const MODE = { paint: 0, metal: 1, plastic: 2, dark: 3, wood: 4, rust: 5, tile: 5, concrete: 5, cloth: 5, atlas: 9 };
 // per class: [edge noise scale, edge wear strength, streak strength, AO strength], edge colour, dust colour
 const FXP = {
   paint: { a: [40, 1, 0.5, 0.86], edge: 0x8f9193, dust: 0x9a948a },
@@ -102,6 +104,7 @@ const FXP = {
   rust: { a: [40, 1, 0.35, 0.85], edge: 0xffffff, dust: 0x8a7a68 },
   tile: { a: [40, 0.6, 0.4, 0.85], edge: 0xffffff, dust: 0x9d978a },
   concrete: { a: [40, 0.6, 0.5, 0.85], edge: 0xffffff, dust: 0x9d978a },
+  cloth: { a: [40, 0.35, 0.3, 0.86], edge: 0xffffff, dust: 0x9d978a },
   atlas: { a: [44, 0.7, 0.2, 0.8], edge: 0xffffff, dust: 0x9d978a },
 };
 export const CLASSES = Object.keys(SETS);

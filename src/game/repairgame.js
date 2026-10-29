@@ -80,6 +80,8 @@ function boardCanvas(rowOf, rnd) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;
 }
+// lathe from [[r, y], ...] (Y axis)
+const lathe = (pts, seg = 16) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
 function labelTex(w, h, draw) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
@@ -180,7 +182,9 @@ export class RepairGame {
     this.right = right; // right[row] = wire index whose post sits on that row
     // board
     this.rowOf = [0, 1, 2, 3].map((wi) => right.indexOf(wi)); // wire -> row of its target post
-    const board = new THREE.Mesh(keep(new RoundedBoxGeometry(BW, BH, 0.004, 2, 0.0015)), keep(new THREE.MeshStandardMaterial({ map: keep(boardCanvas(this.rowOf, rnd)), roughness: 0.55, metalness: 0.1 })));
+    // FR-4 board: the print doubles as a bump map (copper traces / pads stand proud of the solder mask)
+    const boardTex = keep(boardCanvas(this.rowOf, rnd));
+    const board = new THREE.Mesh(keep(new RoundedBoxGeometry(BW, BH, 0.004, 2, 0.0015)), keep(new THREE.MeshStandardMaterial({ map: boardTex, bumpMap: boardTex, bumpScale: 2.5, roughness: 0.5, metalness: 0.1 })));
     board.position.z = -0.002; board.receiveShadow = true; sc.add(board);
     // dark cavity behind
     const cav = new THREE.Mesh(keep(new THREE.CylinderGeometry(RING + 0.02, RING * 0.7, 0.12, 40, 1, true)), keep(new THREE.MeshStandardMaterial({ color: 0x0b0906, roughness: 0.9, side: THREE.BackSide })));
@@ -191,10 +195,13 @@ export class RepairGame {
     const shell = new THREE.Mesh(keep(new THREE.LatheGeometry(prof, 64)), shellMat);
     shell.rotation.x = Math.PI / 2; shell.receiveShadow = true; shell.castShadow = true; sc.add(shell);
     const metal = keep(new THREE.MeshStandardMaterial({ color: 0xb0aa9a, roughness: 0.35, metalness: 0.9 }));
-    const screwGeo = keep(new THREE.CylinderGeometry(0.006, 0.006, 0.004, 10));
+    // pan-head screws with a cross recess
+    const screwGeo = keep(lathe([[0, 0], [0.0062, 0], [0.0062, 0.0012], [0.0052, 0.0028], [0.003, 0.0037], [0, 0.004]], 16));
+    const slotGeo = keep(new THREE.BoxGeometry(0.0085, 0.0012, 0.0012)), slotMat = keep(new THREE.MeshStandardMaterial({ color: 0x1a1814, roughness: 0.8 }));
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2 + 0.2, s = new THREE.Mesh(screwGeo, metal);
-      s.rotation.x = Math.PI / 2; s.position.set(Math.cos(a) * (RING + 0.018), Math.sin(a) * (RING + 0.018), 0.037); sc.add(s);
+      s.rotation.x = Math.PI / 2; s.rotation.y = a * 1.7; s.position.set(Math.cos(a) * (RING + 0.018), Math.sin(a) * (RING + 0.018), 0.035); sc.add(s);
+      for (const r of [0, Math.PI / 2]) { const sl = new THREE.Mesh(slotGeo, slotMat); sl.position.y = 0.0036; sl.rotation.y = r; s.add(sl); }
     }
     const panel = new THREE.Mesh(keep(new THREE.CylinderGeometry(RING + 0.012, RING + 0.012, 0.008, 40, 1, false, 0, Math.PI * 2)), shellMat);
     panel.rotation.set(Math.PI / 2, 0, 0); panel.position.set(-RING - 0.17, -0.05, -0.06); panel.rotateZ(0.6); panel.rotateX(-1.1); sc.add(panel);
@@ -208,13 +215,24 @@ export class RepairGame {
       for (let k = 0; k < 6; k++) { const o = (k / 5 - 0.5) * (w - 0.008); if (vert) { add(new THREE.BoxGeometry(0.004, 0.0015, 0.002), pin, x - 0.009, y + o, 0.002); add(new THREE.BoxGeometry(0.004, 0.0015, 0.002), pin, x + 0.009, y + o, 0.002); } else { add(new THREE.BoxGeometry(0.0015, 0.004, 0.002), pin, x + o, y - 0.009, 0.002); add(new THREE.BoxGeometry(0.0015, 0.004, 0.002), pin, x + o, y + 0.009, 0.002); } }
     }
     const capMat = keep(new THREE.MeshStandardMaterial({ color: 0x1d3f7a, roughness: 0.4 })), capTop = keep(new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.9 }));
+    const stripe = keep(new THREE.MeshStandardMaterial({ color: 0xd8dde6, roughness: 0.45 }));
     for (const [x, y, r, burst] of [[0.03, 0.098, 0.009, false], [0.06, 0.1, 0.011, true], [0.085, -0.1, 0.008, false], [-0.09, -0.1, 0.01, false]]) {
-      add(new THREE.CylinderGeometry(r, r, 0.024, 16), capMat, x, y, 0.012, Math.PI / 2);
+      // electrolytic can: rolled sleeve with a crimp groove and a polarity stripe
+      add(lathe([[0, -0.012], [r * 0.86, -0.012], [r, -0.0108], [r, -0.006], [r * 0.93, -0.0052], [r * 0.93, -0.0042], [r, -0.0035], [r, 0.011], [r * 0.95, 0.012], [0, 0.012]], 20), capMat, x, y, 0.012, Math.PI / 2);
+      add(new THREE.CylinderGeometry(r * 1.004, r * 1.004, 0.014, 8, 1, true, 0.3, 0.7), stripe, x, y, 0.016, Math.PI / 2);
       const top = add(new THREE.CylinderGeometry(r * 0.98, r * 0.98, 0.002, 16), capTop, x, y, burst ? 0.027 : 0.0245, Math.PI / 2 + (burst ? 0.4 : 0));
       if (burst) { top.position.x += 0.003; add(new THREE.SphereGeometry(0.008, 10, 6), keep(new THREE.MeshStandardMaterial({ color: 0x4a3010, roughness: 0.2 })), x - 0.006, y - 0.004, 0.003).scale.set(1.4, 1, 0.3); }
     }
     const resMat = keep(new THREE.MeshStandardMaterial({ color: 0xd8c39a, roughness: 0.6 }));
-    for (let i = 0; i < 5; i++) add(new THREE.CylinderGeometry(0.0028, 0.0028, 0.016, 8), resMat, -0.05 + i * 0.022, -0.1, 0.004, 0, 0, Math.PI / 2);
+    // dog-bone resistors with printed colour bands, legs bent down into the board
+    const bands = [['#7a4a1c', '#141414', '#c8241c', '#c8a040'], ['#c8241c', '#c8241c', '#7a4a1c', '#c8a040'], ['#e8c020', '#7a2a9a', '#e07820', '#c8a040']];
+    const resGeo = keep(lathe([[0, -0.0085], [0.0022, -0.0084], [0.0031, -0.0068], [0.0031, -0.0042], [0.0026, -0.0028], [0.0026, 0.0028], [0.0031, 0.0042], [0.0031, 0.0068], [0.0022, 0.0084], [0, 0.0085]], 12));
+    const legGeo = keep(new THREE.CylinderGeometry(0.0005, 0.0005, 0.03, 5));
+    for (let i = 0; i < 5; i++) {
+      const tex = keep(labelTex(4, 64, (c, w, h) => { c.fillStyle = '#d8c39a'; c.fillRect(0, 0, w, h); bands[i % 3].forEach((col, j) => { c.fillStyle = col; c.fillRect(0, h * [0.2, 0.32, 0.44, 0.74][j], w, h * 0.07); }); }));
+      add(resGeo, keep(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 })), -0.05 + i * 0.022, -0.1, 0.005, 0, 0, Math.PI / 2);
+      add(legGeo, pin, -0.05 + i * 0.022, -0.1, 0.0035, 0, 0, Math.PI / 2);
+    }
     add(new THREE.TorusGeometry(0.014, 0.006, 10, 20), keep(new THREE.MeshStandardMaterial({ color: 0xb06a30, roughness: 0.35, metalness: 0.8 })), 0.0, -0.1, 0.007);
     // status LEDs (light up green when the board works)
     this.leds = [];
@@ -253,7 +271,7 @@ export class RepairGame {
     });
     // tool probe (follows the cursor), the zap arc, smoke wisps, sparks
     const probe = (this.probe = new THREE.Group());
-    const handle = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.009, 0.011, 0.11, 12)), keep(new THREE.MeshStandardMaterial({ color: 0xd9a51e, roughness: 0.5 })));
+    const handle = new THREE.Mesh(keep(lathe([[0, -0.055], [0.0105, -0.055], [0.011, -0.04], [0.0098, -0.036], [0.011, -0.03], [0.0098, -0.026], [0.011, -0.02], [0.0098, -0.016], [0.0105, -0.01], [0.009, 0.05], [0.007, 0.055], [0, 0.0555]], 16)), keep(new THREE.MeshStandardMaterial({ color: 0xd9a51e, roughness: 0.5 })));
     handle.position.y = 0.075; probe.add(handle);
     const band = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.0115, 0.0115, 0.02, 12)), keep(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7 })));
     band.position.y = 0.05; probe.add(band);

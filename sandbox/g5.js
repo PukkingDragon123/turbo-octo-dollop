@@ -15,6 +15,8 @@ export default async function (ctx) {
   const t0 = performance.now();
   if (s === 'crusher') {
     const c = new Crusher(world, mission, 0, 0, -2.5, 0); scene.add(c.root); ups.push(c);
+    const sun = new THREE.DirectionalLight(0xfff2e0, 2.2); sun.position.set(4, 7, 6); scene.add(sun);
+    scene.add(new THREE.HemisphereLight(0xfff4d0, 0x40382a, 1.2));
   } else if (s === 'kiosks') {
     const a = new ShopKiosk(world, mission, -0.9, 0, -1, 0); scene.add(a.root);
     const b = new QuestKiosk(world, mission, 0.9, 0, -1, 0); scene.add(b.root);
@@ -31,6 +33,7 @@ export default async function (ctx) {
     }
   }
   console.log('build ms', (performance.now() - t0).toFixed(0));
+  scene.traverse((o) => { const st = o.userData?.stats; if (st && o.userData.device) console.log('stats', o.name, JSON.stringify({ tris: st.tris, draws: st.draws, build: st.buildMs, ao: st.aoMs, pack: st.packMs, atlas: st.atlas, prof: (st.prof || []).slice(0, 14) })); });
   if (!q.has('cam')) { camera.position.set(2.2, 2.2, 3.6); controls.target.set(0, 1.4, -1.8); controls.update(); }
   return { update(dt) { for (const u of ups) { try { u.t = (u.t || 0) + dt; } catch (e) { /* */ } } } };
 }

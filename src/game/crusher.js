@@ -10,13 +10,13 @@ import { net } from '../net/net.js';
 import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
 import { Device } from './devices.js';
-import * as Mat from '../gfx/materials.js';
 import { CrtScreen, text, bar } from '../ui/crt.js';
 import { juice } from '../gfx/juice.js';
 import { floatText } from '../ui/floattext.js';
 import { itemName, itemDef, sellValue } from './itemdefs.js';
 import { fmt$, short$ } from './economy.js';
 import { modelHalfHeight } from '../entities/catalog.js';
+import { buildDevice } from '../entities/models_devices.js';
 
 const PI = Math.PI;
 // layout (local, front = +Z, origin = floor centre)
@@ -42,64 +42,6 @@ function canvasTex(w, h, draw) {
   return t;
 }
 
-function stripes(ctx, x, y, w, h, s = 28) {
-  ctx.save();
-  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  ctx.fillStyle = '#141414'; ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = '#f2c418';
-  for (let i = -h; i < w + h; i += s * 2) { ctx.beginPath(); ctx.moveTo(x + i, y + h); ctx.lineTo(x + i + h, y); ctx.lineTo(x + i + h + s, y); ctx.lineTo(x + i + s, y + h); ctx.fill(); }
-  ctx.restore();
-}
-
-let _tex = null;
-function textures() {
-  if (_tex) return _tex;
-  const sign = canvasTex(1024, 200, (c, w, h) => {
-    c.fillStyle = '#1a1c1f'; c.fillRect(0, 0, w, h);
-    stripes(c, 0, 0, w, 22); stripes(c, 0, h - 22, w, 22);
-    c.fillStyle = '#f2c418'; c.font = '900 74px "IBM Plex Mono", monospace'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText('ASSET COMPACTOR', w / 2, 78);
-    c.fillStyle = '#e8e2d2'; c.font = 'bold 30px "IBM Plex Mono", monospace';
-    c.fillText('R.O.O.M. CX-9  ·  CRUSH  ·  COMPRESS  ·  TELEPORT', w / 2, 136);
-    c.fillStyle = '#ff5a3a'; c.font = 'bold 22px "IBM Plex Mono", monospace';
-    c.fillText('KEEP HANDS, FEET AND COWORKERS CLEAR OF THE PRESS', w / 2, 166);
-  });
-  const hazard = canvasTex(512, 64, (c, w, h) => stripes(c, 0, 0, w, h, 24));
-  const bed = canvasTex(512, 512, (c, w, h) => {
-    c.fillStyle = '#2b2f33'; c.fillRect(0, 0, w, h);
-    stripes(c, 0, 0, w, 26); stripes(c, 0, h - 26, w, 26);
-    c.save(); c.translate(w / 2, h / 2);
-    c.strokeStyle = 'rgba(160,230,255,0.5)'; c.lineWidth = 3;
-    for (let r = 40; r < 220; r += 34) { c.beginPath(); c.arc(0, 0, r, 0, PI * 2); c.stroke(); }
-    for (let i = 0; i < 16; i++) { c.rotate(PI / 8); c.beginPath(); c.moveTo(30, 0); c.lineTo(220, 0); c.stroke(); }
-    c.restore();
-    c.fillStyle = 'rgba(220,214,196,0.8)'; c.font = 'bold 26px "IBM Plex Mono", monospace'; c.textAlign = 'center';
-    c.fillText('TELEPORT BED', w / 2, h / 2 + 8);
-    for (let i = 0; i < 400; i++) { c.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`; c.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 6, 1 + Math.random() * 3); }
-  });
-  const scale = canvasTex(256, 1024, (c, w, h) => {
-    c.fillStyle = '#ece6d4'; c.fillRect(0, 0, w, h);
-    c.fillStyle = '#1a1c1f'; c.fillRect(0, 0, w, 120); c.fillRect(0, h - 70, w, 70);
-    c.fillStyle = '#f2c418'; c.font = '900 34px "IBM Plex Mono", monospace'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText('ESCAPE', w / 2, 40); c.fillText('FUND', w / 2, 82);
-    c.fillStyle = '#ff5a3a'; c.font = 'bold 22px "IBM Plex Mono", monospace'; c.fillText('LEVEL QUOTA', w / 2, h - 36);
-    // ticks: top of tube = y 150, bottom = y 900 (matches the tube in the model)
-    const y0 = 900, y1 = 150;
-    c.textAlign = 'left';
-    for (let i = 0; i <= 40; i++) {
-      const y = y0 + (y1 - y0) * (i / 40);
-      const major = i % 10 === 0, mid = i % 5 === 0;
-      c.fillStyle = '#1a1c1f';
-      c.fillRect(150, y - (major ? 2 : 1), major ? 70 : mid ? 46 : 26, major ? 4 : 2);
-      if (major) { c.font = 'bold 30px "IBM Plex Mono", monospace'; c.fillText(['$0', '250K', '500K', '750K', '$1M'][i / 10], 8, y); }
-    }
-    c.fillStyle = '#c8241c'; c.fillRect(150, y1 - 30, 70, 8);
-    c.font = '900 22px "IBM Plex Mono", monospace'; c.fillText('EXIT', 160, y1 - 52);
-  });
-  _tex = { sign, hazard, bed, scale };
-  return _tex;
-}
-
 let _beamTex = null;
 function beamTexture() {
   if (_beamTex) return _beamTex;
@@ -112,20 +54,6 @@ function beamTexture() {
   return _beamTex;
 }
 
-function box(w, h, d, mat, x, y, z, parent) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-  m.position.set(x, y, z);
-  m.castShadow = true; m.receiveShadow = true;
-  parent.add(m);
-  return m;
-}
-function cyl(r, h, mat, x, y, z, parent, seg = 20, rt = r) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, r, h, seg), mat);
-  m.position.set(x, y, z);
-  m.castShadow = true; m.receiveShadow = true;
-  parent.add(m);
-  return m;
-}
 function emis(color, i = 1) {
   const m = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, emissive: color, emissiveIntensity: i, roughness: 0.4 });
   m.userData.noProbe = true;
@@ -163,128 +91,65 @@ export class Crusher extends Device {
 
   // ------------------------------------------------------------------ model
   _build() {
-    const R = this.root, tx = textures();
-    const yellow = Mat.get('metal_yellow'), dark = Mat.get('metal_dark'), steel = Mat.get('steel');
-    const chrome = Mat.get('chrome'), rubber = Mat.get('rubber');
-    const g = new THREE.Group(); R.add(g);
-    // plinth with hazard edge
-    box(3.8, BED, 2.5, dark, 0, BED / 2, -0.15, g);
-    const hz = new THREE.MeshStandardMaterial({ map: tx.hazard, roughness: 0.6, metalness: 0.3 });
-    const edge = new THREE.Mesh(new THREE.PlaneGeometry(3.8, BED - 0.02), hz);
-    edge.position.set(0, BED / 2, 1.101); g.add(edge);
-    // teleport bed
-    const bedMat = new THREE.MeshStandardMaterial({ map: tx.bed, roughness: 0.55, metalness: 0.5 });
-    const bed = new THREE.Mesh(new THREE.PlaneGeometry(CX * 2, CZ1 - CZ0), bedMat);
-    bed.rotation.x = -PI / 2; bed.position.set(0, BED + 0.003, (CZ0 + CZ1) / 2); bed.receiveShadow = true; g.add(bed);
+    const R = this.root;
+    // static shell + moving platen + drop shutter: modelled DKit templates (src/entities/devices/mission.js)
+    const frame = buildDevice('crusher_frame');
+    const g = frame.object; R.add(g);
+    // teleport bed ring
     this.bedRingMat = emis(0x4fe0ff, 0.6);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.02, 8, 48), this.bedRingMat);
     ring.rotation.x = -PI / 2; ring.position.set(0, BED + 0.01, 0); g.add(ring);
-    // chamber walls (heavy steel, riveted)
-    for (const s of [-1, 1]) {
-      box(0.3, CTOP - BED, CZ1 - CZ0 + 0.3, dark, s * (CX + 0.15), (CTOP + BED) / 2, (CZ0 + CZ1) / 2 - 0.15, g);
-      for (let i = 0; i < 5; i++) for (let j = 0; j < 3; j++) cyl(0.025, 0.02, steel, s * (CX + 0.001), 0.5 + i * 0.34, -0.6 + j * 0.6, g, 8).rotation.z = PI / 2;
-    }
-    box(CX * 2 + 0.6, CTOP - BED, 0.3, dark, 0, (CTOP + BED) / 2, CZ0 - 0.15, g);
-    // wear plates inside
-    box(CX * 2 - 0.1, 0.5, 0.02, Mat.get('rust'), 0, BED + 0.3, CZ0 + 0.011, g);
-    // columns (I-beams) and crosshead
-    for (const s of [-1, 1]) {
-      const cx = s * (CX + 0.5);
-      box(0.4, 4.4, 0.08, yellow, cx, 2.2, 0.42, g);
-      box(0.4, 4.4, 0.08, yellow, cx, 2.2, -0.62, g);
-      box(0.08, 4.4, 1.0, yellow, cx, 2.2, -0.1, g);
-    }
-    box(3.9, 0.7, 1.7, yellow, 0, 4.1, -0.1, g);
-    box(3.95, 0.08, 1.75, dark, 0, 3.72, -0.1, g);
-    // header plate with the sign (front, above the chamber mouth)
-    box(CX * 2 + 0.6, 0.72, 0.12, dark, 0, CTOP + 0.36, CZ1 + 0.06, g);
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(CX * 2 + 0.5, 0.62), new THREE.MeshStandardMaterial({ map: tx.sign, roughness: 0.6, metalness: 0.2, emissive: 0xffffff, emissiveMap: tx.sign, emissiveIntensity: 0.08 }));
-    sign.position.set(0, CTOP + 0.36, CZ1 + 0.121); g.add(sign);
-    // hydraulic cylinders (fixed sleeves under the crosshead) and the ram with its rods
-    for (const s of [-1, 1]) {
-      cyl(0.22, 1.05, chrome, s * 0.55, 3.2, -0.05, g, 24);
-      cyl(0.25, 0.08, dark, s * 0.55, 2.66, -0.05, g, 24);
-      cyl(0.25, 0.08, dark, s * 0.55, 3.72, -0.05, g, 24);
-    }
     this.ram = new THREE.Group(); R.add(this.ram);
-    box(CX * 2 - 0.08, RAM_H, CZ1 - CZ0 - 0.08, steel, 0, RAM_H / 2, 0, this.ram);
-    for (let i = 0; i < 6; i++) box(0.05, 0.06, CZ1 - CZ0 - 0.1, dark, -0.9 + i * 0.36, 0.02, 0, this.ram);
-    box(CX * 2 - 0.04, 0.12, CZ1 - CZ0 - 0.04, yellow, 0, RAM_H - 0.06, 0, this.ram);
-    for (const s of [-1, 1]) cyl(0.11, 2.4, chrome, s * 0.55, RAM_H + 1.2, -0.05 - 0.0, this.ram, 18);
+    this.ram.add(buildDevice('crusher_ram').object);
     this.ram.position.set(0, RAM_REST, 0);
-    // shutter: vertical bars that extend down over the chamber mouth
     this.gate = new THREE.Group(); this.gate.position.set(0, CTOP, CZ1 + 0.02); R.add(this.gate);
-    const barMat = Mat.get('steel');
-    for (let i = 0; i < 13; i++) cyl(0.018, CTOP - BED, barMat, -CX + 0.08 + i * ((CX * 2 - 0.16) / 12), -(CTOP - BED) / 2, 0, this.gate, 8);
-    for (const y of [0.35, 0.95, 1.55]) box(CX * 2 - 0.1, 0.05, 0.04, Mat.get('metal_red'), 0, -y, 0, this.gate);
+    this.gate.add(buildDevice('crusher_gate').object);
     this.gate.scale.y = 0.001; this.gate.visible = false;
-    // teleport coils in the back corners
+    // teleport coil corona tips
     this.coilMat = emis(0x5ae8ff, 0.3);
-    for (const s of [-1, 1]) {
-      cyl(0.04, 1.5, dark, s * (CX - 0.12), BED + 0.75, CZ0 + 0.12, g, 10);
-      for (let i = 0; i < 9; i++) { const t = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.016, 6, 16), Mat.get('brass')); t.rotation.x = PI / 2; t.position.set(s * (CX - 0.12), BED + 0.2 + i * 0.15, CZ0 + 0.12); g.add(t); }
-      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), this.coilMat); tip.position.set(s * (CX - 0.12), BED + 1.58, CZ0 + 0.12); g.add(tip);
-    }
-    // hoses down the back
-    const hose = (pts) => { const c = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p))); const m = new THREE.Mesh(new THREE.TubeGeometry(c, 30, 0.05, 8), rubber); m.castShadow = true; g.add(m); };
-    hose([[-0.55, 3.9, -0.95], [-0.7, 3.2, -1.3], [-1.0, 1.4, -1.45], [-1.3, 0.3, -1.4]]);
-    hose([[0.55, 3.9, -0.95], [0.75, 3.0, -1.32], [1.1, 1.2, -1.45], [1.35, 0.3, -1.38]]);
-    box(0.9, 0.7, 0.5, dark, 1.4, 0.35 + BED, -1.6, g); // pump unit
-    // warning beacon on top
+    const tipGeo = new THREE.SphereGeometry(0.07, 14, 10);
+    for (const s of [-1, 1]) { const tip = new THREE.Mesh(tipGeo, this.coilMat); tip.position.set(s * (CX - 0.12), BED + 1.58, CZ0 + 0.12); g.add(tip); }
+    // warning beacon: fresnel dome with an inner reflector (spins while busy)
     this.beaconMat = emis(0xffa020, 0.4);
-    cyl(0.12, 0.06, dark, -1.4, 4.48, 0.4, g, 16);
-    this.beacon = cyl(0.1, 0.2, this.beaconMat, -1.4, 4.61, 0.4, g, 16);
-    // pressure dial on the left column
-    const dial = new THREE.Mesh(new THREE.CircleGeometry(0.2, 32), new THREE.MeshStandardMaterial({ color: 0xece6d4, roughness: 0.5 }));
-    dial.position.set(-(CX + 0.5), 2.95, 0.472); g.add(dial);
-    const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.025, 8, 32), chrome); bezel.position.copy(dial.position); g.add(bezel);
-    this.needle = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.17, 0.01), Mat.get('metal_red'));
-    this.needle.geometry.translate(0, 0.075, 0);
-    this.needle.position.set(dial.position.x, dial.position.y, 0.48); g.add(this.needle);
-    // ESCAPE GAUGE: a tall thermometer beside the right column
+    const dome = new THREE.LatheGeometry([[0, 0], [0.1, 0], [0.1, 0.13], [0.092, 0.17], [0.07, 0.195], [0.035, 0.208], [0, 0.21]].map(([x, y]) => new THREE.Vector2(x, y)), 24);
+    this.beacon = new THREE.Mesh(dome, this.beaconMat); this.beacon.position.set(-1.4, 4.51, 0.4); g.add(this.beacon);
+    const refl = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.12, 12, 1, true, 0, PI), new THREE.MeshStandardMaterial({ color: 0xd8d8d8, metalness: 1, roughness: 0.2, side: THREE.DoubleSide }));
+    refl.position.y = 0.08; this.beacon.add(refl);
+    // pressure gauge needle (pivot inside the frame template)
+    this.needle = frame.parts.needle;
+    // ESCAPE GAUGE: mercury column + bulb in the frame's glass tube
     const gx = CX + 1.1;
-    box(0.62, 3.9, 0.12, dark, gx, 2.15, 0.25, g);
-    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 3.6), new THREE.MeshStandardMaterial({ map: tx.scale, roughness: 0.7 }));
-    plate.position.set(gx, 2.15, 0.312); g.add(plate);
-    // the scale texture maps y 150..900 of 1024 to the tube: plate spans 3.6 m centred at 2.15
-    const yAt = (py) => 2.15 + 1.8 - (py / 1024) * 3.6;
+    const yAt = (py) => 2.15 + 1.8 - (py / 1024) * 3.6; // scale print: y 150..900 of 1024 = the tube
     this.tubeY0 = yAt(900); this.tubeY1 = yAt(150);
     const tubeX = gx - 0.06;
-    const glass = new THREE.MeshStandardMaterial({ color: 0xcfe8ee, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.28, depthWrite: false });
-    glass.userData.noProbe = true;
-    const tube = cyl(0.06, this.tubeY1 - this.tubeY0 + 0.12, glass, tubeX, (this.tubeY0 + this.tubeY1) / 2, 0.38, g, 16); tube.castShadow = false;
     this.mercMat = emis(0xff2a1a, 1.4);
     this.merc = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 1, 14), this.mercMat);
     this.merc.geometry.translate(0, 0.5, 0);
     this.merc.position.set(tubeX, this.tubeY0, 0.38); g.add(this.merc);
     this.bulb = new THREE.Mesh(new THREE.SphereGeometry(0.13, 20, 14), this.mercMat);
     this.bulb.position.set(tubeX, this.tubeY0 - 0.14, 0.38); g.add(this.bulb);
-    const cap = cyl(0.075, 0.08, chrome, tubeX, this.tubeY1 + 0.08, 0.38, g, 16); void cap;
     this.exitLampMat = emis(0x30ff60, 0.15);
     this.exitLamp = new THREE.Mesh(new THREE.SphereGeometry(0.08, 14, 10), this.exitLampMat);
     this.exitLamp.position.set(gx, 4.22, 0.36); g.add(this.exitLamp);
-    // counter display under the gauge
+    // counter display in its bezel under the gauge
     const cnt = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.21), new THREE.MeshBasicMaterial({ color: 0 }));
-    cnt.position.set(gx, 0.42, 0.315); g.add(cnt);
+    cnt.position.set(gx, 0.42, 0.336); g.add(cnt);
     this.counter = new CrtScreen(320, 120, 'green');
     this.counter.fps = 6;
     this.counter.attach(cnt, 1.6);
-    // control console at the front left: CRT + big red button
+    // control pedestal at the front left: CRT (housing in the frame) + e-stop mushroom
     const kx = -(CX + 1.0), kz = 1.15;
-    box(0.66, 1.0, 0.5, dark, kx, 0.5, kz, g);
-    box(0.7, 0.06, 0.56, yellow, kx, 1.02, kz, g);
     const head = new THREE.Group(); head.position.set(kx, 1.05, kz - 0.05); head.rotation.x = -0.5; g.add(head);
-    box(0.62, 0.46, 0.3, Mat.get('plastic_beige'), 0, 0.23, -0.1, head);
     const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.34), new THREE.MeshBasicMaterial({ color: 0 }));
-    scr.position.set(0, 0.24, 0.051); head.add(scr);
+    scr.position.set(0, 0.24, 0.044); head.add(scr);
     this.scr = new CrtScreen(512, 352, 'green');
     this.scr.fps = 8;
     this.scr.attach(scr, 1.5);
     this.button = new THREE.Group(); this.button.position.set(kx + 0.18, 1.07, kz + 0.17); g.add(this.button);
-    cyl(0.085, 0.04, Mat.get('metal_yellow'), 0, 0.0, 0, this.button, 20);
     this.btnMat = new THREE.MeshStandardMaterial({ color: 0xc81e14, emissive: 0xff2010, emissiveIntensity: 0.3, roughness: 0.35 });
-    this.btnCap = new THREE.Mesh(new THREE.SphereGeometry(0.07, 18, 10, 0, PI * 2, 0, PI / 2), this.btnMat);
-    this.btnCap.position.y = 0.03; this.btnCap.scale.y = 0.6; this.button.add(this.btnCap);
+    const cap = new THREE.LatheGeometry([[0, -0.02], [0.03, -0.02], [0.032, 0.0], [0.07, 0.004], [0.074, 0.014], [0.068, 0.026], [0.05, 0.036], [0.025, 0.041], [0, 0.042]].map(([x, y]) => new THREE.Vector2(x, y)), 28);
+    this.btnCap = new THREE.Mesh(cap, this.btnMat); this.btnCap.castShadow = true;
+    this.btnCap.position.y = 0.03; this.button.add(this.btnCap);
     // colliders
     const half = (w, h, d) => [w, h, d];
     this.addColliders([
@@ -297,7 +162,7 @@ export class Crusher extends Device {
       { type: 'box', size: half(CX * 2 + 0.6, 1.7, 1.9), pos: [0, CTOP + 0.85, -0.05] },
       { type: 'box', size: half(0.62, 3.9, 0.3), pos: [gx, 2.15, 0.28] },
       { type: 'box', size: half(0.7, 1.4, 0.6), pos: [kx, 0.7, kz] },
-      { type: 'box', size: half(0.9, 0.7, 0.5), pos: [1.4, 0.35 + BED, -1.6] },
+      { type: 'box', size: half(0.92, 0.95, 0.56), pos: [1.4, 0.475, -1.66] },
     ]);
   }
 

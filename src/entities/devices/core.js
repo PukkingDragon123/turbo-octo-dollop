@@ -10,7 +10,7 @@
 //   const door = k.grp(-0.18, 0, 0.12, { name: 'door' }); k.inside(door, () => { ... });
 //   return k.done({ mass: 12, material: 'metal' });
 //
-// Slots: material classes 'paint' | 'metal' | 'plastic' | 'dark' | 'wood' | 'rust' | 'tile' | 'concrete',
+// Slots: material classes 'paint' | 'metal' | 'plastic' | 'dark' | 'wood' | 'rust' | 'tile' | 'concrete' | 'cloth',
 // 'atlas' (labels), 'decal' (alpha-blended atlas prints / grime), 'glass' (clear additive), a palette
 // swatch '#rrggbb[:kind]' (solid colour through the atlas material, kind = surface letter, see atlas.js),
 // or any THREE.Material. Per-call options: tint (sRGB hex), rough (roughness multiplier 0.25..1.75),

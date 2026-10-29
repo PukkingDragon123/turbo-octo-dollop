@@ -32,9 +32,9 @@ import * as AV from '../entities/avatar.js';
 import { buildModel } from '../entities/catalog.js';
 import {
   RoboArm, Sparks, Batch, cyl, factoryMats, LiveTex, fitText, wrapLines, HangPanel, Hatch, Knob, Toggle, Selector, GearSign, gearGeo,
-  Junk, Puffs, Motes, kitMesh as mesh, kitRbox as rbox, PHOS, brackets, scanlines, phosphorBg, rustySign, rustTex,
+  Junk, Puffs, Motes, kitMesh as mesh, kitRbox as rbox, PHOS, brackets, scanlines, phosphorBg, rustySign, rustTex, FT,
 } from '../entities/wardrobe.js';
-import { FONT } from '../ui/fonts.js';
+import { FONT, font as fontOf } from '../ui/fonts.js';
 import { factorySet, signLampShade, machinePlate, plaqueBoard, partsBoard } from './menu_props.js';
 import { getPart } from '../entities/doll/doll_avatar.js';
 import { buildHatPart, buildVisorPart, buildAccPart, buildPackPart } from '../entities/doll/robotcos.js';
@@ -47,8 +47,7 @@ import { HC } from '../entities/doll/robotshape.js';
 
 const { Avatar, COSMETICS, resolveCos, DEFAULT_COSMETICS } = AV;
 // type roles (ui/fonts.js): deco signage, typewriter forms, CRT terminals, marker labels, handwriting
-// (one face everywhere now: FONT.main, Cormorant Garamond; the role names stay for readability)
-const F_SIGN = FONT.main, F_TYPE = FONT.main, F_CRT = FONT.main, F_MONO = FONT.main, F_MARK = FONT.main, F_HAND = FONT.main, F_PRINT = FONT.main, F_TITLE = FONT.main;
+// type: the user-picked font slots (ui/fonts.js); FT(slot) is a fitText() template, fontOf(slot, px) a canvas font
 const PI = Math.PI, TAU = PI * 2, DEG = PI / 180;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -239,8 +238,8 @@ export class MenuScene {
     this.stLight = new THREE.SpotLight(0xffe6c4, 0, 7, 0.8, 0.6, 2); S.add(this.stLight, this.stLight.target);
     this.shaftLight = new THREE.PointLight(0xff4a2a, 0, 7, 2); this.shaftLight.position.set(0, -3, 0); S.add(this.shaftLight);
     // the only light on the hub signs: a caged work lamp on a bracket above and in front of them
-    const sl = (this.signLamp = new THREE.SpotLight(0xffd8a8, 0, 9.5, 0.74, 0.45, 2));
-    sl.position.set(1.7, 4.75, 2.5); sl.target.position.set(1.5, 2.1, 0.38);
+    const sl = (this.signLamp = new THREE.SpotLight(0xffd8a8, 0, 10, 0.8, 0.45, 2));
+    sl.position.set(1.75, 4.75, 2.5); sl.target.position.set(1.6, 2.0, 0.38);
     S.add(sl, sl.target);
     const cage = new THREE.Group(); cage.position.copy(sl.position); cage.lookAt(sl.target.position); S.add(cage);
     cage.add(signLampShade().object);
@@ -283,8 +282,8 @@ export class MenuScene {
     // toe tag
     const tag = this._tex(256, 128, (g, w, h) => {
       g.fillStyle = '#e8dcb8'; g.fillRect(0, 0, w, h); g.fillStyle = '#2a2018'; g.textBaseline = 'middle';
-      fitText(g, 'UNIT ' + this.av.empNo, w / 2, h * 0.3, w - 30, 40, `bold {s}px ${F_HAND}`);
-      g.fillStyle = '#7a2a1a'; fitText(g, 'AWAITING ASSEMBLY', w / 2, h * 0.68, w - 26, 34, `bold {s}px ${F_HAND}`);
+      fitText(g, 'UNIT ' + this.av.empNo, w / 2, h * 0.3, w - 30, 40, FT('receipt'));
+      g.fillStyle = '#7a2a1a'; fitText(g, 'AWAITING ASSEMBLY', w / 2, h * 0.68, w - 26, 34, FT('receipt'));
       g.beginPath(); g.fillStyle = '#1a1410'; g.arc(18, h / 2, 7, 0, TAU); g.fill();
     });
     this.tagMat = new THREE.MeshStandardMaterial({ map: tag.tex, emissiveMap: tag.tex, emissive: 0xffffff, emissiveIntensity: 0.05, roughness: 0.9, side: THREE.DoubleSide });
@@ -566,9 +565,9 @@ export class MenuScene {
         // the name, set along the arc (centred on the sector, letters upright at the top)
         const txt = (c.short || c.label).toUpperCase(), r = 0.655 * k;
         let fs = Math.round(0.052 * k);
-        x.font = `700 ${fs}px ${FONT.main}`;
+        x.font = fontOf('sign', fs);
         const fit = (step * r * 0.8) / (x.measureText(txt).width * 1.12);
-        if (fit < 1) { fs = Math.floor(fs * fit); x.font = `700 ${fs}px ${FONT.main}`; }
+        if (fit < 1) { fs = Math.floor(fs * fit); x.font = fontOf('sign', fs); }
         const tw = x.measureText(txt).width * 1.12, a0 = th + (tw / r) / 2;
         let a = a0;
         for (const ch of txt) {
@@ -601,9 +600,9 @@ export class MenuScene {
       x.lineWidth = 1.5; x.beginPath(); x.arc(cx, cy, R * 0.88, 0, TAU); x.stroke();
       x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#2a1c10';
       if (!a) return;
-      fitText(x, a.label, cx, cy - R * 0.38, R * 1.35, 92, `italic 600 {s}px ${FONT.main}`);
+      fitText(x, a.label, cx, cy - R * 0.38, R * 1.35, 92, FT('terminal'));
       x.fillStyle = '#1a1008';
-      fitText(x, this._fmt(a), cx, cy + R * 0.04, R * 1.45, 176, `700 {s}px ${FONT.main}`);
+      fitText(x, this._fmt(a), cx, cy + R * 0.04, R * 1.45, 176, FT('terminal'));
       if (a.type === 'knob') {
         const k = clamp((this._ctlValue(a) - a.min) / (a.max - a.min), 0, 1), a0 = PI * 0.8, a1 = PI * 2.2;
         x.lineCap = 'round'; x.lineWidth = 14; x.strokeStyle = 'rgba(40,28,16,0.18)'; x.beginPath(); x.arc(cx, cy, R * 0.74, a0, a1); x.stroke();
@@ -615,7 +614,7 @@ export class MenuScene {
         x.fillStyle = this._ctlValue(a) ? '#9a2a1a' : 'rgba(40,28,16,0.35)'; x.beginPath(); x.arc(cx, cy + R * 0.4, 16, 0, TAU); x.fill();
       }
       x.fillStyle = 'rgba(42,28,16,0.75)';
-      fitText(x, a.type === 'knob' ? 'drag the knob' : a.type === 'toggle' ? 'pull the lever' : 'turn the switch', cx, cy + R * 0.62, R * 1.1, 38, `italic 600 {s}px ${FONT.main}`);
+      fitText(x, a.type === 'knob' ? 'drag the knob' : a.type === 'toggle' ? 'pull the lever' : 'turn the switch', cx, cy + R * 0.62, R * 1.1, 38, FT('terminal'));
     });
   }
   _applySetting(c, v, commit = false) {
@@ -640,13 +639,13 @@ export class MenuScene {
     this.troBoard = plaqueBoard(4.4, 3.2).object; this.troBoard.position.set(0, 2.3, -0.012); g.add(this.troBoard);
     mesh(new THREE.BoxGeometry(6, 5, 0.2), this.F.wall, g, 0, 2.5, -0.2);
     this.troHead = this._tex(1024, 128);
-    this.troHeadM = this._plane(2.6, 0.32, this._emTexMat(this.troHead.tex, 0.8), g, 0, 3.98, 0.0);
+    this.troHeadM = this._plane(2.6, 0.32, new THREE.MeshStandardMaterial({ map: this.troHead.tex, bumpMap: this.troHead.tex, bumpScale: 1, roughness: 0.82, metalness: 0.2 }), g, 0, 3.98, 0.0);
     this.plaques = [];
     this._rewardMap = {};
     for (const [cat, list] of Object.entries(COSMETICS)) for (const o of list) if (o.unlock) (this._rewardMap[o.unlock] ||= []).push({ cat, name: o.name });
     for (const id of Object.keys(ACHIEVEMENTS)) {
       const p = { id, g: new THREE.Group(), tex: this._tex(384, 232) };
-      p.mat = new THREE.MeshStandardMaterial({ map: p.tex.tex, emissiveMap: p.tex.tex, emissive: 0xffffff, emissiveIntensity: 0.0, roughness: 0.18, metalness: 0.1 });
+      p.mat = new THREE.MeshStandardMaterial({ map: p.tex.tex, roughness: 0.35, metalness: 0.15 });
       p.face = this._plane(0.5, 0.3, p.mat, p.g, 0, 0, 0.012);
       p.back = mesh(rbox(0.54, 0.34, 0.02, 0.006), this.F.brass, p.g, 0, 0, 0);
       p.lamp = mesh(new THREE.BoxGeometry(0.3, 0.012, 0.012), this.F.ledOff, p.g, 0, 0.2, 0.03);
@@ -659,7 +658,7 @@ export class MenuScene {
   }
   _drawPlaques() {
     const ids = Object.keys(ACHIEVEMENTS), got = ids.filter((k) => profile.has(k)).length;
-    this.troHead.draw((x, w, h) => { phosphorBg(x, w, h); brackets(x, 8, 8, w - 16, h - 16, 30, PHOS.mid, 3, 8); x.fillStyle = PHOS.hi; x.shadowColor = PHOS.mid; x.shadowBlur = 16; x.textBaseline = 'middle'; fitText(x, `COMMENDATIONS · ${got} / ${ids.length}`, w / 2, h / 2, w - 80, 72, `{s}px ${F_SIGN}`); x.shadowBlur = 0; scanlines(x, w, h, 0.25); });
+    this.troHead.draw((x, w, h) => rustySign(x, w, h, { title: 'COMMENDATIONS', sub: `${got} of ${ids.length} earned`, seed: 71, paint: 'red', spacing: 0.1 }));
     for (const p of this.plaques) {
       const A = ACHIEVEMENTS[p.id], on = profile.has(p.id), rw = this._rewardMap[p.id] || [];
       p.on = on;
@@ -670,18 +669,18 @@ export class MenuScene {
         phosphorBg(x, w, h);
         const c1 = on ? PHOS.hi : '#9a8358', c2 = on ? PHOS.mid : '#7a6440';
         brackets(x, 8, 8, w - 16, h - 16, 24, c2, 3, on ? 8 : 0);
-        x.shadowColor = PHOS.mid; x.shadowBlur = on ? 10 : 0; x.textBaseline = 'top';
-        x.fillStyle = c1; fitText(x, A.name.toUpperCase(), w / 2, 18, w - 40, 30, `{s}px ${F_CRT}`);
+        x.shadowBlur = 0; x.textBaseline = 'top';
+        x.fillStyle = c1; fitText(x, A.name.toUpperCase(), w / 2, 18, w - 40, 30, FT('poster'));
         x.fillStyle = c2; x.fillRect(24, 54, w - 48, 2);
-        x.font = `20px ${F_MONO}`; x.fillStyle = c2; x.textAlign = 'center';
+        x.font = fontOf('poster', 20); x.fillStyle = c2; x.textAlign = 'center';
         wrapLines(x, A.desc, w - 48).slice(0, 3).forEach((l, i) => x.fillText(l, w / 2, 64 + i * 24));
         if (rw.length) {
-          x.fillStyle = on ? PHOS.soft : '#6e5a3a'; x.font = `22px ${F_CRT}`;
+          x.fillStyle = on ? PHOS.soft : '#6e5a3a'; x.font = fontOf('receipt', 22);
           wrapLines(x, '\u25B8 SPECIAL ISSUE: ' + rw.map((r) => r.name.toUpperCase()).join(', '), w - 40).slice(0, 2).forEach((l, i) => x.fillText(l, w / 2, 152 + i * 24));
         }
         if (!on) {
           for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(200,160,90,${Math.random() * 0.08})`; x.fillRect(Math.random() * w, Math.random() * h, 2, 1); }
-          x.save(); x.translate(w - 70, h - 34); x.rotate(-0.12); x.strokeStyle = '#6e5a3a'; x.lineWidth = 2; x.strokeRect(-58, -16, 116, 32); x.fillStyle = '#6e5a3a'; x.font = `22px ${F_CRT}`; x.textBaseline = 'middle'; x.fillText('CLASSIFIED', 0, 1); x.restore();
+          x.save(); x.translate(w - 70, h - 34); x.rotate(-0.12); x.strokeStyle = '#6e5a3a'; x.lineWidth = 2; x.strokeRect(-58, -16, 116, 32); x.fillStyle = '#6e5a3a'; x.font = fontOf('receipt', 22); x.textBaseline = 'middle'; x.fillText('CLASSIFIED', 0, 1); x.restore();
         }
         x.shadowBlur = 0; scanlines(x, w, h, 0.3);
       });
@@ -732,7 +731,7 @@ export class MenuScene {
       mesh(new THREE.BoxGeometry(L.cell - 0.02, L.cell - 0.02, 0.01), this.F.dark, c.g, 0, 0, -0.002);
       c.lamp = mesh(new THREE.BoxGeometry(L.cell - 0.06, 0.008, 0.008), this.F.ledOff, c.g, 0, L.cell / 2 - 0.02, 0.01);
       c.lamp.castShadow = false;
-      const lab = this._tex(512, 128, (x, w, h) => rustySign(x, w, h, ok ? { title: o.name.toUpperCase(), seed: 90 + i, paint: 'label', spacing: 0.04 } : { title: 'LOCKED', sub: ACHIEVEMENTS[o.unlock]?.name || o.unlock, seed: 90 + i, paint: 'red' }));
+      const lab = this._tex(512, 128, (x, w, h) => rustySign(x, w, h, ok ? { title: o.name.toUpperCase(), seed: 90 + i, paint: 'label', spacing: 0.04, slot: 'receipt' } : { title: 'LOCKED', sub: ACHIEVEMENTS[o.unlock]?.name || o.unlock, seed: 90 + i, paint: 'red', slot: 'receipt', subSlot: 'receipt' }));
       c.label = this._plane(L.cell - 0.03, (L.cell - 0.03) / 4, new THREE.MeshStandardMaterial({ map: lab.tex, roughness: 0.82, metalness: 0.2 }), c.g, 0, -L.cell / 2 + (L.cell - 0.03) / 8 + 0.01, 0.012);
       c.item = this._itemFor(sec.cat, o, L.cell * 0.7);
       c.item.position.set(0, 0.02, 0.07);

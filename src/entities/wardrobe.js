@@ -1169,7 +1169,7 @@ export class GearSign {
     mesh(new THREE.CircleGeometry(0.062, 32), new THREE.MeshStandardMaterial({ map: ro.tex, transparent: true, roughness: 0.8, metalness: 0.2 }), this.body, 0, 0, 0.04).castShadow = false;
     // the tag, hanging crooked off a single screw
     const pw = r * 2.1, ph = 0.16;
-    this.tag = new THREE.Group(); this.tag.position.set(-pw / 2 + 0.03, -r * 0.55, 0.05); this.tag.rotation.z = -0.1; this.body.add(this.tag);
+    this.tag = new THREE.Group(); this.tag.position.set(-pw / 2 + 0.03, -r * 0.3, 0.05); this.tag.rotation.z = -0.1; this.body.add(this.tag);
     this.plate = new LiveTex(512, Math.round((512 * ph) / pw));
     this.mat = new THREE.MeshStandardMaterial({ map: this.plate.tex, bumpMap: this.plate.tex, bumpScale: 1, roughness: 0.82, metalness: 0.25 });
     mesh(new THREE.PlaneGeometry(pw, ph), this.mat, this.tag, pw / 2 - 0.03, -ph / 2 - 0.005, 0.004).castShadow = false;

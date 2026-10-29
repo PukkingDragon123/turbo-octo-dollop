@@ -21,7 +21,7 @@ import * as Critters from '../../entities/optional.js';
 import { HQElevator } from '../hq_elevator.js';
 import { ReceptionistBot } from '../../entities/receptionist.js';
 import { canvasTex } from '../../entities/wardrobe.js';
-import { FONT } from '../../ui/fonts.js';
+import { font as fontOf } from '../../ui/fonts.js';
 import { featurePanel, bankerLamp, pictureFrame, planter, hatchFlap } from '../env/lobbyprops.js';
 import { LobbyDirector } from '../lobby_director.js';
 import { CAR } from '../../entities/elevator.js';
@@ -220,23 +220,18 @@ export class LobbyLevel {
     const fw = new THREE.Group(); fw.position.set(0, 2.2, -2.6);
     const W = 2.7, Hh = 0.78;
     fw.add(featurePanel(W, Hh).object); // walnut board, raised moulding, stepped brass frame, picture-light arms
-    const letters = (shadow) => canvasTex(2048, 640, (c, w, h) => {
+    // cast-brass lettering: one flat brass ink with a single soft shadow
+    const fitF = (c, txt, slot, px, maxW) => { c.font = fontOf(slot, px); const m = c.measureText(txt).width; if (m > maxW) c.font = fontOf(slot, px * maxW / m); };
+    const goldTex = canvasTex(2048, 640, (c, w, h) => {
       c.clearRect(0, 0, w, h); c.textAlign = 'center'; c.textBaseline = 'middle';
-      const col = (y0, y1) => { if (shadow) return 'rgba(0,0,0,0.85)'; const gr = c.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, '#fff2c4'); gr.addColorStop(0.45, '#e2b35a'); gr.addColorStop(0.55, '#a8772c'); gr.addColorStop(1, '#f0cf7e'); return gr; };
-      if (shadow) { c.filter = 'blur(10px)'; }
-      c.font = `700 300px ${FONT.main}`; c.fillStyle = col(130, 420);
-      const t = 'R . O . O . M .'; c.fillText(t, w / 2, 265);
-      c.fillStyle = shadow ? 'rgba(0,0,0,0.7)' : '#d9b064';
+      c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 14; c.shadowOffsetY = 8; c.fillStyle = '#d4b06a';
+      fitF(c, 'R . O . O . M .', 'title', 300, w - 160); c.fillText('R . O . O . M .', w / 2, 265);
       c.fillRect(w / 2 - 600, 448, 1200, 5);
       for (const s of [-1, 1]) { c.beginPath(); c.arc(w / 2 + s * 630, 450, 12, 0, Math.PI * 2); c.fill(); }
-      c.font = `italic 600 86px ${FONT.main}`; c.fillStyle = col(500, 590);
-      c.fillText('Research Office for Otherworldly Matters', w / 2, 545);
+      fitF(c, 'Research Office for Otherworldly Matters', 'poster', 86, w - 300); c.fillText('Research Office for Otherworldly Matters', w / 2, 545);
     });
-    const shadowMat = new THREE.MeshBasicMaterial({ map: letters(true), transparent: true, depthWrite: false, opacity: 0.8 });
-    const goldTex = letters(false);
-    const goldMat = std({ map: goldTex, emissiveMap: goldTex, emissive: 0xffffff, emissiveIntensity: 0.16, metalness: 0.55, roughness: 0.3, transparent: true, alphaTest: 0.25 });
+    const goldMat = std({ map: goldTex, metalness: 0.5, roughness: 0.35, transparent: true, alphaTest: 0.25 });
     const LW = W * 0.9, LH = LW * 640 / 2048;
-    const sh = new THREE.Mesh(new THREE.PlaneGeometry(LW, LH), shadowMat); sh.position.set(0.02, -0.03, 0.032); fw.add(sh);
     const gl = new THREE.Mesh(new THREE.PlaneGeometry(LW, LH), goldMat); gl.position.set(0, 0, 0.042); fw.add(gl);
     // brass picture lights above the panel, washing it with warm light
     const glowM = new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 2.4, 1.4) });
@@ -273,9 +268,9 @@ export class LobbyLevel {
         c.fillStyle = '#e8c35a'; c.beginPath(); c.ellipse(cw / 2, ch * 0.44, 46, 56, 0, 0, PI * 2); c.fill(); c.beginPath(); c.arc(cw / 2, ch * 0.31, 34, 0, PI * 2); c.fill();
         c.fillStyle = '#16120c'; c.beginPath(); c.arc(cw / 2 - 11, ch * 0.3, 4.5, 0, PI * 2); c.arc(cw / 2 + 11, ch * 0.3, 4.5, 0, PI * 2); c.fill();
         c.textAlign = 'center'; c.fillStyle = '#f3e6c4';
-        c.font = `700 ${Math.round(cw * 0.1)}px ${FONT.main}`; c.fillText(t, cw / 2, ch * 0.72);
-        c.font = `italic 600 ${Math.round(cw * 0.055)}px ${FONT.main}`; c.fillStyle = '#d9c79c'; c.fillText(s, cw / 2, ch * 0.8);
-        c.font = `600 ${Math.round(cw * 0.032)}px ${FONT.main}`; c.fillStyle = 'rgba(240,225,190,0.6)'; c.fillText('R.O.O.M.  ·  INTERNAL USE ONLY', cw / 2, ch - 54);
+        c.font = fontOf('poster', cw * 0.1); c.fillText(t, cw / 2, ch * 0.72);
+        c.font = fontOf('poster', cw * 0.055); c.fillStyle = '#d9c79c'; c.fillText(s, cw / 2, ch * 0.8);
+        c.font = fontOf('receipt', cw * 0.032); c.fillStyle = 'rgba(240,225,190,0.6)'; c.fillText('R.O.O.M.  ·  INTERNAL USE ONLY', cw / 2, ch - 54);
       });
       const fr = new THREE.Group(); fr.position.set(x, y, z); fr.rotation.y = ry;
       fr.add(pictureFrame(w, h).object);
@@ -487,9 +482,9 @@ export class LobbyLevel {
     if (this.recScreen && this.recScreen.time - this.recScreen.lastDraw > 0.3) {
       this.recScreen.draw(dt, (ctx, w, h, pal, tt) => {
         ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-        ctx.fillStyle = pal.hi; ctx.font = `700 27px ${FONT.main}`; ctx.fillText('R.O.O.M. Reception', 12, 10);
-        ctx.fillStyle = pal.fg; ctx.font = `italic 600 24px ${FONT.main}`; ctx.fillText(Math.floor(tt) % 11 === 0 ? 'We see you.' : 'Please wait to be seen.', 12, 52);
-        ctx.fillStyle = pal.dim; ctx.font = `600 22px ${FONT.main}`; ctx.fillText(`Clones waiting: ${g.roster.size}`, 12, 88);
+        ctx.fillStyle = pal.hi; ctx.font = fontOf('terminal', 27); ctx.fillText('R.O.O.M. Reception', 12, 10);
+        ctx.fillStyle = pal.fg; ctx.font = fontOf('terminal', 24); ctx.fillText(Math.floor(tt) % 11 === 0 ? 'We see you.' : 'Please wait to be seen.', 12, 52);
+        ctx.fillStyle = pal.dim; ctx.font = fontOf('terminal', 22); ctx.fillText(`Clones waiting: ${g.roster.size}`, 12, 88);
       });
     } else this.recScreen?.draw(dt, () => {});
     // trapdoor leaves

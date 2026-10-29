@@ -10,6 +10,7 @@
 import { DKit, FIN, PI, HP, TAU, polyShape, extrudeGeo, frameShape } from '../entities/devices/core.js';
 import * as P from '../entities/devices/parts.js';
 import { txt, grime, hazardTri } from '../entities/devices/atlas.js';
+import { weightOf } from '../ui/fonts.js';
 
 const RUSTY = { ...FIN.iron, tint: 0x6e4a32, rust: 0.9, rough: 1.5 };
 const STEEL = { ...FIN.steel, rust: 0.45 };
@@ -78,8 +79,8 @@ export function factorySet({ railY = 3.78, armBase = [] } = {}) {
   const DRUM = k.reg('fs_drum', 256, 128, (c, w, h) => {
     c.fillStyle = 'rgba(0,0,0,0)'; c.clearRect(0, 0, w, h);
     hazardTri(c, w * 0.2, h * 0.5, h * 0.7, '!');
-    txt(c, 'FLAMMABLE', w * 0.62, h * 0.38, h * 0.26, { col: '#e8dcc0', f: 'main', w: '700' });
-    txt(c, 'COOLANT  9', w * 0.62, h * 0.7, h * 0.18, { col: '#e8dcc0', f: 'main', w: '600' });
+    txt(c, 'FLAMMABLE', w * 0.62, h * 0.38, h * 0.26, { col: '#e8dcc0', f: 'sign', w: String(weightOf('sign')) });
+    txt(c, 'COOLANT  9', w * 0.62, h * 0.7, h * 0.18, { col: '#e8dcc0', f: 'sign', w: String(weightOf('sign')) });
     grime(c, w, h, 1.5, 3);
   }, 'decal');
   const drumProf = (r, h) => [[0, 0], [r - 0.01, 0, 1], [r, 0.012, 2], [r, h * 0.33 - 0.012], [r + 0.012, h * 0.33, 2], [r, h * 0.33 + 0.012], [r, h * 0.66 - 0.012], [r + 0.012, h * 0.66, 2], [r, h * 0.66 + 0.012], [r, h - 0.02], [r + 0.008, h - 0.008, 2], [r - 0.005, h, 1], [r - 0.02, h - 0.012], [0, h - 0.012]];

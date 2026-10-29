@@ -14,6 +14,7 @@ import { net } from '../net/net.js';
 import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
 import { engine } from '../core/engine.js';
+import { font } from '../ui/fonts.js';
 import { Device } from '../game/devices.js';
 import { ElevatorCar, LandingDoors, GBin, T, CAR, carMaterials, FlipBoard, glyphUV, glyphIndex, flapAtlas } from '../entities/elevator.js';
 import { VLRig, vlPatch } from '../entities/vlights.js';
@@ -46,14 +47,14 @@ function labelAtlas() {
   Object.keys(LABELS).forEach((s, i) => {
     const gx = (i % 2) * 128, gy = Math.floor(i / 2) * 64;
     x.fillStyle = '#d8d2c0'; x.fillRect(gx + 4, gy + 6, 120, 52);
-    x.fillStyle = '#141414'; x.font = `bold ${s.length > 4 ? 30 : 38}px "Arial Black", Arial`;
+    x.fillStyle = '#141414'; x.font = font('sign', s.length > 4 ? 30 : 38);
     x.fillText(s, gx + 64, gy + 34);
   });
   // keypad cover: hazard stripes + stencil
   for (let i = -4; i < 20; i++) { x.fillStyle = i % 2 ? '#141414' : '#d9a91c'; x.beginPath(); x.moveTo(i * 16, 192); x.lineTo(i * 16 + 16, 192); x.lineTo(i * 16 - 48, 256); x.lineTo(i * 16 - 64, 256); x.fill(); }
   x.fillStyle = '#2a2a28'; x.fillRect(10, 200, 236, 48);
-  x.fillStyle = '#e8e2cf'; x.font = 'bold 22px "IBM Plex Mono", monospace'; x.fillText('LINE ACCESS', 128, 216);
-  x.font = '13px "IBM Plex Mono", monospace'; x.fillText('AUTHORISED CLONES ONLY', 128, 236);
+  x.fillStyle = '#e8e2cf'; x.font = font('sign', 22); x.fillText('LINE ACCESS', 128, 216);
+  x.font = font('receipt', 13); x.fillText('AUTHORISED CLONES ONLY', 128, 236);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   LABEL_TEX = t;
   return t;

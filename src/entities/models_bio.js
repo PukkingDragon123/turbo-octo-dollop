@@ -4,18 +4,19 @@
 //   mole_meat(_cooked/_burnt), crawler_meat(...)   parts.food (own material: cooking tints its colour)
 //   fungus_black / fungus_glow / fungus_shelf / fungus_puff (+ _cooked/_burnt)   parts.food; glowcaps: parts.glow
 //   canned_food_hot             the canned food model (heated in the pan)
-//   camp_stove                  two-leg camp stove with a cast-iron pan fixed on top. anchors.pan (pan floor centre),
+//   camp_stove                  (DKit template cg_stove, devices/camp.js) camp stove with a cast-iron pan fixed on top. anchors.pan (pan floor centre),
 //                               parts.flame (burner glow, own material)
-//   supply_box                  stencilled R.O.O.M. supply crate (lootable)
-//   sleeping_bag, tent_ruin     abandoned-camp gear (searchable)
+//   supply_box                  (DKit cg_supply) stencilled R.O.O.M. supply crate (lootable)
+//   sleeping_bag (DKit cg_bag), tent_ruin   abandoned-camp gear (searchable)
 //   trolley_broken              the wheel trolley with two casters torn off (sits tilted on its frame)
-//   board                       plywood deck board (weld the player engineer's 'wheel' casters under it: a DIY cart)
+//   board                       (DKit cg_board) plywood deck board (weld the player engineer's 'wheel' casters under it: a DIY cart)
 //   note_scribble               scribbled sheet left by an earlier clone (read it [E], game/bio.js)
 import * as THREE from 'three';
 import { Kit, def, ITEMS as CORE, PI } from './items/core.js';
 import { mat, glow, S } from './items/mats.js';
 import { atlas, txt, rect, noise, MONO } from './items/paint.js';
 import { buildItem } from './models_items.js';
+import { buildDevice } from './models_devices.js';
 
 const hash = (x, y, z) => { const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return s - Math.floor(s); };
 const jitter = (amt, seed = 1) => (v) => {
@@ -126,69 +127,9 @@ for (const s of ['', '_cooked', '_burnt']) {
   fungusDef('fungus_black' + s, 'black'); fungusDef('fungus_glow' + s, 'glow'); fungusDef('fungus_shelf' + s, 'shelf'); fungusDef('fungus_puff' + s, 'puff');
 }
 
-// ============================================================================ camp stove + pan
-const PAN_Y = 0.36, PAN_R = 0.13;
-def('camp_stove', () => {
-  const k = new Kit();
-  const enamel = mat({ name: 'stove_enamel', color: 0xffffff, rough: 0.45, det: 'powder', ns: 0.5 });
-  const iron = mat({ name: 'cast_iron', color: 0x2a2a2c, metal: 0.8, rough: 0.6, det: 'cast', ns: 0.7 });
-  const steel = S.steelDark();
-  const flame = glow({ name: 'stove_flame', color: 0x081030, emissive: 0x3a7aff, ei: 0, rough: 0.5 });
-  const GREEN = C(0.18, 0.36, 0.24);
-  // stove box + control knob + legs
-  k.box(0.42, 0.11, 0.26, enamel, { p: [0, 0.22, 0], col: GREEN, flat: true });
-  k.box(0.4, 0.02, 0.24, steel, { p: [0, 0.285, 0], flat: true });
-  k.cyl(0.018, 0.02, S.plasticBlack(), { p: [0.16, 0.2, 0.135], r: [PI / 2, 0, 0], seg: 8 });
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.cyl(0.008, 0.17, steel, { p: [sx * 0.18, 0.085, sz * 0.1], seg: 5, r: [sz * 0.12, 0, -sx * 0.12] });
-  // gas canister clipped to the side
-  k.cyl(0.045, 0.16, enamel, { p: [-0.26, 0.2, 0], seg: 9, col: C(0.75, 0.18, 0.12), flat: true });
-  k.cyl(0.02, 0.03, steel, { p: [-0.26, 0.295, 0], seg: 6 });
-  // burner ring (glows blue when lit) + grate
-  k.torus(0.05, 0.008, flame, { p: [0.04, 0.3, 0], r: [PI / 2, 0, 0], tseg: 12, rseg: 4, part: 'flame', clone: true });
-  for (let i = 0; i < 4; i++) k.box(0.3, 0.008, 0.012, steel, { p: [0.04, 0.305, 0], r: [0, (i * PI) / 4, 0] });
-  // the pan: heavy cast iron, flat floor, low wall, long handle
-  k.cyl(PAN_R, 0.012, iron, { p: [0.04, PAN_Y - 0.03, 0], seg: 14, flat: true });
-  k.lathe([[PAN_R - 0.004, PAN_Y - 0.036], [PAN_R + 0.012, PAN_Y + 0.02, 0.004], [PAN_R + 0.004, PAN_Y + 0.024], [PAN_R - 0.006, PAN_Y - 0.02]], iron, { seg: 16, flat: true });
-  k.box(0.2, 0.016, 0.03, iron, { p: [0.04 + PAN_R + 0.1, PAN_Y - 0.01, 0], flat: true });
-  // colliders: body, pan floor slab, pan wall ring, handle
-  k.colBox([0.42, 0.29, 0.26], [0, 0.145, 0]);
-  k.colCyl(PAN_R, 0.03, [0.04, PAN_Y - 0.03, 0]);
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2;
-    k.colBox([0.018, 0.05, 0.085], [0.04 + Math.cos(a) * (PAN_R + 0.006), PAN_Y, Math.sin(a) * (PAN_R + 0.006)], [0, -a, 0]);
-  }
-  k.colBox([0.2, 0.02, 0.03], [0.04 + PAN_R + 0.1, PAN_Y - 0.01, 0]);
-  k.anchor('pan', [0.04, PAN_Y - 0.015, 0]);
-  return { kit: k, meta: { mass: 14, material: 'metal', center: [0, 0.19, 0], friction: 1.2, restitution: 0.02, angularDamping: 2 } };
-});
-export const STOVE = { panR: PAN_R };
-
-// ============================================================================ abandoned-camp gear
-def('supply_box', () => {
-  const A = bioAtlas();
-  const k = new Kit();
-  const wood = mat({ name: 'supply_wood', color: 0xffffff, rough: 0.8, det: 'roughwood', detAlbedo: true, ns: 0.8 });
-  const print = mat({ name: 'bio_print', map: A, rough: 0.7, vc: true });
-  const OLIVE = C(0.36, 0.42, 0.28);
-  k.box(0.7, 0.42, 0.46, wood, { col: OLIVE, flat: true });
-  for (const sy of [-1, 1]) k.box(0.72, 0.05, 0.48, wood, { p: [0, sy * 0.17, 0], col: C(0.28, 0.33, 0.22), flat: true });
-  k.add(new THREE.PlaneGeometry(0.46, 0.17), print, { p: [0, 0.0, 0.231], uv: A.R(0, 0, 256, 96) });
-  k.add(new THREE.PlaneGeometry(0.46, 0.17), print, { p: [0, 0.0, -0.231], r: [0, PI, 0], uv: A.R(0, 0, 256, 96) });
-  for (const sx of [-1, 1]) k.box(0.03, 0.03, 0.18, S.steelDark(), { p: [sx * 0.37, 0.05, 0] });
-  k.colBox([0.72, 0.44, 0.48], [0, 0, 0]);
-  return { kit: k, meta: { mass: 18, material: 'wood', friction: 0.9 } };
-});
-
-def('sleeping_bag', () => {
-  const k = new Kit();
-  const nylon = mat({ name: 'bag_nylon', color: 0xffffff, rough: 0.55, det: 'weave', ns: 0.7 });
-  const col = (p) => (p.z < -0.75 ? C(0.2, 0.28, 0.32) : hash(Math.floor(p.x * 12), Math.floor(p.z * 8), 1) < 0.08 ? C(0.35, 0.12, 0.08) : C(0.78, 0.38, 0.12));
-  k.box(0.72, 0.09, 1.9, nylon, { sx: 3, sy: 1, sz: 8, col, flat: true, deform: (v) => { v.y += Math.sin(v.z * 7) * 0.012 + (hash(Math.round(v.x * 50), 1, Math.round(v.z * 50)) - 0.5) * 0.02; v.x *= 1 - Math.max(0, -v.z - 0.6) * 0.35; } });
-  k.sphere(0.2, nylon, { p: [0, 0.03, -0.88], s: [1.4, 0.45, 0.8], ws: 8, hs: 4, col: C(0.2, 0.28, 0.32), flat: true });
-  k.colBox([0.72, 0.1, 1.9], [0, 0, 0]);
-  return { kit: k, meta: { mass: 2.5, material: 'fabric', friction: 1.1 } };
-});
-
+// ============================================================================ camp stove / abandoned-camp gear
+// camp_stove, supply_box, board and sleeping_bag are modelled DKit templates (src/entities/devices/camp.js,
+// mapped in the registry below); tent_ruin stays a draped Kit sheet.
 def('tent_ruin', () => {
   const k = new Kit();
   const canvas = mat({ name: 'ruin_canvas', color: 0xffffff, rough: 0.9, det: 'twill', ns: 0.8 });
@@ -212,14 +153,6 @@ def('tent_ruin', () => {
   return { kit: k, meta: { mass: 22, material: 'fabric', friction: 1.2, center: [0, 0.1, 0] } };
 });
 
-def('board', () => {
-  const k = new Kit();
-  const wood = mat({ name: 'pine', rough: 0.86, det: 'roughwood', detAlbedo: true, ns: 0.9 });
-  k.box(1.0, 0.022, 0.52, wood, { col: 0xf0e2c8, flat: true });
-  k.colBox([1.0, 0.024, 0.52], [0, 0, 0]);
-  return { kit: k, meta: { mass: 4, material: 'wood', friction: 0.9 } };
-});
-
 def('note_scribble', () => {
   const A = bioAtlas();
   const k = new Kit();
@@ -235,11 +168,12 @@ def('note_scribble', () => {
 // ============================================================================ registry
 const KIT_NAMES = [
   ...['', '_cooked', '_burnt'].flatMap((s) => ['mole_meat', 'crawler_meat', 'fungus_black', 'fungus_glow', 'fungus_shelf', 'fungus_puff'].map((n) => n + s)),
-  'camp_stove', 'supply_box', 'sleeping_bag', 'tent_ruin', 'board', 'note_scribble',
+  'tent_ruin', 'note_scribble',
 ];
 export const ITEMS = {};
 for (const n of KIT_NAMES) ITEMS[n] = (o) => CORE[n](o);
 ITEMS.canned_food_hot = (o) => buildItem('canned_food', o);
+for (const [n, dev] of [['camp_stove', 'cg_stove'], ['supply_box', 'cg_supply'], ['board', 'cg_board'], ['sleeping_bag', 'cg_bag']]) ITEMS[n] = () => buildDevice(dev);
 // the trolley with two casters torn off (no wheel colliders on that side: it sits on its frame)
 ITEMS.trolley_broken = (o) => {
   const m = buildItem('trolley', o);

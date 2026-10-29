@@ -1,7 +1,7 @@
 // R.O.O.M. — boot & main loop
 import '@fontsource/vt323';
 import '@fontsource/ibm-plex-mono';
-import { loadFonts } from './ui/fonts.js';
+import { loadFonts, font } from './ui/fonts.js';
 import './ui/style.css';
 import * as THREE from 'three';
 import { engine } from './core/engine.js';
@@ -29,8 +29,11 @@ const params = new URLSearchParams(location.search);
 
 async function boot() {
   const bootEl = document.createElement('div');
-  bootEl.style.cssText = 'position:fixed;inset:0;background:radial-gradient(circle at 50% 45%,#1a120a,#000 70%);color:#e9c87e;font:italic 600 24px "Cormorant Garamond",Georgia,serif;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;z-index:100';
-  bootEl.innerHTML = '<div style="font:700 72px \'Cormorant Garamond\',Georgia,serif;letter-spacing:14px;text-shadow:0 0 18px rgba(255,180,90,.55)">R.O.O.M.</div><div style="width:240px;height:1px;background:#b48a40"></div><div id="boot-l" style="letter-spacing:2px;opacity:.85">initializing\u2026</div>';
+  bootEl.style.cssText = 'position:fixed;inset:0;background:radial-gradient(circle at 50% 45%,#1a120a,#000 70%);color:#d9c8a0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;z-index:100';
+  bootEl.innerHTML = '<div id="boot-t">R.O.O.M.</div><div style="width:240px;height:1px;background:#8a7448"></div><div id="boot-l">initializing\u2026</div>';
+  // the user-picked font slots (ui/fonts.js): the name in the title face, the status line in the hint face
+  Object.assign(bootEl.querySelector('#boot-t').style, { font: font('title', 72), letterSpacing: '14px', textShadow: '0 3px 8px rgba(0,0,0,.6)' });
+  Object.assign(bootEl.querySelector('#boot-l').style, { font: font('hint', 24), letterSpacing: '2px', opacity: '.85' });
   document.body.appendChild(bootEl);
   const setL = (t) => { const e = document.getElementById('boot-l'); if (e) e.textContent = String(t).toLowerCase().replace('...', '\u2026'); };
 

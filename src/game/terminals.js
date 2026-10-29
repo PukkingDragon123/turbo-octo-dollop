@@ -16,6 +16,7 @@ import { Device } from './devices.js';
 import * as Mat from '../gfx/materials.js';
 import { CrtScreen } from '../ui/crt.js';
 import { buildModel } from '../entities/catalog.js';
+import { buildDevice } from '../entities/models_devices.js';
 import { juice } from '../gfx/juice.js';
 import { holoMaterial, holoLineMaterial, buildHologram, holoCone } from '../gfx/hologram.js';
 import { PH, ptext, pfont, rule, brackets, ticks, icon, phosphorFx } from '../ui/phosphor.js';
@@ -49,6 +50,11 @@ function cyl(r, h, mat, x, y, z, parent, seg = 20) {
   m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
   parent.add(m);
   return m;
+}
+// mushroom push-button cap (lathe): radius r, height h, sits on y = 0
+function mushroomGeo(r, h) {
+  const p = [[0, -0.01], [r * 0.5, -0.01], [r * 0.52, 0], [r * 0.96, h * 0.1], [r, h * 0.35], [r * 0.9, h * 0.65], [r * 0.6, h * 0.92], [0, h]];
+  return new THREE.LatheGeometry(p.map(([x, y]) => new THREE.Vector2(x, y)), 28);
 }
 // additive "light" plane (holographic text, etched glow)
 function glowPlane(w, h, tex, parent) {
@@ -141,14 +147,10 @@ export class ShopKiosk extends KioskBase {
   // ---------------- model
   _build() {
     const R = this.root;
-    const olive = Mat.get('metal_green'), dark = Mat.get('metal_dark'), steel = Mat.get('steel'), black = Mat.get('plastic_black');
-    // cabinet + trim
-    box(1.4, 0.86, 0.62, olive, 0, 0.47, 0, R);
-    box(1.44, 0.1, 0.66, dark, 0, 0.05, 0, R);
-    box(1.46, 0.035, 0.68, steel, 0, 0.915, 0, R);
-    for (const s of [-1, 1]) box(0.05, 0.84, 0.05, steel, s * 0.7, 0.47, 0.3, R);
+    // cabinet, service door, louvres, backdrop frame, marquee housing, emitter housings and the console
+    // shell: one modelled DKit template (src/entities/devices/mission.js); live parts are added below
+    R.add(buildDevice('kiosk_shop').object);
     // backdrop: dark glass with a faint phosphor grid, framed
-    box(1.46, 1.3, 0.06, dark, 0, 1.58, -0.33, R);
     const grid = canvasTex(512, 456, (c, w, h) => {
       c.fillStyle = '#020804'; c.fillRect(0, 0, w, h);
       c.strokeStyle = 'rgba(77,255,122,0.10)'; c.lineWidth = 1;
@@ -158,8 +160,7 @@ export class ShopKiosk extends KioskBase {
     });
     const back = new THREE.Mesh(new THREE.PlaneGeometry(1.36, 1.2), new THREE.MeshStandardMaterial({ map: grid, emissive: 0xffffff, emissiveMap: grid, emissiveIntensity: 0.6, roughness: 0.15, metalness: 0.2 }));
     back.position.set(0, 1.58, -0.296); R.add(back);
-    // marquee
-    box(1.46, 0.26, 0.12, dark, 0, 2.36, -0.3, R);
+    // marquee sign (in the housing's bezel)
     this.signMat = new THREE.MeshStandardMaterial({ map: signTex('COMPANY STORE', 'DELIVERY BY TELEPORT'), emissive: 0xffffff, emissiveIntensity: 0.1, roughness: 0.5 });
     this.signMat.emissiveMap = this.signMat.map;
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.24), this.signMat); sign.position.set(0, 2.36, -0.238); R.add(sign);
@@ -168,7 +169,6 @@ export class ShopKiosk extends KioskBase {
     this.cones = [];
     for (let i = -1; i <= 1; i++) {
       const x = i * SLOT_X;
-      cyl(0.11, 0.04, dark, x, DECK_Y + 0.02, -0.1, R, 24);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.01, 6, 32), this.emitMat); ring.rotation.x = -PI / 2; ring.position.set(x, DECK_Y + 0.045, -0.1); R.add(ring);
       cyl(0.05, 0.012, this.emitMat, x, DECK_Y + 0.046, -0.1, R, 16);
       const cm = holoMaterial(0x4dff7a); cm.uniforms.uAlpha.value = 0.25;
@@ -197,8 +197,6 @@ export class ShopKiosk extends KioskBase {
     // sloped console with the physical controls
     const con = new THREE.Group(); con.position.set(0, 0.95, 0.19); con.rotation.x = 0.5; R.add(con);
     this.console = con;
-    box(1.38, 0.05, 0.3, dark, 0, 0, 0, con);
-    box(1.38, 0.012, 0.3, Mat.get('rubber'), 0, 0.03, 0, con);
     // phosphor edge strips along the console lip
     this.lipMat = greenEmissive(0.9);
     for (const z of [-0.152, 0.152]) box(1.38, 0.01, 0.008, this.lipMat, 0, 0.032, z, con);
@@ -220,22 +218,18 @@ export class ShopKiosk extends KioskBase {
       drum.add(face);
     });
     const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2, 5), Mat.get('metal_dark')); hub.rotation.z = PI / 2; drum.add(hub);
-    for (const s of [-1, 1]) { const d = cyl(0.05, 0.012, steel, -0.5 + s * 0.108, 0.075, 0, con, 20); d.rotation.z = PI / 2; }
     this.knob = new THREE.Group(); this.knob.position.set(-0.64, 0.075, 0); con.add(this.knob);
-    const kn = cyl(0.03, 0.03, black, 0, 0, 0, this.knob, 14); kn.rotation.z = PI / 2;
-    box(0.012, 0.05, 0.012, steel, -0.02, 0.025, 0, this.knob);
+    this.knob.add(buildDevice('kiosk_crank').object);
     // < > buttons with glowing arrows
     const arrowTex = (dir) => canvasTex(64, 64, (c, w, h) => { c.fillStyle = '#000'; c.fillRect(0, 0, w, h); c.fillStyle = PH.fg; c.shadowColor = PH.fg; c.shadowBlur = 8; c.beginPath(); if (dir < 0) { c.moveTo(42, 14); c.lineTo(18, 32); c.lineTo(42, 50); } else { c.moveTo(22, 14); c.lineTo(46, 32); c.lineTo(22, 50); } c.closePath(); c.fill(); });
     this.btn = {};
     for (const [key, x, dir] of [['prev', -0.27, -1], ['next', 0.27, 1]]) {
       const g = new THREE.Group(); g.position.set(x, 0.03, 0); con.add(g);
-      box(0.1, 0.02, 0.1, steel, 0, 0.005, 0, con).position.set(x, 0.035, 0);
-      box(0.08, 0.03, 0.08, black, 0, 0.03, 0, g);
-      const p = glowPlane(0.06, 0.06, arrowTex(dir), g); p.rotation.x = -PI / 2; p.position.y = 0.046;
+      const cap = buildDevice('kiosk_key').object; cap.position.y = 0.03; g.add(cap);
+      const p = glowPlane(0.05, 0.05, arrowTex(dir), g); p.rotation.x = -PI / 2; p.position.y = 0.0425;
       this.btn[key] = g;
     }
-    // small green CRT in a bezel
-    box(0.38, 0.03, 0.27, black, 0, 0.035, 0, con);
+    // small green CRT in its bezel
     this.screenMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.225), new THREE.MeshBasicMaterial({ color: 0 }));
     this.screenMesh.rotation.x = -PI / 2; this.screenMesh.position.set(0, 0.052, 0); con.add(this.screenMesh);
     this.scr = new CrtScreen(512, 340, 'green');
@@ -243,16 +237,13 @@ export class ShopKiosk extends KioskBase {
     this.scr.attach(this.screenMesh, 1.5);
     // the big BUY button
     const bb = new THREE.Group(); bb.position.set(0.52, 0.03, 0); con.add(bb);
-    cyl(0.085, 0.025, steel, 0, 0.01, 0, bb, 24);
-    cyl(0.075, 0.012, Mat.get('metal_yellow'), 0, 0.028, 0, bb, 24);
     this.buyMat = greenEmissive(1.2);
-    this.buyCap = new THREE.Mesh(new THREE.SphereGeometry(0.06, 20, 10, 0, PI * 2, 0, PI / 2), this.buyMat);
-    this.buyCap.scale.y = 0.55; this.buyCap.position.y = 0.034; bb.add(this.buyCap);
+    this.buyCap = new THREE.Mesh(mushroomGeo(0.06, 0.034), this.buyMat);
+    this.buyCap.position.y = 0.034; bb.add(this.buyCap);
     const lab = canvasTex(128, 64, (c, w, h) => { c.fillStyle = '#000'; c.fillRect(0, 0, w, h); ptext(c, 'BUY', w / 2, 8, 46, { align: 'center', c: PH.hi, blur: 8 }); });
     const lp = glowPlane(0.08, 0.04, lab, bb); lp.rotation.x = -PI / 2; lp.position.set(0, 0.034, 0.1);
     this.btn.buy = bb;
-    // split-flap credits counter on the cabinet front
-    box(0.7, 0.13, 0.03, black, 0.0, 0.72, 0.318, R);
+    // split-flap credits counter in its bezel on the cabinet front
     const lt = canvasTex(256, 48, (c, w, h) => { c.fillStyle = '#000'; c.fillRect(0, 0, w, h); ptext(c, 'CREDITS', 4, 4, 38, { c: PH.dim, blur: 4 }); });
     glowPlane(0.16, 0.03, lt, R).position.set(-0.26, 0.815, 0.335);
     this.digitAtlas = canvasTex(704, 96, (c, w, h) => {
@@ -609,32 +600,22 @@ export class QuestKiosk extends KioskBase {
     this.claimFx = null;
     this.ring = 0;
     const R = this.root;
-    const beige = Mat.get('plastic_beige'), dark = Mat.get('metal_dark'), olive = Mat.get('metal_green');
-    box(1.0, 0.95, 0.6, olive, 0, 0.475, 0, R);
-    box(1.02, 0.12, 0.62, dark, 0, 0.06, 0, R);
-    const desk = box(1.06, 0.05, 0.34, dark, 0, 0.98, 0.2, R); desk.rotation.x = 0.12;
-    const kb = box(0.62, 0.03, 0.17, beige, 0, 1.015, 0.24, R); kb.rotation.x = 0.12;
-    for (let r = 0; r < 4; r++) { const k = box(0.56 - (r === 3 ? 0.2 : 0), 0.012, 0.028, Mat.get('plastic_grey'), 0, 1.035 - r * 0.004, 0.18 + r * 0.035, R); k.rotation.x = 0.12; }
-    // RobCo-style monitor
+    // cabinet, desk, keyboard, termlink monitor housing, marquee housing, projector base and receipt
+    // printer: one modelled DKit template (src/entities/devices/mission.js); live parts are added below
+    R.add(buildDevice('kiosk_quest').object);
     this.head = new THREE.Group(); this.head.position.set(0.04, 1.04, -0.06); this.head.rotation.x = -0.06; R.add(this.head);
-    box(0.84, 0.66, 0.5, beige, 0, 0.33, -0.04, this.head);
-    box(0.6, 0.48, 0.18, beige, 0, 0.3, -0.36, this.head);
-    box(0.74, 0.54, 0.02, Mat.get('plastic_black'), 0, 0.34, 0.215, this.head);
     this.screenMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 0.44), new THREE.MeshBasicMaterial({ color: 0 }));
-    this.screenMesh.position.set(0, 0.34, 0.228); this.head.add(this.screenMesh);
+    this.screenMesh.position.set(0, 0.34, 0.212); this.head.add(this.screenMesh);
     this.scr = new CrtScreen(768, 512, 'green');
     this.scr.fps = 4;
     this.scr.attach(this.screenMesh, 1.5);
     this.ledMat = greenEmissive(1.2);
-    const led = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), this.ledMat); led.position.set(0.33, 0.06, 0.218); this.head.add(led);
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.009, 10, 6), this.ledMat); led.position.set(0.33, 0.06, 0.221); led.scale.z = 0.5; this.head.add(led);
     // marquee
     this.signMat = new THREE.MeshStandardMaterial({ map: signTex('FIELD OPS', 'QUEST NETWORK'), emissive: 0xffffff, emissiveIntensity: 0.1, roughness: 0.5 });
     this.signMat.emissiveMap = this.signMat.map;
-    box(1.04, 0.28, 0.1, dark, 0, 1.95, -0.08, R);
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.25), this.signMat); sign.position.set(0, 1.95, -0.028); R.add(sign);
-    for (const s of [-1, 1]) box(0.04, 0.3, 0.04, dark, s * 0.45, 1.78, -0.12, R);
     // desk hologram projector (left): the selected node's section glyph inside a spinning ring
-    cyl(0.07, 0.03, dark, -0.4, 1.01, 0.12, R, 20);
     this.projMat = greenEmissive(1.4);
     cyl(0.045, 0.01, this.projMat, -0.4, 1.03, 0.12, R, 16);
     const cm = holoMaterial(0x4dff7a); cm.uniforms.uAlpha.value = 0.22;
@@ -647,7 +628,6 @@ export class QuestKiosk extends KioskBase {
     this.glyph = glowPlane(0.15, 0.15, this.glyphTex, this.holo);
     this._glyphKey = '';
     // receipt printer on the right of the desk: the paper strip feeds out on every claim
-    box(0.22, 0.1, 0.18, dark, 0.38, 1.08, 0.12, R);
     this.paper = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 1), new THREE.MeshStandardMaterial({ color: 0xf2efe4, roughness: 0.9, side: THREE.DoubleSide }));
     this.paper.geometry.translate(0, -0.5, 0);
     this.paper.position.set(0.38, 1.13, 0.215); this.paper.scale.y = 0.001; R.add(this.paper);

@@ -9,6 +9,7 @@ import { net } from '../net/net.js';
 import { input } from '../core/input.js';
 import { Device } from './devices.js';
 import { buildModel } from '../entities/catalog.js';
+import { buildDevice } from '../entities/models_devices.js';
 import * as Mat from '../gfx/materials.js';
 import { POLE_W, POLE_H, LAMP_H } from '../entities/models_camp.js';
 import { itemName } from './itemdefs.js';
@@ -254,11 +255,13 @@ export class CampTent extends Device {
     }
     this.shape.add(rod([0, RIDGE_Y - 0.02, TENT_Z - RIDGE_L / 2 - 0.05], [0, RIDGE_Y - 0.02, TENT_Z + RIDGE_L / 2 + 0.05], 0.02, Mat.get('metal_green')));
     // stakes + guy lines at the four corners
-    const wood = Mat.get('wood_light'), cord = Mat.get('fabric_red');
+    const cord = Mat.get('fabric_red');
     const zf = TENT_Z + RIDGE_L / 2 + 0.1, zb = TENT_Z - RIDGE_L / 2 - 0.1;
     for (const [sx, z, dz] of [[-1, zf, 0.45], [1, zf, 0.45], [-1, zb, -0.45], [1, zb, -0.45]]) {
       const stake = [sx * (EAVE_X + 0.3), 0, z + dz];
-      this.root.add(rod([stake[0], -0.05, stake[2]], [stake[0] - sx * 0.04, 0.2, stake[2] - Math.sign(dz) * 0.04], 0.018, wood, 6));
+      const peg = buildDevice('cg_stake').object; // modelled hardwood peg (src/entities/devices/camp.js)
+      peg.position.set(stake[0], -0.08, stake[2]); peg.rotation.set(-Math.sign(dz) * 0.16, 0, sx * 0.16);
+      this.root.add(peg);
       this.shape.add(rod([0, RIDGE_Y - 0.02, z], [stake[0], 0.17, stake[2]], 0.005, cord, 4));
     }
     // camp lamp (lit) + a soft glow

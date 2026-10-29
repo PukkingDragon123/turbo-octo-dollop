@@ -10,7 +10,7 @@ const BRASS = { ...FIN.oldbrass, rust: 0.05, chip: 0 };
 // picture lights on swan-neck arms over the top edge
 export function featurePanel(W, H) {
   const k = new DKit('feature_panel', { ground: 'wall', wear: { chip: 0.05, rust: 0, grime: 0.25, dust: 0.25 }, ao: { res: 48 } });
-  k.box('wood', W, H, 0.03, 0, 0, 0.015, { tint: 0x4a2a16, rough: 0.55, r: 0.006, grain: 'x' });
+  k.box('wood', W, H, 0.03, 0, 0, 0.015, { tint: 0x7a4422, rough: 0.55, r: 0.006, grain: 'x' });
   k.ext('wood', frameShape(W - 0.06, H - 0.06, 0.004, W - 0.1, H - 0.1, 0.002), 0.008, 0, 0, 0.03, { tint: 0x3a2010, rough: 0.5, bev: 0.003, bevSeg: 1 });
   k.ext('metal', frameShape(W + 0.07, H + 0.07, 0.012, W - 0.004, H - 0.004, 0.003), 0.03, 0, 0, 0.012, { ...BRASS, bev: 0.008, bevSeg: 2, curveSeg: 3 });
   k.ext('metal', frameShape(W + 0.1, H + 0.1, 0.016, W + 0.06, H + 0.06, 0.01), 0.018, 0, 0, 0.004, { ...BRASS, tint: 0x8a6c3a, bev: 0.005, bevSeg: 1, curveSeg: 3 });
@@ -36,8 +36,8 @@ export function bankerLamp() {
   for (const s of [-1, 1]) k.tube('metal', [[0, 0.32, -0.02], [s * 0.06, 0.32, -0.02], [s * 0.11, 0.315, 0.0]], 0.004, { ...BRASS, radial: 6, round: 0.02, rseg: 3 });
   // the shade: a half-round cased-glass trough with curved end caps
   k.lathe('plastic', [[0.0001, -0.125], [0.06, -0.125, 1], [0.074, -0.118, 2], [0.078, -0.1], [0.078, 0.1], [0.074, 0.118, 2], [0.06, 0.125, 1], [0.0001, 0.125]], 0, 0.32, 0.01,
-    { tint: 0x14552a, rough: 0.12, seg: 18, phiLen: PI, phi0: 0, axis: 'x', edge: 0.2 });
-  k.lathe('plastic', [[0.0001, -0.12], [0.07, -0.12], [0.072, -0.1], [0.072, 0.1], [0.07, 0.12], [0.0001, 0.12]], 0, 0.318, 0.01, { tint: 0xe8e2cc, rough: 0.4, seg: 16, phiLen: PI, phi0: PI, axis: 'x' });
+    { tint: 0x14552a, rough: 0.12, seg: 18, phiLen: PI, phi0: PI, axis: 'x', edge: 0.2 });
+  k.lathe('plastic', [[0.0001, -0.12], [0.07, -0.12], [0.072, -0.1], [0.072, 0.1], [0.07, 0.12], [0.0001, 0.12]], 0, 0.318, 0.01, { tint: 0xe8e2cc, rough: 0.4, seg: 16, phiLen: PI, phi0: 0, axis: 'x' });
   return k.done();
 }
 

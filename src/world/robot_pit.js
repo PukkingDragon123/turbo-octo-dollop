@@ -11,6 +11,9 @@ import { juice } from '../gfx/juice.js';
 import { floatText } from '../ui/floattext.js';
 import { FX } from '../gfx/particles.js';
 import { GBin, T } from '../entities/elevator.js';
+import * as Mat from '../gfx/materials.js';
+import { DKit, FIN, HP, circleShape } from '../entities/devices/core.js';
+import * as P from '../entities/devices/parts.js';
 
 const PI = Math.PI, TAU = PI * 2;
 const TOP = 34, R = 10, POOL = 4.4, GRAV = 13;
@@ -47,6 +50,73 @@ function glowTex() {
   return t;
 }
 
+// ------------------------------------------------------------------------------------------ modelled parts
+// built with the device kit (bevels, lathes, rivets, worn PBR classes): the catwalk rings and wall pipes, and
+// the colossal dead robot head (head space: face toward +z, centre of the faceplate at the origin)
+function pitStructure() {
+  const k = new DKit('pit_structure', { wear: { chip: 0.5, rust: 0.8, grime: 0.8, dust: 0.3 }, ao: { off: true } });
+  const RUST = { ...FIN.iron, tint: 0x6a4630, rust: 0.95, rough: 1.5 };
+  for (const y of [7, 13.5, 20, 27]) {
+    const ring = circleShape(R - 0.02, R - 1.5);
+    k.ext('metal', ring, 0.06, 0, y - 0.03, 0, { ...RUST, rot: [-HP, 0, 0], center: true, curveSeg: 48 });
+    k.cyl('metal', R - 1.5, 0.16, 0, y + 0.08, 0, { ...RUST, seg: 64, open: true });
+    for (const h of [1.05, 0.55]) k.tor('metal', R - 1.5, h > 1 ? 0.04 : 0.025, 0, y + h, 0, { ...RUST, rot: [HP, 0, 0], ts: 72, rs: 6 });
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * TAU, x = Math.sin(a) * (R - 1.5), z = Math.cos(a) * (R - 1.5);
+      if (i % 7 === 3) continue; // a few posts snapped off
+      P.rod(k, 'metal', [x, y, z], [x, y + 1.05, z], 0.03, { ...RUST, seg: 6 });
+      if (i % 2 === 0) { const xo = Math.sin(a) * (R - 0.05), zo = Math.cos(a) * (R - 0.05); P.rod(k, 'metal', [x * 0.98, y - 0.05, z * 0.98], [xo, y - 0.9, zo], 0.04, { ...RUST, seg: 6 }); }
+    }
+    // a broken-off section hanging by one corner
+    k.box('metal', 1.6, 0.06, 1.2, Math.sin(y) * (R - 1.6), y - 0.7, Math.cos(y) * (R - 1.6), { ...RUST, rot: [0.9, y, 0.3], r: 0.01, dent: 0.03 });
+  }
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * TAU + 0.2, x = Math.sin(a) * (R - 0.35), z = Math.cos(a) * (R - 0.35), L = TOP + 12;
+    k.cyl('paint', 0.22, L, x, L / 2 - 2, z, { tint: i % 3 ? 0x5c4a3a : 0x3e4a44, seg: 16, chip: 0.7, rust: 0.9 });
+    for (let yy = 1; yy < L - 3; yy += 4.5) {
+      k.cyl('metal', 0.27, 0.08, x, yy, z, { ...RUST, seg: 16, bev: 0.01, bevSeg: 1 });
+      k.box('metal', 0.12, 0.08, 0.5, x * 1.02, yy + 1.2, z * 1.02, { ...RUST, rot: [0, a, 0], r: 0.01 });
+    }
+  }
+  return k.done();
+}
+
+function deadHead() {
+  const k = new DKit('dead_head', { wear: { chip: 0.6, rust: 0.85, grime: 0.9, dust: 0.5 }, ao: { off: true } });
+  const SHELL = { tint: 0x9a917c, chip: 0.7, rust: 0.8 }, DARK = { ...FIN.iron, tint: 0x3a3630, rust: 0.9, rough: 1.4 };
+  // skull: faceplate, brow, cheek plates, crown, back box
+  k.box('paint', 6.4, 4.6, 3.0, 0, 0.3, -1.6, { ...SHELL, r: 0.35, seg: 3, dent: 0.06 });
+  k.box('paint', 6.8, 0.6, 3.4, 0, 2.7, -1.2, { ...SHELL, tint: 0x6a6450, r: 0.2, dent: 0.05 });
+  for (const s of [-1, 1]) {
+    k.box('paint', 1.0, 3.6, 2.6, s * 3.25, -0.1, -1.0, { ...SHELL, r: 0.25, dent: 0.05 });
+    k.push(s * 3.76, 0.2, -0.6, [0, s * HP, 0]);
+    k.box('metal', 1.6, 1.4, 0.06, 0, 0, -0.03, { ...DARK, r: 0.02 });
+    for (let i = 0; i < 7; i++) k.box('paint', 1.5, 0.17, 0.03, 0, -0.6 + i * 0.2, 0.03, { ...SHELL, rot: [-0.5, 0, 0], r: 0.01 });
+    k.pop();
+    // eye sockets: deep lathe bezels round the glowing eyes
+    k.lathe('metal', [[0.62, -0.4], [0.98, -0.4, 1], [1.1, -0.2, 2], [1.1, 0.25, 2], [0.95, 0.38, 1], [0.7, 0.3], [0.64, 0.1]], s * 1.5, 0.7, 0.75, { ...DARK, axis: 'z', seg: 36 });
+    for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; P.hexBolt(k, s * 1.5 + Math.cos(a) * 1.02, 0.7 + Math.sin(a) * 1.02, 1.14, { r: 0.05, rust: 1 }); }
+    k.box('paint', 0.3, 1.4, 0.4, s * 3.35, 0.2, 0.2, { ...SHELL, r: 0.05 });
+  }
+  // nose ridge + mouth grille
+  k.box('paint', 0.7, 1.6, 0.5, 0, -0.1, 0.6, { ...SHELL, r: 0.15 });
+  k.box('metal', 3.9, 1.9, 0.3, 0, -1.9, 0.75, { ...DARK, r: 0.08 });
+  for (let i = 0; i < 7; i++) k.box('metal', 3.6, 0.12, 0.3, 0, -1.2 - i * 0.24, 1.0, { ...DARK, tint: 0x1e1c1a, r: 0.03 });
+  // seams + rivet rows
+  for (const y of [-0.8, 1.9]) for (let i = 0; i < 26; i++) P.rivet(k, -3.1 + i * 0.248, y, 1.4, { r: 0.035, rust: 1 });
+  // the jaw hanging open on one hinge
+  k.box('paint', 4.2, 0.9, 2.6, 0, -2.9, -0.2, { ...SHELL, tint: 0x7a7262, rot: [0.42, 0, 0.08], r: 0.2, dent: 0.06 });
+  for (const s of [-1, 1]) k.cyl('metal', 0.25, 0.4, s * 2.3, -2.3, -0.9, { ...DARK, axis: 'x', seg: 16, bev: 0.03 });
+  // cables spilling out of the neck + a bent antenna
+  for (let i = 0; i < 5; i++) {
+    const x0 = -1.5 + i * 0.75;
+    k.tube('dark', [[x0, -2.6, -1.4], [x0 + 0.3, -3.6, -0.9], [x0 - 0.2, -4.8, -0.2], [x0 + 0.1, -6, 0.3]], 0.07 + (i % 2) * 0.04, { tint: [0x1a1a1a, 0x5a1a14, 0x1a2a3a][i % 3], radial: 8 });
+  }
+  P.rod(k, 'metal', [2.4, 2.9, -1.4], [2.9, 4.6, -1.9], 0.05, { ...DARK });
+  k.sph('metal', 0.14, 2.9, 4.62, -1.9, { ...DARK });
+  return k.done();
+}
+
 const MELT_VS = `varying vec2 vP; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vP = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const MELT_FS = `varying vec2 vP; uniform float uT;
 float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -79,32 +149,16 @@ class PitScene {
     const wall = new THREE.Mesh(new THREE.CylinderGeometry(R, R, TOP + 14, 48, 1, true), new THREE.MeshStandardMaterial({ map: plateTex(), roughness: 0.72, metalness: 0.55, side: THREE.BackSide }));
     wall.position.y = (TOP + 14) / 2 - 2;
     S.add(wall);
-    const iron = new THREE.MeshStandardMaterial({ color: 0x3a3634, roughness: 0.6, metalness: 0.7, vertexColors: true });
+    const iron = Mat.make('rust'); iron.vertexColors = true; iron.color.setRGB(1.6, 1.6, 1.6);
     const glowM = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false });
-    const b = new GBin(), hot = new GBin(), glow = new GBin();
-    for (const y of [7, 13.5, 20, 27]) {
-      b.add(new THREE.RingGeometry(R - 1.5, R, 56, 1).rotateX(-PI / 2), 0x4a4440, T(0, y, 0));
-      b.add(new THREE.TorusGeometry(R - 1.5, 0.04, 6, 64).rotateX(PI / 2), 0x6a625a, T(0, y + 1.05, 0));
-      for (let k = 0; k < 24; k++) { const a = (k / 24) * TAU; b.cyl(0.03, 0.03, 1.05, 0x5a5450, T(Math.sin(a) * (R - 1.5), y + 0.52, Math.cos(a) * (R - 1.5)), { seg: 5 }); }
-      // a dangling broken section
-      b.box(1.6, 0.06, 1.2, 0x4a4440, T(Math.sin(y) * (R - 1.6), y - 0.7, Math.cos(y) * (R - 1.6), 0.9, y, 0.3));
-    }
-    for (let k = 0; k < 10; k++) { const a = (k / 10) * TAU + 0.2; b.cyl(0.22, 0.22, TOP + 12, k % 3 ? 0x5c4a3a : 0x3e4a44, T(Math.sin(a) * (R - 0.35), (TOP + 12) / 2 - 2, Math.cos(a) * (R - 0.35)), { seg: 10 }); }
+    const b = new GBin({ metricAll: 0.7 }), hot = new GBin({ metricAll: 0.7 }), glow = new GBin();
+    S.add(pitStructure().object); // catwalk rings (grated decks, toe boards, rails, brackets) + flanged wall pipes
     // the colossal robot face in the wall: it wakes up as you fall past
     const a0 = 2.4, hx = Math.sin(a0) * (R - 1.0), hz = Math.cos(a0) * (R - 1.0), hy = 15.5;
     const HM = T(hx, hy, hz, 0, a0 + PI, 0);
     const at = (x, y, z, rx = 0, ry = 0, rz = 0) => HM.clone().multiply(T(x, y, z, rx, ry, rz));
-    b.box(6.4, 5.2, 3.2, 0x8a8270, at(0, 0, -0.6));
-    b.box(6.8, 0.5, 3.4, 0x5a5448, at(0, 2.7, -0.6));
-    for (const s of [-1, 1]) {
-      b.cyl(0.95, 0.95, 0.5, 0x1a1816, at(s * 1.5, 0.7, 1.05, PI / 2, 0, 0), { seg: 24 });
-      b.add(new THREE.TorusGeometry(0.98, 0.12, 8, 28), 0x3a3630, at(s * 1.5, 0.7, 1.32));
-      glow.sphere(0.62, 0xff2a10, at(s * 1.5, 0.7, 1.18), { seg: 18, rings: 10 });
-      b.box(0.3, 1.4, 0.4, 0x5a5448, at(s * 3.35, 0.2, 0.2));
-    }
-    for (let k = 0; k < 7; k++) b.box(3.6, 0.12, 0.3, 0x2a2622, at(0, -1.2 - k * 0.24, 1.05));
-    b.box(4.2, 0.9, 2.6, 0x7a7262, at(0, -2.9, 0.4, 0.42, 0, 0.08)); // hanging jaw
-    b.box(0.6, 0.6, 0.6, 0x2a2622, at(2.4, -1.6, 1.0)); b.cyl(0.05, 0.05, 2.2, 0x2a2622, at(-2.2, 3.6, -0.4, 0, 0, 0.3), { seg: 6 });
+    const head = deadHead().object; head.applyMatrix4(HM); S.add(head);
+    for (const s of [-1, 1]) glow.sphere(0.62, 0xff2a10, at(s * 1.5, 0.7, 1.18), { seg: 18, rings: 10 });
     // slag bowl + junked robots heaped on it, some sinking into the melt
     const prof = []; for (let i = 0; i <= 14; i++) { const rr = POOL - 0.3 + (i / 14) * (R - POOL + 0.3); prof.push(new THREE.Vector2(rr, bowlY(rr) - 0.25)); }
     b.add(new THREE.LatheGeometry(prof, 56), 0x2a2420, T(0, 0, 0));
@@ -114,7 +168,7 @@ class PitScene {
       const inMelt = rr < POOL + 0.5;
       const bin = inMelt ? hot : b;
       const M = T(Math.sin(a) * rr, bowlY(rr) + (inMelt ? -0.2 : 0.15) + r() * 0.2, Math.cos(a) * rr, (r() - 0.5) * 2.4, r() * TAU, (r() - 0.5) * 2.4, 0.7 + r() * 0.8, 0.7 + r() * 0.8, 0.7 + r() * 0.8);
-      const add = (bb, w, h, d, x, y, z, c) => bb.box(w, h, d, c, M.clone().multiply(T(x, y, z)));
+      const add = (bb, w, h, d, x, y, z, c) => bb.box(w, h, d, c, M.clone().multiply(T(x, y, z)), { r: Math.min(w, h, d) * 0.12, seg: 2 });
       const col = PAL[Math.floor(r() * PAL.length)];
       const tw = 0.5 + r() * 0.4, th = 0.6 + r() * 0.5;
       add(bin, tw, th, 0.45 + r() * 0.2, 0, 0, 0, col);
@@ -132,7 +186,7 @@ class PitScene {
       for (let f = 0; f < 3; f++) b.cyl(0.07, 0.04, 0.9, 0x2a2622, base.clone().multiply(T(0, 3.3, 0, 0.9, 0, 0)).multiply(T((f - 1) * 0.18, 2.6, 0, -0.7, 0, (f - 1) * 0.3)), { seg: 5 });
     }
     b.mesh(iron, S);
-    const hotM = new THREE.MeshStandardMaterial({ color: 0x2a1a12, roughness: 0.5, metalness: 0.5, vertexColors: true, emissive: 0xff5a10, emissiveIntensity: 0.9 });
+    const hotM = Mat.make('rust'); hotM.vertexColors = true; hotM.emissive.set(0xff5a10); hotM.emissiveIntensity = 0.9;
     hot.mesh(hotM, S);
     this.eyes = glow.mesh(glowM, S);
     this.glowM = glowM;

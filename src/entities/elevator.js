@@ -11,6 +11,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import * as Mat from '../gfx/materials.js';
 import { VLRig, vlPatch } from './vlights.js';
+import { font } from '../ui/fonts.js';
 
 export const CAR = { W: 2.4, D: 2.2, H: 2.45, GW: 2.1, GH: 2.2, GATE_Z: 1.13, FRONT: 1.16 };
 const HW = CAR.W / 2, HD = CAR.D / 2;
@@ -165,7 +166,7 @@ function textures() {
   for (let i = -80; i < 600; i += 44) { f.fillStyle = '#d6a31c'; f.beginPath(); f.moveTo(i, 0); f.lineTo(i + 22, 0); f.lineTo(i + 22 - strip, strip); f.lineTo(i - strip, strip); f.fill(); }
   for (let i = 0; i < 900; i++) { f.fillStyle = `rgba(20,20,20,${0.4 + r() * 0.6})`; f.fillRect(r() * 512, r() * strip, 1 + r() * 3, 1 + r() * 2); }
   f.restore();
-  f.fillStyle = '#d6a31c'; f.font = 'bold 15px "IBM Plex Mono", monospace'; f.textAlign = 'center';
+  f.fillStyle = '#d6a31c'; f.font = font('sign', 15); f.textAlign = 'center';
   f.fillText('ANYTHING IN THIS CAR TRAVELS WITH YOU', 256, strip + 22);
   fh.fillStyle = '#404040'; fh.fillRect(0, 0, 512, strip + 4);
   const floor = ctex(F), floorN = ctex(normalFrom(FH, 3), false);
@@ -175,32 +176,32 @@ function textures() {
   const bg = a.createLinearGradient(0, 0, 256, 0); bg.addColorStop(0, '#9a9da0'); bg.addColorStop(0.5, '#c4c7ca'); bg.addColorStop(1, '#8e9194');
   a.fillStyle = bg; a.fillRect(0, 0, 256, 512);
   for (let i = 0; i < 700; i++) { a.fillStyle = `rgba(${r() < 0.5 ? '255,255,255' : '40,40,40'},${0.04 + r() * 0.06})`; a.fillRect(r() * 256, r() * 512, 1, 6 + r() * 30); }
-  a.fillStyle = '#1a1a1a'; a.font = 'bold 22px "IBM Plex Mono", monospace'; a.textAlign = 'center';
+  a.fillStyle = '#1a1a1a'; a.font = font('receipt', 22); a.textAlign = 'center';
   a.fillText('R.O.O.M.', 128, 34);
-  a.font = '11px "IBM Plex Mono", monospace'; a.fillText('DIMENSIONAL LIFT CO.', 128, 50);
+  a.font = font('receipt', 11); a.fillText('DIMENSIONAL LIFT CO.', 128, 50);
   const LBL = [['B4', 'B5'], ['B6', 'B7'], ['B9', 'B13'], ['0', '37'], ['1.1', '5'], ['∞', '?'], ['—', 'HQ']];
-  a.font = 'bold 17px "IBM Plex Mono", monospace';
+  a.font = font('receipt', 17);
   LBL.forEach((row, i) => row.forEach((s, j) => { a.textAlign = j ? 'left' : 'right'; a.fillText(s, j ? 190 : 66, 98 + i * 50); }));
-  a.font = 'bold 12px "IBM Plex Mono", monospace'; a.textAlign = 'center';
+  a.font = font('receipt', 12); a.textAlign = 'center';
   a.fillText('ALARM', 76, 462); a.fillText('STOP', 180, 462);
   a.strokeStyle = 'rgba(20,20,20,0.6)'; a.lineWidth = 2; a.strokeRect(8, 8, 240, 496);
   // capacity plaque 256..640 x 0..120
   a.fillStyle = '#2b2416'; a.fillRect(256, 0, 384, 120);
   const pg = a.createLinearGradient(256, 0, 256, 120); pg.addColorStop(0, '#e9cf86'); pg.addColorStop(1, '#a8833a');
   a.fillStyle = pg; a.fillRect(262, 6, 372, 108);
-  a.fillStyle = '#2b2416'; a.font = 'bold 30px Georgia, serif'; a.textAlign = 'center'; a.fillText('R.O.O.M. LIFT No. 4', 448, 44);
-  a.font = 'bold 17px "IBM Plex Mono", monospace'; a.fillText('CAPACITY: 4 CLONES / 2000 KG', 448, 74);
-  a.font = '13px "IBM Plex Mono", monospace'; a.fillText('DO NOT HOLD THE GATE  ·  DO NOT FEED THE GATE', 448, 100);
+  a.fillStyle = '#2b2416'; a.font = font('poster', 30); a.textAlign = 'center'; a.fillText('R.O.O.M. LIFT No. 4', 448, 44);
+  a.font = font('receipt', 17); a.fillText('CAPACITY: 4 CLONES / 2000 KG', 448, 74);
+  a.font = font('receipt', 13); a.fillText('DO NOT HOLD THE GATE  ·  DO NOT FEED THE GATE', 448, 100);
   // inspection certificate 640..1024 x 0..300
   a.fillStyle = '#3a3226'; a.fillRect(640, 0, 384, 300);
   a.fillStyle = '#efe8d4'; a.fillRect(652, 12, 360, 276);
-  a.fillStyle = '#2a2620'; a.font = 'bold 22px Georgia, serif'; a.fillText('CERTIFICATE OF OPERATION', 832, 52);
-  a.font = '14px "IBM Plex Mono", monospace';
+  a.fillStyle = '#2a2620'; a.font = font('poster', 22); a.fillText('CERTIFICATE OF OPERATION', 832, 52);
+  a.font = font('receipt', 14);
   ['LIFT No. 4  ·  SUBLEVEL B4', 'TRAVEL: B4 → ∞', 'LAST INSPECTED: 03/07/1996', 'INSPECTOR: ________', 'STATUS: OPERATIONAL (MOSTLY)'].forEach((s, i) => a.fillText(s, 832, 92 + i * 30));
-  a.save(); a.translate(930, 245); a.rotate(-0.2); a.strokeStyle = 'rgba(160,30,24,0.8)'; a.lineWidth = 3; a.strokeRect(-70, -18, 140, 36); a.fillStyle = 'rgba(160,30,24,0.8)'; a.font = 'bold 20px Arial'; a.fillText('APPROVED', 0, 8); a.restore();
+  a.save(); a.translate(930, 245); a.rotate(-0.2); a.strokeStyle = 'rgba(160,30,24,0.8)'; a.lineWidth = 3; a.strokeRect(-70, -18, 140, 36); a.fillStyle = 'rgba(160,30,24,0.8)'; a.font = font('sign', 20); a.fillText('APPROVED', 0, 8); a.restore();
   // "STAND CLEAR" sticker 256..640 x 120..200 and a CCTV warning 256..640 x 200..280
-  a.fillStyle = '#d6a31c'; a.fillRect(256, 124, 384, 72); a.fillStyle = '#141414'; a.font = 'bold 26px Arial'; a.fillText('MIND THE GATE', 448, 170);
-  a.fillStyle = '#e4e0d6'; a.fillRect(256, 204, 384, 72); a.fillStyle = '#9a1c18'; a.font = 'bold 18px Arial'; a.fillText('THIS CAR IS MONITORED', 448, 234); a.fillStyle = '#222'; a.font = '14px Arial'; a.fillText('FOR YOUR SAFETY AND OURS', 448, 258);
+  a.fillStyle = '#d6a31c'; a.fillRect(256, 124, 384, 72); a.fillStyle = '#141414'; a.font = font('sign', 26); a.fillText('MIND THE GATE', 448, 170);
+  a.fillStyle = '#e4e0d6'; a.fillRect(256, 204, 384, 72); a.fillStyle = '#9a1c18'; a.font = font('sign', 18); a.fillText('THIS CAR IS MONITORED', 448, 234); a.fillStyle = '#222'; a.font = '14px Arial'; a.fillText('FOR YOUR SAFETY AND OURS', 448, 258);
   const atlas = ctex(A);
   TEX = { veneer, floor, floorN, atlas };
   return TEX;
@@ -282,19 +283,19 @@ export class Dial {
     x.fillStyle = g; x.fillRect(0, 0, w, h);
     x.strokeStyle = '#3a2e1c'; x.lineWidth = 2;
     x.beginPath(); x.arc(cx, cy, 90, PI * 1.12, PI * 1.88); x.stroke();
-    x.fillStyle = '#2a2014'; x.font = 'bold 14px Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillStyle = '#2a2014'; x.font = font('sign', 14); x.textAlign = 'center'; x.textBaseline = 'middle';
     DIAL_FLOORS.forEach((s, i) => {
       const a = dialAngle(i);
       x.fillText(s, cx + Math.cos(a) * 72, cy - Math.sin(a) * 72);
       x.beginPath(); x.moveTo(cx + Math.cos(a) * 85, cy - Math.sin(a) * 85); x.lineTo(cx + Math.cos(a) * 95, cy - Math.sin(a) * 95); x.stroke();
     });
-    x.fillStyle = '#3a2e1c'; x.font = 'bold 9px "IBM Plex Mono", monospace'; x.fillText('R.O.O.M. LIFT CO.', cx, cy - 34);
+    x.fillStyle = '#3a2e1c'; x.font = font('receipt', 9); x.fillText('R.O.O.M. LIFT CO.', cx, cy - 34);
     // LED window under the hub
     x.fillStyle = '#100604'; x.fillRect(cx - 34, cy + 9, 68, 26);
     x.strokeStyle = '#5a4a30'; x.lineWidth = 2; x.strokeRect(cx - 34, cy + 9, 68, 26);
     if (this.led) {
       x.fillStyle = this.ledCol; x.shadowColor = this.ledCol; x.shadowBlur = 8;
-      x.font = 'bold 26px "VT323", monospace'; x.fillText(this.led, cx, cy + 23);
+      x.font = font('terminal', 26); x.fillText(this.led, cx, cy + 23);
       x.shadowBlur = 0;
     }
     this.tex.needsUpdate = true;
@@ -332,7 +333,7 @@ export function flapAtlas() {
     const g = x.createLinearGradient(0, gy, 0, gy + ch);
     g.addColorStop(0, '#24221f'); g.addColorStop(0.48, '#141312'); g.addColorStop(0.52, '#0c0c0b'); g.addColorStop(1, '#1e1c1a');
     x.fillStyle = g; x.fillRect(gx + 2, gy + 2, cw - 4, ch - 4);
-    x.font = 'bold 76px "Arial Narrow", "Helvetica Neue", Arial';
+    x.font = font('sign', 76);
     const k = Math.min(1, (cw - 12) / Math.max(1, x.measureText(FLAP_GLYPHS[i]).width));
     x.save(); x.translate(gx + cw / 2, gy + ch / 2 + 4); x.scale(k, 1);
     x.fillStyle = '#efe4c8'; x.fillText(FLAP_GLYPHS[i], 0, 0);
