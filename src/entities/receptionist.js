@@ -912,11 +912,11 @@ export class ReceptionistAnimator {
 // ------------------------------------------------------------------------------------------ device
 // Her lines hang over the counter as the game's 3D floating text (ui/floattext.js), anchored on her head.
 const LINES = {
-  welcome: 'Welcome to Sublevel B4, {N}. I am Gloria. Tell me when you are ready and I will open the elevator.',
-  welcomeBack: 'Welcome back, {N}. Your shift is waiting. Tell me when you are ready to go down.',
-  welcomeClient: 'Welcome, {N}. Your shift host will tell me when to open the elevator.',
-  orient: 'The company needs furniture. Your first assignment: build your camp.',
-  offer: 'Shall I open the elevator, {N}? Everyone in this room goes down. [{K}] to confirm.',
+  welcome: 'Welcome to Sublevel B4, {N}. I am Gloria. Talk to me when you are ready.',
+  welcomeBack: 'Welcome back, {N}. Talk to me when you are ready to go down.',
+  welcomeClient: 'Welcome, {N}. Your host will tell me when to open the elevator.',
+  orient: 'Your first assignment: go down and build your camp.',
+  offer: 'Shall I open the elevator, {N}? Everyone here goes down. [{K}] to confirm.',
   confirm: 'Very good, {N}. Opening the elevator. Please step inside.',
   board: 'The car leaves in {S} seconds. Everyone in the room goes.',
   hurry: 'The car leaves in {S} seconds, {N}. Please step inside.',
@@ -1057,7 +1057,7 @@ export class ReceptionistBot extends Device {
     this.say = { id, text, t: 0, dur };
     const head = this.P.head.getWorldPosition(V());
     audio.play('healthity_talk', { pos: head, volume: 0.55, length: Math.min(3.4, dur), pitch: 0.7 });
-    this.bubble = floatText.say(text, { at: this.P.head, speaker: 'GLORIA', color: '#ffd9a0', offset: V(0, 0.42, 0.3), size: 1.15, duration: dur + 1.4 });
+    this.bubble = floatText.say(text, { at: this.P.head, speaker: 'GLORIA', color: '#ffd9a0', offset: V(0, 0.38, 0.3), size: 1.4, duration: dur + 1.4 });
     if (mine) this._tts(text);
   }
 

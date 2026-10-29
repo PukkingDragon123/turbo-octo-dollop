@@ -29,7 +29,7 @@ import { HEIGHT } from '../world/levels/yellow/layout.js';
 import { PaperView } from './receipt.js';
 
 export const STAGE = { WAIT: 0, STRANDED: 1, CRATE: 2, BOT: 3, FIXED: 4, CRUSHER: 5, TERMINAL: 6 };
-const GAP = { 1: 5.6, 2: 6.4, 4: 2.8, 5: 8.4 }; // host: seconds spent in a stage before the next one
+const GAP = { 1: 5.6, 2: 6.4, 4: 6.5, 5: 8.4 }; // host: seconds spent in a stage before the next one
 const SEEN_KEY = 'room.arrivalSeen';
 const NARRATE = '#e9e0bd';
 const PI = Math.PI;
@@ -76,6 +76,7 @@ export class ArrivalDirector extends Device {
     this.lvl = { glitch: 0, muffle: 0, fade: 0 };
     this.owning = false;
     this.timers = [];
+    this.log = [];         // beats played on this peer (name@world time), for tests
     this.kiosks = [mission.shopKiosk, mission.questKiosk].filter(Boolean).map((d) => ({ d, pos: d.root.position.clone(), fwd: V(Math.sin(d.root.rotation.y), 0, Math.cos(d.root.rotation.y)) }));
     this._buildSeal();
     // nothing of the camp's machinery is here yet
@@ -102,7 +103,13 @@ export class ArrivalDirector extends Device {
       const wx = c.x + s.x * lx + g.x * lz, wz = c.z + s.z * lx + g.z * lz;
       uv.setXY(i, wx + wz, ly);
     }
-    const wall = new THREE.Mesh(geo, Mat.get('wallpaper'));
+    // the level's walls are light-baked: light the plug by the light the camp has there so it reads as the same wall
+    const mat = Mat.get('wallpaper').clone();
+    const lc = new THREE.Color(0.55, 0.5, 0.36);
+    try { const sc = new THREE.Color(); this.level.sampleLight?.(c.clone().addScaledVector(g, 0.6).setY(fy + 1.4), sc); if (sc.r + sc.g + sc.b > 0.05) lc.copy(sc).multiplyScalar(0.85); } catch (e) { /* keep the default */ }
+    mat.emissive = lc; mat.emissiveMap = mat.map; mat.emissiveIntensity = 1;
+    this.sealMat = mat;
+    const wall = new THREE.Mesh(geo, mat);
     wall.castShadow = wall.receiveShadow = true;
     root.add(wall);
     const base = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 0.02), Mat.get('rubber_base'));
@@ -402,7 +409,7 @@ export class ArrivalDirector extends Device {
     const S = P.clone().addScaledVector(best.dir, best.d + best.ext + 0.4);
     const wallPt = P.clone().addScaledVector(best.dir, best.d);
     // camera: the hall, from the camp side, a little off axis (pulled in if a wall is in the way)
-    const camAt = P.clone().addScaledVector(f, 7.2).addScaledVector(side, best.dir.dot(side) > 0.5 ? -2.8 : 2.8).setY(P.y + 2.3);
+    const camAt = P.clone().addScaledVector(f, 5.8).addScaledVector(side, best.dir.dot(side) > 0.5 ? -2.8 : 2.8).setY(P.y + 2.3);
     try {
       const o = P.clone().setY(P.y + 2.3), d = camAt.clone().sub(o), L = d.length();
       const h = phys.raycast(o, d.normalize(), L, Q.world);
@@ -475,6 +482,11 @@ export class ArrivalDirector extends Device {
     const M = V();
     for (const k of ks) M.add(k.pos);
     M.multiplyScalar(1 / ks.length).setY(ks[0].pos.y + 1.3);
+    const fw = ks[0].fwd, C = M.clone().addScaledVector(fw, 5.4).setY(M.y + 0.35);
+    try {
+      const h = this.world.physics.raycast(M.clone().addScaledVector(fw, 0.6), fw, 5, Q.world);
+      if (h) C.copy(M).addScaledVector(fw, Math.max(2.5, h.dist + 0.2)).setY(M.y + 0.35);
+    } catch (e) { /* keep */ }
     const fired = new Set();
     const once = (k, t, at, fn) => { if (t >= at && !fired.has(k)) { fired.add(k); fn(); } };
     return {
@@ -495,7 +507,7 @@ export class ArrivalDirector extends Device {
           });
           once('boot' + i, t, t0 + 2.1, () => { k.d.setHidden(false); R.position.copy(k.pos); self._sfx('ui_boot', { pos: k.pos, volume: 0.8 }); });
         });
-        if (this.cam) self._focus(this, M, 1.6, t);
+        if (this.cam) { self.shot.p.copy(C).addScaledVector(fw, -0.9 * ease(seg(t, 0, 5.4))); lookQ(self.shot.p, M, 0, self.shot.q); this.shot = true; }
         self.want.glitch = t > 0.5 && t < 2.9 ? 0.1 + Math.random() * 0.12 : 0;
       },
       end(skipped) {
@@ -529,6 +541,7 @@ export class ArrivalDirector extends Device {
       b.t = 0;
       if (this.skipAll || !b.dur) { b.end(!!this.skipAll); continue; }
       this.cur = b;
+      this.log.push(`${b.name}@${this.world.time.toFixed(1)}`);
       b.start?.();
       if (b.cam && this.canSkip && !this._hinted) { this._hinted = true; floatText.notice(`hold ${input.keyName('jump')} to skip`, { color: NARRATE, duration: 2.6 }); }
     }
@@ -538,7 +551,12 @@ export class ArrivalDirector extends Device {
     b.t += dt;
     b.shot = false;
     b.tick?.(b.t, dt);
-    if (b.cam && b.shot) this._takeCam(b);
+    if (b.cam && b.shot) {
+      this._takeCam(b);
+      // a talking Healthity drifts into the camera's view: keep it beside the clone during a shot
+      const h = this.game.healthity;
+      if (h?.active && h.attention !== undefined) h.attention = 0;
+    }
     if (b.cam && this.canSkip && input.down('jump')) {
       this.holdT += dt;
       if (this.holdT > 0.6) { this._skip(); return; }
@@ -604,7 +622,7 @@ export class ArrivalDirector extends Device {
     this._releaseCam();
     if (this.owning) { const pp = engine.post.params; pp.uGlitch.value = 0; pp.uFade.value = 0; audio.setMuffle(0); }
     this.reader.dispose();
-    if (this.seal) { this.seal.root.removeFromParent(); this.seal.root.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); }
+    if (this.seal) { this.seal.root.removeFromParent(); this.seal.root.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); this.sealMat?.dispose(); }
     if (this.game.arrival === this) this.game.arrival = null;
     super.dispose();
   }
