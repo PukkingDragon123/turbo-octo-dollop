@@ -190,7 +190,7 @@ export class RobotPit {
     const pp = engine.post.params;
     this.saved = {};
     for (const k of POST_KEYS) { const v = pp[k]?.value; if (v !== undefined) this.saved[k] = v.clone ? v.clone() : v; }
-    pp.uFade.value = 0; pp.uGlitch.value = 0.2;
+    pp.uFade.value = 0; pp.uGlitch.value = 0;
     pp.uTint.value.setRGB(1.08, 0.95, 0.88); pp.uVignette.value = 0.55; pp.uExposure.value = 1; pp.uSat.value = 1.1;
     S.fx.setPixelScale(innerHeight);
     engine.setView(S.scene, S.cam);
@@ -297,7 +297,6 @@ export class RobotPit {
       pp.uExposure.value = 1 + 0.8 * sstep(1.2, 3.6, u);
       pp.uVignette.value = 0.55 + 0.45 * k;
       pp.uSat.value = 1.1 + 0.3 * k;
-      pp.uGlitch.value = 0.12 + 0.18 * Math.abs(Math.sin(u * 5)) * k;
       const melt = sstep(2.8, 4.4, u), black = sstep(4.6, 5.4, u);
       pp.uFadeColor.value.setRGB(1.0 * (1 - black), 0.62 * (1 - black), 0.32 * (1 - black));
       pp.uFade.value = Math.max(melt, black);

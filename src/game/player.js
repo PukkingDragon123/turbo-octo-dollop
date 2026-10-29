@@ -769,7 +769,7 @@ export class LocalPlayer {
 
   // camera-space wrist targets for the grab: each grip point is projected through the world camera and placed
   // at the same screen spot in the viewmodel, at a depth that grows with how far the hand has to reach
-  _toVM(world, out, side) {
+  _toVM(world, out, side, top = 0.02) {
     const cam = engine.camera, vm = engine.vmCamera;
     _v2.copy(world).applyMatrix4(cam.matrixWorldInverse);
     const dist = Math.max(0.25, -_v2.z);
@@ -777,7 +777,7 @@ export class LocalPlayer {
     let nx = _v2.x / (dist * tm * cam.aspect), ny = _v2.y / (dist * tm);
     if (_v2.z > -0.1) { nx = Math.sign(nx || side) * 0.8; ny = -0.6; }
     nx = side > 0 ? clamp(nx, -0.3, 0.85) : clamp(nx, -0.85, 0.3);
-    ny = clamp(ny, -0.95, 0.02); // never above the crosshair: the forearms would sweep across the view
+    ny = clamp(ny, -0.95, top); // kept below the crosshair: the forearms would sweep across the view
     const z = 0.4 + 0.22 * clamp((dist - 0.45) / 1.3, 0, 1);
     return out.set(nx * z * tv * vm.aspect, ny * z * tv, -z).multiplyScalar((z - 0.06) / z);
   }
@@ -815,11 +815,11 @@ export class LocalPlayer {
     const out = { reachR: null, reachL: null, twoHanded: hs.two, gripSize: hs.size, strain: this.strain };
     if (hs.two) {
       if (g.remote) _right.set(1, 0, 0).applyQuaternion(engine.camera.quaternion);
-      out.reachR = this._toVM(_v.copy(center).addScaledVector(_right, half), R.R, 1);
-      out.reachL = this._toVM(_v.copy(center).addScaledVector(_right, -half), R.L, -1);
-      if (out.reachR.x - out.reachL.x < 0.1) { const m = (out.reachR.x + out.reachL.x) / 2; out.reachR.x = m + 0.05; out.reachL.x = m - 0.05; }
-    } else if (hs.R) out.reachR = this._toVM(grip, R.R, 1);
-    else out.reachL = this._toVM(grip, R.L, -1);
+      out.reachR = this._toVM(_v.copy(center).addScaledVector(_right, half), R.R, 1, -0.5);
+      out.reachL = this._toVM(_v.copy(center).addScaledVector(_right, -half), R.L, -1, -0.5);
+      if (out.reachR.x - out.reachL.x < 0.34) { const m = (out.reachR.x + out.reachL.x) / 2; out.reachR.x = m + 0.17; out.reachL.x = m - 0.17; }
+    } else if (hs.R) out.reachR = this._toVM(grip, R.R, 1, -0.3);
+    else out.reachL = this._toVM(grip, R.L, -1, -0.3);
     return out;
   }
 

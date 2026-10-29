@@ -29,10 +29,10 @@ const params = new URLSearchParams(location.search);
 
 async function boot() {
   const bootEl = document.createElement('div');
-  bootEl.style.cssText = 'position:fixed;inset:0;background:#000;color:#ffb43a;font:28px VT323,monospace;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:100';
-  bootEl.innerHTML = '<div style="font-size:64px;letter-spacing:10px;text-shadow:0 0 14px #ffb43a">R.O.O.M.</div><div id="boot-l">INITIALIZING...</div>';
+  bootEl.style.cssText = 'position:fixed;inset:0;background:radial-gradient(circle at 50% 45%,#1a120a,#000 70%);color:#e9c87e;font:italic 600 24px "Cormorant Garamond",Georgia,serif;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;z-index:100';
+  bootEl.innerHTML = '<div style="font:700 72px \'Cormorant Garamond\',Georgia,serif;letter-spacing:14px;text-shadow:0 0 18px rgba(255,180,90,.55)">R.O.O.M.</div><div style="width:240px;height:1px;background:#b48a40"></div><div id="boot-l" style="letter-spacing:2px;opacity:.85">initializing\u2026</div>';
   document.body.appendChild(bootEl);
-  const setL = (t) => { const e = document.getElementById('boot-l'); if (e) e.textContent = t; };
+  const setL = (t) => { const e = document.getElementById('boot-l'); if (e) e.textContent = String(t).toLowerCase().replace('...', '\u2026'); };
 
   input.touch = wantsTouch();
   if (input.touch) document.documentElement.classList.add('touch');

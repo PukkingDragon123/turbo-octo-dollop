@@ -348,7 +348,7 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
   // (so its cut end stays off screen); one hand: palm over the grip; two hands: palms in, hugging the sides
   const SHO = { R: V(0.3, -0.5, 0.6), L: V(-0.3, -0.5, 0.6) };
   const U1 = { R: V(-0.25, 0.95, 0.18), L: V(0.25, 0.95, 0.18) };
-  const U2 = { R: V(0.85, 0.45, 0.2), L: V(-0.85, 0.45, 0.2) };
+  const U2 = { R: V(0.62, 0.72, 0.25), L: V(-0.62, 0.72, 0.25) };
   function reachPose(o, S, w, two) {
     if (w < 0.0005) return;
     const tg = S === 'R' ? st.reachR : st.reachL;

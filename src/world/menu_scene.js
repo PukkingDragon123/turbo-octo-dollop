@@ -2,21 +2,22 @@
 // engine.setView(). There is no HTML on screen: everything is a physical, clickable object.
 //
 // HUB      A dark assembly hall. Your clone hangs limp from an overhead conveyor hook (it is not alive
-//          yet: it dangles, sways and lolls like a ragdoll) under one work lamp. Next to it hang big
-//          backlit sign boxes: NEW MISSION, CONTINUE, SETTINGS and COMMENDATIONS. Hover makes them glow
-//          and swing; a click flies the camera (eased crane moves) to that station in first person.
+//          yet: it dangles, sways and lolls like a ragdoll) under one work lamp. Beside it hang the signs:
+//          the R.O.O.M. title marquee, NEW MISSION and CONTINUE (enamel sign boxes with gilt letters in
+//          brass frames ringed with marquee bulbs), COMMENDATIONS, and the SETTINGS cog (a brass gear on
+//          chains). Hover lights the bulbs / spins the cog; NEW MISSION and CONTINUE drop the clone straight
+//          down the floor hatch; the cog and the plaques fly the camera (eased crane moves) to their station.
 // WORKSHOP Click the clone: the floodlight banks slam on one by one. Two hydraulic arms flank the hook
 //          and a parts board hangs beside it. Swipe (drag / touch) or use the arrow keys to move between
 //          sections (FRAME, HEAD SHAPE, BODY SHAPE, CLOTHING, EYES, ACCESSORIES, FACE, SHELL FINISH,
 //          HEADWEAR, FACE GEAR, BACKPACK). Clicking a part on the board is brutal: one arm clamps the old
 //          part and rips it off (sparks, oil, bolts, the body jerks), the other grabs the new part off the
 //          board and slams it on. Choices save to profile.data.cosmetics.
-// DISPATCH The NEW MISSION console: destination selector + a big lever. Pull it: alarm, the floor hatch
-//          opens, the hook lets go, the camera follows the body down the shaft, impact (hit-stop), the
-//          eyes flicker on in the dark cell — then game.enterLobby({ continued }) (or startSolo()).
-// CONTINUE Three crates pried open: cash bundles with a value tag, the old inventory (catalog models),
-//          a stamped run record. Click a crate to drop. No save: one taped-off empty crate.
-// SETTINGS A calibration cabinet with knobs, a fader, toggle switches, rotary selectors and a CRT.
+// DROP     NEW MISSION / CONTINUE: alarm, the floor hatch opens, the hook lets go, the camera follows the
+//          body down the shaft, impact, the eyes flicker on in the dark cell, then game.enterLobby().
+// SETTINGS The calibration gear: a big ring gear with every setting bolted on as a knob / lever / switch
+//          (names engraved round the rim); it turns to bring the chosen one under the pointer, the enamel
+//          dial in the middle shows the value. Includes the first dimension (destination).
 // COMMENDATIONS  A wall of plaques (core/profile.js ACHIEVEMENTS) with the cosmetics they unlock.
 // Back: the "◄ BACK" pull-tag hanging at the top-left of the view, Esc / Backspace or right click.
 //
@@ -30,8 +31,8 @@ import { juice } from '../gfx/juice.js';
 import * as AV from '../entities/avatar.js';
 import { buildModel } from '../entities/catalog.js';
 import {
-  RoboArm, Sparks, Batch, cyl, factoryMats, LiveTex, fitText, wrapLines, HangPanel, Hatch, Knob, Toggle, Fader, Selector,
-  Crate, Junk, Puffs, Motes, kitMesh as mesh, kitRbox as rbox, PHOS, brackets, scanlines, phosphorBg,
+  RoboArm, Sparks, Batch, cyl, factoryMats, LiveTex, fitText, wrapLines, HangPanel, Hatch, Knob, Toggle, Selector, GearSign, gearGeo,
+  Junk, Puffs, Motes, kitMesh as mesh, kitRbox as rbox, PHOS, brackets, scanlines, phosphorBg,
 } from '../entities/wardrobe.js';
 import { FONT } from '../ui/fonts.js';
 import { getPart } from '../entities/doll/doll_avatar.js';
@@ -45,7 +46,8 @@ import { HC } from '../entities/doll/robotshape.js';
 
 const { Avatar, COSMETICS, resolveCos, DEFAULT_COSMETICS } = AV;
 // type roles (ui/fonts.js): deco signage, typewriter forms, CRT terminals, marker labels, handwriting
-const F_SIGN = FONT.deco, F_TYPE = FONT.type, F_CRT = FONT.crt, F_MONO = FONT.mono, F_MARK = FONT.marker, F_HAND = FONT.hand, F_PRINT = FONT.print, F_TITLE = FONT.title;
+// (one face everywhere now: FONT.main, Cormorant Garamond; the role names stay for readability)
+const F_SIGN = FONT.main, F_TYPE = FONT.main, F_CRT = FONT.main, F_MONO = FONT.main, F_MARK = FONT.main, F_HAND = FONT.main, F_PRINT = FONT.main, F_TITLE = FONT.main;
 const PI = Math.PI, TAU = PI * 2, DEG = PI / 180;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -76,6 +78,7 @@ const SECTIONS = [
 ];
 const LEVEL_NAME = { yellow: 'LEVEL 0', poolrooms: 'LEVEL 37', grasslands: 'LEVEL 1.1' };
 const DESTS = ['yellow', 'poolrooms', 'grasslands'];
+const LEVEL_TITLE = { yellow: 'Level 0', poolrooms: 'Level 37', grasslands: 'Level 1.1' };
 const CAT_NAME = { suit: 'COVERALL', skin: 'FINISH', hat: 'HEADWEAR', visor: 'FACE GEAR', face: 'FACE', backpack: 'BACKPACK', accessory: 'ACCESSORY', frame: 'FRAME', skull: 'HEAD', build: 'BUILD', eyes: 'EYES' };
 const NONE_OK = { hat: 'none', visor: 'none', accessory: 'none', backpack: 'none' };
 const plainCos = (c) => { const r = resolveCos(c); const o = {}; for (const k of Object.keys(DEFAULT_COSMETICS)) o[k] = r[k]; return o; };
@@ -149,8 +152,6 @@ export class MenuScene {
     this._buildRobot();
     this._buildArms();
     this._buildPanels();
-    this._buildDispatch();
-    this._buildContinue();
     this._buildSettings();
     this._buildTrophies();
     this._buildRack();
@@ -407,236 +408,159 @@ export class MenuScene {
   }
 
   // ============================================================================ build: hub sign panels
+  // the hub signage: the R.O.O.M. title marquee, enamel sign boxes in brass frames ringed with bulbs, and
+  // the SETTINGS cog (a brass gear hanging on chains)
   _buildPanels() {
-    const mk = (key, w, h, accent) => {
-      const p = new HangPanel({ w, h, accent });
+    const mk = (key, p) => {
       this.scene.add(p.root);
-      this._addHit(p.hit, { type: 'panel', key, modes: ['hub'] });
+      if (key) this._addHit(p.hit, { type: 'panel', key, modes: ['hub'] });
       p.on = 0;
       return p;
     };
     this.panels = {
-      new: mk('new', 1.5, 0.42, PHOS.hi),
-      cont: mk('cont', 1.5, 0.42, PHOS.hi),
-      settings: mk('settings', 1.5, 0.42, PHOS.hi),
-      trophies: mk('trophies', 1.2, 0.3, PHOS.mid),
+      title: mk(null, new HangPanel({ w: 1.62, h: 0.46 })),
+      new: mk('new', new HangPanel({ w: 1.5, h: 0.36 })),
+      cont: mk('cont', new HangPanel({ w: 1.5, h: 0.36 })),
+      trophies: mk('trophies', new HangPanel({ w: 0.92, h: 0.3 })),
+      settings: mk('settings', new GearSign({ r: 0.27 })),
     };
     this._refreshPanels();
   }
   _refreshPanels() {
     const P = this.panels, s = save.summary();
-    P.new.setText('NEW MISSION', 'PRINT · ASSEMBLE · DISPATCH');
-    P.cont.setText('CONTINUE', s ? `${LEVEL_NAME[s.level] || 'LEVEL 0'} · DAY ${s.day}/7 · ${money(s.credits)}` : 'NO RECORD ON FILE', { dim: !s });
-    P.settings.setText('SETTINGS', 'CALIBRATION BAY');
-    const n = Object.keys(ACHIEVEMENTS).length, got = Object.keys(ACHIEVEMENTS).filter((k) => profile.has(k)).length;
-    P.trophies.setText('COMMENDATIONS', `${got} / ${n} EARNED`);
-  }
-
-  // ============================================================================ build: dispatch console (NEW MISSION)
-  _buildDispatch() {
-    const F = this.F;
-    const g = (this.dispatch = new THREE.Group());
-    g.position.set(-2.55, 0, 2.15); g.rotation.y = -0.85;
-    this.scene.add(g);
-    const B = new Batch();
-    B.box(1.1, 0.95, 0.6, F.cabinet, 0, 0.475, 0, 0, 0, 0, 0.02);
-    B.box(1.14, 0.06, 0.72, F.dark, 0, 0.98, 0.05, TILT, 0, 0);
-    B.box(0.5, 0.42, 0.36, F.cabinet, -0.22, 1.22, -0.16, 0, 0, 0, 0.03);
-    B.box(1.14, 0.04, 0.64, F.hazard, 0, 0.02, 0.0);
-    B.build(g);
-    this.dCrt = this._tex(512, 384);
-    const crt = this._plane(0.4, 0.3, this._basicTexMat(this.dCrt.tex), g, -0.22, 1.24, 0.025);
-    void crt;
-    // lever
-    this.lever = new THREE.Group(); this.lever.position.set(0.3, 1.02, 0.08); g.add(this.lever);
-    mesh(cyl(0.05, 0.12, 'x', 16), F.dark, g, 0.3, 1.02, 0.08);
-    this.leverArm = new THREE.Group(); this.lever.add(this.leverArm);
-    mesh(cyl(0.014, 0.42, 'y', 10).translate(0, 0.21, 0), F.chrome, this.leverArm);
-    const knob = mesh(new THREE.SphereGeometry(0.045, 16, 12), F.redPaint, this.leverArm, 0, 0.43, 0);
-    this.leverA = -0.5; this.leverT = -0.5; this.leverArm.rotation.x = -0.5;
-    this._addHit(mesh(new THREE.BoxGeometry(0.16, 0.55, 0.2), new THREE.MeshBasicMaterial({ visible: false }), this.leverArm, 0, 0.27, 0), { type: 'lever', modes: ['dispatch'] });
-    void knob;
-    // big mushroom button under a guard
-    const btn = mesh(cyl(0.055, 0.04, 'y', 20), F.redPaint, g, -0.05, 1.03, 0.16, TILT, 0, 0);
-    this._addHit(btn, { type: 'lever', modes: ['dispatch'] });
-    mesh(cyl(0.075, 0.02, 'y', 20), F.yellow, g, -0.05, 1.005, 0.155, TILT, 0, 0);
-    // destination selector
-    this.destSel = new Selector(3, 0.045);
-    this.destSel.root.position.set(-0.38, 1.0, 0.18); this.destSel.root.rotation.x = -PI / 2 + TILT; g.add(this.destSel.root);
-    this._addHit(this.destSel.hit, { type: 'dest', modes: ['dispatch'] });
-    this.destSel.set(Math.max(0, DESTS.indexOf(profile.settings.destination || 'yellow')));
-    const lab = this._tex(256, 96, (x, w, h) => { x.fillStyle = '#1b1d1a'; x.fillRect(0, 0, w, h); x.fillStyle = '#d8c79a'; x.textBaseline = 'middle'; fitText(x, 'L0   L37   L1.1', w / 2, h * 0.35, w - 20, 34, `{s}px ${F_MARK}`); x.fillStyle = '#8a8060'; fitText(x, 'DESTINATION', w / 2, h * 0.75, w - 20, 26, `{s}px ${F_TYPE}`); });
-    this._plane(0.2, 0.075, new THREE.MeshStandardMaterial({ map: lab.tex, roughness: 0.8 }), g, -0.38, 0.985, 0.3, -PI / 2 + TILT, 0, 0);
-    this._drawDispatchCrt();
-  }
-  _drawDispatchCrt(msg = '') {
-    const d = profile.settings.destination || 'yellow';
-    this.dCrt.draw((x, w, h) => {
-      phosphorBg(x, w, h);
-      brackets(x, 10, 10, w - 20, h - 20, 34, PHOS.mid, 3, 8);
-      x.fillStyle = PHOS.hi; x.shadowColor = PHOS.mid; x.shadowBlur = 10; x.textBaseline = 'top'; x.font = `34px ${F_CRT}`;
-      x.fillText('R.O.O.M. DISPATCH', 28, 22);
-      x.fillRect(28, 64, w - 56, 2);
-      x.font = `28px ${F_CRT}`; x.fillStyle = PHOS.mid;
-      const L = [`UNIT ....... #${this.av.empNo}`, `NAME ....... ${(profile.name || '').toUpperCase()}`, `DEST ....... ${LEVEL_NAME[d] || d.toUpperCase()}`, 'STATUS ..... NOT ALIVE YET'];
-      L.forEach((s, i) => x.fillText(s, 28, 82 + i * 40));
-      x.fillStyle = PHOS.hi; x.font = `30px ${F_CRT}`;
-      x.fillText((msg || '> PULL LEVER TO DISPATCH') + ((Date.now() / 500 | 0) % 2 ? '_' : ''), 28, 262);
-      x.shadowBlur = 0; scanlines(x, w, h, 0.28);
-    });
-  }
-
-  // ============================================================================ build: continue crates
-  _buildContinue() {
-    const g = (this.contG = new THREE.Group());
-    g.position.set(3.1, 0, 2.3); g.rotation.y = 0.55;
-    this.scene.add(g);
-    const B = new Batch();
-    B.box(2.3, 0.12, 0.95, this.F.wood, 0, 0.06, 0);
-    B.build(g);
-    this.crates = [-0.76, 0, 0.76].map((x, i) => {
-      const c = new Crate(0.62, 0.46, 0.5);
-      c.root.position.set(x, 0.12, 0); c.root.rotation.y = rnd(-0.06, 0.06);
-      g.add(c.root);
-      c.idx = i;
-      c.hit = this._addHit(mesh(new THREE.BoxGeometry(0.66, 0.6, 0.54), new THREE.MeshBasicMaterial({ visible: false }), c.root, 0, 0.3, 0), { type: 'crate', i, modes: ['continue'] });
-      c.contents = new THREE.Group(); c.root.add(c.contents);
-      c.onLand = () => this._sfx('impact_wood', { pos: c.root.getWorldPosition(V()), volume: 0.5 });
-      return c;
-    });
-    // hazard tape (no save)
-    this.tape = new THREE.Group(); g.add(this.tape);
-    const tm = new THREE.MeshStandardMaterial({ map: this.F.hazardTex, roughness: 0.6, side: THREE.DoubleSide });
-    for (const s of [-1, 1]) this._plane(0.86, 0.07, tm, this.tape, 0, 0.62, 0.27, 0, 0, s * 0.62).material = tm;
-    this._plane(0.08, 0.6, tm, this.tape, 0, 0.6, -0.0, -PI / 2, 0, PI / 2).material = tm;
-    this._contentsBuilt = false;
-  }
-  _fillCrates() {
-    const s = save.summary();
     this.hasSave = !!s;
-    for (const c of this.crates) { c.contents.clear(); c.closeLid(); c.root.visible = true; }
-    this.tape.visible = !s;
-    const label = (t1, t2) => this._tex(512, 220, (x, w, h) => {
-      x.clearRect(0, 0, w, h); x.fillStyle = 'rgba(22,16,10,0.85)'; x.textBaseline = 'middle';
-      fitText(x, t1, w / 2, h * 0.38, w - 40, 96, `{s}px ${F_MARK}`);
-      x.font = `44px ${F_MARK}`; fitText(x, t2, w / 2, h * 0.78, w - 40, 48, `{s}px ${F_MARK}`);
-    }).tex;
-    if (!s) {
-      this.crates[0].root.visible = false; this.crates[2].root.visible = false;
-      this.crates[1].setLabel(label('NO RECORD', 'NOTHING TO CONTINUE'));
-      return;
-    }
-    const [c1, c2, c3] = this.crates;
-    c1.setLabel(label('FUNDS', money(s.credits)));
-    c2.setLabel(label('INVENTORY', `${s.inventory.length + s.stash.length} ITEMS`));
-    c3.setLabel(label('RECORDS', `DAY ${s.day} / 7`));
-    // cash bundles + a value tag
-    const n = clamp(Math.ceil((s.credits || 0) / 250), 1, 9);
-    for (let i = 0; i < n; i++) {
-      const b = mesh(rbox(0.17, 0.04, 0.08, 0.004), this.F.cash, c1.contents, -0.15 + (i % 3) * 0.15, 0.4 + Math.floor(i / 3) * 0.042, -0.08 + ((i * 7) % 3) * 0.08, 0, rnd(-0.2, 0.2), 0);
-      void b;
-    }
-    const tag = this._tex(256, 128, (x, w, h) => { x.fillStyle = '#efe3bf'; x.fillRect(0, 0, w, h); x.fillStyle = '#1e1a12'; x.textBaseline = 'middle'; fitText(x, money(s.credits), w / 2, h * 0.45, w - 30, 64, `bold {s}px ${F_HAND}`); x.fillStyle = '#7a2a1a'; fitText(x, 'TEAM FUNDS', w / 2, h * 0.82, w - 30, 30, `{s}px ${F_TYPE}`); });
-    this.cashTag = new THREE.Group(); this.cashTag.position.set(0.12, 0.62, 0.12); c1.contents.add(this.cashTag);
-    this._plane(0.16, 0.08, new THREE.MeshStandardMaterial({ map: tag.tex, roughness: 0.9, side: THREE.DoubleSide }), this.cashTag, 0, -0.06, 0);
-    mesh(cyl(0.0015, 0.05, 'y', 4), this.F.steel, this.cashTag, 0, -0.005, 0);
-    // inventory items
-    const items = [...s.inventory, ...s.stash].slice(0, 6);
-    items.forEach((type, i) => {
-      try {
-        const m = buildModel(type, { seed: i + 1 });
-        const o = m.object;
-        const box = new THREE.Box3().setFromObject(o), sz = box.getSize(V()), k = 0.2 / Math.max(0.05, sz.x, sz.y, sz.z);
-        o.scale.multiplyScalar(k);
-        const wrap = new THREE.Group(); wrap.add(o);
-        const ctr = box.getCenter(V()).multiplyScalar(k); o.position.sub(ctr);
-        wrap.position.set(-0.16 + (i % 3) * 0.16, 0.46 + Math.floor(i / 3) * 0.06, -0.08 + Math.floor(i / 3) * 0.14);
-        wrap.rotation.set(rnd(-0.4, 0.4), rnd(0, TAU), rnd(-0.3, 0.3));
-        c2.contents.add(wrap);
-      } catch (e) { console.warn('[menu] crate item', type, e); }
-    });
-    // the run manifest: a green holographic projection rising out of the records crate, stamped for continuation
-    const un = Object.keys(s.unlocks || {}).filter((k) => s.unlocks[k]);
-    const doc = this._tex(512, 640, (x, w, h) => {
-      x.clearRect(0, 0, w, h);
-      x.fillStyle = 'rgba(30,140,60,0.10)'; x.fillRect(0, 0, w, h);
-      brackets(x, 10, 10, w - 20, h - 20, 40, PHOS.mid, 4, 12);
-      x.fillStyle = PHOS.hi; x.shadowColor = PHOS.mid; x.shadowBlur = 12; x.textBaseline = 'top';
-      x.font = `40px ${F_CRT}`; x.fillText('RUN MANIFEST', 34, 30);
-      x.fillRect(34, 78, w - 68, 2);
-      x.font = `30px ${F_CRT}`;
-      const rows = [['DIMENSION', LEVEL_NAME[s.level] || s.level], ['DAY', `${s.day} OF 7`], ['FUNDS', money(s.credits)], ['POCKETS', `${s.inventory.length} ITEMS`], ['STASH', `${s.stash.length} ITEMS`], ['UNLOCKS', un.length ? un.slice(0, 2).join(', ').toUpperCase() : 'NONE']];
-      rows.forEach(([a2, b2], i) => { x.fillStyle = PHOS.mid; x.fillText(a2, 34, 96 + i * 42); x.fillStyle = PHOS.hi; x.textAlign = 'right'; x.fillText(String(b2), w - 34, 96 + i * 42); x.textAlign = 'left'; });
-      const esc = clamp(s.escape || 0, 0, 1);
-      x.fillStyle = PHOS.mid; x.fillText('ESCAPE', 34, 362);
-      for (let i = 0; i < 20; i++) { x.fillStyle = i / 20 < esc ? PHOS.hi : PHOS.dim; x.fillRect(34 + i * 22, 402, 18, 22); }
-      x.save(); x.translate(w * 0.52, h * 0.82); x.rotate(-0.16);
-      x.strokeStyle = PHOS.hi; x.lineWidth = 5; x.strokeRect(-190, -50, 380, 100);
-      x.fillStyle = PHOS.hi; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `48px ${F_CRT}`; x.fillText('APPROVED', 0, -14); x.font = `24px ${F_CRT}`; x.fillText('FOR CONTINUATION', 0, 26);
-      x.restore();
-      x.shadowBlur = 0; x.fillStyle = 'rgba(0,0,0,0.35)'; for (let y = 0; y < h; y += 4) x.fillRect(0, y, w, 2);
-    });
-    const holo = new THREE.Group(); holo.position.set(0, 0.95, 0.02); c3.contents.add(holo);
-    this.holoMat = new THREE.MeshBasicMaterial({ map: doc.tex, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, color: new THREE.Color(1.6, 1.8, 1.6) });
-    this._plane(0.4, 0.5, this.holoMat, holo, 0, 0, 0);
-    const beam = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.08, 0.4, 0.16), transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-    const cone = mesh(new THREE.ConeGeometry(0.2, 0.36, 24, 1, true), beam, c3.contents, 0, 0.58, 0.0, PI, 0, 0); cone.castShadow = false;
-    mesh(cyl(0.05, 0.03, 'y', 18), this.F.dark, c3.contents, 0, 0.385, 0);
-    mesh(new THREE.CircleGeometry(0.04, 18), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 2.6, 0.8) }), c3.contents, 0, 0.402, 0, -PI / 2).castShadow = false;
-    this.holo = holo; holo.scale.setScalar(0.01);
+    P.title.setText('R.O.O.M.', 'Clone Assembly \u00b7 Line 04', { big: true });
+    P.new.setText('New Mission', 'print \u00b7 assemble \u00b7 dispatch');
+    P.cont.setText('Continue', s ? `${LEVEL_TITLE[s.level] || 'Level 0'} \u00b7 day ${s.day} of 7 \u00b7 ${money(s.credits)}` : 'no record on file', { dim: !s });
+    P.settings.setText('SETTINGS');
+    const n = Object.keys(ACHIEVEMENTS).length, got = Object.keys(ACHIEVEMENTS).filter((k) => profile.has(k)).length;
+    P.trophies.setText('Commendations', `${got} of ${n} earned`);
   }
 
-  // ============================================================================ build: settings cabinet
+  // ============================================================================ build: settings (the calibration gear)
+  // A big cast-iron ring gear on a riveted wall plate. Every setting is bolted onto the ring as a knob, a
+  // lever or a rotary switch, its name engraved in the enamel band around the rim. The ring turns (two
+  // smaller gears and a crank turn with it) to bring the chosen setting up under the brass pointer; the
+  // fixed enamel dial in the middle shows its name and value. Click a control (or its sector) to bring it
+  // up, drag a knob, click a lever / switch; arrows / A D / wheel turn the gear, W S / up down adjust.
   _buildSettings() {
     const F = this.F;
     const g = (this.setG = new THREE.Group());
     g.position.set(-5.6, 0, -1.2); g.rotation.y = PI / 2 - 0.25;
     this.scene.add(g);
-    const W = 1.5, H = 1.1;
+    const C = (this.gearC = V(0, 1.55, 0)), R = 0.8;
+    const iron = new THREE.MeshStandardMaterial({ color: 0x5a5048, roughness: 0.42, metalness: 0.55 });
+    this.setFill = new THREE.PointLight(0xffd6a0, 0, 4.5, 2); this.setFill.position.set(0.3, 2.0, 1.1); g.add(this.setFill);
     const B = new Batch();
-    B.box(W + 0.1, H + 0.1, 0.32, F.cabinet, 0, 1.45, -0.16, 0, 0, 0, 0.02);
-    B.box(0.12, 0.92, 0.12, F.beam, -0.6, 0.46, -0.16); B.box(0.12, 0.92, 0.12, F.beam, 0.6, 0.46, -0.16);
+    B.box(2.5, 2.2, 0.06, F.cabinet, 0, 1.62, -0.2, 0, 0, 0, 0.02);
+    for (const s of [-1, 1]) { B.box(0.14, 0.56, 0.14, F.beam, s * 0.95, 0.28, -0.2); B.box(0.08, 2.2, 0.02, F.beam, s * 1.21, 1.62, -0.16); }
+    for (let i = 0; i < 9; i++) for (const y of [0.58, 2.66]) B.add(new THREE.SphereGeometry(0.013, 8, 6), F.steel, new THREE.Matrix4().makeTranslation(-1.1 + i * 0.275, y, -0.165));
+    B.add(cyl(0.05, 0.22, 'z', 20), F.dark, new THREE.Matrix4().makeTranslation(C.x, C.y, -0.08));
     B.build(g);
-    this.setFace = this._tex(1024, 752);
-    this._plane(W, H, new THREE.MeshStandardMaterial({ map: this.setFace.tex, roughness: 0.7, metalness: 0.2 }), g, 0, 1.45, 0.002);
-    this.crt = this._tex(512, 384);
-    this._plane(0.46, 0.34, this._basicTexMat(this.crt.tex), g, -0.47, 1.73, 0.01);
-    const s = profile.settings;
-    // controls: [key, type, x, y, label, min, max]
+    // the ring gear (turns)
+    this.gear = new THREE.Group(); this.gear.position.copy(C); g.add(this.gear);
+    mesh(gearGeo(R, R - 0.055, 40, 0.07, { hole: 0.275 }), iron, this.gear);
+    this.gearBandTex = this._tex(2048, 2048);
+    const band = new THREE.RingGeometry(0.575, 0.735, 120, 1);
+    this.gearBandMat = new THREE.MeshStandardMaterial({ map: this.gearBandTex.tex, emissiveMap: this.gearBandTex.tex, emissive: 0xffffff, emissiveIntensity: 0.32, roughness: 0.3, metalness: 0.3 });
+    this._plane(1, 1, this.gearBandMat, this.gear, 0, 0, 0.043).geometry = band;
+    mesh(new THREE.TorusGeometry(0.575, 0.008, 6, 96), F.brass, this.gear, 0, 0, 0.043).castShadow = false;
+    // side gears meshing with the ring (+ a crank on the right one)
+    this.sideGears = [];
+    for (const [a, r, n] of [[PI + 0.42, 0.36, 18], [-0.42, 0.36, 18], [-PI / 2 - 0.05, 0.22, 11]]) {
+      const d = R + r - 0.052, sg = new THREE.Group();
+      sg.position.set(C.x + Math.cos(a) * d, C.y + Math.sin(a) * d, -0.075); g.add(sg);
+      mesh(gearGeo(r, r - 0.05, n, 0.05, { hole: 0.03, holes: n > 12 ? 5 : 0, holeR: r * 0.2, holeAt: r * 0.55 }), F.brass, sg);
+      mesh(cyl(0.045, 0.09, 'z', 16), F.dark, g, sg.position.x, sg.position.y, -0.075);
+      this.sideGears.push({ g: sg, k: -(40 / n), ph: (n % 2 ? 0 : PI / n) });
+    }
+    const crank = new THREE.Group(); this.sideGears[1].g.add(crank);
+    mesh(new THREE.BoxGeometry(0.05, 0.3, 0.025), F.dark, crank, 0, 0.15, 0.05);
+    mesh(cyl(0.022, 0.14, 'z', 14), F.redPaint, crank, 0, 0.28, 0.12);
+    this._addHit(mesh(new THREE.BoxGeometry(0.16, 0.42, 0.2), new THREE.MeshBasicMaterial({ visible: false }), crank, 0, 0.18, 0.08), { type: 'crank', modes: ['settings'] });
+    // the fixed dial in the middle (name + value) and the pointer at twelve o'clock
+    mesh(cyl(0.262, 0.05, 'z', 64), F.brass, g, C.x, C.y, 0.02);
+    this.crt = this._tex(768, 768);
+    const dial = this._plane(1, 1, new THREE.MeshStandardMaterial({ map: this.crt.tex, emissiveMap: this.crt.tex, emissive: 0xffffff, emissiveIntensity: 0.22, roughness: 0.22, metalness: 0.05 }), g, C.x, C.y, 0.047);
+    dial.geometry = new THREE.CircleGeometry(0.235, 64);
+    mesh(new THREE.TorusGeometry(0.236, 0.008, 6, 64), F.brass, g, C.x, C.y, 0.048).castShadow = false;
+    const ptr = new THREE.Group(); ptr.position.set(C.x, C.y + R + 0.03, 0.09); g.add(ptr);
+    mesh(new THREE.ConeGeometry(0.045, 0.13, 4), F.brass, ptr, 0, -0.02, 0, 0, PI / 4, PI);
+    mesh(new THREE.BoxGeometry(0.16, 0.05, 0.05), F.dark, ptr, 0, 0.07, -0.03);
+    this.ptrLamp = mesh(new THREE.SphereGeometry(0.022, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2, 0.9) }), ptr, 0, 0.11, 0);
+    this.ptrLamp.castShadow = false;
+    // gilt name plate over the machine
+    const np = this._tex(1024, 192, (x, w, h) => {
+      const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#c99a4c'); gr.addColorStop(0.5, '#8a6328'); gr.addColorStop(1, '#b48a40');
+      x.fillStyle = gr; x.fillRect(0, 0, w, h);
+      x.strokeStyle = 'rgba(40,24,8,0.8)'; x.lineWidth = 6; x.strokeRect(12, 12, w - 24, h - 24);
+      x.fillStyle = '#21140a'; x.textBaseline = 'middle';
+      fitText(x, 'S E T T I N G S', w / 2, h * 0.42, w - 120, 96, `700 {s}px ${FONT.main}`);
+      fitText(x, 'clone calibration engine', w / 2, h * 0.78, w - 160, 38, `italic 600 {s}px ${FONT.main}`);
+    });
+    this._plane(1.2, 0.225, new THREE.MeshStandardMaterial({ map: np.tex, roughness: 0.35, metalness: 0.7 }), g, 0, 2.66, -0.12);
+    // the controls, bolted onto the ring: [key, type, label, min, max] (sel: options)
     const defs = [
-      ['master', 'knob', -0.08, 1.83, 'MASTER', 0, 1], ['sfx', 'knob', 0.17, 1.83, 'EFFECTS', 0, 1], ['music', 'knob', 0.42, 1.83, 'MUSIC', 0, 1],
-      ['ambient', 'knob', -0.08, 1.5, 'AMBIENCE', 0, 1], ['voice', 'knob', 0.17, 1.5, 'VOICE CHAT', 0, 1.5],
-      ['invertY', 'toggle', 0.42, 1.5, 'INVERT Y'],
-      ['healthityVoice', 'toggle', 0.62, 1.5, 'HEALTHITY'],
-      ['sensitivity', 'fader', -0.42, 1.16, 'LOOK SENSITIVITY', 0.2, 3],
-      ['quality', 'sel', 0.15, 1.16, 'GRAPHICS', ['low', 'medium', 'high']],
-      ['voiceMode', 'sel', 0.5, 1.16, 'MICROPHONE', ['open', 'ptt', 'off']],
+      ['master', 'knob', 'Master volume', 0, 1, 'Master'], ['sfx', 'knob', 'Effects', 0, 1], ['music', 'knob', 'Music', 0, 1], ['ambient', 'knob', 'Ambience', 0, 1],
+      ['voice', 'knob', 'Voice chat', 0, 1.5, 'Voices'], ['voiceMode', 'sel', 'Microphone', ['open', 'ptt', 'off'], 0, 'Mic'], ['sensitivity', 'knob', 'Look speed', 0.2, 3, 'Look'],
+      ['invertY', 'toggle', 'Invert look', 0, 0, 'Invert'], ['quality', 'sel', 'Graphics', ['low', 'medium', 'high']], ['healthityVoice', 'toggle', 'Healthity voice', 0, 0, 'Healthity'],
+      ['destination', 'sel', 'First dimension', DESTS, 0, 'Dimension'],
     ];
+    const n = defs.length, step = TAU / n;
+    this.gearStep = step; this.gearSel = 0; this.gearRot = 0; this.gearRotT = 0; this.gearV = 0;
     this.ctls = [];
-    for (const [key, type, x, y, label, a, b] of defs) {
+    defs.forEach(([key, type, label, a, b, short], i) => {
+      const th = PI / 2 - i * step;
       let o;
-      if (type === 'knob') o = new Knob(0.05);
-      else if (type === 'fader') o = new Fader(0.5);
+      if (type === 'knob') o = new Knob(0.058);
       else if (type === 'toggle') o = new Toggle();
-      else o = new Selector(3, 0.04);
-      o.root.position.set(x, y, 0.004); g.add(o.root);
-      const c = { key, type, o, x, y, label, min: a, max: b, opts: type === 'sel' ? a : null };
+      else o = new Selector(3, 0.05);
+      const slot = new THREE.Group(); slot.position.set(Math.cos(th) * 0.43, Math.sin(th) * 0.43, 0.041); slot.rotation.z = th - PI / 2;
+      this.gear.add(slot); slot.add(o.root);
+      if (type === 'toggle') o.root.scale.setScalar(1.35);
+      mesh(cyl(0.085, 0.008, 'z', 28), F.dark, slot, 0, 0, 0.002);
+      const c = { key, type, o, i, label, short, min: a, max: b, opts: type === 'sel' ? a : null };
       if (type === 'sel') { c.min = 0; c.max = 2; }
       this._addHit(o.hit, { type: 'ctl', c, modes: ['settings'] });
       if (o.pad) this._addHit(o.pad, { type: 'ctl', c, modes: ['settings'] });
-      if (o.track) this._addHit(o.track, { type: 'ctl', c, modes: ['settings'] });
+      // the whole sector is a click target too (brings it up)
+      const sec = mesh(new THREE.RingGeometry(0.29, 0.75, 6, 1, th - step / 2, step), new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }), this.gear, 0, 0, 0.03);
+      this._addHit(sec, { type: 'gearSel', i, modes: ['settings'] });
       this.ctls.push(c);
-    }
+    });
     this._syncControls(true);
-    this._drawSettingsFace();
+    this._drawGearBand();
     this.activeCtl = this.ctls[0];
     this._drawCrt();
-    void s;
+  }
+  // turn the ring so setting i sits under the pointer (shortest way round)
+  _gearSelect(i, snd = true) {
+    const n = this.ctls.length;
+    i = ((i % n) + n) % n;
+    let t = i * this.gearStep;
+    while (t - this.gearRotT > PI) t -= TAU;
+    while (t - this.gearRotT < -PI) t += TAU;
+    this.gearRotT = t;
+    if (this.gearSel !== i && snd) this._sfx('robo_clunk', { volume: 0.35, pitch: 1.4, bus: 'ui' });
+    this.gearSel = i;
+    this.activeCtl = this.ctls[i];
+    this._drawCrt();
+  }
+  _nudgeSetting(dir) {
+    const c = this.activeCtl;
+    if (!c) return;
+    if (c.type === 'knob') {
+      const v = clamp(this._ctlValue(c) + dir * (c.max - c.min) * 0.05, c.min, c.max);
+      c.o.set((v - c.min) / (c.max - c.min)); this._applySetting(c, v); this._sfx('knob_tick', { volume: 0.5, bus: 'ui', pitch: 0.8 + v * 0.4 });
+    } else if (c.type === 'toggle') { const v = !this._ctlValue(c); c.o.set(v); this._applySetting(c, v, true); this._sfx('toggle_clack', { volume: 0.8, bus: 'ui' }); }
+    else { const i = clamp(c.o.i + dir, 0, 2); if (i !== c.o.i) { c.o.set(i); this._applySetting(c, i, true); this._sfx('knob_tick', { volume: 0.9, bus: 'ui' }); } }
+    this._drawCrt();
   }
   _ctlValue(c) {
     const s = profile.settings;
     if (c.key === 'quality') return Math.max(0, c.opts.indexOf(engine.qualityName || s.quality));
     if (c.key === 'voiceMode') return Math.max(0, c.opts.indexOf(s.voiceMode || 'open'));
+    if (c.key === 'destination') return Math.max(0, c.opts.indexOf(s.destination || 'yellow'));
     if (c.key === 'healthityVoice') return s.healthityVoice !== false;
     if (c.key === 'invertY') return !!s.invertY;
     return s[c.key] ?? 1;
@@ -644,71 +568,87 @@ export class MenuScene {
   _syncControls() {
     for (const c of this.ctls) {
       const v = this._ctlValue(c);
-      if (c.type === 'knob' || c.type === 'fader') c.o.set((v - c.min) / (c.max - c.min));
-      else if (c.type === 'toggle') c.o.set(v);
+      if (c.type === 'knob') c.o.set((v - c.min) / (c.max - c.min));
       else c.o.set(v);
     }
   }
-  _drawSettingsFace() {
-    this.setFace.draw((x, w, h) => {
-      x.fillStyle = '#4b554e'; x.fillRect(0, 0, w, h);
-      for (let i = 0; i < 400; i++) { x.fillStyle = `rgba(0,0,0,${Math.random() * 0.06})`; x.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 30, 1 + Math.random() * 3); }
-      x.strokeStyle = '#2c332e'; x.lineWidth = 8; x.strokeRect(10, 10, w - 20, h - 20);
-      x.fillStyle = '#e9dcb2'; x.textBaseline = 'middle';
-      fitText(x, 'CALIBRATION BAY · CLONE PERIPHERALS', w * 0.68, 42, w * 0.6, 34, `{s}px ${F_SIGN}`);
-      const px = (X) => (X / 1.5 + 0.5) * w, py = (Y) => (1 - ((Y - 1.45) / 1.1 + 0.5)) * h;
-      for (const c of this.ctls) {
-        const cx = px(c.x), cy = py(c.y);
-        x.fillStyle = '#e9dcb2';
-        if (c.type === 'knob') {
-          fitText(x, c.label, cx, cy + 62, 140, 22, `{s}px ${F_TYPE}`);
-          x.strokeStyle = '#e9dcb2'; x.lineWidth = 2;
-          for (let i = 0; i <= 10; i++) { const a = -PI / 2 - 2.35 + (4.7 * i) / 10; const r0 = 44, r1 = i % 5 ? 50 : 56; x.beginPath(); x.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); x.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); x.stroke(); }
-        } else if (c.type === 'fader') {
-          fitText(x, c.label, cx, cy - 52, 300, 22, `{s}px ${F_TYPE}`);
-          x.font = `20px ${F_HAND}`; x.textAlign = 'left'; x.fillText('SLOW', cx - 170, cy + 44); x.textAlign = 'right'; x.fillText('FAST', cx + 170, cy + 44);
-        } else if (c.type === 'toggle') {
-          fitText(x, c.label, cx, cy + 60, 180, 22, `{s}px ${F_TYPE}`);
-          x.font = `20px ${F_HAND}`; x.textAlign = 'center'; x.fillText('ON', cx, cy - 58);
-        } else {
-          fitText(x, c.label, cx, cy + 62, 200, 22, `{s}px ${F_TYPE}`);
-          x.font = `18px ${F_TYPE}`; x.textAlign = 'center';
-          const SH = { low: 'LO', medium: 'MED', high: 'HI', open: 'OPEN', ptt: 'PTT', off: 'OFF' };
-          c.opts.forEach((o, i) => { const a = -PI / 2 - 0.9 + 0.9 * i; x.fillText(SH[o] || o.toUpperCase(), cx + Math.cos(a) * 64, cy + Math.sin(a) * 50); });
+  // the engraved enamel band: each setting's name around the rim, reading outwards
+  _drawGearBand() {
+    const n = this.ctls.length, step = TAU / n;
+    this.gearBandTex.draw((x, w, h) => {
+      const cx = w / 2, cy = h / 2, k = w / 2 / 0.735;
+      x.clearRect(0, 0, w, h);
+      const rg = x.createRadialGradient(cx, cy, 0.575 * k, cx, cy, 0.735 * k);
+      rg.addColorStop(0, '#120c07'); rg.addColorStop(0.5, '#1e140b'); rg.addColorStop(1, '#0e0905');
+      x.fillStyle = rg; x.beginPath(); x.arc(cx, cy, 0.735 * k, 0, TAU); x.arc(cx, cy, 0.575 * k, 0, TAU, true); x.fill();
+      x.strokeStyle = '#c99a4c'; x.lineWidth = 4;
+      for (const r of [0.588, 0.722]) { x.beginPath(); x.arc(cx, cy, r * k, 0, TAU); x.stroke(); }
+      x.textAlign = 'center'; x.textBaseline = 'middle';
+      this.ctls.forEach((c, i) => {
+        const th = PI / 2 - i * step;
+        // sector ticks
+        const tb = th + step / 2;
+        x.lineWidth = 3; x.beginPath(); x.moveTo(cx + Math.cos(tb) * 0.592 * k, cy - Math.sin(tb) * 0.592 * k); x.lineTo(cx + Math.cos(tb) * 0.718 * k, cy - Math.sin(tb) * 0.718 * k); x.stroke();
+        // the name, set along the arc (centred on the sector, letters upright at the top)
+        const txt = (c.short || c.label).toUpperCase(), r = 0.655 * k;
+        let fs = Math.round(0.052 * k);
+        x.font = `700 ${fs}px ${FONT.main}`;
+        const fit = (step * r * 0.8) / (x.measureText(txt).width * 1.12);
+        if (fit < 1) { fs = Math.floor(fs * fit); x.font = `700 ${fs}px ${FONT.main}`; }
+        const tw = x.measureText(txt).width * 1.12, a0 = th + (tw / r) / 2;
+        let a = a0;
+        for (const ch of txt) {
+          const cw = x.measureText(ch).width * 1.12, am = a - (cw / r) / 2;
+          x.save(); x.translate(cx + Math.cos(am) * r, cy - Math.sin(am) * r); x.rotate(PI / 2 - am);
+          x.fillStyle = '#e9c069'; x.fillText(ch, 0, 0); x.restore();
+          a -= cw / r;
         }
-      }
-      x.fillStyle = 'rgba(20,20,20,0.6)'; for (const [X, Y] of [[24, 24], [w - 24, 24], [24, h - 24], [w - 24, h - 24]]) { x.beginPath(); x.arc(X, Y, 9, 0, TAU); x.fill(); }
+      });
     });
   }
+  _drawSettingsFace() { this._drawGearBand(); }
   _fmt(c) {
     const v = this._ctlValue(c);
-    if (c.type === 'toggle') return v ? 'ON' : 'OFF';
-    if (c.type === 'sel') return c.opts[v].toUpperCase();
-    if (c.key === 'sensitivity') return v.toFixed(2) + 'x';
+    if (c.type === 'toggle') return v ? 'On' : 'Off';
+    if (c.type === 'sel') { const o = c.opts[v]; return c.key === 'destination' ? (LEVEL_TITLE[o] || o) : ({ low: 'Low', medium: 'Medium', high: 'High', open: 'Open mic', ptt: 'Push to talk', off: 'Off' }[o] || o); }
+    if (c.key === 'sensitivity') return v.toFixed(2) + '×';
     return Math.round(v * 100) + '%';
   }
+  // the enamel dial in the middle of the gear: the setting under the pointer and its value
   _drawCrt() {
     const a = this.activeCtl;
+    if (!this.crt) return;
     this.crt.draw((x, w, h) => {
-      phosphorBg(x, w, h);
-      brackets(x, 8, 8, w - 16, h - 16, 28, PHOS.mid, 3, 8);
-      x.fillStyle = PHOS.hi; x.shadowColor = PHOS.mid; x.shadowBlur = 8; x.textBaseline = 'top'; x.font = `26px ${F_CRT}`;
-      x.fillText('> ' + (a ? a.label : 'SELECT A CONTROL'), 20, 18);
-      if (a) {
-        x.font = `60px ${F_CRT}`; x.fillText(this._fmt(a), 20, 44);
-        if (a.type === 'knob' || a.type === 'fader') { const k = clamp((this._ctlValue(a) - a.min) / (a.max - a.min), 0, 1), n = 24; for (let i = 0; i < n; i++) { x.fillStyle = i / n < k ? PHOS.hi : PHOS.dim; x.fillRect(20 + i * ((w - 40) / n), 116, (w - 40) / n - 4, 18); } }
+      const cx = w / 2, cy = h / 2, R = w / 2;
+      const bg = x.createRadialGradient(cx, cy * 0.8, R * 0.1, cx, cy, R);
+      bg.addColorStop(0, '#f4ead2'); bg.addColorStop(0.8, '#e1d2ad'); bg.addColorStop(1, '#b9a57a');
+      x.fillStyle = bg; x.fillRect(0, 0, w, h);
+      x.strokeStyle = '#2a1c10'; x.lineWidth = 4; x.beginPath(); x.arc(cx, cy, R * 0.93, 0, TAU); x.stroke();
+      x.lineWidth = 1.5; x.beginPath(); x.arc(cx, cy, R * 0.88, 0, TAU); x.stroke();
+      x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#2a1c10';
+      if (!a) return;
+      fitText(x, a.label, cx, cy - R * 0.38, R * 1.35, 92, `italic 600 {s}px ${FONT.main}`);
+      x.fillStyle = '#1a1008';
+      fitText(x, this._fmt(a), cx, cy + R * 0.04, R * 1.45, 176, `700 {s}px ${FONT.main}`);
+      if (a.type === 'knob') {
+        const k = clamp((this._ctlValue(a) - a.min) / (a.max - a.min), 0, 1), a0 = PI * 0.8, a1 = PI * 2.2;
+        x.lineCap = 'round'; x.lineWidth = 14; x.strokeStyle = 'rgba(40,28,16,0.18)'; x.beginPath(); x.arc(cx, cy, R * 0.74, a0, a1); x.stroke();
+        x.strokeStyle = '#9a2a1a'; x.beginPath(); x.arc(cx, cy, R * 0.74, a0, a0 + (a1 - a0) * k); x.stroke();
+        for (let i = 0; i <= 10; i++) { const b = a0 + ((a1 - a0) * i) / 10; x.lineWidth = i % 5 ? 2 : 4; x.strokeStyle = '#2a1c10'; x.beginPath(); x.moveTo(cx + Math.cos(b) * R * 0.8, cy + Math.sin(b) * R * 0.8); x.lineTo(cx + Math.cos(b) * R * (i % 5 ? 0.84 : 0.86), cy + Math.sin(b) * R * (i % 5 ? 0.84 : 0.86)); x.stroke(); }
+      } else if (a.type === 'sel') {
+        a.opts.forEach((o, i) => { const on = i === this._ctlValue(a); x.fillStyle = on ? '#9a2a1a' : 'rgba(40,28,16,0.35)'; x.beginPath(); x.arc(cx + (i - 1) * 60, cy + R * 0.4, on ? 16 : 11, 0, TAU); x.fill(); });
+      } else {
+        x.fillStyle = this._ctlValue(a) ? '#9a2a1a' : 'rgba(40,28,16,0.35)'; x.beginPath(); x.arc(cx, cy + R * 0.4, 16, 0, TAU); x.fill();
       }
-      x.fillStyle = PHOS.dim; x.fillRect(20, 146, w - 40, 2);
-      x.font = `22px ${F_CRT}`;
-      this.ctls.forEach((c, i) => { x.fillStyle = c === a ? PHOS.soft : PHOS.mid; x.fillText(`${c.label.slice(0, 11).padEnd(12, '.')}${this._fmt(c)}`, 20 + (i % 2) * 240, 160 + Math.floor(i / 2) * 40); });
-      x.shadowBlur = 0; scanlines(x, w, h, 0.3);
+      x.fillStyle = 'rgba(42,28,16,0.75)';
+      fitText(x, a.type === 'knob' ? 'drag the knob' : a.type === 'toggle' ? 'pull the lever' : 'turn the switch', cx, cy + R * 0.62, R * 1.1, 38, `italic 600 {s}px ${FONT.main}`);
     });
   }
   _applySetting(c, v, commit = false) {
     let raw;
     if (c.type === 'toggle') raw = String(!!v);
     else if (c.type === 'sel') raw = c.opts[v];
-    else { const st = c.key === 'sensitivity' ? 0.05 : 0.05; raw = String(Math.round(clamp(v, c.min, c.max) / st) * st); }
+    else { const st = 0.05; raw = String(Math.round(clamp(v, c.min, c.max) / st) * st); }
     if (c.key === 'quality' && (!commit || raw === engine.qualityName)) return;
     const ui = this.game.ui;
     try {
@@ -754,7 +694,7 @@ export class MenuScene {
       p.mat.emissiveIntensity = on ? 1.1 : 0.75;
       p.tex.draw((x, w, h) => {
         phosphorBg(x, w, h);
-        const c1 = on ? PHOS.hi : '#5aa86e', c2 = on ? PHOS.mid : '#3f8a55';
+        const c1 = on ? PHOS.hi : '#9a8358', c2 = on ? PHOS.mid : '#7a6440';
         brackets(x, 8, 8, w - 16, h - 16, 24, c2, 3, on ? 8 : 0);
         x.shadowColor = PHOS.mid; x.shadowBlur = on ? 10 : 0; x.textBaseline = 'top';
         x.fillStyle = c1; fitText(x, A.name.toUpperCase(), w / 2, 18, w - 40, 30, `{s}px ${F_CRT}`);
@@ -762,12 +702,12 @@ export class MenuScene {
         x.font = `20px ${F_MONO}`; x.fillStyle = c2; x.textAlign = 'center';
         wrapLines(x, A.desc, w - 48).slice(0, 3).forEach((l, i) => x.fillText(l, w / 2, 64 + i * 24));
         if (rw.length) {
-          x.fillStyle = on ? PHOS.soft : '#3c7a4c'; x.font = `22px ${F_CRT}`;
+          x.fillStyle = on ? PHOS.soft : '#6e5a3a'; x.font = `22px ${F_CRT}`;
           wrapLines(x, '\u25B8 SPECIAL ISSUE: ' + rw.map((r) => r.name.toUpperCase()).join(', '), w - 40).slice(0, 2).forEach((l, i) => x.fillText(l, w / 2, 152 + i * 24));
         }
         if (!on) {
-          for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(90,200,120,${Math.random() * 0.08})`; x.fillRect(Math.random() * w, Math.random() * h, 2, 1); }
-          x.save(); x.translate(w - 70, h - 34); x.rotate(-0.12); x.strokeStyle = '#3c7a4c'; x.lineWidth = 2; x.strokeRect(-58, -16, 116, 32); x.fillStyle = '#3c7a4c'; x.font = `22px ${F_CRT}`; x.textBaseline = 'middle'; x.fillText('CLASSIFIED', 0, 1); x.restore();
+          for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(200,160,90,${Math.random() * 0.08})`; x.fillRect(Math.random() * w, Math.random() * h, 2, 1); }
+          x.save(); x.translate(w - 70, h - 34); x.rotate(-0.12); x.strokeStyle = '#6e5a3a'; x.lineWidth = 2; x.strokeRect(-58, -16, 116, 32); x.fillStyle = '#6e5a3a'; x.font = `22px ${F_CRT}`; x.textBaseline = 'middle'; x.fillText('CLASSIFIED', 0, 1); x.restore();
         }
         x.shadowBlur = 0; scanlines(x, w, h, 0.3);
       });
@@ -783,7 +723,7 @@ export class MenuScene {
     this.rackHead = this._tex(1024, 160);
     this.rackHeadM = this._plane(1, 0.16, this._emTexMat(this.rackHead.tex, 1.0), this.rackInner, 0, 0, 0.005);
     const arrowG = new THREE.ConeGeometry(0.06, 0.11, 3); arrowG.rotateZ(-PI / 2);
-    this.arrowMat = new THREE.MeshStandardMaterial({ color: 0x08200e, emissive: 0x5cf07e, emissiveIntensity: 0.6, roughness: 0.4 });
+    this.arrowMat = new THREE.MeshStandardMaterial({ color: 0x201608, emissive: 0xd6aa58, emissiveIntensity: 0.6, roughness: 0.4, metalness: 0.4 });
     this.arrows = [-1, 1].map((s) => {
       const m = mesh(arrowG, this.arrowMat, this.rackInner, 0, 0, 0.02, 0, 0, s < 0 ? PI : 0);
       this._addHit(m, { type: 'arrow', dir: s, modes: ['workshop'] });
@@ -999,13 +939,13 @@ export class MenuScene {
   _buildBackTag() {
     const g = (this.backTag = new THREE.Group());
     this.camera.add(g);
-    const t = this._tex(256, 96, (x, w, h) => { x.fillStyle = '#e8b414'; x.fillRect(0, 0, w, h); x.fillStyle = '#16130e'; x.textBaseline = 'middle'; x.strokeStyle = '#16130e'; x.lineWidth = 5; x.strokeRect(6, 6, w - 12, h - 12); fitText(x, '◄ BACK', w / 2, h / 2 + 2, w - 40, 54, `{s}px ${F_MARK}`); });
+    const t = this._tex(256, 96, (x, w, h) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#dcb066'); gr.addColorStop(0.5, '#9a6c2c'); gr.addColorStop(1, '#c99c4e'); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.fillStyle = '#1e1208'; x.textBaseline = 'middle'; x.strokeStyle = '#2a1a0a'; x.lineWidth = 4; x.strokeRect(6, 6, w - 12, h - 12); fitText(x, '\u2039  Back', w / 2, h / 2 + 2, w - 40, 60, `italic 700 {s}px ${FONT.main}`); });
     this.backPiv = new THREE.Group(); g.add(this.backPiv);
     const chain = mesh(cyl(0.0012, 0.08, 'y', 4), new THREE.MeshBasicMaterial({ color: 0x777777 }), this.backPiv, 0, -0.04, 0); chain.castShadow = false;
     this.backPlate = this._plane(0.07, 0.026, new THREE.MeshBasicMaterial({ map: t.tex, side: THREE.DoubleSide }), this.backPiv, 0, -0.093, 0);
-    this._addHit(this.backPlate, { type: 'back', modes: ['workshop', 'dispatch', 'continue', 'settings', 'trophies', 'plaque'] });
+    this._addHit(this.backPlate, { type: 'back', modes: ['workshop', 'settings', 'trophies', 'plaque'] });
     const pad = mesh(new THREE.BoxGeometry(0.1, 0.05, 0.01), new THREE.MeshBasicMaterial({ visible: false }), this.backPiv, 0, -0.093, 0);
-    this._addHit(pad, { type: 'back', modes: ['workshop', 'dispatch', 'continue', 'settings', 'trophies', 'plaque'] });
+    this._addHit(pad, { type: 'back', modes: ['workshop', 'settings', 'trophies', 'plaque'] });
     g.visible = false; this.backShow = 0; this.backSw = { a: 0, v: 0 };
     this.letter = [0, 1].map(() => { const m = mesh(new THREE.PlaneGeometry(4, 1), new THREE.MeshBasicMaterial({ color: 0x000000, depthTest: false, fog: false }), this.camera, 0, 0, -0.2); m.renderOrder = 20; m.castShadow = false; m.visible = false; return m; });
   }
@@ -1045,13 +985,12 @@ export class MenuScene {
     const portrait = this.aspect < 1.05;
     this.portrait = portrait;
     const P = this.panels;
-    const px = portrait ? 1.05 : 1.38, pw = portrait ? 1.0 : 1.0;
-    const ys = portrait ? [3.05, 2.55, 2.05, 1.62] : [3.12, 2.58, 2.04, 1.58];
-    const ceil = 7.0;
-    const order = [P.new, P.cont, P.settings, P.trophies];
-    order.forEach((p, i) => { p.root.scale.setScalar(pw * (i === 3 ? 0.95 : 1)); p.place(px, ys[i], 0.38, ceil, -0.12); });
-    // re-place children after scale (chains measured in panel space)
-    for (const p of order) { const s = p.root.scale.x; p.body.position.y /= s; p.drop0 = p.body.position.y; }
+    const px = portrait ? 1.05 : 1.38, ceil = 7.0;
+    // title marquee, NEW MISSION, CONTINUE, then COMMENDATIONS and the SETTINGS cog side by side
+    const at = portrait
+      ? [[P.title, 0, 3.5], [P.new, 0, 2.9], [P.cont, 0, 2.35], [P.trophies, -0.36, 1.83], [P.settings, 0.5, 1.8]]
+      : [[P.title, 0, 3.36], [P.new, 0, 2.76], [P.cont, 0, 2.21], [P.trophies, -0.4, 1.67], [P.settings, 0.45, 1.61]];
+    for (const [p, dx, y] of at) { p.root.scale.setScalar(1); p.place(px + dx, y, 0.38, ceil, -0.12); p.drop0 = p.body.position.y; }
     this._layoutBoard();
     // trophy plaques grid
     const cols = portrait ? 4 : 7, n = this.plaques.length, rows = Math.ceil(n / cols);
@@ -1089,9 +1028,9 @@ export class MenuScene {
     switch (name) {
       case 'introStart': { const l = V(0, 2.7, 0); return { p: l.clone().add(V(0.2, -0.3, 1.6)), l, fov: 40 }; }
       case 'hub': {
-        const P = this.panels, x1 = (port ? 1.05 : 1.38) + 0.78;
-        const l = V((x1 - 0.42) / 2, port ? 2.45 : 2.42, 0.2);
-        const hw = (x1 + 0.42) / 2 + 0.05, hh = port ? 1.3 : 1.05;
+        const P = this.panels, x1 = (port ? 1.05 : 1.38) + 0.86;
+        const l = V((x1 - 0.42) / 2, port ? 2.5 : 2.37, 0.2);
+        const hw = (x1 + 0.42) / 2 + 0.05, hh = port ? 1.55 : 1.36;
         void P;
         return { p: this._fitPos(l, V(0.1, -0.2, 1).normalize(), hw, hh, fov), l, fov };
       }
@@ -1102,27 +1041,11 @@ export class MenuScene {
         const l = V((x0 + x1) / 2, (y0 + y1) / 2, 0.3);
         return { p: this._fitPos(l, V(port ? 0.05 : 0.18, -0.06, 1).normalize(), (x1 - x0) / 2 + 0.04, (y1 - y0) / 2 + 0.04, fov), l, fov };
       }
-      case 'dispatch': {
-        const g = this.dispatch; g.updateWorldMatrix(true, false);
-        // first person at the console: over the lever and the CRT, the hook and the hatch beyond
-        const l = g.localToWorld(V(0.02, 1.1, -0.1)).lerp(V(0, 2.2, 0), 0.3);
-        const eye = g.localToWorld(V(0.05, 1.68, 0.95));
-        const dir = eye.clone().sub(l).normalize();
-        const p = this._fitPos(l, dir, 0.62, 0.5, 54, 1.0);
-        if (p.distanceTo(l) < eye.distanceTo(l)) p.copy(eye);
-        return { p, l, fov: 54 };
-      }
-      case 'continue': {
-        const g = this.contG; g.updateWorldMatrix(true, false);
-        const l = g.localToWorld(V(0, 0.62, 0.02));
-        const dir = V(0, 0.7, 1).transformDirection(g.matrixWorld).normalize();
-        return { p: this._fitPos(l, dir, 1.25, 0.72, 46), l, fov: 46 };
-      }
       case 'settings': {
         const g = this.setG; g.updateWorldMatrix(true, false);
-        const l = g.localToWorld(V(0, 1.45, 0));
-        const dir = V(0, 0.08, 1).transformDirection(g.matrixWorld).normalize();
-        return { p: this._fitPos(l, dir, 0.8, 0.6, 46, 1.04), l, fov: 46 };
+        const l = g.localToWorld(V(0, 1.7, 0));
+        const dir = V(0, 0.06, 1).transformDirection(g.matrixWorld).normalize();
+        return { p: this._fitPos(l, dir, 1.32, 1.14, 46, 1.03), l, fov: 46 };
       }
       case 'trophies': {
         const g = this.troG; g.updateWorldMatrix(true, false);
@@ -1235,6 +1158,13 @@ export class MenuScene {
       if (this.mode === 'intro') { this._skipIntro(); return; }
       if (this.mode === 'workshop' && (e.code === 'ArrowRight' || e.code === 'KeyD')) this._section(this.secIdx + 1);
       if (this.mode === 'workshop' && (e.code === 'ArrowLeft' || e.code === 'KeyA')) this._section(this.secIdx - 1);
+      if (this.mode === 'settings') {
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') this._gearSelect(this.gearSel + 1);
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') this._gearSelect(this.gearSel - 1);
+        if (e.code === 'ArrowUp' || e.code === 'KeyW') this._nudgeSetting(1);
+        if (e.code === 'ArrowDown' || e.code === 'KeyS') this._nudgeSetting(-1);
+        if (e.code === 'Enter' || e.code === 'Space') this._nudgeSetting(1);
+      }
     };
     this._onCtx = (e) => { if (!this.active || this.game.state !== 'menu') return; e.preventDefault(); this._back(); };
     window.addEventListener('pointermove', this._onMove, { passive: true, capture: true });
@@ -1243,6 +1173,13 @@ export class MenuScene {
     window.addEventListener('pointercancel', (e) => { if (this._drag?.id === e.pointerId) { if (this._drag.ctl) this._endCtl(this._drag); this._drag = null; } }, { passive: true, capture: true });
     window.addEventListener('keydown', this._onKey, { capture: true });
     window.addEventListener('contextmenu', this._onCtx);
+    // the wheel turns the settings gear
+    this._wheelT = 0;
+    window.addEventListener('wheel', (e) => {
+      if (!this.active || this.game.state !== 'menu' || this.mode !== 'settings' || Math.abs(e.deltaY) < 4) return;
+      const now = performance.now(); if (now - this._wheelT < 120) return; this._wheelT = now;
+      this._gearSelect(this.gearSel + (e.deltaY > 0 ? 1 : -1));
+    }, { passive: true });
   }
   _gesture() {
     if (this._gestured) return;
@@ -1267,9 +1204,12 @@ export class MenuScene {
         const p = this.panels[act.key];
         p.kick(1.6);
         this._sfx('toggle_clack', { volume: 0.6, bus: 'ui' });
-        if (act.key === 'new') this._enter('dispatch');
-        else if (act.key === 'cont') this._enter('continue');
-        else if (act.key === 'settings') this._enter('settings');
+        // NEW MISSION / CONTINUE drop straight down the hatch (no dispatch console, no lever)
+        if (act.key === 'new') { this._sfx('robo_clunk', { volume: 0.6 }); this._startDrop(false); }
+        else if (act.key === 'cont') {
+          if (!save.summary()) { this._sfx('buzzer', { volume: 0.35, bus: 'ui' }); p.kick(3); this._shake(0.08); break; }
+          this._sfx('robo_clunk', { volume: 0.6 }); this._startDrop(true);
+        } else if (act.key === 'settings') { this._sfx('robo_whir', { volume: 0.3, pitch: 1.4, bus: 'ui' }); this._enter('settings'); }
         else this._enter('trophies');
         break;
       }
@@ -1277,21 +1217,8 @@ export class MenuScene {
       case 'back': this._back(); break;
       case 'arrow': this._section(this.secIdx + act.dir); break;
       case 'item': this._choose(act.c.cat, act.c.o.id, act.c); break;
-      case 'lever': this._pullLever(); break;
-      case 'dest': {
-        this.destSel.set((this.destSel.i + 1) % 3);
-        const d = DESTS[this.destSel.i];
-        try { this.game.ui?._setting ? this.game.ui._setting('destination', d) : (profile.settings.destination = d, profile.save()); } catch (e) { /* */ }
-        this._sfx('knob_tick', { volume: 0.8, bus: 'ui' });
-        this._drawDispatchCrt(`> DESTINATION SET: ${LEVEL_NAME[d]}`);
-        break;
-      }
-      case 'crate': {
-        if (!this.hasSave) { this._sfx('buzzer', { volume: 0.35, bus: 'ui' }); this.crates[1].root.rotation.z = 0.04; this._shake(0.1); break; }
-        this._sfx('robo_clunk', { volume: 0.6 });
-        this._startDrop(true);
-        break;
-      }
+      case 'gearSel': this._gearSelect(act.i); break;
+      case 'crank': this._gearSelect(this.gearSel + 1); this.gearV -= 2; break;
       case 'plaque': {
         if (this.mode === 'plaque' && this.plaqueSel === act.p) { this._enter('trophies'); break; }
         this.plaqueSel = act.p; this.mode = 'plaque'; this._go('plaque', 0.9, 0.05);
@@ -1306,7 +1233,7 @@ export class MenuScene {
   // settings drags
   _beginCtl(d) {
     const c = d.ctl;
-    this.activeCtl = c; this._drawCrt();
+    if (c.i !== undefined) this._gearSelect(c.i); else { this.activeCtl = c; this._drawCrt(); }
     d.v0 = this._ctlValue(c);
     if (c.type === 'fader') {
       const tr = c.o.track; tr.updateWorldMatrix(true, false);
@@ -1355,8 +1282,6 @@ export class MenuScene {
     switch (m) {
       case 'hub': this._go('hub', 1.5, 0.25); this._refreshPanels(); this._station(null); break;
       case 'workshop': this._enterWorkshop(); break;
-      case 'dispatch': this._go('dispatch', 1.6, 0.3); this._station('dispatch'); this._drawDispatchCrt(); this.leverT = -0.5; break;
-      case 'continue': this._go('continue', 1.6, 0.3); this._station('continue'); this._fillCrates(); this._openCratesT = 1.2; break;
       case 'settings': this._go('settings', 1.7, 0.3); this._station('settings'); this._syncControls(); this._drawCrt(); break;
       case 'trophies': this._go('trophies', prev === 'plaque' ? 0.9 : 1.8, prev === 'plaque' ? 0.05 : 0.3); this._station('trophies'); if (prev !== 'plaque') this._drawPlaques(); break;
       default: break;
@@ -1374,14 +1299,14 @@ export class MenuScene {
     const L = this.stLight;
     this._stTarget = 0;
     if (!name) return;
-    const g = name === 'dispatch' ? this.dispatch : name === 'continue' ? this.contG : name === 'settings' ? this.setG : this.troG;
+    const g = name === 'settings' ? this.setG : this.troG;
     g.updateWorldMatrix(true, false);
-    const off = name === 'settings' ? V(0, 2.6, 1.4) : name === 'trophies' ? V(0, 4.6, 2.2) : name === 'continue' ? V(0, 3.0, 1.0) : V(0.3, 2.8, 1.2);
-    const tgt = name === 'settings' ? V(0, 1.45, 0) : name === 'trophies' ? V(0, 2.3, 0) : name === 'continue' ? V(0, 0.4, 0) : V(0, 1.0, 0);
+    const off = name === 'settings' ? V(0, 3.1, 1.6) : V(0, 4.6, 2.2);
+    const tgt = name === 'settings' ? V(0, 1.6, 0) : V(0, 2.3, 0);
     L.position.copy(g.localToWorld(off)); L.target.position.copy(g.localToWorld(tgt));
     L.angle = name === 'trophies' ? 0.7 : 0.55;
-    L.distance = name === 'trophies' ? 9 : 6;
-    this._stTarget = name === 'trophies' ? 16 : 9;
+    L.distance = name === 'trophies' ? 9 : 7;
+    this._stTarget = name === 'trophies' ? 16 : 18;
     this._stFlick = 0.35;
     setTimeout(() => this._sfx('lights_slam', { volume: 0.25, pos: L.position.clone() }), 650);
   }
@@ -1558,13 +1483,6 @@ export class MenuScene {
   }
 
   // ============================================================================ the drop
-  _pullLever() {
-    if (this.mode !== 'dispatch' || this.leverT > 0) return;
-    this.leverT = 0.75;
-    this._sfx('lever', { volume: 0.8 });
-    this._drawDispatchCrt('> DISPATCH AUTHORIZED. GOODBYE.');
-    setTimeout(() => this._startDrop(false), 450);
-  }
   _startDrop(continued) {
     if (this.mode === 'drop') return;
     if (this.mode === 'workshop') this._leaveWorkshop();
@@ -1637,7 +1555,7 @@ export class MenuScene {
         this._windH?.stop?.(0.15); this._windH = null;
         this._sfx('body_impact', { volume: 1, pos: this.av.root.position.clone() });
         this._sfx('crate_land', { volume: 0.5, pos: this.av.root.position.clone() });
-        juice.hitstop(140); juice.shake(1.0); this.fx.flash = 0.55; this.fx.glitch = 0.6;
+        juice.hitstop(100); juice.shake(0.5); this.fx.flash = 0.3;
         this.puffs.puff(V(0.1, -15.9, -0.1), V(0, 0.4, 0), 12, 0.6, 1.2, 2.4, 0.12, 0x4a443c);
         this.junk.burstBolts(V(0.1, -15.7, -0.1), V(0, 1, 0), 8, -16);
         this.shaftLight.intensity = 0;
@@ -1767,7 +1685,7 @@ export class MenuScene {
     if (t === dt || prev === 0) this._go('hub', 3.4, 0.08);
     this.fx.fade = Math.max(0, 1 - t * 1.2);
     if (at(0.55)) { this._sfx('lights_slam', { volume: 0.55, pos: V(0.6, 6.4, 1.4) }); this.keyFlick = 0.4; }
-    const order = [this.panels.new, this.panels.cont, this.panels.settings, this.panels.trophies];
+    const order = [this.panels.title, this.panels.new, this.panels.cont, this.panels.trophies, this.panels.settings];
     order.forEach((p, i) => { const tt = 1.15 + i * 0.28; if (at(tt)) { p.on = 0.5; this._sfx('_arc_pop', { volume: 0.35, pos: p.root.position.clone() }); p.kick(0.5); } if (prev < tt + 0.25 && t >= tt + 0.25) p.on = 1; });
     if (t > 3.5) { this.mode = 'hub'; for (const p of order) p.on = 1; }
     if (t > 90) { this.mode = 'hub'; this.fx.fade = 0; for (const p of order) p.on = 1; this.keyFlick = 0; this._go('hub', 0.6, 0.05); }
@@ -1777,7 +1695,7 @@ export class MenuScene {
     if (this.pointer.has && !this.pointer.touch && !this._drag && this.mode !== 'drop' && this.mode !== 'intro') h = this._pick(this.pointer.x, this.pointer.y);
     if (h !== this.hover) {
       const a = h?.userData.act;
-      if (a && ['panel', 'robot', 'item', 'crate', 'plaque', 'lever', 'arrow', 'back', 'dest', 'ctl'].includes(a.type)) this._sfx('ui_blip', { volume: 0.12, bus: 'ui' });
+      if (a && ['panel', 'robot', 'item', 'plaque', 'arrow', 'back', 'ctl', 'gearSel', 'crank'].includes(a.type)) this._sfx('ui_blip', { volume: 0.12, bus: 'ui' });
       if (a?.type === 'panel') this.panels[a.key].kick(0.35);
       if (a?.type === 'robot') this.dg.kick(rnd(-0.1, 0.1), rnd(-0.05, 0.05), 0, 0.2);
       this.hover = h;
@@ -1830,12 +1748,12 @@ export class MenuScene {
     this._panelLift = damp(this._panelLift ?? 0, up, up ? 1.8 : 3.2, dt);
     for (const p of Object.values(this.panels)) {
       p.body.position.y = (p.drop0 ?? p.body.position.y) + this._panelLift / p.root.scale.x;
-      for (const c of p.chains) c.scale.y = Math.max(0.05, -p.body.position.y - p.h / 2 - 0.1);
+      for (const c of p.chains) c.scale.y = Math.max(0.05, -p.body.position.y - p.top);
       p.root.visible = p.body.position.y < -0.4;
     }
     for (const [k, p] of Object.entries(this.panels)) {
       const hov = this.hover?.userData.act?.type === 'panel' && this.hover.userData.act.key === k;
-      p.update(dt, hov);
+      if (p.update(dt, hov)) this._sfx('knob_tick', { volume: 0.22, bus: 'ui', pitch: 0.7 });
     }
   }
   _updateRack(dt) {
@@ -1881,32 +1799,19 @@ export class MenuScene {
     this.arrowMat.emissiveIntensity = ah ? 2.2 : 0.7 + 0.3 * Math.sin(this.t * 3);
   }
   _updateStations(dt) {
-    // lever
-    if (this.leverT > 0) { this.leverT -= dt; this.leverA = damp(this.leverA, 0.9, 14, dt); } else this.leverA = damp(this.leverA, -0.5, 6, dt);
-    this.leverArm.rotation.x = this.leverA;
-    this.destSel.update(dt);
     for (const c of this.ctls) c.o.update(dt);
-    // crates
-    if (this.mode === 'continue' && this._openCratesT > 0) {
-      const prev = this._openCratesT; this._openCratesT -= dt;
-      if (this.hasSave) this.crates.forEach((c, i) => { const tt = 0.9 - i * 0.35; if (prev > tt && this._openCratesT <= tt) { this._sfx('crate_pry', { pos: c.root.getWorldPosition(V()), volume: 0.7 }); c.pop(i === 2 ? 1 : -1); this.puffs.puff(c.root.getWorldPosition(V()).add(V(0, 0.5, 0)), V(0, 1, 0), 5, 0.35, 0.5, 1.4, 0.12); } });
-    }
+    // the settings gear: a sprung turn towards the chosen sector; the side gears and the crank follow
+    const prev = this.gearRot;
+    this.gearV += ((this.gearRotT - this.gearRot) * 90 - this.gearV * 13) * dt;
+    this.gearRot += this.gearV * dt;
+    this.gear.rotation.z = this.gearRot;
+    for (const s of this.sideGears) s.g.rotation.z = this.gearRot * s.k + s.ph;
+    const tooth = TAU / 40, sel = this.mode === 'settings';
+    if (sel && Math.floor(prev / tooth) !== Math.floor(this.gearRot / tooth)) this._sfx('_tick_small', { volume: 0.3, bus: 'ui' });
+    this.ptrLamp.material.color.setRGB(sel ? 3 : 0.6, sel ? 2 : 0.4, sel ? 0.9 : 0.2);
+    this.gearBandMat.emissiveIntensity = sel ? 0.55 : 0.2;
+    this.setFill.intensity = damp(this.setFill.intensity, sel ? 4 : 0, 4, dt);
     const hov = this.hover?.userData.act;
-    for (const c of this.crates) {
-      c.update(dt);
-      const h = hov?.type === 'crate' && hov.i === c.idx && this.mode === 'continue';
-      c.root.position.y = damp(c.root.position.y, 0.12 + (h ? 0.03 : 0), 12, dt);
-      c.root.rotation.z = damp(c.root.rotation.z, 0, 8, dt);
-    }
-    if (this.cashTag) this.cashTag.rotation.y = Math.sin(this.t * 1.3) * 0.4;
-    if (this.holo) {
-      const open = this.crates[2].opened && this.mode === 'continue';
-      const k = damp(this.holo.scale.y, open ? 1 : 0.01, open ? 4 : 10, dt);
-      this.holo.scale.set(open ? Math.min(1, k * 1.4) : k, k, 1);
-      this.holo.position.y = 0.95 + Math.sin(this.t * 1.7) * 0.01;
-      this.holo.rotation.y = Math.sin(this.t * 0.5) * 0.12;
-      this.holoMat.opacity = 0.85 * (Math.random() < 0.04 ? 0.4 : 1) * (0.92 + 0.08 * Math.sin(this.t * 40));
-    }
     // plaques
     for (const p of this.plaques) {
       const h = hov?.type === 'plaque' && hov.p === p;

@@ -1035,7 +1035,7 @@ export class HangPanel {
     if (this.bulbs) {
       const n = this.bulbs.count, c = this._c, chase = Math.floor(this.t * 9);
       for (let i = 0; i < n; i++) {
-        let k = this.dim ? (i % 5 === 0 ? 0.5 : 0.05) : 1.15 + 0.08 * Math.sin(this.t * 3 + i);
+        let k = this.dim ? (i % 5 === 0 ? 0.5 : 0.05) : 0.9 + 0.07 * Math.sin(this.t * 3 + i);
         if (this.glow > 0.05) k = (i + chase) % 3 === 0 ? 1.2 + 2.6 * this.glow : 0.7;
         if (this.bulbDead[i]) k = Math.random() < 0.01 ? 1 : 0.03;
         k *= fl;
@@ -1110,6 +1110,14 @@ export class GearSign {
     mesh(new THREE.PlaneGeometry(pw, ph), this.mat, this.body, 0, py, 0.012).castShadow = false;
     mesh(new THREE.BoxGeometry(0.02, 0.05, 0.01), F.dark, this.body, 0, -r - 0.012, -0.01);
     this.hit = mesh(new THREE.PlaneGeometry(r * 2.2, r * 2 + ph + 0.06), new THREE.MeshBasicMaterial({ visible: false }), this.body, 0, -ph / 2 - 0.02, 0.07);
+    // a ring of marquee bulbs on a dark bezel behind the cog (matches the sign boxes)
+    const nb = 22, br = r + 0.05;
+    mesh(new THREE.RingGeometry(r - 0.02, br + 0.035, 48), F.dark, this.body, 0, 0, -0.045).castShadow = false;
+    this.bulbs = new THREE.InstancedMesh(_bulbGeo, _bulbMat, nb);
+    const m4 = new THREE.Matrix4();
+    for (let i = 0; i < nb; i++) { const a = (i / nb) * TAU; m4.makeTranslation(Math.cos(a) * br, Math.sin(a) * br, -0.03); this.bulbs.setMatrixAt(i, m4); this.bulbs.setColorAt(i, new THREE.Color(0, 0, 0)); }
+    this.bulbs.castShadow = false; this.body.add(this.bulbs);
+    this._c = new THREE.Color();
     const cg = cyl(0.007, 1, 'y', 6).translate(0, 0.5, 0);
     this.chains = [-1, 1].map((s) => { const m = mesh(cg, F.steel, this.body, s * r * 0.55, r + 0.1, -0.07); m.castShadow = false; return m; });
     this.top = r + 0.1; this.h = 2 * this.top;
@@ -1134,7 +1142,14 @@ export class GearSign {
     const fl = this.on < 1 ? (Math.random() < 0.5 ? 0.1 : 1) * this.on : 1;
     this.mat.emissiveIntensity = fl * (0.7 + 0.8 * this.glow);
     this.roMat.emissiveIntensity = fl * (0.35 + 0.9 * this.glow);
-    this.cogMat.emissive.setRGB(0.25 * this.glow, 0.16 * this.glow, 0.04 * this.glow);
+    this.cogMat.emissive.setRGB(0.07 + 0.25 * this.glow, 0.045 + 0.16 * this.glow, 0.012 + 0.04 * this.glow);
+    const nb = this.bulbs.count, c = this._c, chase = Math.floor(this.t * 9);
+    for (let i = 0; i < nb; i++) {
+      let k = 0.85 + 0.06 * Math.sin(this.t * 3 + i);
+      if (this.glow > 0.05) k = (i + chase) % 3 === 0 ? 1.1 + 2.4 * this.glow : 0.6;
+      k *= fl; c.setRGB(k * 1.9, k * 1.35, k * 0.62); this.bulbs.setColorAt(i, c);
+    }
+    this.bulbs.instanceColor.needsUpdate = true;
     this.spin = this.spin * Math.exp(-2.5 * dt);
     const w = 0.22 + 2.4 * this.glow + this.spin;
     const prev = Math.floor(this.cog.rotation.z / (TAU / 14));

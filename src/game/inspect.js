@@ -168,7 +168,7 @@ export class Inspector {
     const ext = Math.abs(_d.x) * _s.x * 0.5 + Math.abs(_d.z) * _s.z * 0.5;
     const toCam = Math.max(0, Math.min(ext + 0.06, _c.distanceTo(cam.position) - 0.5));
     this.anchor.copy(_c).addScaledVector(_d, toCam);
-    this.anchor.y = Math.min(_box.max.y + 0.12, cam.position.y + 0.04);
+    this.anchor.y = Math.min(_box.max.y + 0.16, cam.position.y + 0.1);
     if (this.anchor.y < _box.min.y + 0.1) this.anchor.y = _box.min.y + 0.1;
   }
 
