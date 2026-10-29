@@ -111,8 +111,12 @@ export class ArrivalDirector extends Device {
     const wall = new THREE.Mesh(geo, mat);
     wall.castShadow = wall.receiveShadow = true;
     root.add(wall);
-    const base = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 0.02), Mat.get('rubber_base'));
-    base.position.set(0, 0.05, d / 2 + 0.01); root.add(base);
+    // moulded skirting with the level's profile (square toe, cove, rounded lip)
+    const prof = new THREE.Shape([[0, 0], [-0.014, 0], [-0.014, 0.074], [-0.0075, 0.094], [0, 0.1]].map(([x, y]) => new THREE.Vector2(x, y)));
+    const bg = new THREE.ExtrudeGeometry(prof, { depth: w, bevelEnabled: false, curveSegments: 4 });
+    bg.rotateY(PI / 2); bg.translate(-w / 2, 0, d / 2);
+    const base = new THREE.Mesh(bg, Mat.get('rubber_base'));
+    base.castShadow = true; base.receiveShadow = true; root.add(base);
     root.visible = false;
     this.world.group.add(root);
     this.world.registerDynamic?.(root);

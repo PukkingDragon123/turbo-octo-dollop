@@ -6,7 +6,7 @@
 //   quest     case_file (manila dossier hidden in office rooms)
 // Long tools are built along Z (handle at +Z) like the crowbar.
 import * as THREE from 'three';
-import { Kit, def, PI, rrectShape } from './core.js';
+import { Kit, def, PI, TAU, rrectShape, sheetGeo } from './core.js';
 import { mat, clear, glow, S } from './mats.js';
 import { atlas, txt, rect, noise, wear, inkStamp, roomIcon, hazardStripes, MONO } from './paint.js';
 
@@ -135,12 +135,16 @@ def('hard_hat', () => {
   }, { plain: '#f3c418' });
   const k = new Kit();
   const shell = mat({ name: 'shop_hat', color: 0xf3c418, rough: 0.35, det: 'gloss', ns: 0.3, cc: 0.4 });
-  k.lathe([[0, 0.15], [0.07, 0.145, 0.02], [0.115, 0.11], [0.132, 0.05, 0.01], [0.134, 0.03], [0.16, 0.026, 0.004], [0.165, 0.018, 0.003], [0.13, 0.016]], shell, { seg: 30, s: [1, 1, 1.18] });
-  k.box(0.024, 0.012, 0.25, shell, { p: [0, 0.148, 0], r: [0, 0, 0] }); // ridge
+  // moulded shell with thickness: inside down, brim underside, rolled lip, brim top, crown up
+  k.lathe([[0, 0.142], [0.065, 0.137, 0.01], [0.105, 0.105, 0.01], [0.122, 0.045], [0.125, 0.022], [0.158, 0.018], [0.166, 0.019, 0.003], [0.165, 0.026, 0.003], [0.16, 0.027], [0.134, 0.032, 0.006], [0.132, 0.05, 0.01], [0.115, 0.11, 0.015], [0.07, 0.145, 0.02], [0, 0.152]], shell, { seg: 30, s: [1, 1, 1.18] });
+  k.tube([[0, 0.05, 0.158], [0, 0.11, 0.139], [0, 0.146, 0.085], [0, 0.156, 0], [0, 0.146, -0.085], [0, 0.11, -0.139], [0, 0.05, -0.158]], 0.009, shell, { tseg: 40, rseg: 10 }); // ridge
+  for (const sx of [-1, 1]) k.tube([[sx * 0.05, 0.12, 0.118], [sx * 0.058, 0.142, 0.03], [sx * 0.058, 0.142, -0.03], [sx * 0.05, 0.12, -0.118]], 0.005, shell, { tseg: 24, rseg: 8 });
   const lab = mat({ name: 'shop_hat_lab', map: A, rough: 0.4 });
   k.box(0.08, 0.026, 0.002, lab, { p: [0, 0.098, 0.146], r: [-0.55, 0, 0], faces: { pz: A.R(0, 0, 256, 64) } });
   // suspension webbing inside
   for (let i = 0; i < 3; i++) k.box(0.2, 0.004, 0.018, tape(), { p: [0, 0.07, 0], r: [0, i * PI / 3, 0] });
+  k.lathe([[0.1, 0.035], [0.104, 0.036], [0.104, 0.06], [0.1, 0.061]], tape(), { seg: 28, s: [1, 1, 1.18], raw: true }); // headband
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; k.box(0.006, 0.03, 0.012, tape(), { p: [Math.cos(a) * 0.1, 0.06, Math.sin(a) * 0.118], r: [0, -a, 0] }); }
   k.colCyl(0.15, 0.13, [0, 0.075, 0]);
   return { kit: k, meta: { mass: 0.4, material: 'plastic' } };
 });
@@ -150,17 +154,28 @@ def('hard_hat', () => {
 def('padded_vest', () => {
   const k = new Kit();
   const quilt = mat({ name: 'shop_vest', color: 0xe8661c, rough: 0.8, det: 'twill', ns: 0.8, sheen: 0.6 });
+  const lining = mat({ name: 'shop_vest_in', color: 0x2a2a2c, rough: 0.9, det: 'weave', ns: 0.7 });
   const refl = mat({ name: 'shop_refl', color: 0xd8dcdc, rough: 0.25, metal: 0.4, det: 'film', ns: 0.4 });
-  const W = 0.46, H = 0.56, D = 0.22;
+  const W = 0.46, H = 0.56, D = 0.22, A = W / 2, B = D / 2, G = 0.13; // G: half-gap of the front opening (rad)
+  // torso-wrapping quilted shell: elliptical tube open at the front, arm holes, V neck
+  const th = (u) => G + u * (TAU - 2 * G);
+  const top = (t) => { const c = Math.cos(t), f = Math.min(t, TAU - t); return H - 0.2 * Math.exp(-(c * c) / 0.05) - 0.13 * Math.exp(-(f * f) / 0.12) - 0.03 * Math.exp(-((t - PI) ** 2) / 0.2); };
+  const at = (t, y, sc) => { const q = 1 + 0.07 * Math.abs(Math.sin((PI * y) / 0.093)) * (sc > 0.95 ? 1 : 0), w = 1 + (1 - y / H) * 0.05; return [Math.sin(t) * A * sc * q * w, y, Math.cos(t) * B * sc * q * w * 1.15]; };
+  k.add(sheetGeo(56, 28, (u, v) => { const t = th(u); return at(t, v * top(t), 1); }), quilt, { smooth: true });
+  k.add(sheetGeo(48, 12, (u, v) => { const t = th(u); return at(t, v * top(t), 0.9); }, { flip: true }), lining, {});
+  // bindings round every edge (hide the gap between shell and lining), zip tapes
+  const edge = (f, n) => Array.from({ length: n + 1 }, (_, i) => f(i / n));
+  k.tube(edge((u) => { const t = th(u); return at(t, top(t), 0.96); }, 64), 0.013, tape(), { tseg: 84, rseg: 6 });
+  k.tube(edge((u) => at(th(u), 0.006, 0.96), 40), 0.013, tape(), { tseg: 56, rseg: 6 });
+  for (const u of [0, 1]) k.tube(edge((v) => { const t = th(u); return at(t, 0.006 + v * (top(t) - 0.012), 0.96); }, 16), 0.012, tape(), { tseg: 24, rseg: 7 });
+  for (const sx of [-1, 1]) k.box(0.006, H - 0.18, 0.004, S.steelDark(), { p: [sx * 0.012, (H - 0.18) / 2 + 0.02, B * 1.16] });
+  // shoulder straps over the arm holes
   for (const sx of [-1, 1]) {
-    k.rbox(W / 2 - 0.01, H, 0.05, 0.02, quilt, { p: [sx * (W / 4 + 0.004), H / 2, D / 2] });
-    for (let i = 1; i < 5; i++) k.box(W / 2 - 0.02, 0.006, 0.004, tape(), { p: [sx * (W / 4), i * H / 5, D / 2 + 0.026] });
+    const tf = sx > 0 ? 0.62 : TAU - 0.62, tb = sx > 0 ? PI - 0.55 : PI + 0.55, pf = at(tf, top(tf) - 0.02, 0.96), pb = at(tb, top(tb) - 0.02, 0.96);
+    k.tube([pf, [(pf[0] + pb[0]) / 2, H + 0.025, pf[2] * 0.3], [(pf[0] + pb[0]) / 2, H + 0.025, pb[2] * 0.3], pb], 0.022, quilt, { tseg: 24, rseg: 10, s: [1, 1, 1] });
   }
-  k.rbox(W, H, 0.05, 0.02, quilt, { p: [0, H / 2, -D / 2] });
-  for (const sx of [-1, 1]) k.rbox(0.05, H * 0.8, D * 0.9, 0.02, quilt, { p: [sx * (W / 2 - 0.02), H * 0.4, 0] });
-  for (const sx of [-1, 1]) k.rbox(0.07, 0.03, D + 0.04, 0.012, quilt, { p: [sx * 0.12, H - 0.01, 0] });
-  for (const y of [0.16, 0.3]) for (const z of [-1, 1]) k.box(W + 0.01, 0.022, 0.003, refl, { p: [0, y, z * (D / 2 + 0.027)] });
-  k.box(0.006, H - 0.04, 0.004, S.steelDark(), { p: [0, H / 2, D / 2 + 0.028] });
+  // reflective bands
+  for (const y of [0.15, 0.29]) k.add(sheetGeo(64, 1, (u, v) => { const t = th(u); return at(t, y - 0.013 + v * 0.026, 1.075); }), refl, {});
   k.colBox([W + 0.02, H, D + 0.06], [0, H / 2, 0]);
   return { kit: k, meta: { mass: 1.4, material: 'fabric' } };
 });
@@ -176,12 +191,17 @@ def('riot_shield', () => {
   const W = 0.5, H = 0.86;
   k.extrude(rrectShape(W, H, 0.05), 0.008, 0.002, poly, { p: [0, H / 2, 0] });
   const frame = S.plasticBlack();
-  k.box(W - 0.02, 0.02, 0.014, frame, { p: [0, 0.012, 0] });
-  k.box(W - 0.02, 0.02, 0.014, frame, { p: [0, H - 0.012, 0] });
+  // rubber edge guard all round + top / bottom stiffener rails
+  const rim = [];
+  for (let i = 0; i <= 96; i++) { const a = (i / 96) * TAU, c = Math.cos(a), sn = Math.sin(a), e = 0.12; rim.push([Math.sign(c) * Math.pow(Math.abs(c), e) * (W / 2), H / 2 + Math.sign(sn) * Math.pow(Math.abs(sn), e) * (H / 2), 0.004]); }
+  k.tube(rim, 0.009, S.rubber(), { tseg: 112, rseg: 6, tension: 0.2 });
+  k.rbox(W - 0.06, 0.02, 0.012, 0.005, frame, { p: [0, 0.03, -0.006] });
+  k.rbox(W - 0.06, 0.02, 0.012, 0.005, frame, { p: [0, H - 0.03, -0.006] });
   const lab = mat({ name: 'shop_shield_lab', map: A, rough: 0.5 });
   k.box(0.34, 0.07, 0.002, lab, { p: [0, H * 0.62, 0.006], faces: { pz: A.R(0, 0, 256, 64) } });
   // grip and forearm strap at the back
-  k.rbox(0.03, 0.14, 0.04, 0.01, frame, { p: [0, H * 0.45, -0.035] });
+  k.tube([[0, H * 0.45 - 0.085, -0.004], [0, H * 0.45 - 0.07, -0.04], [0, H * 0.45 + 0.07, -0.04], [0, H * 0.45 + 0.085, -0.004]], 0.013, frame, { tseg: 28, rseg: 10, tension: 0.2 });
+  for (const sy of [-1, 1]) k.cyl(0.02, 0.008, frame, { p: [0, H * 0.45 + sy * 0.085, -0.008], r: [PI / 2, 0, 0], seg: 16 });
   k.rbox(0.16, 0.04, 0.01, 0.005, tape(), { p: [0, H * 0.62, -0.03] });
   k.colBox([W, H, 0.03], [0, H / 2, 0]);
   return { kit: k, meta: { mass: 2.2, material: 'plastic', hold: { grip: [0, H * 0.45, -0.035], rot: [0, 0.2, 0], off: [0.05, -0.12, 0.06] } } };

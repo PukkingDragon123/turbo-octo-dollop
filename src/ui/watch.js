@@ -302,16 +302,16 @@ export class Watch {
     dot(c, 6.5, y0 + 3.5, 2.5, bad ? RED : INK);
     txt(c, `${(n.from || 'NOTICE').toUpperCase()}${n.n > 1 ? ' X' + n.n : ''}`, 12, y0, M, bad ? RED : DIM, 'left', AW - 16);
     // big type: the glance is short and the watch face small on a phone
-    let size = L;
+    let size = L, lh = 16, max = 4;
     let lines = wrap(c, n.text, AW - 8, L);
-    if (lines.length > 4) { size = M; lines = wrap(c, n.text, AW - 8, M); }
-    const lh = size === L ? 16 : 9, max = size === L ? 4 : 8;
+    if (lines.length > 4) { size = 13; lh = 12; max = 6; lines = wrap(c, n.text, AW - 8, size); }
+    if (lines.length > 6) { size = M; lh = 9; max = 8; lines = wrap(c, n.text, AW - 8, M); }
     for (let i = 0; i < lines.length && i < max; i++) txt(c, lines[i], 4, y0 + 10 + i * lh, size, INK, 'left', AW - 8);
     // vitals strip
     const s = this.game.local.survival;
     const low = s.health < 30;
     icon(c, 'heart', 6.5, AH - 5.5, 2.5, low ? RED : DIM, true);
-    bar(c, 11, AH - 8, 50, 5, s.health / 100, low ? RED : INK);
+    bar(c, 11, AH - 7, 50, 3, s.health / 100, low ? RED : INK);
     icon(c, 'coin', AW - 5.5, AH - 5.5, 2.5, DIM, true);
     txt(c, short$(this.game.run?.credits ?? 0), AW - 11, AH - 9, M, INK, 'right');
   }
@@ -351,7 +351,7 @@ export class Watch {
       const y = y0 + i * 12;
       icon(c, VITALS[i][0], 5.5, y + 3.5, 2.6, warn ? RED : DIM, true);
       txt(c, VITALS[i][1], 11, y, M, warn ? RED : INK);
-      bar(c, 56, y + 1, 82, 5, f, warn ? RED : INK);
+      bar(c, 56, y + 2, 82, 3, f, warn ? RED : INK);
       txt(c, `${Math.round(Math.max(0, Math.min(1, f)) * 100)}`, AW - 3, y + 1, SM, warn ? RED : DIM, 'right');
     }
     // EKG
@@ -536,13 +536,13 @@ export class Watch {
     const main = e.main.filter((n) => n.id !== 'm_escape');
     const mainDone = e.mainDone();
     txt(c, mainDone ? 'SIDE QUESTS' : 'MAIN MISSION 1', 4, y, M, INK);
-    if (obj && !mainDone) txt(c, obj.title.slice(0, 14), AW - 4, y + 1, SM, DIM, 'right', 68);
+    if (obj && !mainDone) txt(c, obj.title.slice(0, 22), AW - 4, y + 1, SM, DIM, 'right', 66);
     y += 10;
     if (!mainDone) {
       for (const n of main) {
         const st = e.state(n), done = st === 'claimed', cur = st === 'active';
         bullet(c, 7, y + 3.5, done ? 'done' : cur ? 'cur' : '');
-        txt(c, (n.task || n.name).toUpperCase().slice(0, 26), 13, y, M, done ? DIM : INK, 'left', AW - 16);
+        txt(c, (n.task || n.name).toUpperCase().slice(0, 32), 13, y, M, done ? DIM : INK, 'left', AW - 16);
         y += 10;
       }
       if (obj?.detail) {
@@ -558,7 +558,7 @@ export class Watch {
         const st = e.state(n), pr = e.progress(n);
         txt(c, n.short.slice(0, 13), 4, y, M, INK, 'left', 70);
         if (st === 'ready') txt(c, 'CLAIM AT CAMP', AW - 4, y + 1, SM, INK, 'right');
-        else { bar(c, 76, y + 1, 60, 5, pr.frac, INK); txt(c, `${Math.round(pr.frac * 100)}`, AW - 3, y + 1, SM, DIM, 'right'); }
+        else { bar(c, 76, y + 2, 60, 3, pr.frac, INK); txt(c, `${Math.round(pr.frac * 100)}`, AW - 3, y + 1, SM, DIM, 'right'); }
         y += 10;
       }
     }
@@ -568,7 +568,7 @@ export class Watch {
     icon(c, 'coin', 6.5, by + 3.5, 2.5, DIM, true);
     txt(c, `${short$(e.escape)} / ${short$(e.quota)}`, 12, by, M, INK, 'left', 110);
     txt(c, 'ESCAPE', AW - 4, by + 1, SM, DIM, 'right');
-    bar(c, 4, by + 11, AW - 8, 5, e.escape / e.quota, INK);
+    bar(c, 4, by + 12, AW - 8, 3, e.escape / e.quota, INK);
   }
 
   // older dimensions (generator / radio mission): objective + checklist + money vs quota
@@ -589,7 +589,7 @@ export class Watch {
         y += Math.min(4, det.length) * 9 + 2;
       }
       if (typeof obj.progress === 'number') {
-        bar(c, 4, y + 1, AW - 30, 5, obj.progress, INK);
+        bar(c, 4, y + 2, AW - 30, 3, obj.progress, INK);
         txt(c, `${Math.round(Math.max(0, Math.min(1, obj.progress)) * 100)}%`, AW - 4, y, M, INK, 'right');
         y += 11;
       }
@@ -622,7 +622,7 @@ export class Watch {
     if (q) {
       const met = cr >= q;
       txt(c, met ? 'QUOTA MET' : 'QUOTA', AW - 4, by + 1, SM, met ? INK : DIM, 'right');
-      bar(c, 4, by + 11, AW - 8, 5, cr / q, INK);
+      bar(c, 4, by + 12, AW - 8, 3, cr / q, INK);
     }
   }
 
@@ -745,9 +745,10 @@ export class Watch {
     c.fillRect(bx - 12, by - 3, 9, 6);
     c.fillRect(bx - 3, by - 4, 3, 8);
     txt(c, on ? 'BOOST ACTIVE +45%' : fi >= 0 ? 'TORCH OFF [F]' : 'NO FLASHLIGHT', AW / 2 + 10, by - 3, M, on ? INK : DIM, 'center');
+    const low = fi >= 0 && ch < 0.2;
     txt(c, 'CELL', 4, y0 + 48, M, DIM);
-    bar(c, 28, y0 + 49, AW - 50, 5, ch, ch < 0.2 ? RED : INK);
-    txt(c, `${Math.round(ch * 100)}%`, AW - 3, y0 + 49, SM, ch < 0.2 ? RED : DIM, 'right');
+    bar(c, 31, y0 + 50, AW - 53, 3, ch, low ? RED : INK);
+    txt(c, `${Math.round(ch * 100)}%`, AW - 3, y0 + 49, SM, low ? RED : DIM, 'right');
     const bat = this.econ?.has('up:battery');
     txt(c, bat ? 'TOOL BATTERY: RUNTIME X2' : 'TIP: TOOL BATTERY UPGRADE', 4, y0 + 62, SM, bat ? INK : DIM, 'left', AW - 8);
   }

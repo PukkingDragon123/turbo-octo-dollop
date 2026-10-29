@@ -211,7 +211,7 @@ export class RepairGame {
     const pin = keep(new THREE.MeshStandardMaterial({ color: 0xc9c4b4, roughness: 0.3, metalness: 1 }));
     const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(keep(geo), mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; sc.add(m); return m; };
     // DIP chips: moulded bodies with a pin-1 notch, gull-wing legs merged into one mesh
-    const pinGeos = [], legGeo = new THREE.BoxGeometry(0.0016, 0.0042, 0.0014), footGeo = new THREE.BoxGeometry(0.0016, 0.0022, 0.0034);
+    const pinGeos = [], pinLeg = new THREE.BoxGeometry(0.0016, 0.0042, 0.0014), footGeo = new THREE.BoxGeometry(0.0016, 0.0022, 0.0034);
     const notchMat = keep(new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.7 }));
     for (const [x, y, w] of [[-0.115, 0.095, 0.06], [-0.04, 0.095, 0.045], [0.12, 0.0, 0.04]]) {
       const vert = x > 0.1;
@@ -222,12 +222,12 @@ export class RepairGame {
         for (const sd of [-1, 1]) {
           const m4 = new THREE.Matrix4().makeRotationZ(vert ? Math.PI / 2 : 0);
           const px = vert ? x + sd * 0.0085 : x + o, py = vert ? y + o : y + sd * 0.0085;
-          pinGeos.push(legGeo.clone().applyMatrix4(m4).translate(px, py, 0.0035));
+          pinGeos.push(pinLeg.clone().applyMatrix4(m4).translate(px, py, 0.0035));
           pinGeos.push(footGeo.clone().applyMatrix4(m4).translate(vert ? px + sd * 0.0012 : px, vert ? py : py + sd * 0.0012, 0.0012));
         }
       }
     }
-    legGeo.dispose(); footGeo.dispose();
+    pinLeg.dispose(); footGeo.dispose();
     add(mergeGeometries(pinGeos), pin, 0, 0, 0);
     for (const g of pinGeos) g.dispose();
     const capMat = keep(new THREE.MeshStandardMaterial({ color: 0x1d3f7a, roughness: 0.4 })), capTop = keep(new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.9 }));
