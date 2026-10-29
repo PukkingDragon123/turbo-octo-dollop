@@ -204,7 +204,9 @@ export class RepairGame {
       s.rotation.x = Math.PI / 2; s.rotation.y = a * 1.7; s.position.set(Math.cos(a) * (RING + 0.018), Math.sin(a) * (RING + 0.018), 0.035); sc.add(s);
       for (const r of [0, Math.PI / 2]) { const sl = new THREE.Mesh(slotGeo, slotMat); sl.position.y = 0.0036; sl.rotation.y = r; s.add(sl); }
     }
-    const panel = new THREE.Mesh(keep(new THREE.CylinderGeometry(RING + 0.012, RING + 0.012, 0.008, 40, 1, false, 0, Math.PI * 2)), shellMat);
+    // the removed access panel: a shallow moulded dish with a rolled lip (same curvature as the shell)
+    const R1 = RING + 0.012;
+    const panel = new THREE.Mesh(keep(lathe([[0, 0.012], [R1 * 0.5, 0.011], [R1 * 0.85, 0.007], [R1 - 0.004, 0.002], [R1, -0.002], [R1 - 0.003, -0.005], [R1 * 0.85, 0.0], [R1 * 0.5, 0.005], [0, 0.006]].reverse(), 40)), shellMat);
     panel.rotation.set(Math.PI / 2, 0, 0); panel.position.set(-RING - 0.17, -0.05, -0.06); panel.rotateZ(0.6); panel.rotateX(-1.1); sc.add(panel);
     // components: DIP chips, caps (one burst), resistors, a coil
     const chip = keep(new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.45 }));

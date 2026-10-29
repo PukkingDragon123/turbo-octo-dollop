@@ -380,7 +380,7 @@ export function b_crusher_frame() {
       c.restore();
     }), 0.098, ex, ey + 0.0485, ez, { rot: [-HP, 0, 0], seg: 28 });
   }
-  return k.done({ material: 'metal' });
+  return k.done({ mass: 4000, material: 'metal' });
 }
 
 export function b_crusher_ram() {
@@ -411,7 +411,7 @@ export function b_crusher_ram() {
   }
   P.streak(k, -0.6, 0.42, D / 2 + 0.003, 0.2, 0.3, { col: '96,42,14' });
   P.streak(k, 0.7, 0.42, D / 2 + 0.003, 0.16, 0.25, { col: '96,42,14' });
-  return k.done({ material: 'metal' });
+  return k.done({ mass: 1500, material: 'metal' });
 }
 
 export function b_crusher_gate() {
@@ -428,7 +428,7 @@ export function b_crusher_gate() {
     for (const z of [-0.026, 0.026]) k.box('paint', W, 0.05, 0.012, 0, -y, z, { tint: RED, r: 0.003, chip: 0.55 });
     for (let i = 0; i < 13; i += 2) P.rivet(k, -CX + 0.08 + i * ((CX * 2 - 0.16) / 12), -y, 0.032, { r: 0.007 });
   }
-  return k.done({ material: 'metal' });
+  return k.done({ mass: 120, material: 'metal' });
 }
 
 // ---------------------------------------------------------------------------------------------- kiosks
@@ -449,7 +449,7 @@ function cabinet(k, w, h, d, y0, o = {}) {
     for (const sy of [-1, 1]) { P.hingeHalf(k, -dw / 2 - 0.004, dy + sy * dh * 0.32, 0.012, 0.09, { part: 0 }); P.hingeHalf(k, -dw / 2 - 0.004, dy + sy * dh * 0.32, 0.012, 0.09, { part: 1 }); }
     k.lathe('metal', [[0, 0], [0.016, 0, 1], [0.016, 0.006, 2], [0.012, 0.009], [0, 0.009]], dw / 2 - 0.06, dy + dh * 0.15, 0.015, { ...FIN.chrome, axis: 'z', seg: 16 });
     k.box('#111111:p', 0.003, 0.012, 0.001, dw / 2 - 0.06, dy + dh * 0.15, 0.0245, { r: 0 });
-    P.louvre(k, 0, dy - dh / 2 + 0.07, 0.015, dw * 0.6, 0.08, 4, { mo: { ...pO, dust: 0.2 } });
+    P.slotVent(k, 0, dy - dh / 2 + 0.07, 0.015, dw * 0.6, 0.07, 12, { vertical: true, mo: pO });
     if (o.stencil) k.decal(o.stencil, dw * 0.55, dw * 0.55 * 0.25, -dw * 0.08, dy + dh * 0.22, 0.0152);
     P.scuffs(k, 0, dy - dh * 0.3, 0.0153, dw * 0.8, dh * 0.4, { col: '40,36,28', alpha: 0.22 });
   });
@@ -518,7 +518,7 @@ export function b_kiosk_shop() {
   k.lathe('metal', [[0.0, 0.028], [0.09, 0.028, 1], [0.092, 0.036, 2], [0.084, 0.046], [0.072, 0.05], [0, 0.05]], 0.52, 0, 0, { ...FIN.chrome, seg: 28 });
   k.lathe('paint', [[0.072, 0.05], [0.082, 0.052], [0.08, 0.062, 2], [0.066, 0.064], [0.06, 0.064]], 0.52, 0, 0, { tint: YEL, seg: 28 });
   k.pop();
-  return k.done({ material: 'metal' });
+  return k.done({ mass: 180, material: 'metal' });
 }
 
 export function b_kiosk_quest() {
@@ -582,7 +582,7 @@ export function b_kiosk_quest() {
     P.pushButton(k, px + 0.07, py - 0.015, pz + 0.09, 0.008, { static: true, tint: 0x2a8a3a });
     k.label(makerPlate(k, 'mp_prn', 'RECEIPTS', 'TEAR HERE'), 0.08, 0.032, px - 0.04, py - 0.015, pz + 0.0905);
   }
-  return k.done({ material: 'metal' });
+  return k.done({ mass: 140, material: 'metal' });
 }
 
 // arrow push key cap (prev / next), origin = cap bottom centre
@@ -592,7 +592,7 @@ export function b_kiosk_key() {
   g.deform((p) => { if (p.y > 0) { p.x *= 0.9; p.z *= 0.9; p.y -= 0.004 * (1 - (p.x * p.x + p.z * p.z) / 0.0025); } }, false);
   g.computeNormals(true);
   k.put('plastic', g, 0, 0.0, 0, { tint: 0x1c1c1d, rough: 0.6 });
-  return k.done({ material: 'plastic' });
+  return k.done({ mass: 0.05, material: 'plastic' });
 }
 // crank knob for the category drum (rotates about local X): fluted grip + crank arm + spinner
 export function b_kiosk_crank() {
@@ -601,5 +601,5 @@ export function b_kiosk_crank() {
   k.put('dark', axisGeo(P.flutedGeo(0.03, 0.03, 16), '-x'), -0.01, 0, 0, { tint: 0x18181a, rough: 0.7 });
   k.box('metal', 0.006, 0.05, 0.014, -0.043, 0.022, 0, { ...FIN.chrome, r: 0.003 });
   k.lathe('dark', [[0, 0], [0.007, 0, 1], [0.008, 0.02], [0.006, 0.026], [0, 0.027]], -0.046, 0.04, 0, { tint: 0x9a1a14, axis: '-x', seg: 12 });
-  return k.done({ material: 'plastic' });
+  return k.done({ mass: 0.1, material: 'plastic' });
 }

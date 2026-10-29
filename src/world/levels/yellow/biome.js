@@ -158,18 +158,6 @@ function grime(level, rec, gD) {
   }
 }
 
-// jittered box chunk (limbs, stones, logs)
-function lump(g, cx, cy, cz, sx, sy, sz, rotY, col, rng) {
-  g.setRGB(...col);
-  const c = Math.cos(rotY), s = Math.sin(rotY);
-  const V = [];
-  for (let k = 0; k < 8; k++) {
-    const lx = (k & 1 ? 1 : -1) * sx * (0.8 + rng.next() * 0.4), ly = (k & 2 ? 1 : -1) * sy * (0.8 + rng.next() * 0.4), lz = (k & 4 ? 1 : -1) * sz * (0.8 + rng.next() * 0.4);
-    V.push(new THREE.Vector3(cx + lx * c - lz * s, Math.max(0.002, cy + ly), cz + lx * s + lz * c));
-  }
-  for (const [a, b, cc, d] of [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]) { tri(g, V[a], V[b], V[cc]); tri(g, V[a], V[cc], V[d]); }
-}
-
 // fieldstone: jittered icosphere (watertight: the jitter hashes the unit direction), sooted on the side
 // facing `soot` (the fire), lichen-dark low down
 const _ico = (() => { const g = new THREE.IcosahedronGeometry(1, 1), p = g.attributes.position, out = []; for (let i = 0; i < p.count; i++) out.push(new THREE.Vector3().fromBufferAttribute(p, i)); g.dispose(); return out; })();
@@ -189,25 +177,31 @@ function rock(g, cx, cy, cz, sx, sy, sz, rotY, col, rng, soot = null) {
     tri(g, P[i], P[i + 1], P[i + 2]);
   }
 }
-// charred log: 7-sided jittered prism along local X with capped, glowing-dead ends
-function charLog(g, cx, cy, cz, len, r, rotY, rng) {
-  const c = Math.cos(rotY), s = Math.sin(rotY), N = 7, seg = 4, ring = [];
+// jittered N-sided prism along local X (logs, limbs, wires). shade(rng) -> [r, g, b] per facet; ends:
+// [cap0, cap1] colours (null = open); taper: end radius scale at x = +len/2 (rounded limb end)
+function prism(g, cx, cy, cz, len, r, rotY, rng, o) {
+  const c = Math.cos(rotY), s = Math.sin(rotY), N = o.N ?? 7, seg = o.seg ?? 4, ring = [];
   for (let j = 0; j <= seg; j++) {
-    const x = -len / 2 + (len * j) / seg, rr = r * (j === 0 || j === seg ? 0.8 : 0.92 + rng.next() * 0.16), row = [];
+    const t = j / seg, x = -len / 2 + len * t, end = j === 0 || j === seg;
+    const rr = r * (end ? (j === seg && o.taper ? o.taper : 0.85) : 1 - (o.jit ?? 0.08) + rng.next() * (o.jit ?? 0.08) * 2) * (o.taper && t > 0.6 ? 1 - (t - 0.6) * 0.6 : 1);
+    const row = [];
     for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2, y = Math.sin(a) * rr, z = Math.cos(a) * rr; row.push(new THREE.Vector3(cx + x * c - z * s, Math.max(0.002, cy + y), cz + x * s + z * c)); }
     ring.push(row);
   }
   for (let j = 0; j < seg; j++) for (let i = 0; i < N; i++) {
-    const a = ring[j][i], b = ring[j][(i + 1) % N], cc = ring[j + 1][(i + 1) % N], d = ring[j + 1][i];
-    const k = 0.7 + 0.6 * rng.next(), ash = rng.chance(0.25);
-    g.setRGB(ash ? 0.32 * k : 0.06 * k, ash ? 0.31 * k : 0.05 * k, ash ? 0.29 * k : 0.04 * k);
-    tri(g, a, b, cc); tri(g, a, cc, d);
+    const A = ring[j][i], B = ring[j][(i + 1) % N], C = ring[j + 1][(i + 1) % N], D = ring[j + 1][i];
+    g.setRGB(...o.shade(rng)); tri(g, A, B, C); tri(g, A, C, D);
   }
-  for (const [row, flip] of [[ring[0], true], [ring[seg], false]]) {
+  [[ring[0], true, o.caps?.[0]], [ring[seg], false, o.caps?.[1]]].forEach(([row, flip, col]) => {
+    if (!col) return;
     const m = row.reduce((v, p) => v.add(p), new THREE.Vector3()).multiplyScalar(1 / N);
-    g.setRGB(0.16, 0.12, 0.09);
+    g.setRGB(...col);
     for (let i = 0; i < N; i++) { const a = row[i], b = row[(i + 1) % N]; if (flip) tri(g, m, b, a); else tri(g, m, a, b); }
-  }
+  });
+}
+// charred log with ash-grey patches and dead ends
+function charLog(g, cx, cy, cz, len, r, rotY, rng) {
+  prism(g, cx, cy, cz, len, r, rotY, rng, { shade: (q) => { const k = 0.7 + 0.6 * q.next(); return q.chance(0.25) ? [0.32 * k, 0.31 * k, 0.29 * k] : [0.06 * k, 0.05 * k, 0.04 * k]; }, caps: [[0.16, 0.12, 0.09], [0.16, 0.12, 0.09]] });
 }
 
 // deterministic abandoned-camp spot of a chunk (both decorate and populate need it)
@@ -317,9 +311,13 @@ function tornClone(level, rec, gT, pos, rng, oil) {
   for (let k = 0; k < 3; k++) {
     const ang = rng.next() * 6.28, d = 0.6 + rng.next() * 0.9;
     const x = pos.x + Math.cos(ang) * d, z = pos.z + Math.sin(ang) * d, r = rng.next() * 3;
-    lump(gT, x, 0.05, z, 0.16, 0.045, 0.05, r, k === 2 ? [0.9, 0.86, 0.78] : suit, rng);             // a limb / shell plate
-    lump(gT, x + Math.cos(r) * 0.17, 0.045, z + Math.sin(r) * 0.17, 0.02, 0.035, 0.04, r, [0.08, 0.07, 0.06], rng); // torn stump
-    for (let w = 0; w < 3; w++) lump(gT, x + Math.cos(r) * (0.2 + w * 0.03), 0.015, z + Math.sin(r) * (0.2 + w * 0.03), 0.06 + rng.next() * 0.05, 0.004, 0.004, r + (rng.next() - 0.5) * 1.2, [[0.75, 0.42, 0.2], [0.7, 0.1, 0.08], [0.15, 0.25, 0.7]][w], rng);
+    const base = k === 2 ? [0.9, 0.86, 0.78] : suit;
+    // a torn limb in its suit sleeve (rounded far end, dark torn stump with the wires hanging out)
+    prism(gT, x, 0.048, z, 0.32, 0.046, r, rng, { N: 9, seg: 5, jit: 0.05, taper: 0.45, shade: (q) => { const kk = 0.86 + q.next() * 0.2; return base.map((v) => v * kk); }, caps: [[0.08, 0.07, 0.06], base] });
+    for (let w = 0; w < 3; w++) {
+      const rw = r + Math.PI + (rng.next() - 0.5) * 1.2, l = 0.06 + rng.next() * 0.05, col = [[0.75, 0.42, 0.2], [0.7, 0.1, 0.08], [0.15, 0.25, 0.7]][w];
+      prism(gT, x - Math.cos(r) * 0.16 + Math.cos(rw) * l / 2, 0.012 + w * 0.006, z - Math.sin(r) * 0.16 + Math.sin(rw) * l / 2, l, 0.004, rw, rng, { N: 4, seg: 2, jit: 0, shade: () => col, caps: [col, [0.7, 0.62, 0.4]] });
+    }
   }
   void oil;
 }

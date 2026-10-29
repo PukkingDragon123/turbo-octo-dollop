@@ -229,11 +229,30 @@ def('field_bench', () => {
   // lower shelf across the cross bars
   k.rbox(L - 0.26, 0.02, 0.42, 0.003, wood, { p: [0, 0.32, 0], rs: 2, dU: 'x', col: 0xd8c4a0 });
   // car battery + red toolbox on the shelf
-  k.rbox(0.26, 0.18, 0.17, 0.01, mat({ name: 'fb_battery', color: 0x1d1e20, rough: 0.5, det: 'stipple' }), { p: [0.3, 0.42, -0.04] });
-  for (const bx of [0.22, 0.38]) k.cyl(0.012, 0.025, bx < 0.3 ? S.copper() : chrome, { p: [bx, 0.52, -0.04], seg: 10 });
+  // car battery: moulded case with ribbed walls, stepped lid, vent caps, lead posts, strap handle, label
+  const BAT = mat({ name: 'fb_battery', color: 0x1d1e20, rough: 0.5, det: 'stipple' });
+  k.rbox(0.26, 0.16, 0.17, 0.01, BAT, { p: [0.3, 0.41, -0.04] });
+  k.rbox(0.266, 0.026, 0.176, 0.008, BAT, { p: [0.3, 0.502, -0.04], col: 0x34363a });
+  for (let i = 0; i < 7; i++) for (const sz of [-1, 1]) k.rbox(0.008, 0.13, 0.008, 0.003, BAT, { p: [0.19 + i * 0.0367, 0.405, -0.04 + sz * 0.087] });
+  for (let i = 0; i < 6; i++) k.cyl(0.009, 0.008, BAT, { p: [0.245 + i * 0.022, 0.519, -0.07], seg: 10, col: 0x55575c });
+  k.rbox(0.13, 0.06, 0.004, 0.003, mat({ name: 'fb_bat_label', color: 0xd8d2c0, rough: 0.6, det: 'paper' }), { p: [0.3, 0.43, -0.04 + 0.087] });
+  for (const bx of [0.22, 0.38]) k.lathe([[0.0, 0.0], [0.013, 0.0], [0.011, 0.02, 0.002], [0.0095, 0.026], [0, 0.026]], bx < 0.3 ? S.copper() : chrome, { p: [bx, 0.515, -0.04], seg: 12 });
+  for (const sx of [-1, 1]) k.rbox(0.012, 0.03, 0.03, 0.004, BAT, { p: [0.3 + sx * 0.136, 0.48, -0.04] });
+  k.tube([[0.165, 0.49, -0.04], [0.17, 0.56, -0.04], [0.3, 0.585, -0.04], [0.43, 0.56, -0.04], [0.435, 0.49, -0.04]], 0.005, rubber, { tseg: 28, rseg: 6 });
   k.tube([[0.22, 0.53, -0.04], [0.2, 0.62, 0.02], [0.24, 0.85, -0.12], [0.36, TY + 0.04, -0.15]], 0.006, mat({ name: 'fb_cable_r', color: 0xa81c14, rough: 0.6 }), { tseg: 24, rseg: 6 });
   k.tube([[0.38, 0.53, -0.04], [0.42, 0.64, 0.0], [0.46, 0.85, -0.14], [0.46, TY + 0.04, -0.16]], 0.006, rubber, { tseg: 24, rseg: 6 });
-  k.rbox(0.42, 0.16, 0.2, 0.01, mat({ name: 'fb_toolbox', color: 0xa8261c, rough: 0.45, det: 'powder', ns: 0.5 }), { p: [-0.32, 0.41, 0.0] });
+  // steel toolbox: body + domed lid with a seam, front catches, rolled hinge, end rivets
+  const TB = mat({ name: 'fb_toolbox', color: 0xa8261c, rough: 0.45, det: 'powder', ns: 0.5 });
+  k.rbox(0.42, 0.105, 0.2, 0.008, TB, { p: [-0.32, 0.3825, 0.0] });
+  k.rbox(0.424, 0.006, 0.204, 0.002, S.steelDark(), { p: [-0.32, 0.437, 0.0] });
+  k.rbox(0.42, 0.045, 0.2, 0.014, TB, { p: [-0.32, 0.4625, 0.0] });
+  k.rbox(0.4, 0.012, 0.16, 0.006, TB, { p: [-0.32, 0.486, 0.0] });
+  for (const sx of [-1, 1]) {
+    k.rbox(0.03, 0.04, 0.006, 0.002, chrome, { p: [-0.32 + sx * 0.12, 0.437, 0.103] });
+    k.cyl(0.004, 0.026, chrome, { p: [-0.32 + sx * 0.12, 0.452, 0.106], r: [0, 0, PI / 2], seg: 8 });
+    for (const sy of [-1, 1]) k.cyl(0.004, 0.003, chrome, { p: [-0.32 + sx * 0.211, 0.41 + sy * 0.03, 0.06], r: [0, 0, PI / 2], seg: 8 });
+  }
+  k.cyl(0.005, 0.4, S.steelDark(), { p: [-0.32, 0.44, -0.101], r: [0, 0, PI / 2], seg: 8 });
   k.tube([[-0.47, 0.49, 0], [-0.47, 0.53, 0], [-0.17, 0.53, 0], [-0.17, 0.49, 0]], 0.008, chrome, { tseg: 16, rseg: 6, tension: 0.1 });
   // vise at the front-left corner
   const vx = -L / 2 + 0.18, vz = D / 2 - 0.04;

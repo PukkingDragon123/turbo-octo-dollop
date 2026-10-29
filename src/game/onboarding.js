@@ -225,10 +225,14 @@ class BrokenBot extends Device {
     // the note, taped across the top of the shell
     this.noteTex = canvasTex(this.noteCanvas);
     this.noteMat = new THREE.MeshStandardMaterial({ map: this.noteTex, roughness: 0.95, side: THREE.DoubleSide });
-    const note = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.15), this.noteMat);
+    // a sheet draped over the dome of the shell, one corner lifting off the tape
+    const ng = new THREE.PlaneGeometry(0.2, 0.15, 10, 6), np = ng.attributes.position;
+    for (let i = 0; i < np.count; i++) { const x = np.getX(i), y = np.getY(i); np.setZ(i, -0.6 * x * x - 0.35 * y * y + Math.max(0, x - 0.06) * Math.max(0, -y - 0.03) * 1.6); }
+    ng.computeVertexNormals();
+    const note = new THREE.Mesh(ng, this.noteMat);
     note.position.set(0, 0.148, -0.01); note.rotation.set(-PI / 2 + 0.12, 0, 0.18);
     const tape = new THREE.MeshStandardMaterial({ color: 0xd9d2b8, roughness: 0.6, transparent: true, opacity: 0.75 });
-    for (const s of [-1, 1]) { const t = new THREE.Mesh(new THREE.PlaneGeometry(0.035, 0.09), tape); t.position.set(s * 0.085, 0.002, 0.0); t.rotation.z = s * 0.3; note.add(t); }
+    for (const s of [-1, 1]) { const t = new THREE.Mesh(new THREE.PlaneGeometry(0.035, 0.09), tape); t.position.set(s * 0.085, 0.002, 0.0015 - 0.6 * 0.085 * 0.085); t.rotation.z = s * 0.3; note.add(t); }
     b.root.add(note);
     this.note = note;
     this.world.group.add(b.root);

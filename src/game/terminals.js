@@ -576,9 +576,16 @@ function lockModel() {
   if (_lock) return _lock;
   const g = new THREE.Group();
   const m = new THREE.MeshBasicMaterial();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.24, 0.1), m); body.position.y = -0.08; g.add(body);
-  const sh = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.025, 8, 24, PI), m); sh.position.y = 0.04; g.add(sh);
-  const key = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.11, 12), m); key.rotation.x = PI / 2; key.position.y = -0.07; g.add(key);
+  // padlock: bevelled rounded body, shackle (one leg released), stepped keyway cylinder
+  const bs = new THREE.Shape(), W = 0.15, Hh = 0.12, r = 0.025;
+  bs.moveTo(-W + r, -Hh); bs.lineTo(W - r, -Hh); bs.quadraticCurveTo(W, -Hh, W, -Hh + r); bs.lineTo(W, Hh - r); bs.quadraticCurveTo(W, Hh, W - r, Hh);
+  bs.lineTo(-W + r, Hh); bs.quadraticCurveTo(-W, Hh, -W, Hh - r); bs.lineTo(-W, -Hh + r); bs.quadraticCurveTo(-W, -Hh, -W + r, -Hh);
+  const body = new THREE.Mesh(new THREE.ExtrudeGeometry(bs, { depth: 0.08, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 2, curveSegments: 6 }), m);
+  body.geometry.translate(0, 0, -0.04); body.position.y = -0.08; g.add(body);
+  const sh = new THREE.Mesh(new THREE.TorusGeometry(0.095, 0.022, 10, 28, PI), m); sh.position.y = 0.07; g.add(sh);
+  for (const [x, l] of [[-0.095, 0.07], [0.095, 0.03]]) { const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, l, 12), m); leg.position.set(x, 0.07 - l / 2, 0); g.add(leg); }
+  const key = new THREE.Mesh(new THREE.LatheGeometry([[0, 0], [0.032, 0], [0.034, 0.01], [0.03, 0.016], [0.03, 0.05], [0, 0.05]].map(([x, y]) => new THREE.Vector2(x, y)), 18), m);
+  key.rotation.x = PI / 2; key.position.set(0, -0.09, 0.012); g.add(key);
   _lock = g;
   return g;
 }

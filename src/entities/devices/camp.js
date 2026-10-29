@@ -194,7 +194,7 @@ export function b_cg_stake() {
   k.push(0, 0.1, 0, [0, 0, HP]);
   stake(k, 0, 0, 0, 0.3, 0.785);
   k.pop();
-  return k.done({ material: 'wood' });
+  return k.done({ mass: 0.3, material: 'wood' });
 }
 
 // ----------------------------------------------------------------------------------------- camp lamp
