@@ -942,7 +942,7 @@ export function wrapLines(g, text, maxW) {
 // ---- rusted industrial signage. Nothing here lights up: the signs are lit only by the factory's work lamps.
 function srng(seed) { let s = ((seed | 0) * 9301 + 49297) % 233280 || 1; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; }
 const SIGN_PAINTS = {
-  green: ['#3a4f42', '#e0d6ba'], blue: ['#33495a', '#e2d9c0'], yellow: ['#a8842e', '#1c160e'], red: ['#6a2c22', '#e6d9bc'], steel: ['#77746c', '#1d1812'],
+  green: ['#3a4f42', '#e0d6ba'], blue: ['#33495a', '#e2d9c0'], yellow: ['#a8842e', '#1c160e'], red: ['#6a2c22', '#e6d9bc'], steel: ['#77746c', '#1d1812'], label: ['#2c2a26', '#e4dac0'],
 };
 // a weathered enamel / steel sign face: faded paint, painted letters (one may have flaked off, leaving only
 // its cleaner ghost), chips down to rust, cracks, rust bleeding round the bolts and grime streaks below them
@@ -991,9 +991,9 @@ export function rustySign(g, w, h, { title = '', sub = '', seed = 1, paint = 'gr
     const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, '#8e5428'); gr.addColorStop(0.6, '#6a3a1c'); gr.addColorStop(1, '#3e2414');
     g.fillStyle = gr; g.fill(); g.strokeStyle = 'rgba(25,15,8,0.55)'; g.lineWidth = Math.max(1, u * 1.2); g.stroke();
   };
-  for (let i = 0; i < 46; i++) { const side = (R() * 4) | 0, t = R(), e = R() * 8 * u; const x = side === 0 ? t * w : side === 1 ? w - e : side === 2 ? t * w : e, y = side === 0 ? e : side === 1 ? t * h : side === 2 ? h - e : t * h; chip(x, y, (5 + R() * 20) * u); }
+  for (let i = 0; i < 72; i++) { const side = (R() * 4) | 0, t = R(), e = R() * 8 * u; const x = side === 0 ? t * w : side === 1 ? w - e : side === 2 ? t * w : e, y = side === 0 ? e : side === 1 ? t * h : side === 2 ? h - e : t * h; chip(x, y, (5 + R() * 20) * u); }
   for (let i = 0; i < 4; i++) { const cx = R() < 0.5 ? 0 : w, cy = R() < 0.5 ? 0 : h; chip(cx + (cx ? -1 : 1) * R() * 14 * u, cy + (cy ? -1 : 1) * R() * 10 * u, (18 + R() * 34) * u); }
-  for (let i = 0; i < 14; i++) chip(R() * w, R() * h, (2 + R() * 9) * u);
+  for (let i = 0; i < 34; i++) chip(R() * w, R() * h, (2 + R() * 11) * u);
   // cracks in the enamel
   for (let i = 0; i < 2 + ((R() * 3) | 0); i++) {
     let x = R() < 0.5 ? R() * w : (R() < 0.5 ? 0 : w), y = x === 0 || x === w ? R() * h : (R() < 0.5 ? 0 : h);
@@ -1003,9 +1003,9 @@ export function rustySign(g, w, h, { title = '', sub = '', seed = 1, paint = 'gr
     g.stroke();
   }
   // rust bleeding from the edges + round the bolts, then streaks running down
-  for (let i = 0; i < 10; i++) {
-    const x = R() * w, y = R() < 0.5 ? R() * h * 0.2 : h - R() * h * 0.15, r = (20 + R() * 60) * u;
-    const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(120,58,22,0.45)'); gr.addColorStop(1, 'rgba(120,58,22,0)');
+  for (let i = 0; i < 16; i++) {
+    const x = R() * w, y = R() < 0.5 ? R() * h * 0.25 : h - R() * h * 0.2, r = (20 + R() * 70) * u;
+    const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(120,58,22,0.55)'); gr.addColorStop(1, 'rgba(120,58,22,0)');
     g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
   }
   const streak = (x, y, len, wd, col) => { const gr = g.createLinearGradient(0, y, 0, y + len); gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - wd / 2, y, wd, len); };
@@ -1150,7 +1150,7 @@ export class GearSign {
     this.r = r; this.w = r * 2;
     this.root = new THREE.Group(); this.root.rotation.order = 'YXZ';
     this.body = new THREE.Group(); this.root.add(this.body);
-    const iron = new THREE.MeshStandardMaterial({ map: rustTex(), color: 0xc8b8a8, roughness: 0.85, metalness: 0.45 });
+    const iron = new THREE.MeshStandardMaterial({ map: rustTex(), color: 0xffeedd, roughness: 0.8, metalness: 0.3 });
     mesh(cyl(0.05, 0.12, 'z', 20), iron, this.body, 0, 0, -0.03);
     mesh(new THREE.BoxGeometry(0.05, r + 0.08, 0.03), iron, this.body, 0, (r + 0.08) / 2, -0.07);
     mesh(new THREE.BoxGeometry(r * 1.2, 0.04, 0.04), iron, this.body, 0, r + 0.08, -0.07);

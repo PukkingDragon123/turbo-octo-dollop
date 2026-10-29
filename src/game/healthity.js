@@ -26,7 +26,7 @@ const VOICE_COL = '#a8ffd8', ALERT_COL = '#ffc65a';
 const LINES = {
   // reboot (once, after the repair)
   boot1: ['R-r-reboot complete. Healthity Medical Unit, Mark Seven. Service year: nineteen seventy-nine.'],
-  boot2: ['You fixed me. Nobody has opened that crate in a very, very long time. Thank you, valued employee.'],
+  boot2: ['You fixed me. Nobody has bothered in a very, very long time. Thank you, valued employee.'],
   boot3: ['I will keep your body in working order. Your body is company property. Here are your orders.'],
   receipt: ['Please take your receipt. Press E on me.', 'Your receipt. Take it. I printed it with love. And ink.'],
   receipt_floor: ['You dropped your receipt. It is on the floor. It is looking at you.'],

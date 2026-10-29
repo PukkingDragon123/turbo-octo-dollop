@@ -22,6 +22,7 @@ import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
 import { Device } from './devices.js';
 import * as Mat from '../gfx/materials.js';
+import { probeMaterial } from '../gfx/bakedlight.js';
 import { juice } from '../gfx/juice.js';
 import { floatText } from '../ui/floattext.js';
 import { Q } from '../physics/physics.js';
@@ -103,12 +104,10 @@ export class ArrivalDirector extends Device {
       const wx = c.x + s.x * lx + g.x * lz, wz = c.z + s.z * lx + g.z * lz;
       uv.setXY(i, wx + wz, ly);
     }
-    // the level's walls are light-baked: light the plug by the light the camp has there so it reads as the same wall
-    const mat = Mat.get('wallpaper').clone();
-    const lc = new THREE.Color(0.3, 0.27, 0.19);
-    try { const sc = new THREE.Color(); this.level.sampleLight?.(c.clone().addScaledVector(g, 0.6).setY(fy + 1.4), sc); if (sc.r + sc.g + sc.b > 0.05) lc.copy(sc).multiplyScalar(0.42); } catch (e) { /* keep the default */ }
-    mat.emissive = lc; mat.emissiveMap = mat.map; mat.emissiveIntensity = 1;
-    this.sealMat = mat;
+    // lit by the level's light field like any dynamic object (probe material), so it matches the walls
+    // instead of glowing; the material is shared and cached, so it is not disposed with the seal
+    const mat = probeMaterial(Mat.get('wallpaper'));
+    this.sealMat = null;
     const wall = new THREE.Mesh(geo, mat);
     wall.castShadow = wall.receiveShadow = true;
     root.add(wall);
@@ -116,6 +115,7 @@ export class ArrivalDirector extends Device {
     base.position.set(0, 0.05, d / 2 + 0.01); root.add(base);
     root.visible = false;
     this.world.group.add(root);
+    this.world.registerDynamic?.(root);
     this.seal = { root, c, g, s, w, h, d, yaw, col: null, on: false, focus: c.clone().setY(fy + 1.35) };
   }
   _sealOn(on) {
@@ -622,7 +622,7 @@ export class ArrivalDirector extends Device {
     this._releaseCam();
     if (this.owning) { const pp = engine.post.params; pp.uGlitch.value = 0; pp.uFade.value = 0; audio.setMuffle(0); }
     this.reader.dispose();
-    if (this.seal) { this.seal.root.removeFromParent(); this.seal.root.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); this.sealMat?.dispose(); }
+    if (this.seal) { this.world.unregisterDynamic?.(this.seal.root); this.seal.root.removeFromParent(); this.seal.root.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); this.sealMat?.dispose(); }
     if (this.game.arrival === this) this.game.arrival = null;
     super.dispose();
   }

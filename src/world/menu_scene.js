@@ -258,15 +258,15 @@ export class MenuScene {
     this.stLight = new THREE.SpotLight(0xffe6c4, 0, 7, 0.8, 0.6, 2); S.add(this.stLight, this.stLight.target);
     this.shaftLight = new THREE.PointLight(0xff4a2a, 0, 7, 2); this.shaftLight.position.set(0, -3, 0); S.add(this.shaftLight);
     // the only light on the hub signs: a caged work lamp on a bracket above and in front of them
-    const sl = (this.signLamp = new THREE.SpotLight(0xffd8a8, 0, 9, 0.52, 0.55, 2));
-    sl.position.set(1.55, 4.75, 2.5); sl.target.position.set(1.35, 2.45, 0.38);
+    const sl = (this.signLamp = new THREE.SpotLight(0xffd8a8, 0, 9, 0.66, 0.5, 2));
+    sl.position.set(1.7, 4.75, 2.5); sl.target.position.set(1.45, 2.3, 0.38);
     S.add(sl, sl.target);
     const cage = new THREE.Group(); cage.position.copy(sl.position); cage.lookAt(sl.target.position); S.add(cage);
     mesh(new THREE.ConeGeometry(0.16, 0.2, 14, 1, true).rotateX(-PI / 2), this.F.dark, cage, 0, 0, -0.02).material.side = THREE.DoubleSide;
     this.signBulb = new THREE.MeshBasicMaterial({ color: 0x000000 });
     mesh(new THREE.SphereGeometry(0.045, 10, 8), this.signBulb, cage, 0, 0, 0.04).castShadow = false;
     for (let i = 0; i < 4; i++) mesh(new THREE.TorusGeometry(0.11, 0.004, 4, 16, PI), this.F.steel, cage, 0, 0, 0.06, 0, 0, (i / 4) * PI).castShadow = false;
-    mesh(cyl(0.012, 2.4, 'y', 6), this.F.steel, S, 1.55, 4.75 + 1.2, 2.5).castShadow = false;
+    mesh(cyl(0.012, 2.4, 'y', 6), this.F.steel, S, 1.7, 4.75 + 1.2, 2.5).castShadow = false;
   }
 
   // ============================================================================ build: the clone on the hook
@@ -756,7 +756,7 @@ export class MenuScene {
       mesh(new THREE.BoxGeometry(L.cell - 0.02, L.cell - 0.02, 0.01), this.F.dark, c.g, 0, 0, -0.002);
       c.lamp = mesh(new THREE.BoxGeometry(L.cell - 0.06, 0.008, 0.008), this.F.ledOff, c.g, 0, L.cell / 2 - 0.02, 0.01);
       c.lamp.castShadow = false;
-      const lab = this._tex(512, 128, (x, w, h) => rustySign(x, w, h, ok ? { title: o.name, seed: 90 + i, paint: 'steel', spacing: 0.04 } : { title: 'LOCKED', sub: ACHIEVEMENTS[o.unlock]?.name || o.unlock, seed: 90 + i, paint: 'red' }));
+      const lab = this._tex(512, 128, (x, w, h) => rustySign(x, w, h, ok ? { title: o.name.toUpperCase(), seed: 90 + i, paint: 'label', spacing: 0.04 } : { title: 'LOCKED', sub: ACHIEVEMENTS[o.unlock]?.name || o.unlock, seed: 90 + i, paint: 'red' }));
       c.label = this._plane(L.cell - 0.03, (L.cell - 0.03) / 4, new THREE.MeshStandardMaterial({ map: lab.tex, roughness: 0.82, metalness: 0.2 }), c.g, 0, -L.cell / 2 + (L.cell - 0.03) / 8 + 0.01, 0.012);
       c.item = this._itemFor(sec.cat, o, L.cell * 0.7);
       c.item.position.set(0, 0.02, 0.07);
@@ -1735,10 +1735,10 @@ export class MenuScene {
     // the hub signs' work lamp: a caged bulb that slams on in the intro and is never quite steady
     const hubOn = this.mode === 'hub' || this.mode === 'intro' || this.mode === 'drop';
     const on = this.panels.new.on < 1 ? (Math.random() < 0.5 ? 0.08 : 1) * this.panels.new.on : 1;
-    let sl = 28 * on * (hubOn ? 1 : 0.35);
+    let sl = 34 * on * (hubOn ? 1 : 0.35);
     if (Math.sin(t * 0.43) > 0.985 || Math.random() < dt * 0.3) sl *= 0.25;
     this.signLamp.intensity = damp(this.signLamp.intensity, sl, 18, dt);
-    this.signBulb.color.setRGB(0.3 + 3.2 * this.signLamp.intensity / 28, 0.2 + 2.4 * this.signLamp.intensity / 28, 0.1 + 1.2 * this.signLamp.intensity / 28);
+    this.signBulb.color.setRGB(0.3 + 3.2 * this.signLamp.intensity / 34, 0.2 + 2.4 * this.signLamp.intensity / 34, 0.1 + 1.2 * this.signLamp.intensity / 34);
   }
   _updatePanels(dt) {
     // the sign boxes are winched up into the dark while you are at a station
