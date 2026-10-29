@@ -1016,7 +1016,7 @@ export class LocalPlayer {
         this.world.noise.emit(this.pos, 3, 'use');
         break;
       }
-      case 'flashlight': this.toggleFlashlight(); break;
+      case 'flashlight': this.toggleFlashlight(); this.arms.gesture?.('use', 'R'); break;
       case 'battery': {
         // charges the flashlight, or (no flashlight / it is full) the multitool
         const fi = this.inv.find('flashlight');
@@ -1024,6 +1024,7 @@ export class LocalPlayer {
         if (fl && (fl.charge ?? 1) < 0.95) { fl.charge = 1; floatText.notice('Flashlight recharged', { duration: 1.4 }); } else { this.tool.charge(0.6); floatText.notice(`Multitool charged ${Math.round(this.tool.battery * 100)}%`, { duration: 1.4, color: '#6fe0ff' }); }
         this.inv.remove(this.inv.slots.indexOf(item));
         audio.play('fuse_insert', { volume: 0.6 });
+        this.arms.gesture?.('use', 'R');
         break;
       }
       case 'glowstick':
@@ -1031,6 +1032,7 @@ export class LocalPlayer {
         if (item.state.lit) { this.game.ui.toast('Already lit — drop it [G]'); break; }
         item.state.lit = 1;
         item.state.litAt = Date.now();
+        this.arms.gesture?.('use', 'R');
         audio.play(def.use === 'flare' ? 'spark' : 'ui_type', { volume: 0.7 });
         this.game.ui.toast(def.use === 'flare' ? 'Flare lit! Throw it [G]' : 'Glowstick cracked');
         this.inv.version++;
@@ -1039,6 +1041,7 @@ export class LocalPlayer {
       case 'arm': {
         item.state.armed = 1;
         item.state.armedAt = Date.now();
+        this.arms.gesture?.('use', 'R');
         audio.play('ui_select', { volume: 0.6 });
         this.game.ui.toast('Noise maker armed — throw it! [G]');
         break;

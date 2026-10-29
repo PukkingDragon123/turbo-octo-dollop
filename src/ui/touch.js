@@ -541,7 +541,7 @@ export class TouchControls {
     let ctx = '';
     if (!term && !dead) {
       const p = l.focus?.prompt;
-      if (p) ctx = p.replace(/^\[[^\]]*\]\s*/, '').split(/\s+/).slice(0, 3).join(' ').toUpperCase().slice(0, 16);
+      if (p) ctx = p.replace(/^\[[^\]]*\]\s*/, '').split(' · ')[0].split(/\s+/).slice(0, 4).join(' ').slice(0, 26);
     }
     this._renderCtx(ctx);
     const use = this.btn.use;

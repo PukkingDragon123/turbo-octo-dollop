@@ -938,6 +938,8 @@ def('door_heavy_open', 2.4, (S, o) => {
 }, { db: -3, vars: 2 });
 
 def('door_creak', 1.8, (S, o) => creak(S, o, 0.01, S.rr(0.9, 1.5), S.rr(180, 320), S.rr(120, 260), 1, 1), { db: -6, vars: 4 });
+// a rusted sign swinging on its chains (menu hover): a short metal creak + a chain link tick
+def('sign_creak', 1.0, (S, o) => { creak(S, o, 0.0, S.rr(0.3, 0.6), S.rr(300, 460), S.rr(220, 360), 0.8, 1.3); click(S, o, S.rr(0.04, 0.18), S.rr(3200, 4600), 0.22, 0.002); }, { db: -9, vars: 4 });
 
 def('locker_open', 1.0, (S, o) => {
   click(S, o, 0, 2800, 0.6, 0.002);

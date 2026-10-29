@@ -32,7 +32,7 @@ import * as AV from '../entities/avatar.js';
 import { buildModel } from '../entities/catalog.js';
 import {
   RoboArm, Sparks, Batch, cyl, factoryMats, LiveTex, fitText, wrapLines, HangPanel, Hatch, Knob, Toggle, Selector, GearSign, gearGeo,
-  Junk, Puffs, Motes, kitMesh as mesh, kitRbox as rbox, PHOS, brackets, scanlines, phosphorBg,
+  Junk, Puffs, Motes, kitMesh as mesh, kitRbox as rbox, PHOS, brackets, scanlines, phosphorBg, rustySign, rustTex,
 } from '../entities/wardrobe.js';
 import { FONT } from '../ui/fonts.js';
 import { getPart } from '../entities/doll/doll_avatar.js';
@@ -220,13 +220,8 @@ export class MenuScene {
     // high windows (faint night light) + the line sign
     const win = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.05, 0.08, 0.12) });
     for (let x = -12; x <= 12; x += 4) { const m = mesh(new THREE.PlaneGeometry(2.6, 1.4), win, S, x, 7.4, -9.95); m.castShadow = false; }
-    const sign = this._tex(1024, 192, (g, w, h) => {
-      g.fillStyle = '#0a0907'; g.fillRect(0, 0, w, h);
-      g.fillStyle = '#c9b48a'; g.textBaseline = 'middle';
-      fitText(g, 'R.O.O.M. CLONE ASSEMBLY · LINE 04', w / 2, h * 0.42, w - 60, 86, `{s}px ${F_PRINT}`);
-      g.fillStyle = '#8a7a5a'; fitText(g, 'NO UNIT LEAVES THIS FLOOR ALIVE · IT LEAVES IT FINISHED', w / 2, h * 0.8, w - 80, 34, `{s}px ${F_TYPE}`);
-    });
-    this.lineSign = this._plane(7, 1.3, this._emTexMat(sign.tex, 0.25), S, 0, 5.3, -9.9);
+    const sign = this._tex(1024, 192, (g, w, h) => rustySign(g, w, h, { title: 'CLONE ASSEMBLY \u00b7 LINE 04', sub: 'no unit leaves this floor alive \u00b7 it leaves it finished', seed: 61, paint: 'yellow', ghost: 9, spacing: 0.1 }));
+    this.lineSign = this._plane(7, 1.3, new THREE.MeshStandardMaterial({ map: sign.tex, roughness: 0.85, metalness: 0.2 }), S, 0, 5.3, -9.9);
     // ceiling floodlight fixtures in 4 banks (lenses glow when the bank is on)
     this.bankFix = [];
     const fixG = new THREE.BoxGeometry(1.6, 0.14, 0.5), lensG = new THREE.PlaneGeometry(1.5, 0.4);
@@ -262,6 +257,16 @@ export class MenuScene {
     this.beacon = new THREE.PointLight(0xff2a10, 0, 12, 2); this.beacon.position.set(-1.6, 3.4, 1.2); S.add(this.beacon);
     this.stLight = new THREE.SpotLight(0xffe6c4, 0, 7, 0.8, 0.6, 2); S.add(this.stLight, this.stLight.target);
     this.shaftLight = new THREE.PointLight(0xff4a2a, 0, 7, 2); this.shaftLight.position.set(0, -3, 0); S.add(this.shaftLight);
+    // the only light on the hub signs: a caged work lamp on a bracket above and in front of them
+    const sl = (this.signLamp = new THREE.SpotLight(0xffd8a8, 0, 9, 0.52, 0.55, 2));
+    sl.position.set(1.55, 4.75, 2.5); sl.target.position.set(1.35, 2.45, 0.38);
+    S.add(sl, sl.target);
+    const cage = new THREE.Group(); cage.position.copy(sl.position); cage.lookAt(sl.target.position); S.add(cage);
+    mesh(new THREE.ConeGeometry(0.16, 0.2, 14, 1, true).rotateX(-PI / 2), this.F.dark, cage, 0, 0, -0.02).material.side = THREE.DoubleSide;
+    this.signBulb = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    mesh(new THREE.SphereGeometry(0.045, 10, 8), this.signBulb, cage, 0, 0, 0.04).castShadow = false;
+    for (let i = 0; i < 4; i++) mesh(new THREE.TorusGeometry(0.11, 0.004, 4, 16, PI), this.F.steel, cage, 0, 0, 0.06, 0, 0, (i / 4) * PI).castShadow = false;
+    mesh(cyl(0.012, 2.4, 'y', 6), this.F.steel, S, 1.55, 4.75 + 1.2, 2.5).castShadow = false;
   }
 
   // ============================================================================ build: the clone on the hook
@@ -418,10 +423,10 @@ export class MenuScene {
       return p;
     };
     this.panels = {
-      title: mk(null, new HangPanel({ w: 1.62, h: 0.46 })),
-      new: mk('new', new HangPanel({ w: 1.5, h: 0.36 })),
-      cont: mk('cont', new HangPanel({ w: 1.5, h: 0.36 })),
-      trophies: mk('trophies', new HangPanel({ w: 0.92, h: 0.3 })),
+      title: mk(null, new HangPanel({ w: 1.62, h: 0.46, seed: 5, paint: 'green' })),
+      new: mk('new', new HangPanel({ w: 1.5, h: 0.36, seed: 12, paint: 'blue' })),
+      cont: mk('cont', new HangPanel({ w: 1.5, h: 0.36, seed: 27, paint: 'yellow' })),
+      trophies: mk('trophies', new HangPanel({ w: 0.92, h: 0.3, seed: 33, paint: 'red', crooked: -0.2 })),
       settings: mk('settings', new GearSign({ r: 0.27 })),
     };
     this._refreshPanels();
@@ -429,9 +434,9 @@ export class MenuScene {
   _refreshPanels() {
     const P = this.panels, s = save.summary();
     this.hasSave = !!s;
-    P.title.setText('R.O.O.M.', 'Clone Assembly \u00b7 Line 04', { big: true });
+    P.title.setText('R.O.O.M.', 'clone assembly \u00b7 line 04', { big: true, ghost: 4 });
     P.new.setText('New Mission', 'print \u00b7 assemble \u00b7 dispatch');
-    P.cont.setText('Continue', s ? `${LEVEL_TITLE[s.level] || 'Level 0'} \u00b7 day ${s.day} of 7 \u00b7 ${money(s.credits)}` : 'no record on file', { dim: !s });
+    P.cont.setText('Continue', s ? `${LEVEL_TITLE[s.level] || 'Level 0'} \u00b7 day ${s.day} of 7 \u00b7 ${money(s.credits)}` : 'no record on file', { dim: !s, ghost: 5 });
     P.settings.setText('SETTINGS');
     const n = Object.keys(ACHIEVEMENTS).length, got = Object.keys(ACHIEVEMENTS).filter((k) => profile.has(k)).length;
     P.trophies.setText('Commendations', `${got} of ${n} earned`);
@@ -490,15 +495,8 @@ export class MenuScene {
     this.ptrLamp = mesh(new THREE.SphereGeometry(0.022, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2, 0.9) }), ptr, 0, 0.11, 0);
     this.ptrLamp.castShadow = false;
     // gilt name plate over the machine
-    const np = this._tex(1024, 192, (x, w, h) => {
-      const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#c99a4c'); gr.addColorStop(0.5, '#8a6328'); gr.addColorStop(1, '#b48a40');
-      x.fillStyle = gr; x.fillRect(0, 0, w, h);
-      x.strokeStyle = 'rgba(40,24,8,0.8)'; x.lineWidth = 6; x.strokeRect(12, 12, w - 24, h - 24);
-      x.fillStyle = '#21140a'; x.textBaseline = 'middle';
-      fitText(x, 'S E T T I N G S', w / 2, h * 0.42, w - 120, 96, `700 {s}px ${FONT.main}`);
-      fitText(x, 'clone calibration engine', w / 2, h * 0.78, w - 160, 38, `italic 600 {s}px ${FONT.main}`);
-    });
-    this._plane(1.2, 0.225, new THREE.MeshStandardMaterial({ map: np.tex, roughness: 0.35, metalness: 0.7 }), g, 0, 2.66, -0.12);
+    const np = this._tex(1024, 192, (x, w, h) => rustySign(x, w, h, { title: 'SETTINGS', sub: 'clone calibration engine', seed: 51, paint: 'steel', spacing: 0.22, bolts: [[0.04, 0.5, false], [0.96, 0.5, true]] }));
+    this._plane(1.2, 0.225, new THREE.MeshStandardMaterial({ map: np.tex, bumpMap: np.tex, bumpScale: 1, roughness: 0.82, metalness: 0.25 }), g, 0, 2.66, -0.12).rotation.z = 0.025;
     // the controls, bolted onto the ring: [key, type, label, min, max] (sel: options)
     const defs = [
       ['master', 'knob', 'Master volume', 0, 1, 'Master'], ['sfx', 'knob', 'Effects', 0, 1], ['music', 'knob', 'Music', 0, 1], ['ambient', 'knob', 'Ambience', 0, 1],
@@ -721,9 +719,9 @@ export class MenuScene {
     this.rackInner = new THREE.Group(); g.add(this.rackInner);
     this.rackBoard = mesh(rbox(1, 1, 0.05, 0.015), this.F.gunmetal, this.rackInner, 0, 0, -0.03);
     this.rackHead = this._tex(1024, 160);
-    this.rackHeadM = this._plane(1, 0.16, this._emTexMat(this.rackHead.tex, 1.0), this.rackInner, 0, 0, 0.005);
+    this.rackHeadM = this._plane(1, 0.16, new THREE.MeshStandardMaterial({ map: this.rackHead.tex, bumpMap: this.rackHead.tex, bumpScale: 1, roughness: 0.82, metalness: 0.2 }), this.rackInner, 0, 0, 0.005);
     const arrowG = new THREE.ConeGeometry(0.06, 0.11, 3); arrowG.rotateZ(-PI / 2);
-    this.arrowMat = new THREE.MeshStandardMaterial({ color: 0x201608, emissive: 0xd6aa58, emissiveIntensity: 0.6, roughness: 0.4, metalness: 0.4 });
+    this.arrowMat = new THREE.MeshStandardMaterial({ color: 0xa8842e, map: rustTex(), roughness: 0.75, metalness: 0.3 });
     this.arrows = [-1, 1].map((s) => {
       const m = mesh(arrowG, this.arrowMat, this.rackInner, 0, 0, 0.02, 0, 0, s < 0 ? PI : 0);
       this._addHit(m, { type: 'arrow', dir: s, modes: ['workshop'] });
@@ -745,15 +743,7 @@ export class MenuScene {
     this.rackBoard.position.set(0, -0.06, -0.03);
     this.rackHeadM.position.set(0, L.h / 2 + 0.06, 0.006); this.rackHeadM.scale.set(L.w, 1, 1);
     this.arrows[0].position.set(-L.w / 2 + 0.07, L.h / 2 + 0.06, 0.04); this.arrows[1].position.set(L.w / 2 - 0.07, L.h / 2 + 0.06, 0.04);
-    this.rackHead.draw((x, w, h) => {
-      phosphorBg(x, w, h);
-      brackets(x, 150, 10, w - 300, h - 20, 26, PHOS.mid, 3, 8);
-      x.fillStyle = PHOS.hi; x.shadowColor = PHOS.mid; x.shadowBlur = 16; x.textBaseline = 'middle';
-      fitText(x, sec.title, w / 2, h * 0.4, w - 340, 80, `{s}px ${F_SIGN}`);
-      x.shadowBlur = 6; x.fillStyle = PHOS.mid;
-      fitText(x, `${String(this.secIdx + 1).padStart(2, '0')}/${SECTIONS.length} · ${sec.sub} · SWIPE ◄ ►`, w / 2, h * 0.8, w - 340, 34, `{s}px ${F_CRT}`);
-      x.shadowBlur = 0; scanlines(x, w, h, 0.25);
-    });
+    this.rackHead.draw((x, w, h) => rustySign(x, w, h, { title: sec.title, sub: `${String(this.secIdx + 1).padStart(2, '0')} of ${SECTIONS.length} \u00b7 ${sec.sub.toLowerCase()} \u00b7 swipe \u25c4 \u25ba`, seed: 40 + this.secIdx, paint: 'blue', spacing: 0.12 }));
     const cur = this.cos[sec.cat];
     list.forEach((o, i) => {
       const col = i % L.cols, row = Math.floor(i / L.cols);
@@ -766,13 +756,8 @@ export class MenuScene {
       mesh(new THREE.BoxGeometry(L.cell - 0.02, L.cell - 0.02, 0.01), this.F.dark, c.g, 0, 0, -0.002);
       c.lamp = mesh(new THREE.BoxGeometry(L.cell - 0.06, 0.008, 0.008), this.F.ledOff, c.g, 0, L.cell / 2 - 0.02, 0.01);
       c.lamp.castShadow = false;
-      const lab = this._tex(256, 64, (x, w, h) => {
-        x.fillStyle = ok ? '#151310' : '#1a0d0a'; x.fillRect(0, 0, w, h);
-        x.fillStyle = ok ? '#e8d4a8' : '#c04a3a'; x.textBaseline = 'middle';
-        fitText(x, ok ? o.name.toUpperCase() : 'LOCKED', w / 2, h * (ok ? 0.5 : 0.32), w - 12, 30, `{s}px ${F_MARK}`);
-        if (!ok) { x.fillStyle = '#a07050'; fitText(x, (ACHIEVEMENTS[o.unlock]?.name || o.unlock).toUpperCase(), w / 2, h * 0.74, w - 12, 22, `bold {s}px ${F_HAND}`); }
-      });
-      c.label = this._plane(L.cell - 0.03, (L.cell - 0.03) / 4, this._emTexMat(lab.tex, 0.55), c.g, 0, -L.cell / 2 + (L.cell - 0.03) / 8 + 0.01, 0.012);
+      const lab = this._tex(512, 128, (x, w, h) => rustySign(x, w, h, ok ? { title: o.name, seed: 90 + i, paint: 'steel', spacing: 0.04 } : { title: 'LOCKED', sub: ACHIEVEMENTS[o.unlock]?.name || o.unlock, seed: 90 + i, paint: 'red' }));
+      c.label = this._plane(L.cell - 0.03, (L.cell - 0.03) / 4, new THREE.MeshStandardMaterial({ map: lab.tex, roughness: 0.82, metalness: 0.2 }), c.g, 0, -L.cell / 2 + (L.cell - 0.03) / 8 + 0.01, 0.012);
       c.item = this._itemFor(sec.cat, o, L.cell * 0.7);
       c.item.position.set(0, 0.02, 0.07);
       c.g.add(c.item);
@@ -939,7 +924,7 @@ export class MenuScene {
   _buildBackTag() {
     const g = (this.backTag = new THREE.Group());
     this.camera.add(g);
-    const t = this._tex(256, 96, (x, w, h) => { const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#dcb066'); gr.addColorStop(0.5, '#9a6c2c'); gr.addColorStop(1, '#c99c4e'); x.fillStyle = gr; x.fillRect(0, 0, w, h); x.fillStyle = '#1e1208'; x.textBaseline = 'middle'; x.strokeStyle = '#2a1a0a'; x.lineWidth = 4; x.strokeRect(6, 6, w - 12, h - 12); fitText(x, '\u2039  Back', w / 2, h / 2 + 2, w - 40, 60, `italic 700 {s}px ${FONT.main}`); });
+    const t = this._tex(256, 96, (x, w, h) => { rustySign(x, w, h, { title: '\u2039 BACK', seed: 17, paint: 'yellow', spacing: 0.12, bolts: [[0.08, 0.5, false]] }); });
     this.backPiv = new THREE.Group(); g.add(this.backPiv);
     const chain = mesh(cyl(0.0012, 0.08, 'y', 4), new THREE.MeshBasicMaterial({ color: 0x777777 }), this.backPiv, 0, -0.04, 0); chain.castShadow = false;
     this.backPlate = this._plane(0.07, 0.026, new THREE.MeshBasicMaterial({ map: t.tex, side: THREE.DoubleSide }), this.backPiv, 0, -0.093, 0);
@@ -1202,7 +1187,7 @@ export class MenuScene {
     switch (act.type) {
       case 'panel': {
         const p = this.panels[act.key];
-        p.kick(1.6);
+        this._signTouch(p, 1.6);
         this._sfx('toggle_clack', { volume: 0.6, bus: 'ui' });
         // NEW MISSION / CONTINUE drop straight down the hatch (no dispatch console, no lever)
         if (act.key === 'new') { this._sfx('robo_clunk', { volume: 0.6 }); this._startDrop(false); }
@@ -1229,6 +1214,13 @@ export class MenuScene {
     }
   }
   _shake(a) { juice.shake(a); }
+  // a sign was touched: it swings and creaks on its chains and shakes a little rust dust loose
+  _signTouch(p, k = 1) {
+    p.kick(k);
+    const pos = p.body.getWorldPosition(V()); pos.y += (p.h || 0.4) / 2 + 0.04;
+    this._sfx('sign_creak', { pos: pos.clone(), volume: 0.3 + 0.2 * Math.min(1, k), pitch: rnd(0.85, 1.15) });
+    this.puffs.puff(pos, V(0, -1, 0), 3 + Math.round(k * 3), 0.1, 0.2, 1.6, 0.18, 0x7a6450);
+  }
 
   // settings drags
   _beginCtl(d) {
@@ -1695,8 +1687,8 @@ export class MenuScene {
     if (this.pointer.has && !this.pointer.touch && !this._drag && this.mode !== 'drop' && this.mode !== 'intro') h = this._pick(this.pointer.x, this.pointer.y);
     if (h !== this.hover) {
       const a = h?.userData.act;
-      if (a && ['panel', 'robot', 'item', 'plaque', 'arrow', 'back', 'ctl', 'gearSel', 'crank'].includes(a.type)) this._sfx('ui_blip', { volume: 0.12, bus: 'ui' });
-      if (a?.type === 'panel') this.panels[a.key].kick(0.35);
+      if (a && ['robot', 'item', 'plaque', 'arrow', 'back', 'ctl', 'gearSel', 'crank'].includes(a.type)) this._sfx('ui_blip', { volume: 0.12, bus: 'ui' });
+      if (a?.type === 'panel') this._signTouch(this.panels[a.key], 0.7);
       if (a?.type === 'robot') this.dg.kick(rnd(-0.1, 0.1), rnd(-0.05, 0.05), 0, 0.2);
       this.hover = h;
       document.body.style.cursor = h ? 'pointer' : '';
@@ -1740,7 +1732,13 @@ export class MenuScene {
     }
     if (this.drop && this.drop.phase < 3) this.beacon.position.set(-1.6 + Math.sin(t * 6) * 0.4, 3.4, 1.2 + Math.cos(t * 6) * 0.4);
     else if (!this.drop) this.beacon.intensity = 0;
-    this.lineSign.material.emissiveIntensity = 0.18 + 0.4 * lv;
+    // the hub signs' work lamp: a caged bulb that slams on in the intro and is never quite steady
+    const hubOn = this.mode === 'hub' || this.mode === 'intro' || this.mode === 'drop';
+    const on = this.panels.new.on < 1 ? (Math.random() < 0.5 ? 0.08 : 1) * this.panels.new.on : 1;
+    let sl = 28 * on * (hubOn ? 1 : 0.35);
+    if (Math.sin(t * 0.43) > 0.985 || Math.random() < dt * 0.3) sl *= 0.25;
+    this.signLamp.intensity = damp(this.signLamp.intensity, sl, 18, dt);
+    this.signBulb.color.setRGB(0.3 + 3.2 * this.signLamp.intensity / 28, 0.2 + 2.4 * this.signLamp.intensity / 28, 0.1 + 1.2 * this.signLamp.intensity / 28);
   }
   _updatePanels(dt) {
     // the sign boxes are winched up into the dark while you are at a station

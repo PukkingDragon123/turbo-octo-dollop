@@ -308,7 +308,7 @@ class BrokenBot extends Device {
   readNote() {
     audio.play('paper', { volume: 0.7, bus: 'ui' });
     this.ob.director?.reader.open(this.noteCanvas, { width: 0.1 });
-    if (!this.noteRead) { this.noteRead = true; this.ob.narrate('Empty hand, multitool out. Then [E] on the unit.', 2.4); }
+    this.noteRead = true;
   }
   startRepair() {
     const h = this.game.healthity, d = this.ob.director;

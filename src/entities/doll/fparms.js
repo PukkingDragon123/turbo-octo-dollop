@@ -10,7 +10,7 @@
 //   landing, phase; punchT/punchSide/punchPow/impactId (swing clock 0..1, -1 = none; impactId changes on a hit);
 //   useT (0..1 progress, -1 = none) + useKind ('eat' | 'drink' | 'heal'); gripR/gripL (held-item grip 0..1, 1 = thin);
 //   physics grab: reachR / reachL (wrist targets, camera space, or null), twoHanded, gripSize (0..1), strain (0..1)
-//   gesture: 'pickup' | 'snatch' | 'drop' | 'grab' | 'release', side 'R' | 'L' | 'both'
+//   gesture: 'pickup' | 'snatch' | 'drop' | 'grab' | 'release' | 'use', side 'R' | 'L' | 'both'
 import * as THREE from 'three';
 import { clamp, lerp, smooth, damp, Spring } from './kit.js';
 import { labelTexture } from '../../gfx/textures.js';
@@ -305,7 +305,7 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
   const roll = (o, a) => { if (Math.abs(a) > 1e-4) o.u.applyAxisAngle(_v3.copy(o.d).normalize(), a); };
 
   // timed gestures with anticipation and settle: pickup / drop / grab (wind-up before the lunge) / release
-  const GDUR = { pickup: 0.62, drop: 0.5, grab: 0.2, release: 0.42, snatch: 0.36 };
+  const GDUR = { pickup: 0.62, drop: 0.5, grab: 0.2, release: 0.42, snatch: 0.36, use: 0.42 };
   const gOut = { R: { h: V(), pitch: 0, open: 0, close: 0 }, L: { h: V(), pitch: 0, open: 0, close: 0 } };
   function gesture(name, side = 'R') {
     if (side === 'both') { gesture(name, 'R'); gesture(name, 'L'); return; }
@@ -337,6 +337,10 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
       } else if (g.name === 'grab') {
         const a = Math.sin(u * PI);
         o.h.z += 0.035 * a; o.h.y += 0.01 * a; o.open = Math.max(o.open, a);
+      } else if (g.name === 'use') {
+        // a quick press: dip (anticipation), lift and squeeze, settle
+        const dip = u < 0.15 ? Math.sin((u / 0.15) * PI) : 0, a = u < 0.15 ? 0 : Math.sin(((u - 0.15) / 0.85) * PI);
+        o.h.y += 0.03 * a - 0.012 * dip; o.h.z -= 0.025 * a; o.pitch += 0.3 * a; o.close = Math.max(o.close, a);
       } else if (g.name === 'release') {
         const a = Math.sin(u * PI) * (1 - u * 0.4);
         o.open = Math.max(o.open, a); o.pitch += 0.28 * a; o.h.z += 0.03 * a; o.h.y += 0.015 * a;

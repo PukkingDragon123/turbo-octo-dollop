@@ -939,84 +939,163 @@ export function wrapLines(g, text, maxW) {
   return out;
 }
 
-// a heavy enamel sign box in a brass frame ringed with marquee bulbs, hanging from two chains (pivot =
-// ceiling point). The face is a LiveTex used as map + emissiveMap so only the gilt letters glow. Hover
-// brightens it and runs a chase through the bulbs; kick() makes it swing.
-const _bulbGeo = new THREE.SphereGeometry(0.017, 10, 8);
-const _bulbMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
-const _sockGeo = new THREE.CylinderGeometry(0.02, 0.022, 0.016, 10).rotateX(Math.PI / 2);
+// ---- rusted industrial signage. Nothing here lights up: the signs are lit only by the factory's work lamps.
+function srng(seed) { let s = ((seed | 0) * 9301 + 49297) % 233280 || 1; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; }
+const SIGN_PAINTS = {
+  green: ['#3a4f42', '#e0d6ba'], blue: ['#33495a', '#e2d9c0'], yellow: ['#a8842e', '#1c160e'], red: ['#6a2c22', '#e6d9bc'], steel: ['#77746c', '#1d1812'],
+};
+// a weathered enamel / steel sign face: faded paint, painted letters (one may have flaked off, leaving only
+// its cleaner ghost), chips down to rust, cracks, rust bleeding round the bolts and grime streaks below them
+export function rustySign(g, w, h, { title = '', sub = '', seed = 1, paint = 'green', ghost = -1, big = false, bolts = [], dim = false, spacing = 0.06 } = {}) {
+  const R = srng(seed), [bgc, ink] = SIGN_PAINTS[paint] || SIGN_PAINTS.green, u = Math.min(w, h) / 200;
+  g.save();
+  g.fillStyle = bgc; g.fillRect(0, 0, w, h);
+  // faded, sun-bleached and soot-darkened patches
+  for (let i = 0; i < 18; i++) {
+    const x = R() * w, y = R() * h, r = (30 + R() * 150) * u * 1.4, lite = R() < 0.6;
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, lite ? `rgba(255,244,215,${0.05 + R() * 0.09})` : `rgba(20,14,8,${0.08 + R() * 0.12})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  // painted border rule
+  const ins = Math.round(Math.min(w, h) * 0.085);
+  g.globalAlpha = dim ? 0.35 : 0.75; g.strokeStyle = ink; g.lineWidth = Math.max(2, h * 0.02); g.strokeRect(ins, ins, w - ins * 2, h - ins * 2); g.globalAlpha = 1;
+  // lettering, one character at a time (slight misregistration, one ghost)
+  const line = (txt, cy, size, weight, sp, maxW, italic = false) => {
+    const font = (s) => `${italic ? 'italic ' : ''}${weight} ${Math.round(s)}px ${FONT.main}`;
+    g.font = font(size); g.textBaseline = 'middle'; g.textAlign = 'left';
+    const chars = [...txt], gap = size * sp;
+    let tw = chars.reduce((a, c) => a + g.measureText(c).width, 0) + gap * (chars.length - 1);
+    if (tw > maxW) { size *= maxW / tw; g.font = font(size); tw = maxW; }
+    let x = (w - tw) / 2;
+    chars.forEach((c, i) => {
+      const cw = g.measureText(c).width;
+      if (i === ghost && txt === title) { g.fillStyle = 'rgba(255,248,228,0.13)'; g.fillText(c, x, cy); }
+      else { g.fillStyle = ink; g.globalAlpha = dim ? 0.4 : 0.92; g.fillText(c, x + (R() - 0.5) * size * 0.025, cy + (R() - 0.5) * size * 0.035); g.globalAlpha = 1; }
+      x += cw + gap;
+    });
+    return size;
+  };
+  if (title) line(title, h * (sub ? 0.43 : 0.53), h * (big ? 0.5 : 0.44), 700, big ? 0.22 : spacing, w - ins * 2 - w * 0.06);
+  if (sub) {
+    g.fillStyle = ink; g.globalAlpha = dim ? 0.3 : 0.7; g.fillRect(w * 0.3, h * 0.665, w * 0.4, Math.max(1.5, h * 0.01)); g.globalAlpha = 1;
+    line(sub, h * 0.79, h * 0.15, 600, 0.04, w - ins * 2 - w * 0.12, true);
+  }
+  // paint wear on the letters: fine flecks of the base colour
+  for (let i = 0; i < 900 * u; i++) { g.fillStyle = R() < 0.6 ? bgc : 'rgba(70,40,20,0.7)'; g.fillRect(R() * w, R() * h, (0.6 + R() * 2.2) * u, (0.6 + R() * 1.6) * u); }
+  // chips down to the rusted steel: dense along the edges and corners, a few in the field
+  const chip = (x, y, r) => {
+    g.beginPath(); const n = 7 + ((R() * 5) | 0);
+    for (let k = 0; k < n; k++) { const a = (k / n) * TAU, rr = r * (0.45 + R() * 0.75); g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr * (0.6 + R() * 0.5)); }
+    g.closePath();
+    const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, '#8e5428'); gr.addColorStop(0.6, '#6a3a1c'); gr.addColorStop(1, '#3e2414');
+    g.fillStyle = gr; g.fill(); g.strokeStyle = 'rgba(25,15,8,0.55)'; g.lineWidth = Math.max(1, u * 1.2); g.stroke();
+  };
+  for (let i = 0; i < 46; i++) { const side = (R() * 4) | 0, t = R(), e = R() * 8 * u; const x = side === 0 ? t * w : side === 1 ? w - e : side === 2 ? t * w : e, y = side === 0 ? e : side === 1 ? t * h : side === 2 ? h - e : t * h; chip(x, y, (5 + R() * 20) * u); }
+  for (let i = 0; i < 4; i++) { const cx = R() < 0.5 ? 0 : w, cy = R() < 0.5 ? 0 : h; chip(cx + (cx ? -1 : 1) * R() * 14 * u, cy + (cy ? -1 : 1) * R() * 10 * u, (18 + R() * 34) * u); }
+  for (let i = 0; i < 14; i++) chip(R() * w, R() * h, (2 + R() * 9) * u);
+  // cracks in the enamel
+  for (let i = 0; i < 2 + ((R() * 3) | 0); i++) {
+    let x = R() < 0.5 ? R() * w : (R() < 0.5 ? 0 : w), y = x === 0 || x === w ? R() * h : (R() < 0.5 ? 0 : h);
+    const ang = Math.atan2(h / 2 - y, w / 2 - x) + (R() - 0.5) * 1.2, len = (60 + R() * 160) * u;
+    g.strokeStyle = 'rgba(18,10,5,0.75)'; g.lineWidth = Math.max(1, u * 1.4); g.beginPath(); g.moveTo(x, y);
+    for (let s = 0, n = 8; s < n; s++) { x += Math.cos(ang + (R() - 0.5) * 1.1) * len / n; y += Math.sin(ang + (R() - 0.5) * 1.1) * len / n; g.lineTo(x, y); }
+    g.stroke();
+  }
+  // rust bleeding from the edges + round the bolts, then streaks running down
+  for (let i = 0; i < 10; i++) {
+    const x = R() * w, y = R() < 0.5 ? R() * h * 0.2 : h - R() * h * 0.15, r = (20 + R() * 60) * u;
+    const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(120,58,22,0.45)'); gr.addColorStop(1, 'rgba(120,58,22,0)');
+    g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  const streak = (x, y, len, wd, col) => { const gr = g.createLinearGradient(0, y, 0, y + len); gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - wd / 2, y, wd, len); };
+  for (const [bu, bv, miss] of bolts) {
+    const x = bu * w, y = bv * h, r = 16 * u;
+    const gr = g.createRadialGradient(x, y, 0, x, y, r * 1.8); gr.addColorStop(0, 'rgba(110,52,20,0.8)'); gr.addColorStop(1, 'rgba(110,52,20,0)');
+    g.fillStyle = gr; g.fillRect(x - r * 2, y - r * 2, r * 4, r * 4);
+    streak(x, y, (40 + R() * 90) * u, (3 + R() * 5) * u, 'rgba(120,56,20,0.6)');
+    if (miss) { g.fillStyle = '#0d0805'; g.beginPath(); g.arc(x, y, 5.5 * u, 0, TAU); g.fill(); g.strokeStyle = 'rgba(150,80,30,0.8)'; g.lineWidth = 1.5 * u; g.stroke(); }
+  }
+  for (let i = 0; i < 16; i++) streak(R() * w, R() * h * 0.5, (30 + R() * 140) * u, (2 + R() * 10) * u, `rgba(${R() < 0.5 ? '40,26,14' : '96,50,20'},${0.15 + R() * 0.3})`);
+  // soot round the rim
+  const v = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.65);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(18,12,6,0.45)');
+  g.fillStyle = v; g.fillRect(0, 0, w, h);
+  g.restore();
+}
+// rusted plate steel, tiling (cogs, backs of signs)
+let _rustTex = null;
+export function rustTex() {
+  if (_rustTex) return _rustTex;
+  _rustTex = canvasTex(256, 256, (g, w, h) => {
+    const R = srng(77);
+    g.fillStyle = '#5a3820'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 160; i++) { const x = R() * w, y = R() * h, r = 4 + R() * 30; const c = R() < 0.4 ? '140,76,34' : R() < 0.5 ? '70,44,28' : '96,92,86'; const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(${c},0.55)`); gr.addColorStop(1, `rgba(${c},0)`); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }
+    for (let i = 0; i < 1500; i++) { g.fillStyle = `rgba(${R() < 0.5 ? '20,12,6' : '170,100,50'},${R() * 0.25})`; g.fillRect(R() * w, R() * h, 1 + R() * 2, 1 + R() * 2); }
+  }, { repeat: [3, 3] });
+  return _rustTex;
+}
+
+// a dented enamel plate sign with a bent corner and bolted corners (one bolt missing), hanging from two chains
+// (pivot = ceiling point) or crooked from one with the other snapped. Hover: kick() swings it.
 export class HangPanel {
-  constructor({ w = 1.5, h = 0.42, bulbs = true } = {}) {
+  constructor({ w = 1.5, h = 0.42, seed = 1, crooked = 0, paint = 'green' } = {}) {
     const F = factoryMats();
-    this.w = w; this.h = h;
+    this.w = w; this.h = h; this.seed = seed; this.paint = paint;
+    const R = srng(seed * 7 + 3);
     this.root = new THREE.Group(); this.root.rotation.order = 'YXZ';
     this.body = new THREE.Group(); this.root.add(this.body);
-    const fw = bulbs ? 0.075 : 0.035, W2 = w + fw * 2, H2 = h + fw * 2;
-    this.fw = fw;
-    mesh(rbox(W2 + 0.03, H2 + 0.03, 0.1, 0.02), F.dark, this.body, 0, 0, -0.02);
-    // brass frame band (the bulbs sit in it) + a thin inner lip around the enamel
-    for (const [bw, bh, x, y] of [[W2, fw, 0, (h + fw) / 2], [W2, fw, 0, -(h + fw) / 2], [fw, h, -(w + fw) / 2, 0], [fw, h, (w + fw) / 2, 0]]) mesh(new THREE.BoxGeometry(bw, bh, 0.03), F.brass, this.body, x, y, 0.04).castShadow = false;
-    for (const [bw, bh, x, y] of [[w + 0.012, 0.008, 0, h / 2 + 0.002], [w + 0.012, 0.008, 0, -h / 2 - 0.002], [0.008, h, -w / 2 - 0.002, 0], [0.008, h, w / 2 + 0.002, 0]]) mesh(new THREE.BoxGeometry(bw, bh, 0.012), F.dark, this.body, x, y, 0.056).castShadow = false;
-    const ch = Math.round(1024 * h / w);
-    this.face = new LiveTex(1024, ch);
-    this.mat = new THREE.MeshStandardMaterial({ map: this.face.tex, emissiveMap: this.face.tex, emissive: 0xffffff, emissiveIntensity: 1, roughness: 0.26, metalness: 0.15 });
-    mesh(new THREE.PlaneGeometry(w, h), this.mat, this.body, 0, 0, 0.052).castShadow = false;
-    // glass sheen
-    mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.06, roughness: 0.05, metalness: 0, clearcoat: 1, depthWrite: false }), this.body, 0, 0, 0.058).castShadow = false;
-    // click target: the whole sign including the frame
-    this.hit = mesh(new THREE.PlaneGeometry(W2, H2), new THREE.MeshBasicMaterial({ visible: false }), this.body, 0, 0, 0.07);
-    // marquee bulbs along the frame band
-    this.bulbs = null;
-    if (bulbs) {
-      const pts = [], step = 0.088, pw = w + fw, ph = h + fw;
-      const nx = Math.max(2, Math.round(pw / step)), ny = Math.max(1, Math.round(ph / step));
-      for (let i = 0; i < nx; i++) pts.push([-pw / 2 + (pw * i) / nx, ph / 2]);
-      for (let i = 0; i < ny; i++) pts.push([pw / 2, ph / 2 - (ph * i) / ny]);
-      for (let i = 0; i < nx; i++) pts.push([pw / 2 - (pw * i) / nx, -ph / 2]);
-      for (let i = 0; i < ny; i++) pts.push([-pw / 2, -ph / 2 + (ph * i) / ny]);
-      const n = pts.length;
-      this.bulbs = new THREE.InstancedMesh(_bulbGeo, _bulbMat, n);
-      const socks = new THREE.InstancedMesh(_sockGeo, F.dark, n);
-      const m4 = new THREE.Matrix4();
-      pts.forEach(([x, y], i) => { m4.makeTranslation(x, y, 0.066); this.bulbs.setMatrixAt(i, m4); m4.makeTranslation(x, y, 0.058); socks.setMatrixAt(i, m4); this.bulbs.setColorAt(i, new THREE.Color(0, 0, 0)); });
-      this.bulbs.castShadow = false; socks.castShadow = false;
-      this.body.add(this.bulbs, socks);
-      this.bulbDead = pts.map(() => Math.random() < 0.06);
+    const tabY = h / 2 + 0.035, ringX = w / 2 - 0.12;
+    this.tilt = new THREE.Group(); this.body.add(this.tilt);
+    this.plate = new THREE.Group(); this.tilt.add(this.plate);
+    if (crooked) { this.tilt.position.set(-ringX, tabY, 0); this.plate.position.set(ringX, -tabY, 0); this.tilt.rotation.z = crooked; }
+    // the plate: dents, a little waviness and one corner folded towards you
+    const dents = Array.from({ length: 3 + ((R() * 3) | 0) }, () => [(R() - 0.5) * w * 0.9, (R() - 0.5) * h * 0.9, 0.05 + R() * 0.08, -(0.004 + R() * 0.008)]);
+    const cs = [R() < 0.5 ? -1 : 1, R() < 0.5 ? -1 : 1], fold = Math.min(w, h) * (0.3 + R() * 0.15), bk = 0.3 + R() * 0.25;
+    const zf = (x, y) => {
+      let z = Math.sin(x * 9 + seed) * 0.0015 + Math.sin(y * 13 + seed * 2) * 0.001;
+      for (const [dx, dy, r, d] of dents) z += d * Math.exp(-((x - dx) ** 2 + (y - dy) ** 2) / (r * r));
+      const t = cs[0] * x + cs[1] * y - (w / 2 + h / 2 - fold);
+      if (t > 0) z += t * bk;
+      return z;
+    };
+    const geo = new THREE.PlaneGeometry(w, h, 30, Math.max(6, Math.round((30 * h) / w)));
+    const P = geo.attributes.position;
+    for (let i = 0; i < P.count; i++) P.setZ(i, zf(P.getX(i), P.getY(i)));
+    geo.computeVertexNormals();
+    this.face = new LiveTex(1024, Math.round((1024 * h) / w));
+    this.mat = new THREE.MeshStandardMaterial({ map: this.face.tex, bumpMap: this.face.tex, bumpScale: 1.2, roughness: 0.82, metalness: 0.2 });
+    mesh(geo, this.mat, this.plate, 0, 0, 0.03);
+    const back = mesh(geo, new THREE.MeshStandardMaterial({ map: rustTex(), roughness: 0.9, metalness: 0.35, side: THREE.BackSide }), this.plate, 0, 0, 0.026);
+    back.castShadow = true;
+    // bolts in the corners (one gone: its hole is painted into the face)
+    const bx = 0.055 / w, by = 0.06 / h, miss = (R() * 4) | 0;
+    this.boltUV = [[bx, by], [1 - bx, by], [bx, 1 - by], [1 - bx, 1 - by]].map(([a, b], i) => [a, b, i === miss]);
+    const hex = cyl(0.014, 0.012, 'z', 6);
+    this.boltUV.forEach(([a, b, m]) => { if (m) return; const x = (a - 0.5) * w, y = (0.5 - b) * h; mesh(hex, F.rust, this.plate, x, y, 0.036 + zf(x, y)).castShadow = false; });
+    // hanger tabs + rings; chains up to the ceiling
+    for (const s of [-1, 1]) {
+      mesh(new THREE.BoxGeometry(0.05, 0.05, 0.006), F.rust, this.plate, s * ringX, h / 2 + 0.01, 0.027);
+      mesh(new THREE.TorusGeometry(0.022, 0.006, 6, 12), F.steel, this.plate, s * ringX, tabY + 0.005, 0.027);
     }
-    for (const s of [-1, 1]) mesh(new THREE.TorusGeometry(0.025, 0.007, 6, 12), F.steel, this.body, s * (w / 2 - 0.12), h / 2 + fw + 0.03, 0);
     const cg = cyl(0.007, 1, 'y', 6).translate(0, 0.5, 0);
-    this.chains = [-1, 1].map((s) => { const m = mesh(cg, F.steel, this.body, s * (w / 2 - 0.12), h / 2 + fw + 0.05, 0); m.castShadow = false; return m; });
-    this.top = h / 2 + fw + 0.05;
-    this.glow = 0; this.on = 1; this.base = 1; this.dim = false;
+    const sides = crooked ? [-1] : [-1, 1];
+    this.chains = sides.map((s) => { const m = mesh(cg, F.steel, this.body, s * ringX, tabY + 0.025, 0.027); m.castShadow = false; return m; });
+    if (crooked) {
+      // the snapped chain: a short stub dangling from the other ring
+      const stub = mesh(cyl(0.007, 0.16, 'y', 6).translate(0, -0.08, 0), F.steel, this.plate, ringX, tabY - 0.01, 0.027);
+      stub.rotation.z = -crooked; stub.castShadow = false;
+    }
+    this.top = tabY + 0.025;
+    this.hit = mesh(new THREE.PlaneGeometry(w + 0.04, h + 0.06), new THREE.MeshBasicMaterial({ visible: false }), this.plate, 0, 0, 0.07);
+    this.on = 1; this.base = 1; this.dim = false; this.glow = 0;
     this.sw = { x: 0, z: 0, vx: 0, vz: 0 };
-    this.t = Math.random() * 10;
-    this._c = new THREE.Color();
+    this.t = R() * 10;
+    this.crooked = crooked;
   }
-  // big = the title marquee (letter-spaced, no rule)
-  setText(title, sub = '', { dim = false, big = false } = {}) {
+  setText(title, sub = '', { dim = false, big = false, ghost = -1, paint } = {}) {
     this.dim = dim;
-    this.face.draw((g, w, h) => {
-      phosphorBg(g, w, h);
-      for (let i = 0; i < 90; i++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,230,190' : '0,0,0'},${Math.random() * 0.06})`; g.beginPath(); g.arc(Math.random() * w, Math.random() * h, 1 + Math.random() * 4, 0, TAU); g.fill(); }
-      const gold = dim ? '#5e4c30' : '#d8ad5c';
-      g.strokeStyle = gold; g.lineWidth = 5; g.strokeRect(18, 18, w - 36, h - 36);
-      g.lineWidth = 1.5; g.strokeRect(30, 30, w - 60, h - 60);
-      brackets(g, 30, 30, w - 60, h - 60, Math.min(70, h * 0.22), gold, 4, dim ? 0 : 10);
-      const ty = big ? h * (sub ? 0.43 : 0.52) : h * (sub ? 0.42 : 0.52);
-      const t = big ? title.split('').join(' ') : title;
-      giltText(g, t, w / 2, ty, w - 170, Math.round(h * (big ? 0.5 : 0.46)), { glow: 26, dim });
-      if (sub) {
-        g.fillStyle = gold;
-        const ry = h * 0.67;
-        g.fillRect(w * 0.3, ry, w * 0.4, 2);
-        for (const s of [-1, 1]) { const x = w / 2 + s * w * 0.21; g.beginPath(); g.moveTo(x, ry - 6); g.lineTo(x + 6, ry + 1); g.lineTo(x, ry + 8); g.lineTo(x - 6, ry + 1); g.closePath(); g.fill(); }
-        g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillStyle = dim ? '#7a6a52' : '#efe2c2';
-        fitText(g, sub, w / 2, h * 0.8, w - 180, Math.round(h * 0.17), `italic 600 {s}px ${FONT.main}`);
-      }
-      scanlines(g, w, h, 0.05);
-    });
-    this.base = dim ? 0.45 : 1;
+    this.face.draw((g, w, h) => rustySign(g, w, h, { title: title.toUpperCase(), sub, seed: this.seed, paint: paint || this.paint, ghost, big, dim, bolts: this.boltUV }));
   }
   // pivot at (x, ceilY, z), panel centre at height y
   place(x, y, z, ceilY, yaw = 0) {
@@ -1029,28 +1108,17 @@ export class HangPanel {
   kick(a = 1) { this.sw.vx += (Math.random() - 0.5) * 0.5 * a; this.sw.vz += (Math.random() - 0.5) * 0.9 * a; }
   update(dt, hover = false) {
     this.t += dt;
-    this.glow += ((hover ? 1 : 0) - this.glow) * (1 - Math.exp(-10 * dt));
-    const fl = this.on < 1 ? (Math.random() < 0.5 ? 0.1 : 1) * this.on : 1;
-    this.mat.emissiveIntensity = this.base * fl * (0.7 + 0.8 * this.glow + 0.03 * Math.sin(this.t * 31) * Math.sin(this.t * 7));
-    if (this.bulbs) {
-      const n = this.bulbs.count, c = this._c, chase = Math.floor(this.t * 9);
-      for (let i = 0; i < n; i++) {
-        let k = this.dim ? (i % 5 === 0 ? 0.5 : 0.05) : 0.9 + 0.07 * Math.sin(this.t * 3 + i);
-        if (this.glow > 0.05) k = (i + chase) % 3 === 0 ? 1.2 + 2.6 * this.glow : 0.7;
-        if (this.bulbDead[i]) k = Math.random() < 0.01 ? 1 : 0.03;
-        k *= fl;
-        c.setRGB(k * 1.9, k * 1.35, k * 0.62);
-        this.bulbs.setColorAt(i, c);
-      }
-      this.bulbs.instanceColor.needsUpdate = true;
-    }
+    this.glow += ((hover ? 1 : 0) - this.glow) * (1 - Math.exp(-8 * dt));
     const s = this.sw, L = Math.max(0.5, -this.body.position.y);
     const k = 9.8 / L;
-    s.vx += (-k * s.x - 1.2 * s.vx) * dt; s.vz += (-k * s.z - 1.2 * s.vz) * dt;
+    s.vx += (-k * s.x - 0.9 * s.vx) * dt; s.vz += (-k * s.z - 0.9 * s.vz) * dt;
     s.x += s.vx * dt; s.z += s.vz * dt;
     this.root.rotation.x = s.x + Math.sin(this.t * 0.7) * 0.004;
     this.root.rotation.z = s.z + Math.sin(this.t * 0.53 + 1) * 0.006;
-    this.body.position.z = this.glow * 0.02;
+    // a crooked sign grinds round its last chain
+    if (this.crooked) this.tilt.rotation.z = this.crooked + Math.sin(this.t * 0.9) * 0.012 + s.z * 0.6;
+    this.body.position.z = this.glow * 0.012;
+    return false;
   }
 }
 
@@ -1073,94 +1141,69 @@ export function gearGeo(rOut, rRoot, teeth, depth, { hole = 0, holes = 0, holeR 
   return g;
 }
 
-// the SETTINGS sign of the hub: a big brass cog hanging on two chains with an engraved enamel roundel and a
-// gilt name plate under it. Same interface as HangPanel (root/body/chains/hit/place/kick/update/setText):
-// it idles round slowly, spins up under the pointer and ratchets.
+// the SETTINGS sign of the hub: a big rusted cog hanging on two chains, a faded painted cog on its hub and a
+// stamped steel tag hanging off one screw under it. Same interface as HangPanel. Under the pointer the
+// seized cog jerks round a few teeth with a grind (update() returns true on each tooth).
 export class GearSign {
   constructor({ r = 0.27 } = {}) {
     const F = factoryMats();
-    this.r = r; this.w = r * 2; this.h = r * 2 + 0.2;
+    this.r = r; this.w = r * 2;
     this.root = new THREE.Group(); this.root.rotation.order = 'YXZ';
     this.body = new THREE.Group(); this.root.add(this.body);
-    // yoke + axle housing (static) the cog turns on
-    mesh(cyl(0.05, 0.12, 'z', 20), F.dark, this.body, 0, 0, -0.03);
-    mesh(new THREE.BoxGeometry(0.05, r + 0.08, 0.03), F.dark, this.body, 0, (r + 0.08) / 2, -0.07);
-    mesh(new THREE.BoxGeometry(r * 1.2, 0.04, 0.04), F.dark, this.body, 0, r + 0.08, -0.07);
+    const iron = new THREE.MeshStandardMaterial({ map: rustTex(), color: 0xc8b8a8, roughness: 0.85, metalness: 0.45 });
+    mesh(cyl(0.05, 0.12, 'z', 20), iron, this.body, 0, 0, -0.03);
+    mesh(new THREE.BoxGeometry(0.05, r + 0.08, 0.03), iron, this.body, 0, (r + 0.08) / 2, -0.07);
+    mesh(new THREE.BoxGeometry(r * 1.2, 0.04, 0.04), iron, this.body, 0, r + 0.08, -0.07);
     this.cog = new THREE.Group(); this.body.add(this.cog);
-    this.cogMat = F.brass.clone();
-    mesh(gearGeo(r, r * 0.84, 14, 0.055, { hole: 0.05, holes: 6, holeR: r * 0.17, holeAt: r * 0.55 }), this.cogMat, this.cog);
-    mesh(new THREE.TorusGeometry(r * 0.72, 0.008, 6, 48), F.dark, this.cog, 0, 0, 0.032).castShadow = false;
-    // the roundel: a cog icon engraved on dark enamel (static, so it reads)
+    mesh(gearGeo(r, r * 0.84, 14, 0.055, { hole: 0.05, holes: 6, holeR: r * 0.17, holeAt: r * 0.55 }), iron, this.cog);
+    this.cog.rotation.z = 0.3; // seized at an odd angle
     const ro = new LiveTex(256, 256, (g, w, h) => {
-      g.fillStyle = '#120c07'; g.beginPath(); g.arc(w / 2, h / 2, w / 2, 0, TAU); g.fill();
-      g.strokeStyle = '#d8ad5c'; g.lineWidth = 6; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 8, 0, TAU); g.stroke();
-      g.fillStyle = '#e9c069'; g.beginPath();
-      for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU, rr = i % 2 ? 62 : 80; g.lineTo(w / 2 + Math.cos(a) * rr, h / 2 + Math.sin(a) * rr); }
+      rustySign(g, w, h, { seed: 31, paint: 'yellow' });
+      g.globalCompositeOperation = 'destination-in'; g.beginPath(); g.arc(w / 2, h / 2, w / 2, 0, TAU); g.fill(); g.globalCompositeOperation = 'source-over';
+      g.fillStyle = 'rgba(28,20,12,0.85)'; g.beginPath();
+      for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU, rr = i % 2 ? 60 : 80; g.lineTo(w / 2 + Math.cos(a) * rr, h / 2 + Math.sin(a) * rr); }
       g.closePath(); g.fill();
-      g.fillStyle = '#120c07'; g.beginPath(); g.arc(w / 2, h / 2, 30, 0, TAU); g.fill();
+      g.fillStyle = '#a8842e'; g.beginPath(); g.arc(w / 2, h / 2, 28, 0, TAU); g.fill();
+      for (let i = 0; i < 300; i++) { g.fillStyle = Math.random() < 0.5 ? '#a8842e' : 'rgba(110,60,24,0.8)'; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
     });
-    this.roMat = new THREE.MeshStandardMaterial({ map: ro.tex, emissiveMap: ro.tex, emissive: 0xffffff, emissiveIntensity: 0.4, roughness: 0.3, metalness: 0.2 });
-    mesh(new THREE.CircleGeometry(0.062, 32), this.roMat, this.body, 0, 0, 0.04).castShadow = false;
-    // name plate under the cog
-    const pw = r * 2.1, ph = 0.13;
-    this.plate = new LiveTex(512, Math.round(512 * ph / pw));
-    this.mat = new THREE.MeshStandardMaterial({ map: this.plate.tex, emissiveMap: this.plate.tex, emissive: 0xffffff, emissiveIntensity: 1, roughness: 0.3, metalness: 0.15 });
-    const py = -r - 0.035 - ph / 2;
-    mesh(rbox(pw + 0.03, ph + 0.03, 0.03, 0.008), F.brass, this.body, 0, py, -0.005);
-    mesh(new THREE.PlaneGeometry(pw, ph), this.mat, this.body, 0, py, 0.012).castShadow = false;
-    mesh(new THREE.BoxGeometry(0.02, 0.05, 0.01), F.dark, this.body, 0, -r - 0.012, -0.01);
+    mesh(new THREE.CircleGeometry(0.062, 32), new THREE.MeshStandardMaterial({ map: ro.tex, transparent: true, roughness: 0.8, metalness: 0.2 }), this.body, 0, 0, 0.04).castShadow = false;
+    // the tag, hanging crooked off a single screw
+    const pw = r * 2.0, ph = 0.13;
+    this.tag = new THREE.Group(); this.tag.position.set(-pw / 2 + 0.03, -r - 0.03, 0.01); this.tag.rotation.z = -0.1; this.body.add(this.tag);
+    this.plate = new LiveTex(512, Math.round((512 * ph) / pw));
+    this.mat = new THREE.MeshStandardMaterial({ map: this.plate.tex, bumpMap: this.plate.tex, bumpScale: 1, roughness: 0.82, metalness: 0.25 });
+    mesh(new THREE.PlaneGeometry(pw, ph), this.mat, this.tag, pw / 2 - 0.03, -ph / 2 - 0.005, 0.004).castShadow = false;
+    mesh(new THREE.PlaneGeometry(pw, ph), new THREE.MeshStandardMaterial({ map: rustTex(), roughness: 0.9, side: THREE.BackSide }), this.tag, pw / 2 - 0.03, -ph / 2 - 0.005, 0.002);
+    mesh(cyl(0.012, 0.012, 'z', 6), F.rust, this.tag, 0, -0.02, 0.01);
+    mesh(new THREE.BoxGeometry(0.03, 0.05, 0.01), iron, this.body, -pw / 2 + 0.03, -r - 0.005, -0.005);
     this.hit = mesh(new THREE.PlaneGeometry(r * 2.2, r * 2 + ph + 0.06), new THREE.MeshBasicMaterial({ visible: false }), this.body, 0, -ph / 2 - 0.02, 0.07);
-    // a ring of marquee bulbs on a dark bezel behind the cog (matches the sign boxes)
-    const nb = 22, br = r + 0.05;
-    mesh(new THREE.RingGeometry(r - 0.02, br + 0.035, 48), F.dark, this.body, 0, 0, -0.045).castShadow = false;
-    this.bulbs = new THREE.InstancedMesh(_bulbGeo, _bulbMat, nb);
-    const m4 = new THREE.Matrix4();
-    for (let i = 0; i < nb; i++) { const a = (i / nb) * TAU; m4.makeTranslation(Math.cos(a) * br, Math.sin(a) * br, -0.03); this.bulbs.setMatrixAt(i, m4); this.bulbs.setColorAt(i, new THREE.Color(0, 0, 0)); }
-    this.bulbs.castShadow = false; this.body.add(this.bulbs);
-    this._c = new THREE.Color();
     const cg = cyl(0.007, 1, 'y', 6).translate(0, 0.5, 0);
     this.chains = [-1, 1].map((s) => { const m = mesh(cg, F.steel, this.body, s * r * 0.55, r + 0.1, -0.07); m.castShadow = false; return m; });
     this.top = r + 0.1; this.h = 2 * this.top;
-    this.glow = 0; this.on = 1; this.base = 1; this.spin = 0; this.ticks = 0;
+    this.glow = 0; this.on = 1; this.base = 1; this.spin = 0;
     this.sw = { x: 0, z: 0, vx: 0, vz: 0 };
     this.t = Math.random() * 10;
   }
-  setText(title = 'SETTINGS', sub = '') {
-    void sub;
-    this.plate.draw((g, w, h) => {
-      phosphorBg(g, w, h);
-      g.strokeStyle = '#d8ad5c'; g.lineWidth = 3; g.strokeRect(8, 8, w - 16, h - 16);
-      giltText(g, title.split('').join(' '), w / 2, h * 0.54, w - 60, Math.round(h * 0.62), { glow: 18 });
-    });
+  setText(title = 'SETTINGS') {
+    this.plate.draw((g, w, h) => rustySign(g, w, h, { title: title.toUpperCase(), seed: 23, paint: 'steel', spacing: 0.2, bolts: [[0.05, 0.3, false]] }));
   }
   place(x, y, z, ceilY, yaw = 0) { HangPanel.prototype.place.call(this, x, y, z, ceilY, yaw); }
-  kick(a = 1) { this.sw.vx += (Math.random() - 0.5) * 0.3 * a; this.sw.vz += (Math.random() - 0.5) * 0.5 * a; this.spin += 2.5 * a; }
-  // returns true when a tooth ratchets past (the menu plays a tick)
+  kick(a = 1) { this.sw.vx += (Math.random() - 0.5) * 0.3 * a; this.sw.vz += (Math.random() - 0.5) * 0.5 * a; this.spin += 1.6 * a; }
   update(dt, hover = false) {
     this.t += dt;
-    this.glow += ((hover ? 1 : 0) - this.glow) * (1 - Math.exp(-10 * dt));
-    const fl = this.on < 1 ? (Math.random() < 0.5 ? 0.1 : 1) * this.on : 1;
-    this.mat.emissiveIntensity = fl * (0.7 + 0.8 * this.glow);
-    this.roMat.emissiveIntensity = fl * (0.35 + 0.9 * this.glow);
-    this.cogMat.emissive.setRGB(0.07 + 0.25 * this.glow, 0.045 + 0.16 * this.glow, 0.012 + 0.04 * this.glow);
-    const nb = this.bulbs.count, c = this._c, chase = Math.floor(this.t * 9);
-    for (let i = 0; i < nb; i++) {
-      let k = 0.85 + 0.06 * Math.sin(this.t * 3 + i);
-      if (this.glow > 0.05) k = (i + chase) % 3 === 0 ? 1.1 + 2.4 * this.glow : 0.6;
-      k *= fl; c.setRGB(k * 1.9, k * 1.35, k * 0.62); this.bulbs.setColorAt(i, c);
-    }
-    this.bulbs.instanceColor.needsUpdate = true;
-    this.spin = this.spin * Math.exp(-2.5 * dt);
-    const w = 0.22 + 2.4 * this.glow + this.spin;
+    this.glow += ((hover ? 1 : 0) - this.glow) * (1 - Math.exp(-8 * dt));
+    this.spin = this.spin * Math.exp(-3.2 * dt);
+    const w = this.spin + 0.25 * this.glow * (Math.sin(this.t * 7) > 0.6 ? 1 : 0);
     const prev = Math.floor(this.cog.rotation.z / (TAU / 14));
     this.cog.rotation.z -= w * dt;
-    const tick = Math.floor(this.cog.rotation.z / (TAU / 14)) !== prev && this.glow > 0.3;
+    const tick = Math.floor(this.cog.rotation.z / (TAU / 14)) !== prev;
+    this.tag.rotation.z = -0.1 + this.sw.z * -1.5 + Math.sin(this.t * 1.1) * 0.01;
     const s = this.sw, L = Math.max(0.5, -this.body.position.y), k = 9.8 / L;
-    s.vx += (-k * s.x - 1.2 * s.vx) * dt; s.vz += (-k * s.z - 1.2 * s.vz) * dt;
+    s.vx += (-k * s.x - 0.9 * s.vx) * dt; s.vz += (-k * s.z - 0.9 * s.vz) * dt;
     s.x += s.vx * dt; s.z += s.vz * dt;
     this.root.rotation.x = s.x + Math.sin(this.t * 0.7) * 0.004;
     this.root.rotation.z = s.z + Math.sin(this.t * 0.53 + 1) * 0.006;
-    this.body.position.z = this.glow * 0.03;
+    this.body.position.z = this.glow * 0.012;
     return tick;
   }
 }

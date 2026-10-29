@@ -105,8 +105,8 @@ export class ArrivalDirector extends Device {
     }
     // the level's walls are light-baked: light the plug by the light the camp has there so it reads as the same wall
     const mat = Mat.get('wallpaper').clone();
-    const lc = new THREE.Color(0.55, 0.5, 0.36);
-    try { const sc = new THREE.Color(); this.level.sampleLight?.(c.clone().addScaledVector(g, 0.6).setY(fy + 1.4), sc); if (sc.r + sc.g + sc.b > 0.05) lc.copy(sc).multiplyScalar(0.85); } catch (e) { /* keep the default */ }
+    const lc = new THREE.Color(0.3, 0.27, 0.19);
+    try { const sc = new THREE.Color(); this.level.sampleLight?.(c.clone().addScaledVector(g, 0.6).setY(fy + 1.4), sc); if (sc.r + sc.g + sc.b > 0.05) lc.copy(sc).multiplyScalar(0.42); } catch (e) { /* keep the default */ }
     mat.emissive = lc; mat.emissiveMap = mat.map; mat.emissiveIntensity = 1;
     this.sealMat = mat;
     const wall = new THREE.Mesh(geo, mat);
