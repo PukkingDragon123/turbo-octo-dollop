@@ -206,7 +206,7 @@ export function buildFirstPersonArms(cosmetics = DEFAULT_COSMETICS, opts = {}) {
   }
   const screenTex = labelTexture(256, 192, (ctx, w, h) => {
     ctx.fillStyle = '#0c1a10'; ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#62ff8e'; ctx.font = "96px "Jolly Lodger", Georgia, serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#62ff8e'; ctx.font = "96px 'Jolly Lodger', Georgia, serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('03:33', w / 2, h / 2 + 6);
   });
   const screenMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, map: screenTex, emissive: 0xffffff, emissiveMap: screenTex, emissiveIntensity: 1.0, roughness: 0.25 });

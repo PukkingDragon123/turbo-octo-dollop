@@ -20,7 +20,7 @@ export const faceV = (ph) => (ph - FACE.ph0) / (FACE.ph1 - FACE.ph0);
 export const PLAIN_UV = [0.5, faceV(0.56)];
 const FU = (th) => faceU(th) * N;
 const FV = (ph) => (1 - faceV(ph)) * N;
-const MONO = ""Jolly Lodger", Georgia, serif";
+const MONO = "'Jolly Lodger', Georgia, serif";
 const PX = N / (FACE.th1 - FACE.th0);   // px per radian of azimuth
 
 // soft elliptical blob (radial gradient), canvas coordinates

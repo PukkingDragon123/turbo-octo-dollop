@@ -329,7 +329,7 @@ export function buildReceptionist() {
   B.skinned('canvas', pillow(0.034, 0.03, 0.02).translate(0, 0.84, -0.18), torsoW, 0xa8202a);
   for (const s of [-1, 1]) B.skinned('canvas', new THREE.SphereGeometry(1, 16, 10).scale(0.08, 0.04, 0.085).translate(s * 0.17, 0.745, 0), torsoW, 0xf0f2f8);
   // name tag (own small texture)
-  const tagTex = labelTexture(256, 96, (ctx, w, h) => { ctx.fillStyle = '#f4f2ea'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#c0202a'; ctx.fillRect(0, 0, w, 26); ctx.fillStyle = '#fff'; ctx.font = "bold 20px "Jolly Lodger", Georgia, serif"; ctx.textAlign = 'center'; ctx.fillText('HELLO I AM', w / 2, 20); ctx.fillStyle = '#151515'; ctx.font = "bold 40px "Jolly Lodger", Georgia, serif"; ctx.fillText('RECEPTION', w / 2, 72); });
+  const tagTex = labelTexture(256, 96, (ctx, w, h) => { ctx.fillStyle = '#f4f2ea'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#c0202a'; ctx.fillRect(0, 0, w, 26); ctx.fillStyle = '#fff'; ctx.font = "bold 20px 'Jolly Lodger', Georgia, serif"; ctx.textAlign = 'center'; ctx.fillText('HELLO I AM', w / 2, 20); ctx.fillStyle = '#151515'; ctx.font = "bold 40px 'Jolly Lodger', Georgia, serif"; ctx.fillText('RECEPTION', w / 2, 72); });
   // head: sack + face (beads with lashes, nose, frozen stitched smile with lipstick, blush)
   nakedHead(B, { seed: 7 });
   beadEyes(B, 0.0225);
