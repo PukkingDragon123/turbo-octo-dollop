@@ -87,7 +87,7 @@ function signTexture(lines, opts = {}) {
   c.textAlign = 'center';
   c.textBaseline = 'middle';
   lines.forEach(([t, size, col, y], i) => {
-    c.font = `bold ${size}px "IBM Plex Mono", monospace`;
+    c.font = `bold ${size}px "Jolly Lodger", Georgia, serif`;
     c.fillStyle = col || '#111';
     c.fillText(t, W / 2, y ?? (H * (0.2 + i * 0.25)));
   });

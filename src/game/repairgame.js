@@ -70,14 +70,14 @@ function boardCanvas(rowOf, rnd) {
     for (let k = 0; k < 8; k++) { x.fillStyle = 'rgba(200,170,110,0.25)'; x.beginPath(); x.arc(bx + (rnd() - 0.5) * r * 1.6, by + (rnd() - 0.5) * r, 2 + rnd() * 4, 0, 7); x.fill(); }
   }
   // silkscreen
-  x.fillStyle = 'rgba(235,235,220,0.85)'; x.font = 'bold 22px "Courier New", monospace'; x.textBaseline = 'middle';
+  x.fillStyle = 'rgba(235,235,220,0.85)'; x.font = 'bold 22px "Jolly Lodger", Georgia, serif'; x.textBaseline = 'middle';
   x.fillText('HEALTHITY MK-VII  MAIN LOGIC  REV.C', px(-0.17), py(0.112));
-  x.font = '16px "Courier New", monospace';
+  x.font = '16px "Jolly Lodger", Georgia, serif';
   x.fillText('(C) 1979 R.O.O.M. MEDICAL DIV.   DO NOT SERVICE', px(-0.17), py(-0.113));
   x.fillText('IC1', px(-0.115), py(0.083)); x.fillText('C14', px(0.06), py(0.095)); x.fillText('R7', px(0.115), py(-0.095)); x.fillText('Q3', px(-0.06), py(-0.095));
   WIRES.forEach((w, i) => { x.fillStyle = w.col; x.fillRect(px(XL) - 52, py(ROWS[i]) - 8, 16, 16); x.fillRect(px(XR) + 36, py(ROWS[rowOf[i]]) - 8, 16, 16); });
   x.strokeStyle = 'rgba(235,235,220,0.7)'; x.lineWidth = 2; x.strokeRect(px(0.11), py(0.118), 70, 26);
-  x.fillStyle = 'rgba(235,235,220,0.7)'; x.font = 'bold 14px monospace'; x.fillText('QC  OK', px(0.11) + 8, py(0.118) + 13);
+  x.fillStyle = 'rgba(235,235,220,0.7)'; x.font = 'bold 14px "Jolly Lodger", Georgia, serif'; x.fillText('QC  OK', px(0.11) + 8, py(0.118) + 13);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;
 }
@@ -315,20 +315,20 @@ export class RepairGame {
     this.title = labelTex(512, 96, (x, w, h, txt, sub) => {
       x.fillStyle = 'rgba(8,10,8,0.62)'; x.beginPath(); x.roundRect(4, 4, w - 8, h - 8, 12); x.fill();
       x.strokeStyle = 'rgba(255,231,168,0.4)'; x.lineWidth = 2; x.stroke();
-      x.fillStyle = '#ffe7a8'; x.font = 'bold 26px "Courier New", monospace'; x.textBaseline = 'middle'; x.fillText(txt, 22, 34, w - 44);
-      x.fillStyle = 'rgba(255,231,168,0.75)'; x.font = '22px "Courier New", monospace'; x.fillText(sub, 22, 68);
+      x.fillStyle = '#ffe7a8'; x.font = 'bold 26px "Jolly Lodger", Georgia, serif'; x.textBaseline = 'middle'; x.fillText(txt, 22, 34, w - 44);
+      x.fillStyle = 'rgba(255,231,168,0.75)'; x.font = '22px "Jolly Lodger", Georgia, serif'; x.fillText(sub, 22, 68);
     });
     this.leaveTex = labelTex(256, 80, (x, w, h, hot) => {
       x.fillStyle = hot ? 'rgba(120,30,20,0.85)' : 'rgba(8,10,8,0.62)'; x.beginPath(); x.roundRect(4, 4, w - 8, h - 8, 12); x.fill();
       x.strokeStyle = 'rgba(255,140,110,0.6)'; x.lineWidth = 2; x.stroke();
-      x.fillStyle = '#ffb59a'; x.font = 'bold 28px "Courier New", monospace'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(input.touch ? 'X  LEAVE' : 'X  LEAVE [G]', w / 2, h / 2 + 1);
+      x.fillStyle = '#ffb59a'; x.font = 'bold 28px "Jolly Lodger", Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(input.touch ? 'X  LEAVE' : 'X  LEAVE [G]', w / 2, h / 2 + 1);
     });
     keep(this.title); keep(this.leaveTex);
     this.titleMesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(1, 96 / 512)), keep(new THREE.MeshBasicMaterial({ map: this.title, transparent: true, depthTest: false, toneMapped: false })));
     this.leaveMesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(1, 80 / 256)), keep(new THREE.MeshBasicMaterial({ map: this.leaveTex, transparent: true, depthTest: false, toneMapped: false })));
     this.titleMesh.renderOrder = this.leaveMesh.renderOrder = 998;
     this.hintTex = labelTex(1024, 200, (x, w, h, txt, n, col) => {
-      x.font = 'bold 38px "Courier New", monospace';
+      x.font = 'bold 38px "Jolly Lodger", Georgia, serif';
       const words = txt.split(' '), lines = []; let ln = '';
       for (const wd of words) { const t = ln ? ln + ' ' + wd : wd; if (x.measureText(t).width > w - 90 && ln) { lines.push(ln); ln = wd; } else ln = t; }
       lines.push(ln);

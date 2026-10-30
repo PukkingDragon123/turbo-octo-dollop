@@ -57,7 +57,7 @@ function labelTex(text, w = 256, h = 64, fg = '#2a1a08', bg = '#c8a050') {
   const x = c.getContext('2d');
   x.fillStyle = bg; x.fillRect(0, 0, w, h);
   x.strokeStyle = 'rgba(0,0,0,0.5)'; x.lineWidth = 4; x.strokeRect(3, 3, w - 6, h - 6);
-  x.fillStyle = fg; x.font = `bold ${Math.round(h * 0.62)}px "IBM Plex Mono", monospace`; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = fg; x.font = `bold ${Math.round(h * 0.62)}px "Jolly Lodger", Georgia, serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
   x.fillText(text, w / 2, h / 2 + 2);
   for (const sx of [12, w - 12]) { x.fillStyle = '#6a5020'; x.beginPath(); x.arc(sx, h / 2, 5, 0, PI * 2); x.fill(); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
@@ -177,7 +177,7 @@ export class VitalsHUD {
     x.strokeStyle = '#222'; x.lineWidth = 3;
     for (let i = 0; i <= 10; i++) { const a = PI * 0.75 + (i / 10) * PI * 1.5; x.beginPath(); x.moveTo(64 + Math.cos(a) * 44, 64 + Math.sin(a) * 44); x.lineTo(64 + Math.cos(a) * 56, 64 + Math.sin(a) * 56); x.stroke(); }
     x.strokeStyle = '#c02010'; x.lineWidth = 8; x.beginPath(); x.arc(64, 64, 50, PI * 0.75, PI * 1.05); x.stroke();
-    x.fillStyle = '#222'; x.font = 'bold 18px monospace'; x.textAlign = 'center'; x.fillText('PSI', 64, 96);
+    x.fillStyle = '#222'; x.font = 'bold 18px "Jolly Lodger", Georgia, serif'; x.textAlign = 'center'; x.fillText('PSI', 64, 96);
     const gt = new THREE.CanvasTexture(gc); gt.colorSpace = THREE.SRGBColorSpace;
     const gauge = new THREE.Group();
     gauge.position.set(R * 0.62, R * 0.08, R * 0.62);

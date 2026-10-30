@@ -113,7 +113,7 @@ function labelSprite(str, color = '#bff4ff') {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 64;
   const ctx = c.getContext('2d');
-  ctx.font = 'bold 34px "IBM Plex Mono", monospace';
+  ctx.font = 'bold 34px "Jolly Lodger", Georgia, serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.shadowColor = color;

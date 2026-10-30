@@ -201,7 +201,7 @@ function textures() {
   a.save(); a.translate(930, 245); a.rotate(-0.2); a.strokeStyle = 'rgba(160,30,24,0.8)'; a.lineWidth = 3; a.strokeRect(-70, -18, 140, 36); a.fillStyle = 'rgba(160,30,24,0.8)'; a.font = font('sign', 20); a.fillText('APPROVED', 0, 8); a.restore();
   // "STAND CLEAR" sticker 256..640 x 120..200 and a CCTV warning 256..640 x 200..280
   a.fillStyle = '#d6a31c'; a.fillRect(256, 124, 384, 72); a.fillStyle = '#141414'; a.font = font('sign', 26); a.fillText('MIND THE GATE', 448, 170);
-  a.fillStyle = '#e4e0d6'; a.fillRect(256, 204, 384, 72); a.fillStyle = '#9a1c18'; a.font = font('sign', 18); a.fillText('THIS CAR IS MONITORED', 448, 234); a.fillStyle = '#222'; a.font = '14px Arial'; a.fillText('FOR YOUR SAFETY AND OURS', 448, 258);
+  a.fillStyle = '#e4e0d6'; a.fillRect(256, 204, 384, 72); a.fillStyle = '#9a1c18'; a.font = font('sign', 18); a.fillText('THIS CAR IS MONITORED', 448, 234); a.fillStyle = '#222'; a.font = '14px "Jolly Lodger", Georgia, serif'; a.fillText('FOR YOUR SAFETY AND OURS', 448, 258);
   const atlas = ctex(A);
   TEX = { veneer, floor, floorN, atlas };
   return TEX;

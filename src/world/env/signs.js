@@ -72,7 +72,7 @@ function atlas() {
     const [x, y, w, h] = r;
     g.fillStyle = bg; g.fillRect(x, y, w, h);
     g.fillStyle = '#1b1a17';
-    g.font = `bold ${size}px "Courier New", Courier, monospace`;
+    g.font = `bold ${size}px "Jolly Lodger", Georgia, serif`;
     g.textAlign = 'center'; g.textBaseline = 'middle';
     // stencil bridges: draw the text, then cut thin vertical gaps
     g.fillText(text, x + w / 2, y + h / 2 + 4);

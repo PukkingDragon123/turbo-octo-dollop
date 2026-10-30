@@ -138,7 +138,7 @@ function grassTex() {
 function stencil(text) {
   const c = canvas(256, 128), x = c.getContext('2d');
   x.clearRect(0, 0, 256, 128);
-  x.fillStyle = 'rgba(235,230,215,0.92)'; x.font = 'bold 96px "Arial Black", Arial'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = 'rgba(235,230,215,0.92)'; x.font = 'bold 96px "Jolly Lodger", Georgia, serif, Arial'; x.textAlign = 'center'; x.textBaseline = 'middle';
   x.fillText(text, 128, 68);
   // stencil bridges + overspray
   x.globalCompositeOperation = 'destination-out';

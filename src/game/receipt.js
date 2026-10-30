@@ -19,7 +19,7 @@ const PW = 0.058;             // paper width in Healthity model units (the slot 
 const NSEG = 28;
 const PRINT_TIME = 2.4, HANG_TIME = 9;
 const INK = '#23232b', PAPER = '#f2eee2';
-const FONT = '"Courier New", "Liberation Mono", "DejaVu Sans Mono", monospace';
+const FONT = '"Jolly Lodger", Georgia, serif';
 
 export function missionTasks(game) {
   const m = game.world?.level?.mission;

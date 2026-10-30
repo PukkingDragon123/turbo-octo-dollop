@@ -1,6 +1,4 @@
 // R.O.O.M. — boot & main loop
-import '@fontsource/vt323';
-import '@fontsource/ibm-plex-mono';
 import { loadFonts, font } from './ui/fonts.js';
 import './ui/style.css';
 import * as THREE from 'three';

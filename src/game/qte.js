@@ -169,7 +169,7 @@ export class QTE {
       rr(c, xx, yy, w, kh - 6, 14); c.fillStyle = done ? '#3a5a3a' : q.wrong > 0.3 && cur ? '#a83020' : cur ? '#e8dcb8' : '#8a8270'; c.fill();
       rr(c, xx + 8, yy + 6, w - 16, kh - 26, 10); c.fillStyle = done ? '#4f7a4f' : cur ? '#f6efd8' : '#a39a86'; c.fill();
       c.fillStyle = done ? '#bfffbf' : '#1a1610';
-      c.font = `bold ${wide ? 40 : 58}px "IBM Plex Mono", monospace`;
+      c.font = `bold ${wide ? 40 : 58}px "Jolly Lodger", Georgia, serif`;
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText(done ? '✓' : lab, xx + w / 2, yy + (kh - 26) / 2 + 8);
       if (cur && !done) { c.strokeStyle = q.color; c.lineWidth = 5; rr(c, xx - 5, yy - 5, w + 10, kh + 4, 18); c.stroke(); }
@@ -182,7 +182,7 @@ export class QTE {
     const left = 1 - q.t / q.duration;
     c.fillStyle = left < 0.3 ? '#ff5040' : 'rgba(255,255,255,0.7)';
     c.fillRect(bx + (bw * (1 - left)) / 2, by + 30, bw * left, 5);
-    c.font = 'bold 30px "VT323", monospace';
+    c.font = 'bold 30px "Jolly Lodger", Georgia, serif';
     c.fillStyle = '#fff';
     const hint = input.touch ? (q.kind === 'mash' ? 'TAP! TAP! TAP!' : q.kind === 'hold' ? 'HOLD THE SCREEN' : 'TAP THE KEYS') : (q.kind === 'mash' ? 'MASH IT!' : q.kind === 'hold' ? 'HOLD IT!' : '');
     if (hint) c.fillText(hint, CW / 2, 228);
@@ -245,7 +245,7 @@ export class QTE {
         b.type = 'button';
         b.dataset.k = k;
         b.textContent = keyLabel(k);
-        b.style.cssText = 'min-width:68px;height:68px;font:bold 28px "IBM Plex Mono",monospace;background:#e8dcb8;color:#1a1610;border:3px solid #ffcc33;border-radius:12px;';
+        b.style.cssText = 'min-width:68px;height:68px;font:bold 28px "Jolly Lodger", Georgia, serif;background:#e8dcb8;color:#1a1610;border:3px solid #ffcc33;border-radius:12px;';
         wrap.appendChild(b);
       }
       el.appendChild(wrap);

@@ -436,10 +436,10 @@ gens.cardboard = () => {
   const W = 512, H = 512, L = new Layer(W, H);
   const print = stampCanvas(L, (ctx, w, h) => {
     ctx.fillStyle = '#000';
-    ctx.font = 'bold 54px "IBM Plex Mono", monospace';
+    ctx.font = 'bold 54px "Jolly Lodger", Georgia, serif';
     ctx.textAlign = 'center';
     ctx.fillText('R.O.O.M.', w * 0.5, h * 0.62);
-    ctx.font = 'bold 22px "IBM Plex Mono", monospace';
+    ctx.font = 'bold 22px "Jolly Lodger", Georgia, serif';
     ctx.fillText('SUPPLY DIVISION', w * 0.5, h * 0.7);
     ctx.fillText('THIS SIDE UP  ↑↑', w * 0.5, h * 0.9);
     ctx.lineWidth = 4;

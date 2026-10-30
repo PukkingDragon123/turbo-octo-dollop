@@ -53,7 +53,7 @@ function signMat(lines, bg = '#1a2a4a', fg = '#e8e4d8', w = 512, h = 128) {
   const c = cv.getContext('2d');
   c.fillStyle = bg; c.fillRect(0, 0, w, h);
   c.fillStyle = fg; c.textAlign = 'center'; c.textBaseline = 'middle';
-  lines.forEach(([t, sz, y]) => { c.font = `bold ${sz}px "IBM Plex Mono", monospace`; c.fillText(t, w / 2, y); });
+  lines.forEach(([t, sz, y]) => { c.font = `bold ${sz}px "Jolly Lodger", Georgia, serif`; c.fillText(t, w / 2, y); });
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
   return new THREE.MeshStandardMaterial({ map: t, roughness: 0.5, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.05 });

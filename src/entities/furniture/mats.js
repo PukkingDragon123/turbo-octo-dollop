@@ -400,7 +400,7 @@ const DEFS = {
     ctx.beginPath(); ctx.moveTo(0, 128); ctx.lineTo(512, 128); ctx.stroke();
     for (const x of [128, 384]) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 256); ctx.stroke(); }
     for (const cx of [0, 256, 512]) { ctx.beginPath(); for (let y = 0; y <= 256; y += 4) { const tt = (y / 256) * Math.PI; const x = cx + Math.sin(tt) * 82 * (cx === 256 ? -1 : 1); if (y === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke(); }
-    ctx.fillStyle = 'rgba(20,10,5,0.75)'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center'; ctx.fillText('OFFICIAL SIZE 7', 192, 110);
+    ctx.fillStyle = 'rgba(20,10,5,0.75)'; ctx.font = 'bold 11px "Jolly Lodger", Georgia, serif'; ctx.textAlign = 'center'; ctx.fillText('OFFICIAL SIZE 7', 192, 110);
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
     const D = setFor('rubber'); const td = Synth.pbr(D.recipe, D.opts);

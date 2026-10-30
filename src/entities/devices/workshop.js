@@ -70,7 +70,7 @@ export function b_workbench(o) {
     c.strokeRect(20, 20, 30, 150); c.strokeRect(10, 20, 50, 30);
     for (let i = 0; i < 3; i++) c.strokeRect(90 + i * 40, 30, 16, 120 - i * 20);
     c.strokeRect(240, 20, 200, 60); c.beginPath(); c.arc(470, 200, 30, 0, TAU); c.stroke();
-    c.fillStyle = 'rgba(240,235,220,0.8)'; c.font = 'bold 18px monospace'; c.fillText('IF FOUND MISSING, SO ARE YOU', 120, 240);
+    c.fillStyle = 'rgba(240,235,220,0.8)'; c.font = 'bold 18px "Jolly Lodger", Georgia, serif'; c.fillText('IF FOUND MISSING, SO ARE YOU', 120, 240);
   });
   k.decal(sil, 1.2, 0.61, -0.2, PB.y0 + 0.48, PB.z - 0.0038);
   const tz = PB.z + 0.02;

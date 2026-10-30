@@ -164,8 +164,8 @@ export const FONT = {
   sans: '"Arial Black", "Inter Black", "Inter", "Helvetica Neue", Arial, sans-serif',
   bold: '"Arial", "Inter", "Helvetica Neue", "Liberation Sans", sans-serif',
   cond: '"Arial Narrow", "Roboto Condensed", "Liberation Sans Narrow", Arial, sans-serif',
-  mono: '"IBM Plex Mono", "DejaVu Sans Mono", "Courier New", monospace',
-  vt: '"VT323", "IBM Plex Mono", monospace',
+  mono: '"Jolly Lodger", Georgia, serif',
+  vt: '"Jolly Lodger", Georgia, serif',
   serif: 'Georgia, "Times New Roman", "DejaVu Serif", serif',
   stencil: '"Stencil", "Arial Black", "Inter Black", "Impact", sans-serif',
 };

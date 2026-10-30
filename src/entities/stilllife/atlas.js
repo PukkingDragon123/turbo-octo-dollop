@@ -38,7 +38,7 @@ export function atlasTextures() {
   C.fillStyle = '#ffffff'; C.fillRect(0, 0, ATLAS_W, ATLAS_H);
   Hh.fillStyle = '#808080'; Hh.fillRect(0, 0, ATLAS_W, ATLAS_H);
   const r = new RNG(911);
-  const font = (px, w = 'bold') => `${w} ${px}px 'IBM Plex Mono', 'Courier New', monospace`;
+  const font = (px, w = 'bold') => `${w} ${px}px "Jolly Lodger", Georgia, serif`;
 
   // ---------------- badges
   const badge = (name, i) => {

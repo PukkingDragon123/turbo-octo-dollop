@@ -280,7 +280,7 @@ export function atlasUV(r, u, v) {
   return [(x + u * w) / ATLAS.W, 1 - (y + (1 - v) * h) / ATLAS.H];
 }
 
-const MONO = "'IBM Plex Mono', monospace", VT = "'VT323', monospace";
+const MONO = ""Jolly Lodger", Georgia, serif", VT = ""Jolly Lodger", Georgia, serif";
 function hazard(ctx, x, y, w, h, step = 28) {
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
   ctx.fillStyle = '#f2c418'; ctx.fillRect(x, y, w, h);

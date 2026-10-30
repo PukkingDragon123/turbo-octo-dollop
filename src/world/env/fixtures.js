@@ -71,9 +71,9 @@ function atlas() {
     const [x, y, w, h] = R.exit;
     g.fillStyle = '#e9e6dc'; g.fillRect(x, y, w, h);
     g.fillStyle = '#5a0c08'; g.fillRect(x + 10, y + 10, w - 20, h - 20);
-    ge.fillStyle = '#ff3020'; ge.font = 'bold 92px "Arial Black", Arial, sans-serif'; ge.textAlign = 'center'; ge.textBaseline = 'middle';
+    ge.fillStyle = '#ff3020'; ge.font = 'bold 92px "Jolly Lodger", Georgia, serif, Arial, sans-serif'; ge.textAlign = 'center'; ge.textBaseline = 'middle';
     ge.fillText('EXIT', x + w / 2, y + h / 2 + 4);
-    g.fillStyle = '#c8261a'; g.font = 'bold 92px "Arial Black", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#c8261a'; g.font = 'bold 92px "Jolly Lodger", Georgia, serif, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText('EXIT', x + w / 2, y + h / 2 + 4);
     ge.fillStyle = '#ff3020';
     for (const s of [-1, 1]) { ge.beginPath(); const ax = x + w / 2 + s * 125; ge.moveTo(ax, y + h / 2 - 18); ge.lineTo(ax + s * 16, y + h / 2); ge.lineTo(ax, y + h / 2 + 18); ge.fill(); }
@@ -103,15 +103,15 @@ function atlas() {
     g.strokeStyle = '#6a604c'; g.lineWidth = 3; g.stroke();
     g.fillStyle = '#3a3430'; g.fillRect(x + w * 0.35 - 2, y + h * 0.2, 4, h * 0.3);
     g.fillStyle = '#e8e2d0'; g.fillRect(x + w * 0.62, y + h * 0.3, w * 0.28, h * 0.4);
-    g.fillStyle = '#2a2622'; g.font = '20px monospace'; g.fillText('68', x + w * 0.68, y + h * 0.58);
+    g.fillStyle = '#2a2622'; g.font = '20px "Jolly Lodger", Georgia, serif'; g.fillText('68', x + w * 0.68, y + h * 0.58);
     noise(x, y, w, h, 6);
   }
   // fire alarm pull station
   {
     const [x, y, w, h] = R.alarm;
     g.fillStyle = '#c42a1e'; g.fillRect(x, y, w, h);
-    g.fillStyle = '#e8e2d8'; g.font = 'bold 26px Arial, sans-serif'; g.textAlign = 'center';
-    g.fillText('FIRE', x + w / 2, y + 40); g.font = 'bold 18px Arial, sans-serif'; g.fillText('PULL DOWN', x + w / 2, y + 190);
+    g.fillStyle = '#e8e2d8'; g.font = 'bold 26px "Jolly Lodger", Georgia, serif, sans-serif'; g.textAlign = 'center';
+    g.fillText('FIRE', x + w / 2, y + 40); g.font = 'bold 18px "Jolly Lodger", Georgia, serif, sans-serif'; g.fillText('PULL DOWN', x + w / 2, y + 190);
     g.fillStyle = '#8a1a12'; rr(g, x + w * 0.25, y + h * 0.32, w * 0.5, h * 0.36, 8); g.fill();
     g.fillStyle = '#e8e2d8'; rr(g, x + w * 0.32, y + h * 0.4, w * 0.36, h * 0.12, 5); g.fill();
     noise(x, y, w, h, 8);

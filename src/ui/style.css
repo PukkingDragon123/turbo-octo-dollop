@@ -10,7 +10,7 @@
   --ink: #0d0906;
   --bg: #0c0703;
   --panel: rgba(18, 10, 3, 0.94);
-  --font: 'VT323', 'IBM Plex Mono', monospace;
+  --font: 'Jolly Lodger', Georgia, serif;
   --px: 2px;
 }
 @media (min-width: 1700px) and (min-height: 950px) { :root { --px: 3px; } }
@@ -383,7 +383,7 @@ canvas.px, #ui canvas { image-rendering: pixelated; image-rendering: crisp-edges
 
 /* ===== Elegant UI override: replaces the old pixel-art frames on every remaining HTML screen =====
    One face (Cormorant Garamond), ivory ink, hairline gold rules, dark glass. No border-images, no pixel scaling. */
-:root { --lux-font: "Cormorant Garamond", "EB Garamond", Garamond, Georgia, serif; --lux-ink: #efe6d2; --lux-gold: #c9aa6b; --lux-dim: #8f8571; --lux-bg: rgba(9, 8, 7, 0.84); --lux-red: #d0644c; }
+:root { --lux-font: "Jolly Lodger", Georgia, serif; --lux-ink: #efe6d2; --lux-gold: #c9aa6b; --lux-dim: #8f8571; --lux-bg: rgba(9, 8, 7, 0.84); --lux-red: #d0644c; }
 #ui, #ui * { font-family: var(--lux-font) !important; image-rendering: auto !important; }
 #ui .crt, #pause .crt, #settings .crt, #controls .crt, #alert .crt, #runover .crt, #custom .crt, #pxterm, #pxwatch, #pxlobby {
   border: 1px solid rgba(201, 170, 107, 0.45) !important; border-image: none !important; border-radius: 2px;

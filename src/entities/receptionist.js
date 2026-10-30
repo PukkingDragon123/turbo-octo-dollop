@@ -204,7 +204,7 @@ function faceTexture() {
   x.strokeStyle = 'rgba(52,36,30,0.75)'; x.lineWidth = 2.4;
   for (const s of [-1, 1]) { x.beginPath(); x.moveTo(FU(s * FACE.jawTh), FV(FACE.mouth)); x.lineTo(FU(s * FACE.jawTh), FV(FACE.ph0)); x.stroke(); }
   x.beginPath(); x.moveTo(FU(-FACE.jawTh), FV(FACE.mouth)); x.lineTo(FU(-0.3), FV(FACE.mouth) - 2); x.moveTo(FU(0.3), FV(FACE.mouth) - 2); x.lineTo(FU(FACE.jawTh), FV(FACE.mouth)); x.stroke();
-  x.fillStyle = 'rgba(90,76,52,0.55)'; x.font = 'bold 10px "IBM Plex Mono", monospace'; x.textAlign = 'center';
+  x.fillStyle = 'rgba(90,76,52,0.55)'; x.font = 'bold 10px "Jolly Lodger", Georgia, serif'; x.textAlign = 'center';
   x.save(); x.translate(FU(-0.84), FV(-0.4)); x.rotate(-1.3); x.fillText('RX-07  LOT 9411', 0, 0); x.restore();
   x.save(); x.translate(FU(0.0), FV(-0.9)); x.fillText('MADE IN SUBLEVEL B4', 0, 0); x.restore();
   // plate edge: dark gap fading in (the seam to the skull)
@@ -223,9 +223,9 @@ function badgeTexture() {
   const c = canvas(256, 128), x = c.getContext('2d');
   x.fillStyle = '#f2efe4'; x.fillRect(0, 0, 256, 128);
   x.fillStyle = '#b8222a'; x.fillRect(0, 0, 256, 30);
-  x.fillStyle = '#fff'; x.font = 'bold 20px Arial'; x.textAlign = 'center'; x.fillText('HELLO, MY NAME IS', 128, 22);
-  x.fillStyle = '#1a1a1a'; x.font = 'bold 44px "Courier New", monospace'; x.fillText('GLORIA', 128, 76);
-  x.font = '14px "Courier New", monospace'; x.fillText('RECEPTION UNIT RX-07', 128, 104);
+  x.fillStyle = '#fff'; x.font = 'bold 20px "Jolly Lodger", Georgia, serif'; x.textAlign = 'center'; x.fillText('HELLO, MY NAME IS', 128, 22);
+  x.fillStyle = '#1a1a1a'; x.font = 'bold 44px "Jolly Lodger", Georgia, serif'; x.fillText('GLORIA', 128, 76);
+  x.font = '14px "Jolly Lodger", Georgia, serif'; x.fillText('RECEPTION UNIT RX-07', 128, 104);
   x.fillStyle = 'rgba(40,30,10,0.12)'; for (let i = 0; i < 300; i++) x.fillRect(Math.random() * 256, Math.random() * 128, 2, 1);
   x.strokeStyle = 'rgba(0,0,0,0.35)'; x.lineWidth = 3; x.strokeRect(1, 1, 254, 126);
   return ctex(c);

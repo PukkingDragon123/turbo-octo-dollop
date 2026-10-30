@@ -266,7 +266,7 @@ function shellTextures() {
     // brand above the screen, stencils on the crown and the right cheek
     const label = (d, rot, lines) => decal([c], d, rot, (x) => {
       for (const [t, y, px, col, font] of lines) {
-        x.font = `${font || 'bold'} ${px}px "Courier New", monospace`; x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.font = `${font || 'bold'} ${px}px "Jolly Lodger", Georgia, serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
         x.fillStyle = col; x.fillText(t, 0, y);
       }
       for (let i = 0; i < 50; i++) { x.fillStyle = `rgba(214,198,154,${0.4 + rnd() * 0.5})`; x.fillRect((rnd() - 0.5) * 120, (rnd() - 0.5) * 30, 1 + rnd() * 4, 1 + rnd() * 2); }
@@ -597,7 +597,7 @@ function drawEyes(c, st, col, a) {
     }
   }
   if (e === 'love') { const k = (st.t * 0.5) % 1; c.fillStyle = hexA(col, (1 - k) * a); heart(c, 210 + Math.sin(k * 9) * 6, 200 - k * 120, 8); }
-  if (e === 'sleepy') { const k = (st.t * 0.6) % 1; c.font = 'bold 22px monospace'; c.fillStyle = hexA(col, (1 - k) * 0.9 * a); c.fillText('z', 200 + k * 16, 70 - k * 30); }
+  if (e === 'sleepy') { const k = (st.t * 0.6) % 1; c.font = 'bold 22px "Jolly Lodger", Georgia, serif'; c.fillStyle = hexA(col, (1 - k) * 0.9 * a); c.fillText('z', 200 + k * 16, 70 - k * 30); }
 }
 function heart(c, x, y, r) { c.beginPath(); c.moveTo(x, y + r); c.bezierCurveTo(x - r * 1.6, y - r * 0.2, x - r * 0.6, y - r * 1.3, x, y - r * 0.4); c.bezierCurveTo(x + r * 0.6, y - r * 1.3, x + r * 1.6, y - r * 0.2, x, y + r); c.fill(); }
 

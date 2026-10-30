@@ -531,13 +531,13 @@ export class Poster extends ModelDevice {
     if (this.creepyOn) { ctx.beginPath(); ctx.arc(w / 2, h * 0.36, 9, 0, Math.PI * 2); ctx.arc(w / 2 - 30, h * 0.33, 5, 0, Math.PI * 2); ctx.fill(); }
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
-    ctx.font = 'bold 42px "Arial Black", Arial, sans-serif';
+    ctx.font = 'bold 42px "Jolly Lodger", Georgia, serif, Arial, sans-serif';
     const lines = wrap(ctx, title, w - 40, 42);
     lines.forEach((l, i) => ctx.fillText(l, w / 2, h * 0.72 + i * 44));
-    ctx.font = '22px "IBM Plex Mono", monospace';
+    ctx.font = '22px "Jolly Lodger", Georgia, serif';
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     if (sub) ctx.fillText(sub, w / 2, h * 0.72 + lines.length * 44 + 10);
-    ctx.font = '16px "IBM Plex Mono", monospace';
+    ctx.font = '16px "Jolly Lodger", Georgia, serif';
     ctx.fillText('R.O.O.M. CORP — INTERNAL USE ONLY', w / 2, h - 18);
     this.scr.texture.needsUpdate = true;
   }
@@ -608,7 +608,7 @@ export class EmployeeOfMonth extends ModelDevice {
     nc.fillStyle = '#c9a65a';
     nc.fillRect(0, 0, 512, 96);
     nc.fillStyle = '#2a1a08';
-    nc.font = 'bold 44px Georgia, serif';
+    nc.font = 'bold 44px "Jolly Lodger", Georgia, serif';
     nc.textAlign = 'center';
     nc.textBaseline = 'middle';
     nc.fillText(nm.toUpperCase(), 256, 50);

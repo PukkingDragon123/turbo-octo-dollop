@@ -278,13 +278,13 @@ export const hazardTex = () => cached('tex_hazard', () => canvasTex(512, 96, (ct
   for (const cx of [w * 0.25, w * 0.75]) {
     ctx.fillStyle = '#f4f1e6'; ctx.fillRect(cx - 70, 16, 140, h - 32);
     ctx.strokeStyle = '#1b1b1b'; ctx.lineWidth = 4; ctx.strokeRect(cx - 70, 16, 140, h - 32);
-    ctx.fillStyle = '#1b1b1b'; ctx.font = "bold 44px 'IBM Plex Mono', monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#1b1b1b'; ctx.font = "bold 44px "Jolly Lodger", Georgia, serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('O₂ AIR', cx, h / 2 + 2);
   }
 }));
 export const watchTex = () => cached('tex_watch', () => canvasTex(128, 96, (ctx, w, h) => {
   ctx.fillStyle = '#0d1f12'; ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = '#5dff8a'; ctx.font = "56px 'VT323', monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#5dff8a'; ctx.font = "56px "Jolly Lodger", Georgia, serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('03:33', w / 2, h / 2 + 4);
   ctx.fillStyle = '#2f8a48'; ctx.fillRect(10, 10, 30, 8); ctx.fillRect(w - 40, 10, 30, 8);
 }));

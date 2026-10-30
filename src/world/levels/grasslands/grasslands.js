@@ -441,7 +441,7 @@ export class GrasslandsLevel {
     cv.width = 512; cv.height = 128;
     const c = cv.getContext('2d');
     for (let k = 0; k < 8; k++) { c.fillStyle = k % 2 ? '#c8641e' : '#d8d2bc'; c.fillRect(k * 64, 0, 64, 128); }
-    c.fillStyle = '#1a1a1a'; c.font = 'bold 30px monospace'; c.fillText('R.O.O.M.', 140, 70);
+    c.fillStyle = '#1a1a1a'; c.font = 'bold 30px "Jolly Lodger", Georgia, serif'; c.fillText('R.O.O.M.', 140, 70);
     // tears
     c.globalCompositeOperation = 'destination-out';
     const rng = new RNG(77);

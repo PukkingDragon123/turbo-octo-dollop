@@ -23,11 +23,11 @@ function drawSign(ctx, k, x, y, w, h) {
   };
   const text = (t, size, col, yy, weight = 'bold') => {
     ctx.fillStyle = col;
-    ctx.font = `${weight} ${size}px Arial, Helvetica, sans-serif`;
+    ctx.font = `${weight} ${size}px "Jolly Lodger", Georgia, serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     let s = size;
-    while (ctx.measureText(t).width > w - 50 && s > 12) { s -= 2; ctx.font = `${weight} ${s}px Arial, Helvetica, sans-serif`; }
+    while (ctx.measureText(t).width > w - 50 && s > 12) { s -= 2; ctx.font = `${weight} ${s}px "Jolly Lodger", Georgia, serif`; }
     ctx.fillText(t, w / 2, yy);
   };
   const noSymbol = (cx, cy, r) => {

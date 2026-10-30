@@ -126,8 +126,8 @@ export function palUV(hex, kind = '') {
 // ---------------------------------------------------------------------------
 export const FONTS = {
   sans: 'Arial, Helvetica, "Liberation Sans", sans-serif',
-  mono: '"IBM Plex Mono", "Courier New", monospace',
-  lcd: 'VT323, "IBM Plex Mono", monospace',
+  mono: '"Jolly Lodger", Georgia, serif',
+  lcd: 'VT323, "Jolly Lodger", Georgia, serif',
   serif: 'Georgia, "Times New Roman", "Liberation Serif", serif',
   cond: '"Arial Narrow", "Liberation Sans Narrow", Arial, sans-serif',
 };
