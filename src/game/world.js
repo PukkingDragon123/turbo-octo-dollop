@@ -15,6 +15,7 @@ import { registerBenches, playAssemble, updateAssemblies } from './crafting.js';
 
 const _c = new THREE.Color();
 
+const _chip = new THREE.Color();
 export class World {
   constructor(game, desc) {
     this.game = game;
@@ -110,6 +111,13 @@ export class World {
       case 'weld': this.fx.weldSparks(p, m.nrm ? new THREE.Vector3().fromArray(m.nrm) : null); break;
       case 'splash': this.fx.splash(p, m.n ?? 16, m.y ?? 0.1); audio.play('splash', { pos: p, intensity: m.i ?? 0.6 }); break;
       case 'dust': this.fx.dustBurst(p, m.n ?? 20, m.c ?? [0.75, 0.7, 0.55], m.s ?? 1); break;
+      // a hit that works something loose (game/gather.js): splinters / flakes off the spot, a puff of dust
+      case 'chip': {
+        const c = m.c || [0.62, 0.46, 0.28];
+        this.fx.chunks(p, m.n ?? 4, _chip.setRGB(c[0], c[1], c[2]).getHex(), m.m === 'soft' ? 0.035 : 0.045, 2.4, this.level?.floorY?.(p.x, p.z) ?? 0, 4);
+        this.fx.dustBurst(p, 3 + (m.n ?? 4), [c[0] * 1.15, c[1] * 1.15, c[2] * 1.15], 0.45);
+        break;
+      }
       case 'ceiling': {
         this.fx.chunks(p, 22, 0xd8d0b8, 0.16, 3, 0, 10);
         this.fx.dustBurst(p, 40, [0.85, 0.82, 0.72], 2.2);

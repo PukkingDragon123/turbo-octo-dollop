@@ -250,6 +250,8 @@ export class Tools {
   mtVerdict(prop, player = this.game.local) {
     if (!prop || prop.dead || !this.world) return null;
     const name = itemName(prop.type);
+    // boarded doorways are fixed in place, but the multitool cuts them out
+    if (prop.def.boarded) return { act: 'dismantle', label: 'CUTTING THE BOARDS', dur: 2.2, heavy: true, prompt: '[LMB] CUT THE BOARDS (hold: needs power)' };
     if (prop.frozen || prop.def.static) return null;
     if (prop.state.welded > 0) return { act: 'detach', label: 'DETACHING', dur: 0.7, prompt: '[LMB] DETACH' };
     if ((player.mtMode || 'attach') === 'dismantle') {

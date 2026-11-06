@@ -8,6 +8,8 @@
 //   scrap_bench  parts.vise / parts.solder (shown by setTier(n)), anchors.top (bench-top centre)
 //   plank_door   hinge on its local -X edge (anchors.hinge), handle on +X
 //   stash_crate  parts.lid (hinged at the back edge), setOpen(f)
+//   locked_cache parts.lid (axis x, maxOpen: animated by lootables.js), parts.lock, setLocked(on)
+//   boarded_door 1.3 x 2.12 m of planks across a doorway (spawned frozen)
 //   water_*      parts.liquid
 import * as THREE from 'three';
 import { Kit, def, PI, TAU, V3, clamp, extrudeGeo } from './core.js';
@@ -523,6 +525,81 @@ def('radio_amp', () => {
   return { kit: k, meta: { mass: 0.9, material: 'metal', hold: { grip: [0, -0.03, 0], rot: [0.2, 0.3, 0] } } };
 });
 
+// ============================================================================ things worth finding
+// a canvas duffel someone stashed in a dead end (unzip it: lootables.js 'cache')
+def('stash_bag', () => {
+  const k = new Kit();
+  const C = M.canvas(), rng = new RNG(71);
+  const L = 0.62, R = 0.14;
+  k.rbox(L, R * 2, R * 2.1, R * 0.9, C, { col: 0x4e5a3a, deform: (v) => { v.y *= 1 - Math.max(0, v.y) * 0.9; v.z *= 1 + Math.sin(v.x * 9) * 0.05; } });
+  for (const sx of [-1, 1]) k.cyl(R * 0.88, 0.03, C, { p: [sx * (L / 2 - 0.01), -0.01, 0], r: [0, 0, PI / 2], col: 0x3e4a2e, seg: 18 });
+  // zip along the top, two webbing handles, a shoulder strap flopped over the side
+  k.rbox(L - 0.08, 0.012, 0.02, 0.004, S.steelDark(), { p: [0, R - 0.035, 0] });
+  for (const sx of [-1, 1]) k.tube([[sx * 0.1, R - 0.05, -0.05], [sx * 0.1, R + 0.05, 0], [sx * 0.1, R - 0.05, 0.05]], (t) => [0.018, 0.005], C, { tseg: 10, rseg: 6, col: 0x2a2a22 });
+  k.tube([[-0.22, R - 0.06, 0.08], [-0.05, R - 0.08, R + 0.06], [0.12, -R + 0.03, R + 0.05], [0.26, -R + 0.01, R + 0.08]], (t) => [0.02, 0.004], C, { tseg: 16, rseg: 6, col: 0x2a2a22 });
+  wraps(k, 0, 0.02, 2, M.tape(), 0xc8ccc8, { x: rng.range(-0.2, 0.2), z: R });
+  k.colBox([L, R * 1.8, R * 2.1], [0, -0.02, 0]);
+  return { kit: k, meta: { mass: 4, material: 'fabric', friction: 0.9 } };
+});
+
+// a padlocked footlocker (lootables.js 'vault'): parts.lid hinged at the back edge, parts.lock (hidden once open)
+def('locked_cache', () => {
+  const k = new Kit();
+  const W = M.wood(), P = M.paint(), rust = M.rust();
+  const L = 0.8, D = 0.44, H = 0.4, LH = 0.1;
+  k.rbox(L, H - LH, D, 0.012, P, { p: [0, -LH / 2, 0], col: 0x56603e });
+  // the lid, hinged along the back edge
+  k.rbox(L, LH, D, 0.014, P, { p: [0, H / 2 - LH / 2, 0], col: 0x5e6a44, part: 'lid' });
+  for (const sx of [-1, 1]) k.rbox(0.012, LH + 0.006, D + 0.012, 0.004, rust, { p: [sx * (L / 2 - 0.08), H / 2 - LH / 2, 0], part: 'lid' });
+  k.rbox(0.07, 0.07, 0.014, 0.004, rust, { p: [0, H / 2 - LH - 0.02, D / 2 + 0.006], part: 'lid' }); // hasp
+  k.pivot('lid', [0, H / 2, -D / 2]);
+  // metal bands, corners, handles at the ends
+  for (const sx of [-1, 1]) {
+    k.rbox(0.012, H - LH + 0.006, D + 0.012, 0.004, rust, { p: [sx * (L / 2 - 0.08), -LH / 2, 0] });
+    for (const sz of [-1, 1]) k.rbox(0.05, H - 0.01, 0.05, 0.008, rust, { p: [sx * (L / 2 - 0.02), 0, sz * (D / 2 - 0.02)] });
+    k.tube([[sx * (L / 2 + 0.004), 0.02, -0.07], [sx * (L / 2 + 0.03), 0.0, 0], [sx * (L / 2 + 0.004), 0.02, 0.07]], 0.008, rust, { tseg: 12, rseg: 6 });
+  }
+  k.rbox(0.05, 0.03, 0.02, 0.004, rust, { p: [0, H / 2 - LH - 0.06, D / 2 + 0.008] }); // staple
+  // the padlock hanging off the hasp
+  const brass = mat({ name: 'sv_brass', color: 0xc8a050, rough: 0.35, metal: 0.9, det: 'cast', ns: 0.8 });
+  k.rbox(0.06, 0.055, 0.024, 0.008, brass, { p: [0, H / 2 - LH - 0.11, D / 2 + 0.03], part: 'lock' });
+  k.torus(0.018, 0.005, S.steel(), { p: [0, H / 2 - LH - 0.075, D / 2 + 0.03], arc: PI, tseg: 12, part: 'lock' });
+  void W;
+  k.colBox([L + 0.04, H, D + 0.03]);
+  return {
+    kit: k,
+    meta: {
+      mass: 22, material: 'wood', friction: 0.8,
+      init(inst) {
+        const lid = inst.parts.lid, lock = inst.parts.lock;
+        if (lid) { lid.userData.axis = 'x'; lid.userData.maxOpen = -1.75; }
+        inst.object.userData.setLocked = (on) => { if (lock) lock.visible = !!on; };
+      },
+    },
+  };
+});
+
+// planks nailed across a doorway (1.1 m x 2.15 m gap): a fixed prop placed by biome.js on the corridor side
+def('boarded_door', () => {
+  const k = new Kit();
+  const W = M.wood(), rng = new RNG(83), nail = S.steelDark();
+  const H = 2.12;
+  const boards = [[-0.78, 0.06], [-0.32, -0.1], [0.12, 0.07], [0.55, -0.05], [0.88, 0.12]];
+  boards.forEach(([y, a], i) => {
+    const len = rng.range(1.3, 1.42);
+    k.push({ p: [rng.range(-0.03, 0.03), y, (i % 2) * 0.012], r: [0, 0, a] });
+    k.rbox(len, rng.range(0.15, 0.2), 0.03, 0.006, W, { dU: 'x', col: [0xe8cca0, 0xd8b88a, 0xf0d8b0, 0xc8a878, 0xdcc094][i], deform: (v) => { v.z += Math.sin(v.x * 3 + i) * 0.004; } });
+    for (const sx of [-1, 1]) for (const dy of [-0.04, 0.04]) k.cyl(0.008, 0.006, nail, { p: [sx * (len / 2 - 0.08), dy, 0.017], r: [PI / 2, 0, 0], seg: 6 });
+    k.pop();
+  });
+  // a cross brace, nailed over the rest
+  k.push({ p: [0, 0.05, 0.032], r: [0, 0, 1.05] });
+  k.rbox(2.0, 0.14, 0.028, 0.006, W, { dU: 'x', col: 0xc8a070 });
+  k.pop();
+  k.colBox([1.3, H, 0.08], [0, 0, 0.01]);
+  return { kit: k, meta: { mass: 30, material: 'wood', friction: 0.8 } };
+});
+
 // ============================================================================ paper
 def('notebook', () => {
   const k = new Kit();
@@ -534,5 +611,5 @@ def('notebook', () => {
   return { kit: k, meta: { mass: 0.15, material: 'paper', hold: { grip: [0, 0, 0], rot: [0.8, 0.2, 0] } } };
 });
 
-export const SURVIVAL_ITEMS = ['stick', 'foam', 'glass_shard', 'rock', 'bottle', 'water_dirty', 'water_clean', 'rag_bandage', 'torch', 'sharp_stick', 'rock_hammer', 'bedroll', 'scrap_bench', 'bench_vise', 'solder_kit', 'saw', 'knife', 'spear', 'hatchet', 'crossbow', 'bolt_bundle', 'lantern', 'backpack', 'water_filter', 'cot', 'insulation', 'plank_door', 'stash_crate', 'radio_battery', 'radio_antenna', 'radio_coil', 'radio_amp', 'notebook'];
+export const SURVIVAL_ITEMS = ['stick', 'foam', 'glass_shard', 'rock', 'bottle', 'water_dirty', 'water_clean', 'rag_bandage', 'torch', 'sharp_stick', 'rock_hammer', 'bedroll', 'scrap_bench', 'bench_vise', 'solder_kit', 'saw', 'knife', 'spear', 'hatchet', 'crossbow', 'bolt_bundle', 'lantern', 'backpack', 'water_filter', 'cot', 'insulation', 'plank_door', 'stash_crate', 'radio_battery', 'radio_antenna', 'radio_coil', 'radio_amp', 'notebook', 'stash_bag', 'locked_cache', 'boarded_door'];
 export { BENCH };

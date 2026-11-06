@@ -5,9 +5,14 @@
 //  populateBiome(level, rec)  host, once: collectible fungus in damp cells; ABANDONED CAMPS of earlier clones
 //                             (collapsed tent, sleeping bag, supply crate, camp stove, a broken trolley, loose
 //                             wheels, boards, sticks, rags, scrap, tools, batteries, a burnt-out torch, a scribbled
-//                             note); lone supply crates, scrap piles and notes
+//                             note); lone supply crates, scrap piles and notes; THINGS WORTH FINDING
+//                             (populateFinds): boarded-up doorways with a stash or a locked footlocker behind,
+//                             stashed bags in dead ends, crawlspaces and the dark zone, rewards in the strange
+//                             rooms. The farther from the clearing and the more out of the way, the better.
 import * as THREE from 'three';
-import { CELL, CHUNK } from './layout.js';
+import { CELL, CHUNK, W, wallN, wallW, wallPassable } from './layout.js';
+import { T as WALL_T } from '../../env/walls.js';
+import { modelHalfHeight } from '../../../entities/catalog.js';
 import { RNG, hash3, hash01 } from '../../../core/rng.js';
 import { EnvGeo } from '../../env/builder.js';
 import { bakeInto, sp } from './roomkit.js';
@@ -382,8 +387,111 @@ export function populateBiome(level, rec) {
       for (const t of ['metal_scrap', 'metal_scrap', 'screws', 'wire_spool', rng.pick(['pipe_short', 'gear', 'wheel', 'battery'])]) put(t, x + (rng.next() - 0.5) * 1.2, z + (rng.next() - 0.5) * 1.2, rng.next() * 6, { clear: 0.15 });
     }
   }
-  if (rng.chance(0.22)) {
+  if (rng.chance(0.3)) {
     const c = pickCell();
     if (c) put('note_scribble', x0Of(rec, c.li) + 0.8 + rng.next() * 1.4, z0Of(rec, c.lj) + 0.8 + rng.next() * 1.4, rng.next() * 6, { clear: 0.15, state: { n: rng.int(0, 999) } });
+  }
+  populateFinds(level, rec, rng, put);
+}
+
+// ============================================================================ things worth finding (host, once)
+// Rooms you can board up without hiding anything the level needs (generators, the workshop, the exits stay open)
+const BOARDABLE = new Set(['office_room', 'bedroom', 'storage', 'locker_room', 'library', 'living_room', 'tv_room', 'manila_room', 'red_chair', 'dead_clone', 'vending_lonely', 'chairpile', 'server_room', 'cubicle_farm', 'frozen_party', 'mirror_room', 'giant_room', 'clipping', 'stairs_nowhere', 'many_doors']);
+// strange rooms: their reward is a little better
+const STRANGE = new Set(['red_chair', 'dead_clone', 'clipping', 'sinking', 'stairs_nowhere', 'many_doors', 'vending_lonely', 'frozen_party', 'mirror_room', 'giant_room', 'tilted_room', 'ceiling_room', 'chair_tower', 'ball_pit', 'slide_pit', 'carpet_pit', 'endless_hall', 'door_corridor', 'nested', 'manila_room', 'poolrooms_glimpse']);
+const _bq = new THREE.Quaternion(), _be = new THREE.Euler();
+
+// 0 by the clearing .. 1 far out (~180 m)
+function farness(level, x, z) {
+  const c = level.landmarks?.camp || { x: 0, z: 0 };
+  return Math.min(1, Math.max(0, (Math.hypot(x - c.x, z - c.z) - 30) / 150));
+}
+
+// planks across the doorway on edge (axis 'n': along x at z = plane; 'w': along z at x = plane), mid = the gap's
+// centre along the wall, out = +1 / -1: the side the boards face (the corridor, away from what they hide)
+function boardUp(level, axis, plane, mid, out) {
+  const off = (WALL_T / 2 + 0.045) * out;
+  const x = axis === 'n' ? mid : plane + off, z = axis === 'n' ? plane + off : mid;
+  const rotY = axis === 'n' ? (out > 0 ? 0 : Math.PI) : (out > 0 ? Math.PI / 2 : -Math.PI / 2);
+  _bq.setFromEuler(_be.set(0, rotY, 0));
+  return level.world.props.spawn('boarded_door', new THREE.Vector3(x, modelHalfHeight('boarded_door') + 0.002, z), _bq.clone(), { frozen: true, state: {} });
+}
+
+export function populateFinds(level, rec, rng, put) {
+  const seed = level.seed, vf = level.variantFn;
+  const cx0 = rec.cx * CHUNK * CELL + CHUNK * CELL / 2, cz0 = rec.cz * CHUNK * CELL + CHUNK * CELL / 2;
+  const far = farness(level, cx0, cz0);
+  if (far <= 0 && Math.hypot(cx0 - (level.landmarks?.camp?.x ?? 0), cz0 - (level.landmarks?.camp?.z ?? 0)) < 18) return; // the clearing's own chunk stays tidy
+  // the reward: a stash bag, out here sometimes a locked footlocker (pry bar), a note to go with it
+  const reward = (x, z, ax, az, o = {}) => {
+    const locked = rng.chance((o.lockP ?? 0.2) + far * 0.3);
+    const extra = (o.extra || 0) + (far > 0.6 && rng.chance(0.5) ? 1 : 0);
+    const got = locked
+      ? put('locked_cache', x, z, o.rot ?? rng.next() * 6.28, { ax, az, clear: 0.5, state: { locked: 1, extra } })
+      : put('stash_bag', x, z, o.rot ?? rng.next() * 6.28, { ax, az, clear: 0.35, state: { extra } });
+    if (got && rng.chance(0.35)) put('note_scribble', x + (rng.next() - 0.5) * 0.8, z + (rng.next() - 0.5) * 0.8, rng.next() * 6, { ax, az, clear: 0.15, state: { n: rng.int(0, 999) } });
+    return got;
+  };
+  // --- special rooms: one door -> sometimes boarded up, with something inside; strange rooms keep a stash
+  for (const room of rec.layout.specials) {
+    const rx0 = (rec.cx * CHUNK + room.rx) * CELL, rz0 = (rec.cz * CHUNK + room.rz) * CELL;
+    const rw = room.w * CELL, rd = room.h * CELL, rcx = rx0 + rw / 2, rcz = rz0 + rd / 2;
+    const strange = STRANGE.has(room.kind);
+    let boarded = false;
+    if (BOARDABLE.has(room.kind) && room.doors?.length === 1 && rng.chance(0.28 + far * 0.3)) {
+      const d = room.doors[0];
+      const li = d.idx % CHUNK, lj = Math.floor(d.idx / CHUNK);
+      const gi = rec.cx * CHUNK + li, gj = rec.cz * CHUNK + lj;
+      if (d.arr === 'N') boarded = !!boardUp(level, 'n', gj * CELL, (gi + 0.5) * CELL, d.side === 'N' ? -1 : 1);
+      else boarded = !!boardUp(level, 'w', gi * CELL, (gj + 0.5) * CELL, d.side === 'W' ? -1 : 1);
+    }
+    if (boarded || (strange && rng.chance(0.55)) || rng.chance(0.15)) {
+      // against a wall, away from the middle (pits, giant furniture)
+      const sx = rng.chance(0.5) ? 1 : -1, sz = rng.chance(0.5) ? 1 : -1;
+      reward(rcx + sx * (rw / 2 - 0.6), rcz + sz * (rd / 2 - 0.55), rcx, rcz, { lockP: boarded ? 0.45 : strange ? 0.25 : 0.1, extra: boarded ? 1 : 0 });
+    }
+  }
+  // --- dead ends: a closet with one doorway gets boarded up (or just has a bag in it); quiet corners too
+  const closets = [], corners = [], crawls = [], dark = [];
+  for (const c of rec.layout.cells) {
+    if (c.crawl && !c.special && !c.water) { crawls.push(c); continue; }
+    if (!open(c) || c.water) continue;
+    if (c.zone === 'dark') dark.push(c);
+    if (c.zone === 'warehouse' || c.zone === 'atrium' || c.zone === 'pillars') continue;
+    const e = [wallN(seed, c.i, c.j, vf), wallN(seed, c.i, c.j + 1, vf), wallW(seed, c.i, c.j, vf), wallW(seed, c.i + 1, c.j, vf)];
+    const pass = e.map(wallPassable);
+    const n = pass.filter(Boolean).length;
+    if (n !== 1) continue;
+    const k = pass.indexOf(true);
+    (e[k] === W.DOOR ? closets : corners).push({ c, k });
+  }
+  if (closets.length && rng.chance(0.55 + far * 0.3)) {
+    const { c, k } = closets[rng.int(0, closets.length - 1)];
+    const x0 = c.i * CELL, z0 = c.j * CELL;
+    // k: 0 N edge (corridor north, boards face -z), 1 S, 2 W, 3 E
+    if (rng.chance(0.75)) {
+      if (k === 0) boardUp(level, 'n', z0, x0 + CELL / 2, -1);
+      else if (k === 1) boardUp(level, 'n', z0 + CELL, x0 + CELL / 2, 1);
+      else if (k === 2) boardUp(level, 'w', x0, z0 + CELL / 2, -1);
+      else boardUp(level, 'w', x0 + CELL, z0 + CELL / 2, 1);
+    }
+    // the far side of the closet from its doorway
+    const fx = k === 2 ? CELL - 0.6 : k === 3 ? 0.6 : CELL / 2 + (rng.next() - 0.5);
+    const fz = k === 0 ? CELL - 0.6 : k === 1 ? 0.6 : CELL / 2 + (rng.next() - 0.5);
+    reward(x0 + fx, z0 + fz, x0 + CELL / 2, z0 + CELL / 2, { lockP: 0.35, extra: 1 });
+  }
+  if (corners.length && rng.chance(0.3 + far * 0.2)) {
+    const { c } = corners[rng.int(0, corners.length - 1)];
+    reward(c.i * CELL + CELL / 2 + (rng.next() - 0.5), c.j * CELL + CELL / 2 + (rng.next() - 0.5), c.i * CELL + CELL / 2, c.j * CELL + CELL / 2, { lockP: 0.1 });
+  }
+  // --- crawlspaces: crouch in and there is a bag (low enough to fit)
+  if (crawls.length && rng.chance(0.6)) {
+    const c = crawls[rng.int(0, crawls.length - 1)];
+    put('stash_bag', c.i * CELL + CELL / 2 + (rng.next() - 0.5) * 0.8, c.j * CELL + CELL / 2 + (rng.next() - 0.5) * 0.8, rng.next() * 6, { clear: 0.3, state: { extra: 1 } });
+  }
+  // --- the dark zone: bring a light. Locked footlockers and fat stashes
+  if (dark.length && rng.chance(0.45 + far * 0.25)) {
+    const c = dark[rng.int(0, dark.length - 1)];
+    reward(c.i * CELL + CELL / 2 + (rng.next() - 0.5), c.j * CELL + CELL / 2 + (rng.next() - 0.5), c.i * CELL + CELL / 2, c.j * CELL + CELL / 2, { lockP: 0.4, extra: 1 });
   }
 }

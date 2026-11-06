@@ -641,8 +641,16 @@ export class ClothSet {
       if (!G.ready) G.reset();
     }
     if (kin || dt <= 0) {
-      for (const G of this.list) G.write(kin ? G.tg : G.x, this._inv);
+      // kinematic: keep the simulation state on the skinned pose so switching back to the simulation
+      // (third person, coming closer) starts from where the garment is, not from a stale spot
+      for (const G of this.list) { if (kin) { G.x.set(G.tg); G.px.set(G.tg); } G.write(kin ? G.tg : G.x, this._inv); }
       return;
+    }
+    // safety: a garment torn far off its body (a long hitch, a teleport the root check missed) snaps back
+    for (const G of this.list) {
+      const k = (G.n >> 1) * 3;
+      const dx = G.x[k] - G.tg[k], dy = G.x[k + 1] - G.tg[k + 1], dz = G.x[k + 2] - G.tg[k + 2];
+      if (dx * dx + dy * dy + dz * dz > 1.2 * 1.2) G.reset();
     }
     this._caps(bones, scale);
     const h = 1 / this.rate;

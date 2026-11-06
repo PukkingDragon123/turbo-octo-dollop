@@ -122,9 +122,10 @@ export const ITEM = {
   // --- things worth finding (game/explore.js, placed by world/levels/yellow/biome.js) ---
   // a duffel bag someone stashed in a dead end, a crawlspace, a strange room: unzip it ([E])
   stash_bag: { name: 'Stashed Bag', dismantle: ['fabric_scrap', 'fabric_scrap'], gather: 'soft' },
-  // a padlocked footlocker: a pry bar (or a hatchet) in the hand opens it; the best things are in these
-  locked_cache: { name: 'Locked Footlocker', locked: true },
-  // planks nailed across a doorway: something is behind it. Break it down (faster with a pry bar)
+  // a padlocked footlocker: swing a pry bar (or a hatchet) at the lock; the best things are in these
+  locked_cache: { name: 'Locked Footlocker', locked: true, dismantle: ['plank', 'metal_scrap', 'screws'], gather: 'wood' },
+  // planks nailed across a doorway (a fixed prop): something is behind it. Hit it down: a pry bar or a hatchet
+  // makes short work of it, a rock hammer takes a while, bare hands do nothing
   boarded_door: { name: 'Boarded-up Doorway', boarded: true, dismantle: ['plank', 'plank', 'stick', 'screws'], gather: 'wood' },
 
   // --- paper ---

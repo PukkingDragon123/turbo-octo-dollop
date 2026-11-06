@@ -8,6 +8,10 @@
 //      saw/hatchet wood fast, whole planks             shiv knife  cloth, foam and wire, cleanly
 //  * The built-in MULTITOOL (dismantle mode) takes anything apart completely, but it eats battery.
 //  A container that was never searched spills its contents first.
+//  * BOARDED DOORWAYS (fixed planks across a doorway, world/levels/yellow/biome.js): a pry bar or a hatchet tears
+//    them down in two or three swings, a rock hammer in a few more; fists do nothing. LOCKED FOOTLOCKERS: the same
+//    swings at the padlock open the lid (lootables.js 'unlock') instead of breaking it.
+//  Quick and juicy: a few hits per piece, chips fly on every hit, the one who breaks it feels it (shake, thunk).
 //   new Gather(game): hostHit(prop, d, from), breakDown(prop, caps, from), capsOf(toolType | null), recover(type, caps)
 import * as THREE from 'three';
 import { net } from '../net/net.js';
@@ -23,6 +27,12 @@ const SPEED = {
   cut: { wood: 1.6, soft: 1.1, electro: 0.5, glass: 0.3, stone: 0.1, metal: 0.25 },
   fine: { wood: 0.3, soft: 1.6, electro: 1.2, glass: 0.4, stone: 0, metal: 0.2 },
 };
+// nailed boards across a doorway / a padlock: leverage beats force
+const HARD = {
+  boarded: { hand: 0, bash: 0.32, pry: 1.25, cut: 0.95, fine: 0 },
+  lock: { hand: 0, bash: 0.3, pry: 1.5, cut: 0.6, fine: 0.1 },
+};
+const CHIP = { wood: [0.62, 0.46, 0.28], metal: [0.6, 0.6, 0.62], soft: [0.8, 0.76, 0.66], glass: [0.75, 0.88, 0.9], stone: [0.66, 0.64, 0.6], electro: [0.4, 0.4, 0.42], boarded: [0.62, 0.46, 0.28], lock: [0.8, 0.66, 0.3] };
 const FREE = new Set(['fabric_scrap', 'foam', 'glass_shard', 'stick', 'tape_roll', 'bottle', 'rock']);
 
 export function classOf(def, prop) {
@@ -60,11 +70,17 @@ export class Gather {
   rate(caps, cls) {
     if (caps.power) return 9;
     let r = 0;
-    for (const k in caps) { const s = SPEED[k]?.[cls]; if (s) r = Math.max(r, s * caps[k]); }
+    const hard = HARD[cls];
+    for (const k in caps) { const s = hard ? hard[k] : SPEED[k]?.[cls]; if (s) r = Math.max(r, s * caps[k]); }
     return r;
   }
 
-  needOf(prop) { return 1.1 + Math.min(4, (prop.mass || 5) * 0.055); }
+  // work to take it apart: a chair is a handful of punches, a desk a few more; tools cut that to two or three
+  needOf(prop, cls) {
+    if (cls === 'boarded') return 2.4;
+    if (cls === 'lock') return 2.0;
+    return 0.6 + Math.min(2.4, (prop.mass || 5) * 0.03);
+  }
 
   // what one yield entry becomes with these caps (null: lost)
   recover(type, caps, rng = Math.random) {
@@ -84,32 +100,45 @@ export class Gather {
   // host: a punch / swing landed on a prop (d: { f power, t tool type })
   hostHit(prop, d, from) {
     const def = itemDef(prop.type);
-    if (!def.dismantle?.length || prop.dead || prop.frozen || def.camp) return;
+    if (!def.dismantle?.length || prop.dead || def.camp) return;
+    if (prop.frozen && !def.boarded) return;
     if (prop.state?.welded > 0 && def.shelter) return; // a fixed barricade / door takes a pry bar or the multitool
     const caps = this.capsOf(d.t || null);
-    const cls = classOf(def, prop);
+    const locked = !!def.locked && prop.state?.locked !== 0 && prop.state?.looted === undefined;
+    const cls = def.boarded ? 'boarded' : locked ? 'lock' : classOf(def, prop);
     const rate = this.rate(caps, cls);
     const p = prop.root.position;
     if (rate <= 0) {
-      this._say(from, prop.id, cls === 'metal' ? `The ${itemName(prop.type).toLowerCase()} won't give with bare hands. A pry bar would get the metal off.` : `Your hands do nothing to it.`);
+      this._say(from, prop.id, cls === 'boarded' ? 'The boards are nailed fast. A pry bar would rip them off; a rock hammer would get there.'
+        : cls === 'lock' ? 'Padlocked. A pry bar would snap the hasp (a hatchet would too).'
+          : cls === 'metal' ? `The ${itemName(prop.type).toLowerCase()} won't give with bare hands. A pry bar would get the metal off.` : `Your hands do nothing to it.`);
       return;
     }
     const now = this.game.world.time;
     let wk = this.work.get(prop.id);
-    if (!wk || now - wk.t > 45) wk = { w: 0, need: this.needOf(prop), t: now };
-    const power = Math.max(0.3, Math.min(1.2, d.pw ?? d.f ?? 0.6));
+    if (!wk || now - wk.t > 45 || wk.cls !== cls) wk = { w: 0, need: this.needOf(prop, cls), t: now, cls };
+    const power = Math.max(0.45, Math.min(1.2, d.pw ?? d.f ?? 0.6));
     wk.w += power * rate;
     wk.t = now;
     this.work.set(prop.id, wk);
     const f = Math.min(1, wk.w / wk.need);
     const w = this.game.world;
-    w.fxAll({ k: 'dust', p: [p.x, p.y + 0.2, p.z], n: 4 + Math.round(f * 6), c: cls === 'wood' ? [0.62, 0.48, 0.3] : [0.7, 0.68, 0.6], s: 0.5 });
+    const at = Array.isArray(d.p) ? d.p : [p.x, p.y + 0.2, p.z];
+    w.fxAll({ k: 'chip', p: at, n: 3 + Math.round(f * 5), c: CHIP[cls] || CHIP.wood, m: cls });
     if (f < 1) {
-      w.fxAll({ k: 'snd', n: cls === 'metal' ? 'metal_rip' : cls === 'wood' ? 'sign_creak' : 'scrape_short', p: p.toArray(), v: 0.35 + f * 0.4, pi: 0.8 + f * 0.5 });
+      w.fxAll({ k: 'snd', n: cls === 'metal' || cls === 'lock' ? 'metal_rip' : cls === 'wood' || cls === 'boarded' ? 'sign_creak' : 'scrape_short', p: p.toArray(), v: 0.4 + f * 0.45, pi: 0.8 + f * 0.5 });
       net.toPeer(from, 'gatherProg', { id: prop.id, f: +f.toFixed(2) });
       return;
     }
     this.work.delete(prop.id);
+    net.toPeer(from, 'gatherProg', { id: prop.id, f: 1, done: cls });
+    if (cls === 'lock') {
+      w.fxAll({ k: 'snd', n: 'metal_rip', p: p.toArray(), v: 1, pi: 1.3 });
+      w.fxAll({ k: 'sparks', p: [p.x, p.y + 0.1, p.z], n: 14, s: 2.5 });
+      prop.custom?.hostAction?.('unlock');
+      this.game.survival?.hostOpened?.(prop, from);
+      return;
+    }
     this.breakDown(prop, caps, from);
   }
 
@@ -120,8 +149,9 @@ export class Gather {
     const def = itemDef(prop.type);
     // a container nobody searched spills what it held
     if (prop.custom?.hostAction && prop.state.looted === undefined && prop.custom.spec) {
-      try { prop.custom.hostAction('loot'); } catch (e) { /* not a container */ }
+      try { prop.custom.hostAction(prop.custom.locked ? 'unlock' : 'loot'); } catch (e) { /* not a container */ }
     }
+    if (def.boarded) this.game.survival?.hostOpened?.(prop, from);
     const pos = prop.root.position.clone();
     const yields = [];
     for (const t of def.dismantle || def.into || []) {
@@ -158,6 +188,16 @@ export class Gather {
   _onProg(d) {
     const ui = this.game.ui;
     if (d.text) { floatText.notice(d.text, { duration: 2.6 }); audio.play('ui_error', { volume: 0.25, bus: 'ui' }); return; }
+    const l = this.game.local;
+    if (d.f >= 1) {
+      // it gave: a thump in the hands
+      l.shake = Math.max(l.shake || 0, d.done === 'boarded' ? 0.22 : 0.12);
+      audio.play('robo_clunk', { volume: 0.35, pitch: 1.25, bus: 'ui' });
+      this.prog = null;
+      ui.progress(null);
+      return;
+    }
+    l.shake = Math.max(l.shake || 0, 0.035);
     this.prog = { id: d.id, f: d.f, t: 1.3 };
     const p = this.game.world?.props.get(d.id);
     ui.progress(d.f, p ? `Taking apart: ${itemName(p.type)}` : 'Taking it apart');
