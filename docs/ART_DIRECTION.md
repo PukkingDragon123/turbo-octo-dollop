@@ -7,7 +7,13 @@ golden fog (Little Nightmares II), and soft, saturated, sunlit stylised 3D with 
 (Grounded). Reference frames: `/tmp/claude-0/-home-user-turbo-octo-dollop/00ed0cd1-3018-5fe0-b035-f0749e4fb7f4/images/1.jpg`
 and `.../images/2.jpg`.
 
-## The look: beautiful, cartoony semi-realistic, hand-painted
+## The look: detailed, polished semi-realism with a light painterly touch
+
+**Latest direction from the user: less painted, more detailed, polished and realistic, with only a little
+paint.** Read everything below through that: realistic proportions and materials, rich surface detail
+(real wear, fabric weave, wood grain, chipped paint, stains, seams, screws), believable light; the
+painterly part is a subtle finish (slightly softened texture detail and a gentle stroke feel in the grade),
+never a filter that smears the image. When in doubt, choose detail and realism.
 
 The setting stays the Backrooms: endless yellow rooms, carpet, fluorescent panels, the poolrooms and the
 grasslands. Only the treatment changes.
@@ -20,9 +26,9 @@ grasslands. Only the treatment changes.
 * **Palette** (Level 0): mustard and ochre walls `#c9a74e`→`#a8843a`, cream ceiling `#e9dcb6`, warm sepia
   carpet `#7a5a36`. Shadows are desaturated cool olive and teal (`#3e4a3f`), never pure black. Highlights warm
   honey `#ffd98a`. Accents: rust orange, faded teal, dusty rose, sage. No neon except a deliberate signal.
-* **Textures**: hand-painted. Broad soft brush strokes, large slow value shifts, painted (not noisy) edge
-  wear: lighter on edges, darker in crevices. Patterns (wallpaper stripes, carpet motifs) painted with
-  uneven line weight. Dirt and damp as soft painted stains. Very little high-frequency noise. Consistent
+* **Textures**: detailed and realistic first (real material detail at a consistent texel density), with a
+  hand-finished feel: large slow value shifts, edge wear lighter on edges and darker in crevices. Patterns (wallpaper stripes, carpet motifs) painted with
+  uneven line weight. Dirt and damp as soft painted stains. Detail should be crisp and purposeful, not random noise. Consistent
   texel density.
 * **Materials**: mostly high roughness (0.7 to 0.95). Metal is painted metal with chipped edges unless it is
   bare on purpose. No glossy plastic. A soft rim / sheen is welcome on characters and cloth.
@@ -30,8 +36,8 @@ grasslands. Only the treatment changes.
   carpet; cool ambient fill in the shadows; soft shadows; deep ambient occlusion in corners. Depth haze:
   warm where lit, cooler and bluer with distance. Dark zones are truly dark, lit by your torch with a warm
   falloff.
-* **Post**: a soft painterly filter (edge-preserving smoothing with a small radius plus a faint canvas/paper
-  grain), gentle bloom on light sources, a warm split-tone grade, a soft vignette, depth-based atmospheric
+* **Post**: a very light painterly finish (at most a subtle edge-preserving softening that keeps texture
+  detail readable, no visible brush smearing), clean anti-aliasing, gentle bloom on light sources, a warm split-tone grade, a soft vignette, depth-based atmospheric
   haze and a subtle miniature depth-of-field far away. **Not allowed**: VHS, film scratches, chromatic
   aberration, glitch, barrel distortion, liquefying walls, scanlines.
 * **Characters**: the clones are robots (the setting stays), stylised: readable shapes, slightly large hands
