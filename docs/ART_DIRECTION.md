@@ -48,6 +48,14 @@ Never generic, never random: every asset has a reason to be where it is and the 
 
 ## Game pillars: survive, then escape
 
+* **Fun and exploration come first** (the user's latest direction). Survival is the reason to go out, not
+  a chore list: wandering the Backrooms should be the best part. Every few rooms there is something worth
+  finding: a strange room, a stash, a vista, a secret passage, a creature to watch, a note, a shortcut, a
+  landmark you will recognise later. Reward curiosity (better loot off the beaten path, hidden rooms behind
+  loose panels, vents to crawl through, things to climb). Keep pressure light: needs drain slowly, nothing
+  punishes exploring, failure is soft. No grind: gathering is quick and juicy, recipes are few and each
+  one changes how you play (a lantern lets you go into the dark zones, a rope lets you climb down, a crowbar
+  opens locked doors), so new gear means new places to explore.
 * There is no company and no job. No quotas, no crusher, no shop, no receipts, no quest board, no
   Healthity. Your clone woke up in the Backrooms; the only goals are to stay alive and to find a way out.
 * **Survival**: hunger, thirst, health, sanity, cold and fatigue (keep the current survival model). Find food
