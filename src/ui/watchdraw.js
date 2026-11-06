@@ -1,6 +1,6 @@
 // Drawing kit for the wrist watch face (ui/watch.js): an old wristwatch LCD with a warm backlight, painted.
 // Apps draw their content in dark LCD ink onto a clear layer (watch units, 160 x 120 of them, S device px each);
-// face() then composes the layer over a hand-painted backlit ground: the liquid-crystal ink casts its little
+// face() then composes the layer over a backlit ground with a light hand-finished touch: the liquid-crystal ink casts its little
 // offset shadow onto the reflector, the glass has a soft sheen and the corners fall into shade.
 //   begin(ctx)                          once per redraw (resets font state, re-measures the cap height if needed)
 //   txt(ctx, s, x, y, size, col, align, maxW)   y = top of the text band
@@ -157,7 +157,7 @@ function paintGround(w, h) {
     g.rotate((rnd() - 0.5) * 0.35);
     const bg = g.createRadialGradient(0, 0, 0, 0, 0, rw);
     const warm = rnd() < 0.6;
-    bg.addColorStop(0, warm ? 'rgba(255,236,180,0.10)' : 'rgba(120,90,40,0.08)');
+    bg.addColorStop(0, warm ? 'rgba(255,236,180,0.06)' : 'rgba(120,90,40,0.05)');
     bg.addColorStop(1, 'rgba(0,0,0,0)');
     g.scale(1, rh / rw);
     g.fillStyle = bg;
@@ -165,7 +165,7 @@ function paintGround(w, h) {
     g.restore();
   }
   // the reflector's faint fibre: a few long, very light streaks
-  g.globalAlpha = 0.05;
+  g.globalAlpha = 0.03;
   g.strokeStyle = '#5a4220';
   for (let i = 0; i < 18; i++) {
     const y = rnd() * h;

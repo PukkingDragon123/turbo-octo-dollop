@@ -90,13 +90,13 @@ export class GrasslandsLevel {
     const P = engine.post.params;
     engine.post.resetLook?.();
     P.uTint.value.setRGB(1.0, 0.99, 0.97);
-    P.uGrain.value = 0.05;
+    P.uGrain.value = 0.03;
     P.uVignette.value = 0.36;
     P.uContrast.value = 1.03;
     P.uSplit.value = 0.5;
     // outdoors the sky pass draws the atmosphere; the paint pass only adds the far 'miniature' focus
     P.uHaze.value = 0.0;
-    P.uDof.value = 0.6; P.uDofStart.value = 40; P.uDofEnd.value = 220;
+    P.uDof.value = 0.45; P.uDofStart.value = 45; P.uDofEnd.value = 240;
     await step(0.05, 'GROWING MEADOWS');
     this.sky = new GrassSky(this);
     const h = this.gw.hero;

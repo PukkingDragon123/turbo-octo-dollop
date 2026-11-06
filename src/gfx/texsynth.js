@@ -144,12 +144,14 @@ void main(){
 }`;
 
 // ---------------------------------------------------------------------------
-// Hand-painted finish (docs/ART_DIRECTION.md), applied to every painted recipe after synthesis:
-//  * albedo: generalised Kuwahara (edge-preserving, melts fine noise into soft painted patches), broad brush
-//    strokes in a few directions, large slow value shifts, painted edge wear from the height field's curvature
-//    (lighter, warmer on ridges / edges, darker in crevices)
-//  * normal: from the height field sampled over a wider stencil (soft, chunky relief instead of fine grit)
-// Recipes opt out with `paint: false` or tune it with `paint: { r, stroke, edge, shift, rough, soft }`.
+// Hand-finished touch (docs/ART_DIRECTION.md: detailed and realistic first, only a little paint), applied to every
+// recipe after synthesis unless it opts out:
+//  * albedo: a small edge-preserving (Kuwahara) soften blended in lightly, so pixel grit settles but the material
+//    detail stays crisp; a faint brush-texture value variation; large slow value shifts across the tile; edge wear
+//    from the height field's curvature (lighter, warmer on ridges / edges, darker in crevices)
+//  * normal: from the height field (one surface evaluation instead of four), detail kept
+//  * roughness: floored so nothing turns glossy plastic
+// Recipes opt out with `paint: false` or tune it with `paint: { r, stroke, edge, shift, rough, soft, nsoft }`.
 // ---------------------------------------------------------------------------
 const PAINT_LIB = /* glsl */`
 precision highp float;
@@ -233,7 +235,9 @@ function paintMaterials() {
   normalMat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: NORMAL_FS, uniforms: U(), depthTest: false, depthWrite: false });
 }
 // paint settings: recipe defaults < recipe `paint` < per-call o.paint
-const PAINT_DEF = { r: 3, stroke: 0.08, edge: 1, shift: 0.09, rough: 0.6, soft: 1, nsoft: 1.6 };
+// (light finish: crisp detail stays; soft = Kuwahara blend, stroke = brush-texture value variation, shift = large
+// slow value shifts, edge = painted edge wear from curvature, rough = roughness floor, nsoft = normal stencil)
+const PAINT_DEF = { r: 1.5, stroke: 0.02, edge: 0.55, shift: 0.06, rough: 0.45, soft: 0.3, nsoft: 0.6 };
 function paintOpts(def, o) {
   if (o.paint === false || def.paint === false) return null;
   return { ...PAINT_DEF, ...(def.paint || {}), ...(o.paint || {}) };

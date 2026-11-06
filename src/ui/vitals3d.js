@@ -150,9 +150,10 @@ export class VitalsHUD {
     H.add(this.heartBeat);
     this.root.add(H);
     const B = this.heartBeat;
-    // painted metal reads like the world's props: mostly diffuse, lit a little from within so the HUD never goes black
-    const brass = (this.brass = new THREE.MeshStandardMaterial({ map: paintTex(), color: 0xe0b46a, metalness: 0.15, roughness: 0.62, emissive: 0x6a4a22, emissiveMap: paintTex(), emissiveIntensity: 0.7 }));
-    const steel = (this.steel = new THREE.MeshStandardMaterial({ map: paintTex(), color: 0xc2c4b4, metalness: 0.12, roughness: 0.7, emissive: 0x4a4c40, emissiveMap: paintTex(), emissiveIntensity: 0.7 }));
+    // worn metal like the world's props (real brass and steel with handled edges), lit a little from within so the
+    // HUD never goes black in the dark zones
+    const brass = (this.brass = new THREE.MeshStandardMaterial({ map: paintTex(), color: 0xd8ad66, metalness: 0.3, roughness: 0.5, emissive: 0x5a3e1c, emissiveMap: paintTex(), emissiveIntensity: 0.5 }));
+    const steel = (this.steel = new THREE.MeshStandardMaterial({ map: paintTex(), color: 0xbcbfb2, metalness: 0.28, roughness: 0.55, emissive: 0x3e4036, emissiveMap: paintTex(), emissiveIntensity: 0.5 }));
     const geo = heartGeo(R);
     this.liquidMat = new THREE.ShaderMaterial({
       uniforms: { uLevel: { value: 0.5 }, uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 }, uColor: { value: new THREE.Color(PLASMA) }, uGlow: { value: 1 }, uBubble: { value: 1 }, uR: { value: R * 0.9 } },

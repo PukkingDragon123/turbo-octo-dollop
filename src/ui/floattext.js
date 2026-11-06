@@ -321,7 +321,7 @@ class FloatText {
       let c = cam;
       if (b.notice && !b.fixedScene) { const L = noticeLayer(); if (b.mesh.parent !== L.scene) L.scene.add(b.mesh); c = L.camera; }
       if (!b.update(dt, c, y)) { b.dispose(); this.items.splice(i, 1); continue; }
-      if (b.notice && !b.fixedScene) b.mat.opacity *= 1 - 0.8 * this.watchRaise;
+      if (b.notice && !b.fixedScene) b.mat.opacity *= 1 - 0.95 * this.watchRaise; // the raised watch face stays clear
       if (b.notice && b.closing < 0) stack += b.plateNdc() + 0.035;
     }
   }

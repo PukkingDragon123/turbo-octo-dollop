@@ -1,8 +1,8 @@
-// World-surface recipes (GPU texture synthesis, see texsynth.js) used by materials.js for the shared wallpaper /
-// carpet / ceiling materials, in the hand-painted style of docs/ART_DIRECTION.md: patterns drawn with a wobbling,
-// uneven line weight, broad value shifts, soft painted stains; very little fine grit (texsynth's paint finish then
-// smooths what is left into brush patches and adds painted edge wear). Large-scale dirt that must not repeat per
-// tile (damp, leaks, traffic lanes, stains) is added in world space by the baked-light material (bakedlight.js).
+// Detailed world-surface recipes (GPU texture synthesis, see texsynth.js; its light paint finish is applied on top) used by materials.js for the shared
+// wallpaper / carpet / ceiling materials. Every tile carries printed / woven / moulded PATTERN detail plus small-
+// scale wear (ink voids, misregistration, blisters, pin holes, fly specks, lint, crumbs, burns, fissures, rust)
+// in albedo + height (-> normal) + roughness. Large-scale dirt that must not repeat per tile (damp, leaks, traffic
+// paths, handprints, stains) is added in world space by the baked-light material (bakedlight.js grimeGLSL).
 import { registerRecipe } from './texsynth.js';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -12,8 +12,7 @@ import { registerRecipe } from './texsynth.js';
 //     y foxing / fly specks, z seam strength, w damage (blisters, pin holes, scuffs)
 // c0 ground, c1 print ink, c2 dark (seams, outlines, dirt), c3 highlight ink
 registerRecipe('lv_wallpaper', {
-  defaults: { c0: 0xc9a74e, c1: 0xa8843a, c2: 0x6a5226, c3: 0xdcc072, p0: [3, 8, 24, 1.6], p1: [0, 0.6, 1, 1], wear: 0.35, meters: 1.59, bump: 1.4, size: 1024 },
-  paint: { r: 3.5, stroke: 0.1, edge: 0.6, shift: 0.12 },
+  defaults: { c0: 0xc9a74e, c1: 0xa8843a, c2: 0x6a5226, c3: 0xdcc072, p0: [3, 8, 24, 1.6], p1: [0, 0.6, 1, 1], wear: 0.35, meters: 1.59, bump: 1.9, size: 1024 },
   glsl: `
   // x fill (main ink), y outline / fine line, z accent ink (second colour)
   vec3 wpMotif(float style, vec2 q, float ar, float odd){
@@ -21,10 +20,10 @@ registerRecipe('lv_wallpaper', {
     if (style < 0.5) {
       float cu = q.x / ar + 0.5, cv = q.y + 0.5;
       float pd = min(cu, 1.0 - cu);
-      float pins = 1.0 - smoothstep(0.016, 0.04, abs(pd - 0.04));
+      float pins = 1.0 - smoothstep(0.012, 0.028, abs(pd - 0.035));
       float band = smoothstep(0.12, 0.2, pd) * (1.0 - smoothstep(0.32, 0.42, pd));
       float chev = abs(fract(cv + abs(cu - 0.5) * 0.9) - 0.5);
-      float chevron = (1.0 - smoothstep(0.045, 0.085, chev)) * (1.0 - smoothstep(0.18, 0.26, abs(cu - 0.5))) * odd;
+      float chevron = (1.0 - smoothstep(0.035, 0.065, chev)) * (1.0 - smoothstep(0.18, 0.26, abs(cu - 0.5))) * odd;
       float dotp = 1.0 - smoothstep(0.045, 0.075, length(vec2(cu - 0.5, cv - 0.5)));
       return vec3(band * 0.6, pins, max(chevron, dotp * (1.0 - odd) * 0.8));
     }
@@ -85,26 +84,24 @@ registerRecipe('lv_wallpaper', {
     float cv = fract(uv.y * rows + odd * 0.5);
     float ar = rows / (strips * cols);
     vec2 q = vec2((cu - 0.5) * ar, cv - 0.5);
-    // hand-painted pattern: every motif drawn a little differently (wobbling lines), the second colour laid on
-    // slightly off register, the paint load uneven (heavier and lighter strokes)
-    vec3 mh = h32(vec2(si * 17.0 + ci, floor(uv.y * rows + odd * 0.5)));
-    q += (vec2(gn(uv * vec2(9.0, 30.0), vec2(9.0, 30.0)), gn(uv * vec2(9.0, 30.0) + 4.1, vec2(9.0, 30.0))) - 0.5) * 0.035;
+    // hand-cut print roll: the motif lines wobble a little and their weight varies along the strip
+    q += (vec2(gn(uv * vec2(9.0, 30.0), vec2(9.0, 30.0)), gn(uv * vec2(9.0, 30.0) + 4.1, vec2(9.0, 30.0))) - 0.5) * 0.02;
+    // the second ink is printed slightly off register; ink coverage is patchy (screen-printed roll)
     vec3 m = wpMotif(style, q, ar, odd);
-    vec3 mo = wpMotif(style, q + vec2(0.01, -0.012), ar, odd);
-    float inkB = fbm(uv + 1.7, vec2(6.0, 3.0), 3);
-    float load = 0.7 + 0.6 * gn(uv * vec2(12.0, 40.0) + 2.3, vec2(12.0, 40.0));
-    float voids = 0.75 + 0.25 * smoothstep(0.3, 0.6, inkB);
-    float fill = m.x * voids, line = m.y * load, acc = mo.z * voids * (0.8 + 0.4 * mh.z);
-    float fib = gn(uv * 520.0, vec2(520.0)) * 0.15 + gn(uv * vec2(180.0, 18.0) + 3.0, vec2(180.0, 18.0)) * 0.1 + 0.375;
-    float lin = gn(uv * vec2(360.0, 90.0), vec2(360.0, 90.0)) * 0.12 + gn(uv * vec2(90.0, 360.0) + 5.0, vec2(90.0, 360.0)) * 0.12 + 0.38;
+    vec3 mo = wpMotif(style, q + vec2(0.006, -0.009), ar, odd);
+    float inkN = gn(uv * 700.0, vec2(700.0)), inkB = fbm(uv + 1.7, vec2(14.0, 3.0), 3);
+    float voids = smoothstep(0.22, 0.4, inkN * 0.7 + inkB * 0.5);
+    float fill = m.x * voids, line = m.y * (0.65 + 0.35 * voids), acc = mo.z * voids;
+    float fib = gn(uv * 520.0, vec2(520.0)) * 0.6 + gn(uv * vec2(180.0, 18.0) + 3.0, vec2(180.0, 18.0)) * 0.4;
+    float lin = gn(uv * vec2(360.0, 90.0), vec2(360.0, 90.0)) * 0.5 + gn(uv * vec2(90.0, 360.0) + 5.0, vec2(90.0, 360.0)) * 0.5;
     float mott = fbm(uv + sh.xy * 3.0, vec2(5.0, 5.0), 5);
     float k = uP0.w;
     vec3 col = uC0 * (1.0 + (sh.z - 0.5) * 0.035);
     col = mix(col, uC1, fill * 0.36 * k * (0.8 + inkB * 0.4));
     col = mix(col, mix(uC1, uC2, 0.45), line * 0.5 * min(k, 1.2));
     col = mix(col, uC3, acc * 0.45 * k);
-    col *= 1.0 - (1.0 - inkB) * 0.05;
-    col *= 0.96 + (fib - 0.5) * 0.07 * uP1.w + (mott - 0.5) * 0.1 + (lin - 0.5) * 0.03;
+    col *= 1.0 - (1.0 - inkB) * 0.035;
+    col *= 0.96 + (fib - 0.5) * 0.07 * uP1.w + (mott - 0.5) * 0.05 + (lin - 0.5) * 0.03;
     // seams: hairline gap, lifted edge, glue tide along the seam
     float sd = min(su, 1.0 - su);
     float gap = 1.0 - smoothstep(0.0008, 0.0026, sd);
@@ -116,16 +113,18 @@ registerRecipe('lv_wallpaper', {
     // foxing + fly specks
     float fox = smoothstep(0.74, 0.82, fbm(uv + 9.0, vec2(6.0), 5)) * uP1.y;
     col = mix(col, uC2, fox * 0.2);
-
+    vec4 fs = vor(uv, vec2(60.0), 1.0);
+    float speck = (1.0 - smoothstep(0.05, 0.11, fs.x)) * step(0.93, fs.z) * uP1.y;
+    col = mix(col, uC2 * 0.35, speck * 0.75);
     // damage: blisters (paper lifted off the wall), pin holes with torn rims, scuffs, hairline scratches
     float dmg = uP1.w * (0.4 + uWear);
     vec4 bv = vor(uv + 0.31, vec2(6.0), 0.9);
     float br = 0.11 + 0.1 * bv.w;
     float blister = step(0.86, bv.z) * pow(sat(1.0 - bv.x / br), 1.5) * dmg;
     vec4 pv = vor(uv + 0.77, vec2(11.0), 1.0);
-    float hole = 0.0;
-    float torn = step(0.9, pv.z) * (1.0 - smoothstep(0.02, 0.06, pv.x)) * dmg * 0.6;
-    float scr = 0.0;
+    float hole = step(0.9, pv.z) * (1.0 - smoothstep(0.012, 0.02, pv.x)) * dmg;
+    float torn = step(0.9, pv.z) * (1.0 - smoothstep(0.02, 0.05, pv.x)) * (1.0 - hole) * dmg;
+    float scr = scratches(uv * 2.0, 5.0, 0.45, 0.006) * uWear;
     col = mix(col, col * 1.06 + 0.01, blister * 0.35);
     col = mix(col, uC2 * 0.25, hole);
     col = mix(col, mix(col, vec3(0.86, 0.82, 0.7), 0.6), torn * 0.5);
@@ -146,8 +145,7 @@ registerRecipe('lv_wallpaper', {
 //     tile), z dirt (lint, crumbs, burns, small stains), w loop rows per tile (styles 1, 2)
 // c0 base, c1 dark pile, c2 dirt / pattern dark, c3 flecks / pattern light
 registerRecipe('lv_carpet', {
-  defaults: { c0: 0x7e5e38, c1: 0x62462a, c2: 0x3a2818, c3: 0x96764a, p0: [300, 0.7, 0.8, 0.5], p1: [0, 4, 0.6, 160], wear: 0.35, meters: 1.0, bump: 1.1, size: 1024 },
-  paint: { r: 4, stroke: 0.09, edge: 0.35, shift: 0.14, nsoft: 2.4 },
+  defaults: { c0: 0x846442, c1: 0x664a2e, c2: 0x3e2c18, c3: 0xa0805a, p0: [300, 0.7, 0.8, 0.5], p1: [0, 4, 0.6, 160], wear: 0.35, meters: 1.0, bump: 1.5, size: 1024 },
   glsl: `
   // geometric office-carpet pattern: squares-in-squares with a diagonal dot lattice, x = dark ink, y = light ink
   vec2 cpPattern(vec2 uv, float n){
@@ -172,14 +170,7 @@ registerRecipe('lv_carpet', {
       vec4 v2 = vor(uv + 0.37, vec2(floor(uP0.x * 0.71)), 1.0);
       float tuft = 1.0 - smoothstep(0.0, 0.9, v.x), tuft2 = 1.0 - smoothstep(0.0, 0.9, v2.x);
       pile = max(tuft, tuft2 * 0.85); tone = v.z; fleckA = step(1.0 - uP0.y * 0.05, v.w); fleckB = step(1.0 - uP0.y * 0.035, v2.w);
-      col = mix(uC1, uC0, sat(0.55 + (shade - 0.5) * uP0.z * 1.8 + (shade2 - 0.5) * 0.4 + (tone - 0.5) * 0.12));
-      // an old, faded painted motif under the pile: a wobbly diamond lattice with dots on the crossings
-      vec2 pw = uv + (vec2(gn(uv * 6.0, vec2(6.0)), gn(uv * 6.0 + 3.3, vec2(6.0))) - 0.5) * 0.02;
-      vec2 dq = fract(pw * 3.0) - 0.5; float dm = abs(dq.x) + abs(dq.y);
-      float lat = 1.0 - smoothstep(0.02, 0.05, abs(dm - 0.5));
-      float dotm = 1.0 - smoothstep(0.05, 0.08, length(dq));
-      col = mix(col, uC2, lat * 0.16 * (0.6 + 0.4 * shade2));
-      col = mix(col, uC3, dotm * 0.18);
+      col = mix(uC1, uC0, sat(0.55 + (shade - 0.5) * uP0.z * 1.5 + (shade2 - 0.5) * 0.4 + (tone - 0.5) * 0.3));
     } else {
       // loop pile: staggered rows of yarn loops; each loop a small raised ring with a dark core between loops
       float rows = floor(uP1.w * 0.5 + 0.5) * 2.0, lc = floor(rows * 1.3 + 0.5);
@@ -203,7 +194,7 @@ registerRecipe('lv_carpet', {
     }
     col = mix(col, uC3, fleckA * 0.55);
     col = mix(col, uC2, fleckB * 0.5);
-    col *= 0.82 + pile * 0.2 + (fib - 0.5) * 0.05;
+    col *= 0.68 + pile * 0.4 + (fib - 0.5) * 0.14;
     float matted = smoothstep(0.52, 0.78, mat) * uP0.w;
     col = mix(col, col * vec3(0.86, 0.85, 0.82), matted);
     // dirt: grey lint fluff, crumbs, dark grit, cigarette burns (melted black core, brown halo), drink spots
@@ -222,10 +213,14 @@ registerRecipe('lv_carpet', {
     float stR = 0.16 + 0.12 * sv.w; float sdist = sv.x + (fbm(uv + 2.0, vec2(12.0), 3) - 0.5) * 0.08;
     float spot = step(0.78, sv.z) * (1.0 - smoothstep(stR * 0.8, stR, sdist)) * d;
     float spotRing = step(0.78, sv.z) * (1.0 - smoothstep(0.0, 0.025, abs(sdist - stR * 0.9))) * d;
-    col = mix(col, col * vec3(0.7, 0.6, 0.46), spot * 0.3 + spotRing * 0.2);
-    burnCore = 0.0; burnHalo = 0.0; lint = 0.0; crumb = 0.0;
+    col = mix(col, vec3(0.42, 0.41, 0.39), lint * 0.55);
+    col = mix(col, vec3(0.62, 0.48, 0.3), crumb * 0.8);
+    col = mix(col, uC2 * 0.4, grit * 0.6);
+    col = mix(col, col * vec3(0.55, 0.45, 0.32), spot * 0.35 + spotRing * 0.45);
+    col = mix(col, col * vec3(0.45, 0.32, 0.2), burnHalo * 0.7);
+    col = mix(col, vec3(0.16, 0.1, 0.06), burnCore * 0.85);
     S s; s.albedo = col;
-    s.height = pile * (0.5 - matted * 0.25) + (fib - 0.5) * 0.06 + crumb * 0.35 + lint * 0.2 - burnCore * 0.5 - burnHalo * 0.15 - spot * 0.06;
+    s.height = pile * (0.8 - matted * 0.45) + (fib - 0.5) * 0.14 + crumb * 0.35 + lint * 0.2 - burnCore * 0.5 - burnHalo * 0.15 - spot * 0.06;
     s.rough = 0.97 - matted * 0.08 - burnCore * 0.45 - spot * 0.08; s.ao = 0.5 + pile * 0.5 - burnCore * 0.3; s.metal = 0.0; return s; }`,
 });
 
@@ -235,8 +230,7 @@ registerRecipe('lv_carpet', {
 // p0: x tiles per texture, y fissures, z pinholes, w per-tile tone; p1: x flange half-width (tile uv),
 //     y kerf width, z yellowing / water marks, w flange enamel roughness. wear: chips, rust on the grid, dust
 registerRecipe('lv_acoustic', {
-  defaults: { c0: 0xe9dcb6, c1: 0xd4c49c, c2: 0x9a8050, c3: 0xf0e8d4, p0: [4, 0.5, 0.0, 0.012], p1: [0.02, 0.012, 0.6, 0.42], wear: 0.35, meters: 2.4, bump: 1.8, size: 1024 },
-  paint: { r: 4, stroke: 0.07, edge: 0.8, shift: 0.1 },
+  defaults: { c0: 0xeadfbe, c1: 0xd6c9a4, c2: 0x9a8254, c3: 0xf2ecdc, p0: [4, 0.9, 0.8, 0.012], p1: [0.02, 0.012, 0.6, 0.42], wear: 0.35, meters: 2.4, bump: 2.6, size: 1024 },
   glsl: `S surface(vec2 uv){
     float n = uP0.x; vec2 t = uv * n; vec2 ti = mod(floor(t), n); vec2 f = fract(t);
     vec3 th = h32(ti + 0.5); vec3 th2 = h32(ti + 7.5);
@@ -256,7 +250,7 @@ registerRecipe('lv_acoustic', {
     vec3 col = mix(uC1, uC0, sat(0.62 + (m - 0.5) * 0.45 + (th.x - 0.5) * uP0.w * 16.0));
     col = mix(col, mix(col, uC2, 0.25), smoothstep(0.4, 1.0, th.y) * uP1.z * 0.25);
     col *= 1.0 - fis * 0.26 - pin * 0.32;
-    col *= 0.99 + grain * 0.01 + (grain2 - 0.5) * 0.01;
+    col *= 0.97 + grain * 0.04 + (grain2 - 0.5) * 0.03;
     col *= mix(0.8, 1.0, kerf);
     // per-tile water marks: brown tide rings with a paler bleached centre on a few tiles
     vec2 sc = vec2(0.25) + th2.xy * 0.5; float sR = 0.14 + 0.22 * th2.z;
@@ -268,7 +262,7 @@ registerRecipe('lv_acoustic', {
     col = mix(col, col * vec3(0.62, 0.5, 0.32), sRing * 0.6);
     // mould dots near the stain, dust darkening near the kerf, chipped tile corners
     float mould = step(0.6, th2.y) * sFill * smoothstep(0.86, 0.95, gn(uv * 180.0 + 3.0, vec2(180.0)));
-
+    col = mix(col, vec3(0.2, 0.22, 0.16), mould * 0.7);
     float dust = (1.0 - smoothstep(uP1.x, uP1.x + 0.05, ed)) * (1.0 - flange) * uWear;
     col *= 1.0 - dust * 0.18;
     vec2 cr = min(f, 1.0 - f); float cdist = length(cr - uP1.x);

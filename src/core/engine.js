@@ -7,7 +7,8 @@ const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _o = new THREE.Vect
 
 // maxDpr caps the device pixel ratio; the adaptive resolution scaler (see render()) then trims the render
 // scale between minScale and 1 to hold the frame rate, so the target resolution can stay high.
-// paint: 'full' = 5x5-tap painterly filter, 'lite' = 3x3 taps (phones); dof: far depth of field; fxaa: edge AA pass.
+// paint: 'full' = 3x3-tap gentle edge-preserving soften + far depth of field taps, 'lite' = none (phones); dof: far
+// depth of field; fxaa: edge AA pass.
 export const QUALITY = {
   low: { pixelRatio: 1.0, shadows: false, shadowSize: 512, bloom: false, ao: false, msaa: false, maxDpr: 1.5, minScale: 0.6, paint: 'lite', dof: false, fxaa: false },
   medium: { pixelRatio: 1.0, shadows: true, shadowSize: 1024, bloom: true, ao: false, msaa: false, maxDpr: 2, minScale: 0.6, paint: 'full', dof: true, fxaa: true },

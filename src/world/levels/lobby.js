@@ -75,7 +75,7 @@ export class LobbyLevel {
     engine.post.resetLook?.();
     pp.uTint.value.setRGB(1.0, 0.98, 0.93);
     pp.uSat.value = 1.0;
-    pp.uGrain.value = 0.05;
+    pp.uGrain.value = 0.03;
     pp.uVignette.value = 0.45;
     pp.uExposure.value = 1.0;
     pp.uLift.value.set(0.006, 0.008, 0.006);

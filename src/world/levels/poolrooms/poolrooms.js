@@ -177,7 +177,7 @@ export class PoolroomsLevel extends YellowLevel {
       pp.uHaze.value = 0.035; pp.uHazeStart.value = 2.5; pp.uHazeFarDist.value = 30;
       pp.uHazeNear.value.setRGB(0.95, 0.97, 0.88); pp.uHazeFar.value.setRGB(0.5, 0.66, 0.7);
       pp.uHazeLum.value = 0.05; pp.uHazeGlow.value = 0.35; pp.uHazeSky.value = 1.0;
-      pp.uDof.value = 0.6; pp.uDofStart.value = 12; pp.uDofEnd.value = 42;
+      pp.uDof.value = 0.45; pp.uDofStart.value = 14; pp.uDofEnd.value = 46;
     }
     engine.renderer.toneMappingExposure = 1.0;
     this.world.monsters = this.monsters = new MonsterManager(this);

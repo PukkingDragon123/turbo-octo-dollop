@@ -1,5 +1,6 @@
-// R.O.O.M. — hand-painted canvas texture kit (art direction: broad soft brush strokes, large slow value
-// shifts, painted edge wear, uneven line weight, very little high-frequency noise). Used by the cosmetic
+// R.O.O.M. — canvas texture kit for detailed, realistic materials with a light hand-finished touch (art
+// direction: real material detail first, thread-level weave, chipped paint showing bare metal, scratches,
+// stains; large slow value shifts and edge wear as the hand-made finish; brush strokes only faintly). Used by the cosmetic
 // models (hats.js), the cloth rags (cloth.js), the eyes (eyes.js) and the customizer station props.
 //
 //   ptex(key, w, h, draw, opts)  cached CanvasTexture (sRGB, mipmapped, optional repeat)
@@ -71,6 +72,7 @@ export const P = {
   },
   // broad soft brush strokes in nearby tints
   strokes(g, w, h, hex, rng, { n = 60, len = 0.25, wid = 0.05, k = 0.08, alpha = 0.18, angle = null, jitter = 0.6 } = {}) {
+    alpha *= 0.4; k *= 0.7;   // only a faint hand-finished feel (art direction: detail and realism first)
     g.save(); g.lineCap = 'round';
     for (let i = 0; i < n; i++) {
       const a = angle == null ? rng.next() * TAU : angle + (rng.next() - 0.5) * jitter;
@@ -131,11 +133,51 @@ export const P = {
     }
     g.restore();
   },
-  // woven cloth: soft warp / weft lines (low contrast)
+  // woven cloth at thread level: warp and weft threads passing over / under each other, each thread a
+  // slightly different tone, with fibre highlights and the shadow where one dives under the other
   weave(g, w, h, hex, rng, { pitch = 4, k = 0.09, alpha = 0.35 } = {}) {
     g.save();
-    for (let y = 0; y < h; y += pitch) { g.fillStyle = css(shade(hex, (rng.next() - 0.5) * k * 2), alpha * 0.6); g.fillRect(0, y, w, pitch * 0.5); }
-    for (let x = 0; x < w; x += pitch) { g.fillStyle = css(shade(hex, (rng.next() - 0.5) * k * 2 - k * 0.5), alpha * 0.45); g.fillRect(x, 0, pitch * 0.5, h); }
+    const p = Math.max(2, pitch), cols = Math.ceil(w / p), rows = Math.ceil(h / p);
+    const tw = [], tf = [];
+    for (let i = 0; i < cols; i++) tw.push((rng.next() - 0.5) * k * 2);
+    for (let j = 0; j < rows; j++) tf.push((rng.next() - 0.5) * k * 2);
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const over = (i + j) % 2 === 0, x = i * p, y = j * p;
+      // the thread on top in this cell, a lit crown and darker flanks
+      const tone = over ? tw[i] : tf[j];
+      g.fillStyle = css(shade(hex, tone + 0.06), alpha * 0.55);
+      if (over) g.fillRect(x + p * 0.15, y, p * 0.7, p); else g.fillRect(x, y + p * 0.15, p, p * 0.7);
+      g.fillStyle = css(shade(hex, -0.35), alpha * 0.35);
+      if (over) { g.fillRect(x, y, p * 0.12, p); g.fillRect(x + p * 0.88, y, p * 0.12, p); } else { g.fillRect(x, y, p, p * 0.12); g.fillRect(x, y + p * 0.88, p, p * 0.12); }
+    }
+    // stray fibres
+    g.lineWidth = 0.6;
+    for (let i = 0; i < (w * h) / 900; i++) {
+      const x = rng.next() * w, y = rng.next() * h, a = rng.next() * TAU, L = 2 + rng.next() * 6;
+      g.strokeStyle = css(shade(hex, 0.25), alpha * 0.35);
+      g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a + 0.5) * L * 0.5, y + Math.sin(a + 0.5) * L * 0.5, x + Math.cos(a) * L, y + Math.sin(a) * L); g.stroke();
+    }
+    g.restore();
+  },
+  // fine scratches (metal, plastic): thin light lines with a darker lip, mostly in one direction
+  scratches(g, w, h, rng, { n = 40, col = 0xd8d4cc, angle = 0.3, len = 0.12, alpha = 0.35 } = {}) {
+    g.save(); g.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const x = rng.next() * w, y = rng.next() * h, a = angle + (rng.next() - 0.5) * 0.8, L = len * w * (0.3 + rng.next());
+      g.strokeStyle = css(col, alpha * (0.4 + rng.next() * 0.6)); g.lineWidth = 0.6 + rng.next() * 0.8;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L); g.stroke();
+      g.strokeStyle = css(0x1a1816, alpha * 0.25); g.lineWidth = 0.5;
+      g.beginPath(); g.moveTo(x + 0.8, y + 0.8); g.lineTo(x + Math.cos(a) * L + 0.8, y + Math.sin(a) * L + 0.8); g.stroke();
+    }
+    g.restore();
+  },
+  // fine value noise (grain of plastic, felt fuzz, paper tooth)
+  grain(g, w, h, rng, { amt = 0.06, size = 1.5 } = {}) {
+    g.save();
+    for (let i = 0; i < (w * h) / (size * size * 6); i++) {
+      g.fillStyle = rng.next() < 0.5 ? `rgba(255,248,230,${amt * rng.next()})` : `rgba(20,16,10,${amt * rng.next()})`;
+      g.fillRect(rng.next() * w, rng.next() * h, size, size);
+    }
     g.restore();
   },
   // paint drips running down from y0
@@ -184,13 +226,31 @@ export const P = {
   },
 };
 
+// a fine tiling thread relief (plain weave) shared by every fabric
+let THREAD_N = null;
+export function threadNormal() {
+  if (THREAD_N) return THREAD_N;
+  const c = mkCanvas(128, 128), g = c.getContext('2d');
+  g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, 128, 128);
+  const p = 8;
+  for (let y = 0; y < 128; y += p) for (let x = 0; x < 128; x += p) {
+    const over = ((x + y) / p) % 2 === 0;
+    const gr = over ? g.createLinearGradient(x, 0, x + p, 0) : g.createLinearGradient(0, y, 0, y + p);
+    gr.addColorStop(0, '#3a3a3a'); gr.addColorStop(0.5, '#e8e8e8'); gr.addColorStop(1, '#3a3a3a');
+    g.fillStyle = gr; g.fillRect(x, y, p, p);
+  }
+  THREAD_N = heightToNormal('thread_normal', c, 1.3, { repeat: [10, 10] });
+  return THREAD_N;
+}
+
 // ---------------------------------------------------------------------------
 // material factories (cached by key)
 const MATS = new Map();
 export function cachedMat(key, fn) { if (!MATS.has(key)) MATS.set(key, fn()); return MATS.get(key); }
 export const FM = {
   // woven cloth / felt: high roughness, sheen tinted by the fibre colour
-  fabric(key, map, { normalMap = null, nScale = 0.8, sheen = 0.7, color = 0xffffff, side = THREE.FrontSide, alphaTest = 0, rough = 0.92 } = {}) {
+  fabric(key, map, { normalMap = undefined, nScale = 0.8, sheen = 0.7, color = 0xffffff, side = THREE.FrontSide, alphaTest = 0, rough = 0.92 } = {}) {
+    if (normalMap === undefined) normalMap = threadNormal();
     return cachedMat('fab_' + key, () => new THREE.MeshPhysicalMaterial({
       name: 'fabric_' + key, color, map, normalMap, normalScale: new THREE.Vector2(nScale, nScale), roughness: rough, metalness: 0,
       sheen, sheenRoughness: 0.55, sheenColor: new THREE.Color(color).lerp(new THREE.Color(0xfff0d8), 0.5), side, alphaTest, transparent: false,
@@ -198,8 +258,10 @@ export const FM = {
   },
   // painted metal with chipped edges (map carries the chips), satin
   paintedMetal(key, map, { rough = 0.62, metal = 0.25, cc = 0.15, normalMap = null } = {}) {
+    const orm = map?.userData?.orm || null;
     return cachedMat('pm_' + key, () => new THREE.MeshPhysicalMaterial({
-      name: 'paintedmetal_' + key, map, normalMap, roughness: rough, metalness: metal, clearcoat: cc, clearcoatRoughness: 0.5, envMapIntensity: 0.9,
+      name: 'paintedmetal_' + key, map, normalMap, roughness: orm ? 1 : rough, metalness: orm ? 1 : metal,
+      roughnessMap: orm, metalnessMap: orm, clearcoat: cc, clearcoatRoughness: 0.5, envMapIntensity: 1.0,
     }));
   },
   bare(key, color, { rough = 0.38, metal = 1 } = {}) {
@@ -233,16 +295,40 @@ export const FM = {
 // ---------------------------------------------------------------------------
 // a few shared painted textures
 export const TX = {
-  // painted steel: base colour, broad strokes, chipped edges showing dark primer and bright metal
+  // worn painted steel: an even factory coat with soft mottling, fine scratches, chips through the
+  // primer to bare steel (a matching ORM map makes the chips metallic and glossy), rust bleeding from
+  // the deeper chips and grime settled toward the bottom edge
   paintedSteel(hex, seed = 1) {
-    return ptex('steel_' + hex.toString(16) + '_' + seed, 256, 256, (g, w, h, r) => {
-      P.wash(g, w, h, hex, { k: 0.1 });
-      P.strokes(g, w, h, hex, r, { n: 50, len: 0.4, wid: 0.06, k: 0.07, alpha: 0.2, angle: 0, jitter: 0.25 });
-      P.blotches(g, w, h, 0x4a3a28, r, { n: 5, r: 0.2, alpha: 0.1 });
-      P.chips(g, w, h, 0x3a3532, r, { n: 18, s: 0.012 });
-      P.chips(g, w, h, 0xb8b2a6, r, { n: 10, s: 0.006 });
-      P.edgeWear(g, w, h, r, { amt: 0.8 });
+    const key = 'steel2_' + hex.toString(16) + '_' + seed;
+    if (TEX.has(key)) return TEX.get(key);
+    const W = 512, Hh = 512;
+    const orm = mkCanvas(W, Hh), o = orm.getContext('2d');
+    o.fillStyle = 'rgb(255,150,0)'; o.fillRect(0, 0, W, Hh);   // R ao, G roughness ~0.6, B metalness 0
+    const t = ptex(key, W, Hh, (g, w, h, r) => {
+      P.wash(g, w, h, hex, { k: 0.06 });
+      P.blotches(g, w, h, shade(hex, -0.12), r, { n: 10, r: 0.2, alpha: 0.12 });
+      P.grain(g, w, h, r, { amt: 0.05, size: 2 });
+      P.scratches(g, w, h, r, { n: 70, col: shade(hex, 0.35), alpha: 0.3 });
+      // chips: primer ring, bare steel core
+      for (let i = 0; i < 46; i++) {
+        const x = r.next() * w, y = (r.next() < 0.5 ? r.next() * 0.12 + (r.next() < 0.5 ? 0 : 0.88) : r.next()) * h;
+        const R = (0.004 + r.next() * 0.016) * w, pts = [];
+        for (let k = 0; k < 9; k++) { const a = (k / 9) * TAU, rr = R * (0.45 + r.next() * 0.7); pts.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.7]); }
+        const poly = (c, sc) => { c.beginPath(); pts.forEach(([px, py], k) => { const X = x + (px - x) * sc, Y = y + (py - y) * sc; if (k) c.lineTo(X, Y); else c.moveTo(X, Y); }); c.closePath(); c.fill(); };
+        g.fillStyle = css(0x6a6458, 0.9); poly(g, 1.15);
+        g.fillStyle = css(0xb8b4ac, 0.95); poly(g, 0.8);
+        o.fillStyle = 'rgb(255,90,255)'; poly(o, 0.8);
+        if (r.next() < 0.35) { const gr = g.createRadialGradient(x, y + R, 0, x, y + R * 2.5, R * 2.5); gr.addColorStop(0, css(0x8a4a22, 0.45)); gr.addColorStop(1, css(0x8a4a22, 0)); g.fillStyle = gr; g.fillRect(x - R * 3, y, R * 6, R * 5); }
+      }
+      // grime at the bottom, lighter rubbed edges at the top
+      const gb = g.createLinearGradient(0, h * 0.7, 0, h);
+      gb.addColorStop(0, css(0x3a3226, 0)); gb.addColorStop(1, css(0x3a3226, 0.28));
+      g.fillStyle = gb; g.fillRect(0, h * 0.7, w, h * 0.3);
+      P.edgeWear(g, w, h, r, { amt: 0.5 });
     });
+    const ot = new THREE.CanvasTexture(orm); ot.colorSpace = THREE.NoColorSpace; ot.anisotropy = 4;
+    t.userData.orm = ot;
+    return t;
   },
   wood(hex = 0x9a6b40, seed = 1) {
     return ptex('wood_' + hex.toString(16) + '_' + seed, 256, 256, (g, w, h, r) => {

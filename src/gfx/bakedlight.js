@@ -330,47 +330,75 @@ function grimeGLSL(kind, wet) {
   switch (kind) {
     case 1: return /* glsl */`
       {
-        // painted carpet: soft damp stains, a few spill marks with a soft tide edge, lighter worn traffic lanes
         vec2 wp = vWPos.xz;
         float big = nzR(wp * 0.031), mid = nzR(wp * 0.11 + 3.7), fine = nzG(wp * 0.23 + 1.3);
-        float damp = smoothstep(0.52, 0.82, big * 0.6 + mid * 0.4) * uGrime;
-        float st = nzR(wp * 0.09 + 7.1);
-        float spillMask = smoothstep(0.6, 0.72, nzR(wp * 0.037 + 1.9));
-        float spill = smoothstep(0.64, 0.74, st) * spillMask * uGrime;
-        float ring = (1.0 - smoothstep(0.0, 0.025 + fwidth(st), abs(st - 0.66))) * spillMask * uGrime;
+        float damp = smoothstep(0.56, 0.78, big * 0.6 + mid * 0.4) * uGrime;
+        float st = nzR(wp * 0.13 + 7.1);
+        float spillMask = smoothstep(0.62, 0.7, nzR(wp * 0.037 + 1.9));
+        float spill = smoothstep(0.69, 0.73, st) * spillMask * uGrime;
+        float ring = (1.0 - smoothstep(0.0, 0.006 + fwidth(st), abs(st - 0.69))) * spillMask * uGrime;
+        float worn = smoothstep(0.6, 0.82, nzR(wp * 0.055 + 11.0)) * 0.7;
         float sd = fract(vWPos.x / 3.66 + 0.13); sd = min(sd, 1.0 - sd) * 3.66;
-        float seam = 1.0 - smoothstep(0.004, 0.02 + fwidth(sd), sd);
+        float seam = 1.0 - smoothstep(0.003, 0.006 + fwidth(sd), sd);
         vec3 c = diffuseColor.rgb;
-        c *= mix(1.0, 0.8, damp); c = mix(c, c * vec3(0.95, 0.88, 0.76), damp * 0.6);
-        c = mix(c, c * vec3(0.78, 0.68, 0.52), spill * 0.4 + ring * 0.25);
-        c *= 1.0 - seam * 0.12;
-        // traffic lanes: winding paths of flattened, sun-faded pile (an iso-line of slow noise)
+        float l = dot(c, vec3(0.3, 0.59, 0.11));
+        c = mix(c, vec3(l) * vec3(1.04, 1.0, 0.92) * 1.08, worn * 0.16);
+        c *= mix(1.0, 0.74, damp); c = mix(c, c * vec3(0.94, 0.88, 0.76), damp * 0.6);
+        c = mix(c, c * vec3(0.7, 0.6, 0.45), spill * 0.45 + ring * 0.35);
+        c *= 1.0 - seam * 0.22;
+        // traffic lanes: winding worn paths (flattened, greyed pile) with trails of muddy shoe prints.
+        // the lane is an iso-line of noise; its gradient gives the walking direction and the distance across
         float ln = nzR(wp * 0.045 + 21.3);
         vec2 lg = vec2(nzR(wp * 0.045 + vec2(21.3045, 21.3)), nzR(wp * 0.045 + vec2(21.3, 21.3045))) - ln;
-        float acrossL = (ln - 0.5) * 0.1 / max(length(lg), 1e-4);
-        float lane = (1.0 - smoothstep(0.25, 0.9, abs(acrossL))) * (0.6 + 0.4 * mid);
-        c = mix(c, c * vec3(1.1, 1.05, 0.96), lane * 0.28 * uGrime);
+        float lgl = max(length(lg), 1e-4);
+        float acrossL = (ln - 0.5) * 0.1 / lgl;
+        float lane = (1.0 - smoothstep(0.3, 0.8, abs(acrossL))) * (0.6 + 0.4 * mid);
+        c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))) * vec3(1.02, 0.98, 0.9), lane * 0.3 * uGrime);
+        c *= 1.0 - lane * 0.14 * uGrime;
+        {
+          vec2 tg = vec2(-lg.y, lg.x) / lgl;
+          float al = dot(wp, tg) / 0.36; float k = floor(al);
+          float side = mod(k, 2.0) * 2.0 - 1.0;
+          vec2 sp = vec2((fract(al) - 0.5) * 0.36, acrossL - side * 0.1);
+          float sole = 1.0 - smoothstep(0.8, 1.0, length((sp - vec2(0.03, 0.0)) / vec2(0.075, 0.045)));
+          float heel = 1.0 - smoothstep(0.8, 1.0, length((sp + vec2(0.085, 0.0)) / vec2(0.035, 0.038)));
+          float tread = 0.6 + 0.4 * step(0.5, fract(sp.x * 55.0));
+          float trail = smoothstep(0.45, 0.65, nzG(wp * 0.09 + 5.0)) * step(0.3, bkH(vec2(k, floor(ln * 9.0)) + 4.0));
+          float shoe = max(sole, heel) * tread * trail * uGrime;
+          c = mix(c, c * vec3(0.55, 0.48, 0.38), shoe * 0.5);
+        }
+        // cigarette burns: melted black core, scorched brown halo
+        {
+          vec2 bc = floor(wp / 1.7); vec2 bf = wp - bc * 1.7;
+          float bh = bkH(bc + 41.0);
+          if (bh > 0.86) {
+            vec2 bpos = vec2(bkH(bc + 3.1), bkH(bc + 7.9)) * 1.3 + 0.2;
+            float bd = length(bf - bpos) + (fine - 0.5) * 0.006;
+            float halo = 1.0 - smoothstep(0.01, 0.026, bd);
+            float core = 1.0 - smoothstep(0.005, 0.009, bd);
+            c = mix(c, c * vec3(0.42, 0.3, 0.2), halo * 0.75 * uGrime);
+            c = mix(c, vec3(0.13, 0.085, 0.05), core * 0.85 * uGrime);
+          }
+        }
         bkDampness = damp * 0.6 + spill * 0.3;
-        // organic wet patches: the baked wetness is a smooth potential, broken up by slow world-space noise into
-        // puddles with a soaked halo and a soft dried tide edge
+        // organic wet patches: the baked wetness is a smooth potential, broken up here by world-space noise into
+        // puddles with a soaked halo and a dried tide ring (no cell-shaped squares)
         float wetv = ${W};
         float wm = wetv > 0.002 ? wetv * 1.15 + (nzR(wp * 0.42 + 5.1) - 0.5) * 0.8 + (fine - 0.5) * 0.3 : -1.0;
         float halo = smoothstep(0.1, 0.42, wm);
         float wetF = smoothstep(0.34, 0.62, wm);
-        bkPuddle = smoothstep(0.66, 0.78, wm);
-        float tide = (1.0 - smoothstep(0.0, 0.06 + fwidth(wm), abs(wm - 0.14))) * step(0.0, wm);
-        c *= mix(1.0, 0.84, halo); c = mix(c, c * vec3(0.93, 0.87, 0.74), halo * 0.45);
-        c *= mix(1.0, 0.62, wetF);
-        c = mix(c, c * vec3(0.7, 0.6, 0.46), tide * 0.22 * uGrime);
-        c = mix(c, c * vec3(0.8, 0.86, 0.86), bkPuddle * 0.5);
+        bkPuddle = smoothstep(0.68, 0.76, wm);
+        float tide = (1.0 - smoothstep(0.0, 0.03 + fwidth(wm), abs(wm - 0.14))) * step(0.0, wm);
+        c *= mix(1.0, 0.82, halo); c = mix(c, c * vec3(0.93, 0.87, 0.74), halo * 0.45);
+        c *= mix(1.0, 0.6, wetF);
+        c = mix(c, c * vec3(0.6, 0.5, 0.36), tide * 0.3 * uGrime);
+        c = mix(c, c * vec3(0.8, 0.85, 0.84), bkPuddle * 0.5);
         bkWetness = max(max(wetF * 0.8, halo * 0.22), bkDampness * 0.25);
         ${RIPPLE}
         diffuseColor.rgb = c;
       }`;
     case 2: return /* glsl */`
       {
-        // painted wallpaper wear: sun-faded patches, rising damp under a soft tide line, a grime band above the
-        // skirting, soft leak streaks from the ceiling, peeling paper at a few seams, a soot film under the ceiling
         vec3 wn = normalize(cross(dFdx(vWPos), dFdy(vWPos)));
         bool alongZ = abs(wn.x) > abs(wn.z);
         float u = alongZ ? vWPos.z : vWPos.x;
@@ -378,48 +406,110 @@ function grimeGLSL(kind, wet) {
         float y = vWPos.y;
         vec3 c = diffuseColor.rgb;
         float l = dot(c, vec3(0.3, 0.59, 0.11));
-        float fade = smoothstep(0.58, 0.9, nzR(vec2(u * 0.05 + w * 0.31, y * 0.06 + w * 0.17))) * uGrime;
-        c = mix(c, vec3(l) * vec3(1.08, 1.04, 0.9) * 1.08, fade * 0.14);
-        float dz = smoothstep(0.58, 0.8, nzR(vec2(u * 0.045 + w * 0.29, 5.3))) * uGrime;
+        // sun-faded / bleached patches
+        float fade = smoothstep(0.62, 0.9, nzR(vec2(u * 0.05 + w * 0.31, y * 0.06 + w * 0.17))) * uGrime;
+        c = mix(c, vec3(l) * vec3(1.06, 1.03, 0.92) * 1.05, fade * 0.1);
+        // rising damp with a tide mark
+        float dz = smoothstep(0.58, 0.78, nzR(vec2(u * 0.045 + w * 0.29, 5.3))) * uGrime;
         dz = max(dz, ${W} * 0.9);
         float hT = 0.1 + (0.12 + 0.3 * nzR(vec2(u * 0.11 + w * 0.73, 1.9 + w * 0.05))) * dz;
-        float below = (1.0 - smoothstep(hT - 0.08, hT + 0.01, y)) * dz;
-        float tide = (1.0 - smoothstep(0.0, 0.035 + fwidth(y), abs(y - hT))) * dz;
-        c = mix(c, c * vec3(0.84, 0.76, 0.6), below * 0.5);
-        c = mix(c, c * vec3(0.7, 0.6, 0.44), tide * 0.45);
-        c *= 1.0 - (1.0 - smoothstep(0.1, 0.5, y)) * 0.12 * uGrime;
-        float scuff = smoothstep(0.7, 0.88, nzR(vec2(u * 0.9 + w, y * 1.6))) * (1.0 - smoothstep(0.85, 1.1, y)) * smoothstep(0.1, 0.25, y) * uGrime;
-        c = mix(c, c * 0.8, scuff * 0.3);
-        float su = u * 1.2 + w * 3.17; float sid = floor(su); float sf = fract(su);
+        float below = (1.0 - smoothstep(hT - 0.03, hT + 0.005, y)) * dz;
+        float tide = (1.0 - smoothstep(0.0, 0.012 + fwidth(y), abs(y - hT))) * dz;
+        c = mix(c, c * vec3(0.8, 0.72, 0.55), below * 0.55);
+        c = mix(c, c * vec3(0.55, 0.45, 0.3), tide * 0.7);
+        // grime band above the skirting + scuffs from chairs and carts
+        c *= 1.0 - (1.0 - smoothstep(0.1, 0.45, y)) * 0.14 * uGrime;
+        float scuff = smoothstep(0.72, 0.86, nzG(vec2(u * 1.7 + w, y * 3.0))) * (1.0 - smoothstep(0.85, 1.1, y)) * smoothstep(0.1, 0.25, y) * uGrime;
+        c = mix(c, c * 0.72, scuff * 0.35);
+        // leak streaks running down from the ceiling
+        float su = u * 1.6 + w * 3.17; float sid = floor(su); float sf = fract(su);
         float hs = bkH(vec2(sid, floor(w * 0.33 + 0.5)));
+        float leak = 0.0;
         if (hs > 0.8) {
           float cx = 0.25 + 0.5 * fract(hs * 7.3);
           float len = 0.5 + 2.1 * fract(hs * 3.1);
-          float wid = 0.1 + 0.14 * fract(hs * 5.7);
-          float wob = (nzR(vec2(su * 0.37, y * 0.4)) - 0.5) * 0.3;
-          float dxl = abs(sf - cx + wob) / 1.2;
+          float wid = 0.05 + 0.1 * fract(hs * 5.7);
+          float wob = (nzG(vec2(su * 0.37, y * 0.5)) - 0.5) * 0.25;
+          float dxl = abs(sf - cx + wob) / 1.6;
           float along = (uGrid.w - y) / len;
-          float leak = (1.0 - smoothstep(wid * 0.3, wid, dxl)) * (1.0 - smoothstep(0.4, 1.0, along)) * step(0.0, along);
-          c = mix(c, c * vec3(0.76, 0.66, 0.5), leak * 0.45 * uGrime);
+          leak = (1.0 - smoothstep(wid * 0.35, wid, dxl)) * (1.0 - smoothstep(0.55, 1.0, along)) * step(0.0, along);
+          leak *= 0.55 + 0.45 * nzG(vec2(u * 5.0, y * 0.25));
+          float edgeL = (1.0 - smoothstep(0.0, 0.02, abs(along - 0.95 + (nzG(vec2(u * 3.0, 0.5)) - 0.5) * 0.1))) * step(dxl, wid);
+          c = mix(c, c * vec3(0.7, 0.6, 0.42), leak * 0.6 * uGrime);
+          c = mix(c, c * vec3(0.52, 0.42, 0.28), edgeL * 0.5 * uGrime);
         }
+        // peeling paper at some seams (strip width 0.53 m)
         float sIdx = floor(u / 0.53 + 0.5); float ds = u - sIdx * 0.53;
         float hp = bkH(vec2(sIdx, floor(w * 0.33 + 0.5) + 17.0));
-        if (hp > 0.82) {
-          bool topPeel = hp > 0.91;
+        if (hp > 0.8) {
+          bool topPeel = hp > 0.9;
           float yy = topPeel ? (uGrid.w - y) : (y - 0.1);
-          float Lp = 0.14 + 0.32 * fract(hp * 13.7);
-          float wpx = 0.05 * sat(1.0 - yy / Lp) + 0.004;
+          float Lp = 0.12 + 0.3 * fract(hp * 13.7);
+          float wpx = 0.04 * sat(1.0 - yy / Lp) + 0.002;
           float sgn = fract(hp * 3.3) > 0.5 ? 1.0 : -1.0;
           float sd = ds * sgn;
           float inside = step(0.0, yy) * step(yy, Lp);
-          float flap = step(0.0, sd) * (1.0 - smoothstep(wpx * 0.7, wpx, sd)) * inside;
-          float shadow = step(wpx, sd) * (1.0 - smoothstep(0.0, 0.03, sd - wpx)) * inside;
-          c = mix(c, vec3(0.86, 0.8, 0.64) * (0.9 + l * 0.2), flap * 0.9);
-          c *= 1.0 - shadow * 0.35;
+          float flap = step(0.0, sd) * (1.0 - smoothstep(wpx * 0.75, wpx, sd)) * inside;
+          float shadow = step(wpx, sd) * (1.0 - smoothstep(0.0, 0.014, sd - wpx)) * inside;
+          c = mix(c, vec3(0.8, 0.76, 0.64) * (0.9 + l * 0.2), flap * 0.9);
+          c *= 1.0 - shadow * 0.5;
           bkPeel = flap;
         }
-        c *= 1.0 - (1.0 - smoothstep(0.0, 0.4, uGrid.w - y)) * 0.12 * uGrime;
-        bkWetness = max(below * 0.25, ${W} * (1.0 - smoothstep(0.0, 0.35, y)) * 0.7);
+        // soot / dust film along the ceiling line
+        c *= 1.0 - (1.0 - smoothstep(0.0, 0.3, uGrid.w - y)) * 0.12 * uGrime;
+        // blistered paper in damp zones: domes lit from above (bright crown, shaded underside)
+        {
+          vec2 bq = vec2(u, y) / 0.22; vec2 bcl = floor(bq); vec2 bfr = fract(bq) - 0.5;
+          float bh2 = bkH(bcl + vec2(floor(w * 0.33 + 0.5) * 7.0, 53.0));
+          vec2 bd = bfr - (vec2(fract(bh2 * 13.1), fract(bh2 * 7.3)) - 0.5) * 0.4; float bl = length(bd);
+          float brr = 0.12 + 0.2 * fract(bh2 * 3.7);
+          float bon = step(0.82, bh2) * max(dz, 0.25 * uGrime) * smoothstep(0.15, 0.4, y);
+          float dome = (1.0 - smoothstep(brr * 0.85, brr, bl)) * bon;
+          c *= 1.0 + dome * (bd.y / brr) * 0.16;
+          c *= 1.0 - (1.0 - smoothstep(0.0, 0.05, abs(bl - brr))) * step(bd.y, 0.0) * bon * 0.12;
+        }
+        // dirty run-down streaks from the ceiling line (grey-brown, thin, fading downwards)
+        {
+          float ru = u * 2.5 + w * 0.71; float rc = floor(ru); float rf = fract(ru);
+          float rh = bkH(vec2(rc, floor(w * 0.33 + 0.5) + 61.0));
+          if (rh > 0.62) {
+            float rx = 0.2 + 0.6 * fract(rh * 9.1) + (nzG(vec2(u * 3.0, y * 0.35)) - 0.5) * 0.12;
+            float rl = 0.35 + 1.6 * fract(rh * 4.3);
+            float down = (uGrid.w - y) / rl;
+            float rw = 0.025 + 0.03 * down;
+            float run = (1.0 - smoothstep(rw * 0.4, rw, abs(rf - rx))) * (1.0 - smoothstep(0.3, 1.0, down)) * step(0.0, down);
+            run *= 0.55 + 0.45 * nzR(vec2(u * 7.0, y * 1.3));
+            c = mix(c, c * vec3(0.72, 0.68, 0.6), run * 0.4 * uGrime);
+          }
+        }
+        // greasy handprints at hand height (leaning, pushing), some smeared downwards
+        float handGloss = 0.0;
+        {
+          float hu = u * 0.8 + w * 1.37; float hc = floor(hu); float hf = (fract(hu) - 0.5) / 0.8;
+          float hh = bkH(vec2(hc, floor(w * 0.33 + 0.5) + 31.0));
+          if (hh > 0.72) {
+            vec2 hq = vec2(hf - (fract(hh * 3.9) - 0.5) * 0.6, y - (0.95 + 0.6 * fract(hh * 7.7)));
+            float ang = (fract(hh * 5.3) - 0.5) * 0.9; hq = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * hq;
+            hq.x *= fract(hh * 11.0) > 0.5 ? 1.0 : -1.0;
+            float palm = 1.0 - smoothstep(0.85, 1.0, length(hq / vec2(0.045, 0.05)));
+            float fing = 0.0;
+            for (int k = 0; k < 4; k++) {
+              float fx = -0.03 + float(k) * 0.02; float fl = 0.06 + 0.014 * (1.0 - abs(float(k) - 1.5));
+              vec2 fa = vec2(fx, 0.035), fb = vec2(fx * 1.25, 0.035 + fl); vec2 pa = hq - fa, ba = fb - fa;
+              fing = max(fing, 1.0 - smoothstep(0.007, 0.011, length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0))));
+            }
+            vec2 ta = vec2(0.045, -0.012), tba = vec2(0.04, 0.04); vec2 tpa = hq - ta;
+            float thumb = 1.0 - smoothstep(0.008, 0.012, length(tpa - tba * clamp(dot(tpa, tba) / dot(tba, tba), 0.0, 1.0)));
+            float hand = max(palm, max(fing, thumb)) * (0.55 + 0.45 * nzG(vec2(u * 9.0, y * 9.0)));
+            float smear = (1.0 - smoothstep(0.03, 0.06, abs(hq.x))) * step(hq.y, 0.0) * (1.0 - smoothstep(0.0, 0.12 + 0.15 * fract(hh * 2.3), -hq.y)) * step(0.5, fract(hh * 17.0));
+            c = mix(c, c * vec3(0.66, 0.6, 0.5), (hand * 0.45 + smear * 0.18) * uGrime);
+            handGloss = hand * 0.12 * uGrime;
+          }
+        }
+        // mould specks low on damp walls
+        float mould = smoothstep(0.82, 0.9, nzB(vec2(u * 9.0, y * 9.0))) * smoothstep(0.6, 0.0, y) * max(dz * 0.5, ${W});
+        c = mix(c, vec3(0.08, 0.09, 0.05), mould * 0.6);
+        bkWetness = max(max(below * 0.25, ${W} * (1.0 - smoothstep(0.0, 0.35, y)) * 0.7), handGloss);
         diffuseColor.rgb = c;
       }`;
     case 3: return /* glsl */`

@@ -48,7 +48,26 @@ class JarShelf {
     g.add(mesh(new THREE.PlaneGeometry(0.62, 0.155), new THREE.MeshStandardMaterial({ map: sign, roughness: 0.8 }), { y: 1.66, z: -0.03, ry: PI, cast: false }));
     const list = COSMETICS.eyes;
     this.jars = [];
-    const glass = FM.glass('cz_jar', { tint: 0xc8d8d0, opacity: 0.05 });
+    // jar glass: thin, clear, with the long bright reflections of the ceiling panels running down it and
+    // a greener edge where the glass is seen edge-on; the liquid inside refracts (transmission)
+    const hiTex = ptex('cz_jarhi', 256, 64, (c, w, h, r) => {
+      c.fillStyle = '#0d1412'; c.fillRect(0, 0, w, h);
+      for (const [u, wd, a] of [[0.18, 0.035, 0.95], [0.24, 0.01, 0.6], [0.62, 0.02, 0.45], [0.86, 0.05, 0.3]]) {
+        const gr = c.createLinearGradient((u - wd) * w, 0, (u + wd) * w, 0);
+        gr.addColorStop(0, 'rgba(255,250,235,0)'); gr.addColorStop(0.5, `rgba(255,250,235,${a})`); gr.addColorStop(1, 'rgba(255,250,235,0)');
+        c.fillStyle = gr; c.fillRect((u - wd) * w, 0, wd * 2 * w, h);
+      }
+      P.grain(c, w, h, r, { amt: 0.04, size: 1 });
+    });
+    const glass = new THREE.MeshPhysicalMaterial({ name: 'cz_jarglass', color: 0xd8e8e0, map: hiTex, transparent: true, opacity: 0.2, roughness: 0.04, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, ior: 1.5, specularIntensity: 1, envMapIntensity: 1.8, depthWrite: false, side: THREE.DoubleSide });
+    glass.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `
+        float fres = pow(1.0 - clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0), 2.2);
+        outgoingLight = mix(outgoingLight, outgoingLight * vec3(0.75, 0.95, 0.85), fres);
+        diffuseColor.a = clamp(0.05 + fres * 0.6 + dot(diffuseColor.rgb, vec3(0.3)) * 0.0 + max(0.0, dot(outgoingLight, vec3(0.33)) - 0.25) * 0.9, 0.0, 0.92);
+        #include <opaque_fragment>`);
+    };
+    glass.customProgramCacheKey = () => 'cz_jarglass';
     const jarGeo = lathe([[0, 0], [0.046, 0], [0.052, 0.008], [0.054, 0.02], [0.054, 0.118], [0.048, 0.128], [0.044, 0.132], [0.044, 0.142]], 32);
     const liqGeo = lathe([[0, 0.006], [0.048, 0.006], [0.0505, 0.02], [0.0505, 0.1], [0, 0.1]], 28);
     list.forEach((e, i) => {
@@ -58,9 +77,9 @@ class JarShelf {
       J.rotation.y = PI + rnd(-0.2, 0.2);
       g.add(J);
       const locked = !!e.unlock && !profile.has(e.unlock);
-      const liq = new THREE.MeshPhysicalMaterial({ color: LIQ[i % 4], transparent: true, opacity: 0.16, roughness: 0.15, transmission: 0, depthWrite: false, clearcoat: 1 });
+      const liq = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 1, thickness: 0.09, ior: 1.34, roughness: 0.08, attenuationColor: LIQ[i % 4], attenuationDistance: 0.14, specularIntensity: 0.6, clearcoat: 0.5 });
       const inner = new THREE.Group(); J.add(inner);
-      const lq = mesh(liqGeo, liq, { cast: false }); lq.renderOrder = 3; inner.add(lq);
+      const lq = mesh(liqGeo, liq, { cast: false }); inner.add(lq);
       const surf = mesh(new THREE.CircleGeometry(0.05, 28), new THREE.MeshPhysicalMaterial({ color: shade(LIQ[i % 4], 0.2), transparent: true, opacity: 0.3, roughness: 0.05, clearcoat: 1, depthWrite: false }), { y: 0.1, rx: -PI / 2, cast: false });
       surf.renderOrder = 3; inner.add(surf);
       const gl = mesh(jarGeo, glass, { cast: false }); gl.renderOrder = 4; J.add(gl);

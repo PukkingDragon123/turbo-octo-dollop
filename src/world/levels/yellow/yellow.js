@@ -99,10 +99,10 @@ export class YellowLevel {
     this.hazeOn = engine.qualityName !== 'low';
     const pp = engine.post.params;
     engine.post.resetLook?.();
-    // hand-painted grade: warm honey highlights, olive-teal shadows, soft contrast, gentle vignette
+    // warm grade: honey highlights, olive-teal shadows, gentle contrast and vignette
     pp.uTint.value.setRGB(1.0, 1.0, 0.98);
     pp.uSat.value = 1.0;
-    pp.uGrain.value = 0.05;
+    pp.uGrain.value = 0.03;
     pp.uVignette.value = 0.42;
     pp.uExposure.value = 1.04;
     pp.uLift.value.set(0.008, 0.009, 0.006);
@@ -115,7 +115,7 @@ export class YellowLevel {
     pp.uHaze.value = 0.05; pp.uHazeStart.value = 2.0; pp.uHazeFarDist.value = 26;
     pp.uHazeNear.value.setRGB(1.0, 0.87, 0.66); pp.uHazeFar.value.setRGB(0.46, 0.56, 0.54);
     pp.uHazeLum.value = 0.03; pp.uHazeGlow.value = 0.4; pp.uHazeSky.value = 1.0;
-    pp.uDof.value = 0.7; pp.uDofStart.value = 11; pp.uDofEnd.value = 38;
+    pp.uDof.value = 0.5; pp.uDofStart.value = 13; pp.uDofEnd.value = 42;
     engine.renderer.toneMappingExposure = 0.95;
     this._fogCol = new THREE.Color();
     // drawers, cabinets, lockers, boxes ... can be searched once for supplies

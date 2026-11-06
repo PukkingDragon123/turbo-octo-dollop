@@ -84,6 +84,7 @@ const T = {
     return ptex('hat_felt_' + key, 256, 256, (g, w, h, r) => {
       P.wash(g, w, h, base, { k, angle: PI / 2 });
       P.strokes(g, w, h, base, r, { n: 90, len: 0.12, wid: 0.03, k: 0.12, alpha: 0.12 });
+      P.grain(g, w, h, r, { amt: 0.08, size: 1.5 });
       P.blotches(g, w, h, shade(base, -0.4), r, { n: 5, r: 0.15, alpha: 0.12 });
     });
   },
@@ -108,6 +109,8 @@ const T = {
       P.strokes(g, w, h, base, r, { n: 50, len: 0.4, wid: 0.06, alpha: 0.14 });
       for (const [y0, hh, c] of stripes) { g.fillStyle = css(c); g.fillRect(0, y0 * h, w, hh * h); P.strokes(g, w, hh * h, c, r, { n: 10, alpha: 0.12 }); }
       if (decal) decal(g, w, h, r);
+      P.grain(g, w, h, r, { amt: 0.05, size: 2 });
+      P.scratches(g, w, h, r, { n: 50, col: shade(base, 0.4), alpha: 0.3 });
       P.chips(g, w, h, 0x3a3532, r, { n: 22, s: 0.01 });
       P.chips(g, w, h, shade(base, 0.35), r, { n: 16, s: 0.006 });
       P.blotches(g, w, h, 0x4a3a20, r, { n: 5, r: 0.12, alpha: 0.14 });

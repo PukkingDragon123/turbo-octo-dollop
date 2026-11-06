@@ -1,5 +1,5 @@
-// Shared material library. Materials are PBR (MeshStandard/Physical), hand-painted look: textures carry texsynth's
-// paint finish, surfaces stay matte (roughness 0.6+ from the maps), colours lean on the art-direction palette.
+// Shared material library. Materials are PBR (MeshStandard/Physical): detailed textures with texsynth's light
+// hand-finished touch, no glossy plastic (roughness floored in the maps), colours lean on the art-direction palette.
 //  - World surfaces (wallpaper, carpet, ceiling, concrete, office_carpet, linoleum, paint*, panel, tile*,
 //    lightpanel and the environment set: trim, enamel, cmu, slab, pipes, insulation...) are built on GPU-
 //    synthesized texture sets (src/gfx/texsynth.js + src/world/env/recipes.js): albedo + normal + ORM.

@@ -1,9 +1,9 @@
-// Post-processing: the "hand-painted miniature" look (docs/ART_DIRECTION.md).
+// Post-processing: detailed, polished semi-realism with a light painterly finish (docs/ART_DIRECTION.md).
 //
 //   scene pass  -> own render target (HDR colour + depth texture, outside the composer's ping-pong buffers, so any
 //                  later pass can read the scene depth without a framebuffer feedback loop: post.sceneDepth)
-//   paint pass  -> painterly edge-preserving smoothing (generalised 4-sector Kuwahara over a 5x5 / 3x3 tap grid),
-//                  depth haze (warm where lit, cooler and bluer with distance) and a subtle far depth-of-field
+//   paint pass  -> a light painterly finish (gentle edge-preserving soften, 3x3 taps; LOW: none), depth haze (warm
+//                  where lit, cooler and bluer with distance) and a subtle far depth-of-field
 //   [GTAO]      -> HIGH only
 //   viewmodel   -> hands / held items / watch on top (not painted, no haze)
 //   bloom       -> gentle glow on light sources (MEDIUM / HIGH)
@@ -32,13 +32,13 @@ const COMMON = /* glsl */`
 `;
 
 // ---------------------------------------------------------------------------------------------------------------
-// Paint pass. Taps sit on a grid with a spacing of ~1.5-2 px (bilinear taps between texels add their own small
-// average); four overlapping 3x3 (LITE: 2x2) sectors give means and luminance variances; sectors are weighted by
-// 1 / (1 + k var)^4, so flat sectors win at edges (edges stay crisp) and fine texture noise melts into soft painted
-// patches. Far away the grid widens and blends toward the plain mean: a soft miniature-style depth of field.
+// Paint pass (the light painterly finish of docs/ART_DIRECTION.md: detail stays readable). MEDIUM / HIGH: 3x3 taps
+// ~1 px apart; a small bilateral blended in at uPaint settles pixel grit and aliasing shimmer without smearing.
+// Far away the taps spread and blend toward their plain mean: a subtle miniature-style depth of field. The same
+// local mean feeds the haze glow. LOW: the centre tap only (haze, no soften, no depth of field).
 // ---------------------------------------------------------------------------------------------------------------
 function paintShader(lite, dof) {
-  const N = lite ? 1 : 2; // grid half size: taps -N..N
+  const N = lite ? 0 : 1; // 0: centre tap only (LOW), 1: 3x3 taps
   return /* glsl */`
   #define GN ${N}
   ${dof ? '#define USE_DOF' : ''}
@@ -75,34 +75,33 @@ function paintShader(lite, dof) {
       coc = uDof * smoothstep(uDofStart, uDofEnd, dist);
     #endif
     vec2 px = 1.0 / uRes;
-    // brush size follows the resolution (same painted scale at 720p and 4K), widens with fatigue / far focus
-    float sp = uPaintScale * max(1.0, uRes.y / 1080.0) * (1.0 + coc * 1.6 + uBlur * 2.5 + uGlitch * 1.5);
-    vec3 m0 = vec3(0.0), m1 = vec3(0.0), m2 = vec3(0.0), m3 = vec3(0.0);
-    vec2 v0 = vec2(0.0), v1 = vec2(0.0), v2 = vec2(0.0), v3 = vec2(0.0);
-    vec3 avg = vec3(0.0);
+    // tap spacing follows the resolution (same look at 720p and 4K) and widens with far focus / fatigue
+    float sp = uPaintScale * max(1.0, uRes.y / 1080.0) * (1.0 + coc * 2.5 + uBlur * 3.0 + uGlitch * 2.0);
     vec3 centre = texture2D(tDiffuse, uv).rgb;
-    for (int j = -GN; j <= GN; j++) {
-      for (int i = -GN; i <= GN; i++) {
-        vec3 c = (i == 0 && j == 0) ? centre : texture2D(tDiffuse, uv + vec2(float(i), float(j)) * px * sp).rgb;
-        float l = dot(c / (1.0 + c), LUMA);
-        vec2 lv = vec2(l, l * l);
-        avg += c;
-        if (i <= 0 && j <= 0) { m0 += c; v0 += lv; }
-        if (i >= 0 && j <= 0) { m1 += c; v1 += lv; }
-        if (i <= 0 && j >= 0) { m2 += c; v2 += lv; }
-        if (i >= 0 && j >= 0) { m3 += c; v3 += lv; }
+    vec3 avg = centre, soft = centre;
+    #if GN > 0
+    {
+      // gentle edge-preserving soften (a small bilateral): only neighbours of nearly the same tone are averaged,
+      // so aliasing shimmer and pixel grit settle while texture detail and edges stay readable
+      float lc = dot(centre / (1.0 + centre), LUMA);
+      vec3 sum = centre; float wsum = 1.0;
+      for (int j = -1; j <= 1; j++) {
+        for (int i = -1; i <= 1; i++) {
+          if (i == 0 && j == 0) continue;
+          vec3 c = texture2D(tDiffuse, uv + vec2(float(i), float(j)) * px * sp).rgb;
+          avg += c;
+          float dl = dot(c / (1.0 + c), LUMA) - lc;
+          float w = exp(-dl * dl * 900.0) * (i * j == 0 ? 1.0 : 0.7);
+          sum += c * w; wsum += w;
+        }
       }
+      avg /= 9.0;
+      soft = sum / wsum;
     }
-    const float NS = float((GN + 1) * (GN + 1));
-    const float NA = float((2 * GN + 1) * (2 * GN + 1));
-    m0 /= NS; m1 /= NS; m2 /= NS; m3 /= NS; v0 /= NS; v1 /= NS; v2 /= NS; v3 /= NS; avg /= NA;
-    float s0 = max(v0.y - v0.x * v0.x, 0.0), s1 = max(v1.y - v1.x * v1.x, 0.0), s2 = max(v2.y - v2.x * v2.x, 0.0), s3 = max(v3.y - v3.x * v3.x, 0.0);
-    float w0 = 1.0 / pow(1.0 + 900.0 * s0, 4.0), w1 = 1.0 / pow(1.0 + 900.0 * s1, 4.0);
-    float w2 = 1.0 / pow(1.0 + 900.0 * s2, 4.0), w3 = 1.0 / pow(1.0 + 900.0 * s3, 4.0);
-    vec3 kuw = (m0 * w0 + m1 * w1 + m2 * w2 + m3 * w3) / max(w0 + w1 + w2 + w3, 1e-6);
-    vec3 col = mix(centre, kuw, uPaint);
+    #endif
+    vec3 col = mix(centre, soft, uPaint);
     // far focus / fatigue: soften towards the plain local mean
-    col = mix(col, avg, clamp(coc * 0.55 + uBlur * 0.6, 0.0, 0.9));
+    col = mix(col, avg, clamp(coc * 0.6 + uBlur * 0.6, 0.0, 0.9));
     // atmospheric haze: in-scatter is warm honey near the lights and turns cooler and bluer with distance; its
     // brightness follows the local light (lit halls glow, torch-lit dark zones stay dark)
     if (uHaze > 0.0 && uHasDepth > 0.5) {
@@ -297,15 +296,15 @@ function makeParams() {
     uGamma: v3(1, 1, 1),
     uGain: v3(1, 1, 1),
     uRolloff: { value: 0.0 },
-    uGrain: { value: 0.05 },     // canvas / paper tooth strength
+    uGrain: { value: 0.03 },     // canvas / paper tooth strength
     uVignette: { value: 0.4 },
     uSplit: { value: 0.55 },     // warm split-tone strength
     uSplitShadow: col(0.42, 0.52, 0.5),   // soft-light tints (0.5 = neutral): cool olive / teal shadows
     uSplitHigh: col(0.6, 0.53, 0.42),     // warm honey highlights
     uShadowFloor: col(0.03, 0.038, 0.034),// never pure black: deep cool olive
     // painterly + atmosphere (scene only)
-    uPaint: { value: 1.0 },
-    uPaintScale: { value: 1.7 },        // tap spacing in px at 1080p
+    uPaint: { value: 0.35 },            // edge-preserving soften blend (0 = off)
+    uPaintScale: { value: 1.0 },        // tap spacing in px at 1080p
     uHaze: { value: 0.045 },            // density per metre beyond uHazeStart
     uHazeStart: { value: 1.5 },
     uHazeFarDist: { value: 28 },        // metres over which the haze turns from warm to cool
