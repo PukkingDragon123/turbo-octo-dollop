@@ -1,5 +1,6 @@
-// Floating 3D text for all dialogue and notices (no screen HUD).
-//   floatText.say(text, { at, offset, speaker, duration, size, scene, slot })
+// Floating 3D text for all dialogue and notices (no screen HUD): warm ivory lettering with one soft shadow,
+// speaker names between short pen strokes, hover labels underlined by hand (docs/ART_DIRECTION.md).
+//   floatText.say(text, { at, offset, speaker, duration, size, scene, slot, underline })
 //       world text that hangs near a speaker (Object3D or Vector3), types itself out, bobs, fades.
 //   floatText.notice(text, { duration, speaker, paper })
 //       text that floats in front of the camera, just above the crosshair; several stack upwards.
@@ -8,14 +9,16 @@
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
 import { font } from './fonts.js';
+import { input } from '../core/input.js';
 
 const W = 1024, H = 352; // tall enough for a speaker name over four lines
 // bottom of the notice stack, in screen half-heights above centre: just over the crosshair and under the
 // heart/brain gauges, clear of the arm that comes up whenever a notice makes the clone glance at its watch
 const NOTICE_BASE = 0.08;
 export const FLOAT = { typeRate: 40, popTime: 0.5, fade: 0.45, bobAmp: 0.012, worldScale: 0.0013, noticeScale: 0.0008 };
-const INK = '#eee5d1';        // every line of floating text is this one colour
+const INK = '#f3e6c8';        // every line of floating text is this one warm ivory (docs/ART_DIRECTION.md)
 const PAPER_INK = '#2a2118';  // except on a paper scrap
+const SHADE = 'rgba(28,20,10,0.62)'; // the one soft dark shadow under the ink
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const easeOutBack = (t) => { const c = 1.9; return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2; };
@@ -31,6 +34,21 @@ function wrap(ctx, text, maxW) {
     out.push(line);
   }
   return out;
+}
+
+// a short pen stroke from x0 to x1 around row y: a slight wobble and a lift at the end, never ruler straight
+function penStroke(c, x0, x1, y, seed, width = 2.2) {
+  const R = (i) => { const v = Math.sin((seed + i) * 12.9898) * 43758.5453; return v - Math.floor(v); };
+  const n = Math.max(2, Math.round((x1 - x0) / 40));
+  c.beginPath();
+  c.moveTo(x0, y + (R(1) - 0.5) * 1.6);
+  for (let i = 1; i <= n; i++) {
+    const x = x0 + ((x1 - x0) * i) / n, cx = x - (x1 - x0) / n / 2;
+    c.quadraticCurveTo(cx, y + (R(i * 3) - 0.5) * 3, x, y + (R(i * 5) - 0.5) * 1.6 - (i === n ? 1.2 : 0));
+  }
+  c.lineWidth = width;
+  c.lineCap = 'round';
+  c.stroke();
 }
 
 class Bubble {
@@ -72,6 +90,8 @@ class Bubble {
       paper,
       ink: paper ? PAPER_INK : INK,
       seed: (hs >>> 0) % 233280,
+      // hover labels (one line, no speaker) get a short pen underline
+      underline: this.o.underline ?? (this.o.slot === 'label' && !this.o.speaker),
     };
     return this._st;
   }
@@ -79,8 +99,9 @@ class Bubble {
     const c = this.ctx, st = this._style();
     c.font = st.body;
     this.lines = wrap(c, this.text, W - 150).slice(0, 4);
+    this._tw = Math.max(1, ...this.lines.map((ln) => c.measureText(ln).width)); // widest line, canvas px
     const top = this.o.speaker ? 44 : 10;
-    this._h = top + this.lines.length * st.lh + 24;
+    this._h = top + this.lines.length * st.lh + 24 + (st.underline ? 10 : 0);
     this._y0 = (H - this._h) / 2;
     this._freeLayer();
   }
@@ -100,7 +121,7 @@ class Bubble {
     for (let x = x0 + w; x >= x0; x -= step) c.lineTo(x, y0 + h - R(x + 900) * 8);
     for (let y = y0 + h; y >= y0; y -= step) c.lineTo(x0 + R(y + 1300) * 6, y);
     c.closePath();
-    c.shadowColor = 'rgba(0,0,0,0.55)'; c.shadowBlur = 14; c.shadowOffsetY = 6;
+    c.shadowColor = 'rgba(28,20,10,0.5)'; c.shadowBlur = 14; c.shadowOffsetY = 6;
     const g = c.createLinearGradient(x0, y0, x0 + w, y0 + h);
     g.addColorStop(0, '#efe4c6'); g.addColorStop(0.55, '#e6d7b1'); g.addColorStop(1, '#d8c493');
     c.fillStyle = g; c.fill();
@@ -142,19 +163,20 @@ class Bubble {
     const st = this._style(), y0 = this._y0;
     if (st.paper) this._paper(c, 34, y0, W - 68, this._h);
     if (!this.o.speaker) return;
-    // the name, small and spaced, between two thin rules, in the same ink
+    // the name, small and spaced, between two short pen strokes, in the same ink
     c.font = st.label;
     c.letterSpacing = '6px';
     const name = String(this.o.speaker).toUpperCase(), nw = c.measureText(name).width;
     c.fillStyle = st.ink;
-    c.globalAlpha = 0.75;
-    if (!st.paper) { c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 5; }
+    c.strokeStyle = st.ink;
+    c.globalAlpha = 0.78;
+    if (!st.paper) { c.shadowColor = SHADE; c.shadowBlur = 6; c.shadowOffsetY = 1.5; }
     c.fillText(name, (W - nw) / 2, y0 + 30);
-    c.shadowBlur = 0; c.shadowColor = 'transparent';
     c.letterSpacing = '0px';
-    c.globalAlpha = 0.4;
-    c.fillRect((W - nw) / 2 - 66, y0 + 21, 48, 1.5);
-    c.fillRect((W + nw) / 2 + 18, y0 + 21, 48, 1.5);
+    c.globalAlpha = 0.5;
+    penStroke(c, (W - nw) / 2 - 70, (W - nw) / 2 - 20, y0 + 21, st.seed, 1.8);
+    penStroke(c, (W + nw) / 2 + 16, (W + nw) / 2 + 66, y0 + 21, st.seed + 7, 1.8);
+    c.shadowBlur = 0; c.shadowColor = 'transparent'; c.shadowOffsetY = 0;
     c.globalAlpha = 1;
   }
   _draw(n) {
@@ -164,7 +186,7 @@ class Bubble {
     c.drawImage(layer, 0, 0);
     c.font = st.body;
     c.fillStyle = st.ink;
-    if (!st.paper) { c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 6; c.shadowOffsetY = 2; }
+    if (!st.paper) { c.shadowColor = SHADE; c.shadowBlur = 8; c.shadowOffsetY = 2; }
     const top = this.o.speaker ? 44 : 10;
     let left = n;
     this.lines.forEach((ln, i) => {
@@ -181,6 +203,16 @@ class Bubble {
       }
       left -= ln.length + 1;
     });
+    if (st.underline && this.lines.length) {
+      // the pen underline draws itself in under the typed name
+      const ln = this.lines[this.lines.length - 1], lw = c.measureText(ln).width;
+      const k = Math.min(1, n / Math.max(1, this.lines.join(' ').length));
+      const y = this._y0 + top + this.lines.length * st.lh + 4;
+      c.strokeStyle = st.ink;
+      c.globalAlpha = 0.7;
+      if (k > 0.05) penStroke(c, (W - lw) / 2 - 6, (W - lw) / 2 - 6 + (lw + 12) * k, y, st.seed + 3, 2.4);
+      c.globalAlpha = 1;
+    }
     c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetY = 0;
     this.tex.needsUpdate = true;
     if (n >= this.lines.join(' ').length) this._freeLayer(); // the main canvas now holds the finished plate
@@ -188,8 +220,8 @@ class Bubble {
   // visible plate height as a fraction of the screen half-height (FOV-independent)
   plateNdc() {
     const st = this._style();
-    const ph = (this.o.speaker ? 44 : 10) + this.lines.length * st.lh + 24;
-    return ph * FLOAT.noticeScale * (this.o.size || 1) / (Math.tan(Math.PI / 6) * 1.2);
+    const ph = (this.o.speaker ? 44 : 10) + this.lines.length * st.lh + 24 + (st.underline ? 10 : 0);
+    return ph * FLOAT.noticeScale * (this.o.size || 1) * (this._fit || 1) / (Math.tan(Math.PI / 6) * 1.2);
   }
   set(text) { this.text = String(text); this.shown = 0; this.t = Math.min(this.t, FLOAT.popTime); this._st = null; this._layout(); }
   // fast: replaced by a newer line at the same spot. A closing bubble stays where it is even if the point it
@@ -228,12 +260,15 @@ class Bubble {
       cam.updateMatrixWorld();
       const d = 1.2, th = Math.tan(THREE.MathUtils.degToRad((cam.fov || 60) / 2));
       const k = th / Math.tan(Math.PI / 6);
+      // a narrow (portrait) screen: shrink the plate until its widest line fits across with a margin
+      const sc = FLOAT.noticeScale * (this.o.size || 1) * k;
+      this._fit = Math.max(0.55, Math.min(1, (th * d * (cam.aspect || 1) * 2 * 0.9) / ((this._tw + 30) * sc)));
       const half = this.plateNdc(cam) / 2;
       _v.set(0, (NOTICE_BASE + stackY + half) * th * d + Math.sin(this.t * 2) * 0.002 + rise * 0.03 * th * d, -d).applyMatrix4(cam.matrixWorld);
       m.position.copy(_v);
       m.quaternion.copy(cam.getWorldQuaternion(_q));
       m.rotateX(flip);
-      m.scale.setScalar(FLOAT.noticeScale * (this.o.size || 1) * s * k);
+      m.scale.setScalar(FLOAT.noticeScale * (this.o.size || 1) * s * k * this._fit);
     } else {
       const at = this.o.at;
       if (at?.isObject3D) at.getWorldPosition(_v); else if (at) _v.copy(at); else _v.set(0, 0, 0);
@@ -268,6 +303,8 @@ class FloatText {
     return this._add(new Bubble(text, o, false), o.scene);
   }
   notice(text, o = {}) {
+    // touch players have no keys: "[G] drop something" reads "drop something" (the rings show the way)
+    if (input.touch) text = String(text).replace(/\[[^\]]{1,8}\]\s*/g, '').replace(/\s+—\s*$/, '');
     const live = this.items.filter((b) => b.notice && b.closing < 0);
     if (live.length >= 2) live[0].close();
     return this._add(new Bubble(text, o, true), o.scene);

@@ -1,6 +1,6 @@
-// Mission logic for a Backrooms dimension: generators, the carryable field radio (research
-// uplink, sample deposit, supply orders, extraction), starter kit, supply crates, cloning pad,
-// the exit door + evacuation countdown, dead bodies and HQ chatter.
+// Mission logic of the older dimensions (Poolrooms, Grasslands): generators, the carryable field radio (uplink to
+// each running generator, then the way out), starter kit, cloning pad, the exit door + evacuation countdown and
+// dead bodies (ragdolls; Level 0's SurvivalMission builds on those). There is no money: nothing is bought or paid.
 import * as THREE from 'three';
 import { net } from '../net/net.js';
 import { input } from '../core/input.js';
@@ -22,13 +22,6 @@ const _q = new THREE.Quaternion();
 export const EXIT_SECONDS = 120;
 // (the multitool is built into the suit now: empty hand + RMB)
 export const STARTER = ['flashlight', 'protein_bar', 'almond_milk', 'bandage'];
-
-export const CRATE_TIERS = [
-  { id: 'basic', name: 'RATIONS CRATE', cost: 120, n: 4, pool: ['almond_water', 'canned_food', 'protein_bar', 'soda_can', 'chips', 'almond_milk', 'candy_bar', 'energy_drink'] },
-  { id: 'medical', name: 'MEDICAL CRATE', cost: 160, n: 4, pool: ['medkit', 'bandage', 'bandage', 'antibiotics', 'painkillers', 'splint', 'almond_water'] },
-  { id: 'tools', name: 'FIELD EQUIPMENT', cost: 200, n: 4, pool: ['battery', 'battery', 'flare', 'glowstick', 'welder', 'sample_jar', 'sample_jar', 'flashlight', 'noise_maker'] },
-  { id: 'random', name: 'MYSTERY CRATE', cost: 90, n: 3, pool: null },
-];
 
 export class Mission {
   constructor(level) {
@@ -58,8 +51,6 @@ export class Mission {
       if (l.survival.dead) l.onDeath('electrocution');
     });
     net.onClient('mstate', (s) => this._applyState(s));
-    net.onHost('photos', (d, from) => this._hostPhotos(d, from));
-    net.onHost('samples', (d, from) => this._hostSamples(d, from));
   }
 
   _bindBehaviours() {
@@ -126,11 +117,10 @@ export class Mission {
     this.world.props.spawn('clone_pad', new THREE.Vector3(px, 0.2, pz), _q.setFromEuler(new THREE.Euler(0, 0.8, 0)), {});
     this.state.radioId = this.radioId;
     this.pushState();
-    // HQ briefing
+    // a voice through the radio's static: how this place lets you out
     setTimeout(() => {
-      this.hq(`WELCOME TO DIMENSION ${this.game.run.depth - 1 === 0 ? '0' : `0-${String.fromCharCode(65 + this.game.run.depth - 1)}`}, EMPLOYEES. Locate and restart 3 GENERATORS. Carry the FIELD RADIO to each running generator to establish uplink.`);
+      this.hq('...three generators... get them running... carry the radio to each one... then call... a door opens...', 'RADIO');
     }, 2500);
-    setTimeout(() => this.hq('Reminder: reality in this sector degrades over 7 days. You have 70 minutes. Cloning is expensive. Please do not die.'), 11000);
   }
 
   pushState() { if (net.isHost) net.toAll('mstate', this.state); }
@@ -148,9 +138,7 @@ export class Mission {
   // -------------------------------------------------------------
   onGeneratorRepaired(g) {
     const n = this.generators.filter((x) => x.running).length;
-    this.hq(`${g.label} ONLINE (${n}/3). Bring the field radio within cable range to establish uplink.`, 'DIAGNOSTICS');
-    this.game.addCredits(60, `${g.label} restored`);
-    if (n === 3) this.game.unlockAll('generators');
+    this.hq(`${g.label} running (${n}/3). Bring the radio close to it.`, 'RADIO');
   }
 
   weldTick(point) {
@@ -181,8 +169,7 @@ export class Mission {
             const n = this.linksCount();
             this.world.props.setState(radio.id, { battery: Math.min(100, (radio.state.battery ?? 40) + 40), links: this.generators.filter((x) => x.state.linked).map((x) => x.id) });
             this.world.fxAll({ k: 'snd', n: 'transmit', p: radio.root.position.toArray(), v: 1 });
-            this.hq(n < 3 ? `UPLINK ${n}/3 ESTABLISHED. Radio battery recharged.` : 'ALL UPLINKS ESTABLISHED. Request EXTRACTION from the field radio when your team is ready.');
-            this.game.addCredits(40, `Uplink ${n}/3`);
+            this.hq(n < 3 ? `Signal ${n}/3. The radio drinks the power.` : 'All three. Call for the door on the radio when everyone is ready.', 'RADIO');
           }
         } else if (g.state.link > 0 && g.state.link < 1) {
           g.setState({ link: Math.max(0, g.state.link - 0.05) });
@@ -219,68 +206,6 @@ export class Mission {
   }
 
   // -------------------------------------------------------------
-  // photos & samples (host)
-  _hostPhotos(d, from) {
-    let total = 0;
-    const lines = [];
-    for (const ph of d.photos || []) {
-      const key = ph.key || ph.subject;
-      const n = this.photosSubmitted.get(key) || 0;
-      const mul = n === 0 ? 1 : n === 1 ? 0.35 : 0.1;
-      const val = Math.round((ph.value || 0) * mul);
-      this.photosSubmitted.set(key, n + 1);
-      total += val;
-      lines.push(`${ph.subject}: ${val} CR`);
-    }
-    if (total > 0) this.game.addCredits(total, `Research photos (${(d.photos || []).length})`);
-    net.toPeer(from, 'hq', { text: lines.length ? `RESEARCH RECEIVED — ${lines.slice(0, 4).join(' · ')}` : 'NO USABLE RESEARCH IN TRANSMISSION.', from: 'RESEARCH DIV.' });
-  }
-
-  _hostSamples(d, from) {
-    let total = 0;
-    const kinds = [...(d.kinds || [])];
-    const radio = this.radio();
-    if (radio) {
-      this.world.props.query(radio.root.position, 1.8, (p) => {
-        if (p.type === 'sample_jar' && p.state.kind && !p.dead) {
-          kinds.push(p.state.kind);
-          this.world.props.despawn(p.id, { k: 'snd', n: 'transmit', p: p.root.position.toArray() });
-        }
-      });
-    }
-    for (const k of kinds) total += SAMPLES[k]?.credits || 20;
-    this.samplesDeposited = (this.samplesDeposited || 0) + kinds.length;
-    if (this.samplesDeposited >= 5) this.game.unlockAll('collector');
-    if (total > 0) {
-      this.game.addCredits(total, `${kinds.length} sample${kinds.length > 1 ? 's' : ''} received`);
-      if (radio) this.world.fxAll({ k: 'snd', n: 'transmit', p: radio.root.position.toArray(), v: 1 });
-    } else net.toPeer(from, 'hq', { text: 'NO SAMPLES DETECTED. Hold filled jars or place them next to the radio.', from: 'RESEARCH DIV.' });
-  }
-
-  orderCrate(tierId) {
-    const tier = CRATE_TIERS.find((t) => t.id === tierId);
-    const radio = this.radio();
-    if (!tier || !radio) return;
-    if (this.game.run.credits < tier.cost) {
-      this.hq(`INSUFFICIENT CREDITS. ${tier.name} costs ${tier.cost} CR.`, 'LOGISTICS');
-      return;
-    }
-    this.game.run.credits -= tier.cost;
-    this.game.pushRun();
-    const rng = new RNG((Math.random() * 1e9) | 0);
-    const loot = [];
-    for (let i = 0; i < tier.n + rng.int(0, 1); i++) loot.push(tier.pool ? rng.pick(tier.pool) : rng.weighted(CRATE_LOOT));
-    // drop spot: a cell centre near the radio
-    const rp = radio.root.position;
-    const ci = Math.floor(rp.x / CELL) + rng.int(-1, 1), cj = Math.floor(rp.z / CELL) + rng.int(-1, 1);
-    const pos = new THREE.Vector3((ci + 0.5) * CELL + rng.range(-0.5, 0.5), 0, (cj + 0.5) * CELL + rng.range(-0.5, 0.5));
-    this.pendingCrates.push({ t: 14, pos, loot, tier: tier.id });
-    this.state.crates++;
-    this.pushState();
-    this.hq(`${tier.name} DISPATCHED. ETA 14 SECONDS. Stand clear of the ceiling.`, 'LOGISTICS');
-    this.game.unlockAll('crate');
-  }
-
   // -------------------------------------------------------------
   // extraction & exit door
   requestExtraction() {
@@ -288,7 +213,7 @@ export class Mission {
     if (this.linksCount() < 3) return;
     const radio = this.radio();
     const spot = this._findExitSpot(radio ? radio.root.position : this.level.spawnCenter());
-    if (!spot) { this.hq('NO STABLE EXIT VECTOR NEARBY. Move the radio and try again.'); return; }
+    if (!spot) { this.hq('...no... not here... move the radio...', 'RADIO'); return; }
     this.state.extraction = 1;
     this.state.exit = { x: spot.x, z: spot.z, rot: spot.rot, endsAt: this.game.day.time + EXIT_SECONDS, done: 0 };
     // clear props out of the room footprint (including big props that only overlap it with an end,
@@ -308,7 +233,7 @@ export class Mission {
     });
     this.pushState();
     this.world.fxAll({ k: 'snd', n: 'exit_door_appear', p: [spot.x, 1.2, spot.z], v: 1 });
-    this.hq(`EXIT VECTOR MATERIALIZED. You have ${EXIT_SECONDS} seconds. Carry everything of value through the door. Anyone left behind is a write-off.`);
+    this.hq(`A door. It will not stay open long: ${EXIT_SECONDS} seconds. Everyone through.`, 'RADIO');
   }
 
   // clamp a footprint of radius r at (x, z) into the grid cell containing it
@@ -502,21 +427,11 @@ class RadioBehaviour {
     const battery = st.battery ?? 40;
     const links = this.mission.linksCount();
     const day = g.day;
-    const photos = g.local.photos?.length || 0;
-    const jars = g.local.inv.slots.filter((s) => s && s.type === 'sample_jar' && s.state.kind).length;
     const pwr = battery > 0;
     const header = {
-      title: 'R.O.O.M. FIELD RADIO',
+      title: 'FIELD RADIO',
       subtitle: `DAY ${day.day}/7  ${day.leftString()}`,
     };
-    if (this.view === 'order') {
-      return {
-        ...header,
-        lines: [`CREDITS: ${g.run.credits} CR`, { t: 'Crates arrive through the ceiling ~14s after ordering.', c: 'dim', s: 20 }],
-        items: [...CRATE_TIERS.map((t) => ({ label: t.name, hint: `${t.cost} CR`, disabled: g.run.credits < t.cost || !pwr, act: 'buy', tier: t.id })), { label: 'BACK', act: 'back' }],
-        footer: '[W/S] SELECT  [E] ORDER  [TAB] BACK',
-      };
-    }
     if (this.view === 'tasks') {
       const lines = this.mission.generators.map((gen) => ({ t: `${gen.label}: ${gen.running ? (gen.state.linked ? 'UPLINKED' : 'RUNNING - NEEDS RADIO') : 'OFFLINE'}`, c: gen.state.linked ? 'good' : gen.running ? 'fg' : 'bad', s: 22 }));
       const ex = this.mission.state.exit;
@@ -527,15 +442,11 @@ class RadioBehaviour {
     return {
       ...header,
       lines: [
-        { t: `BATTERY ${Math.round(battery)}%   UPLINKS ${links}/3   CREDITS ${g.run.credits}`, c: battery < 15 ? 'bad' : 'fg', s: 22 },
-        dead.length ? { t: `DECEASED: ${dead.map((d) => d.name).join(', ')} (clone ${g.cloneCost()} CR at pad)`, c: 'bad', s: 20 } : { t: 'ALL EMPLOYEES ACCOUNTED FOR', c: 'dim', s: 20 },
+        { t: `BATTERY ${Math.round(battery)}%   SIGNAL ${links}/3`, c: battery < 15 ? 'bad' : 'fg', s: 22 },
+        dead.length ? { t: `GONE: ${dead.map((d) => d.name).join(', ')} (bring them back at the pad)`, c: 'bad', s: 20 } : { t: 'EVERYONE STILL HERE', c: 'dim', s: 20 },
       ],
       items: [
-        { label: `TRANSMIT RESEARCH (${photos} photo${photos === 1 ? '' : 's'})`, hint: '5%', disabled: !pwr || !photos, act: 'photos' },
-        { label: `DEPOSIT SAMPLES (${jars} held)`, hint: '5%', disabled: !pwr, act: 'samples' },
-        // credits can't buy anything any more: supply ordering is discontinued
-        { label: 'ORDER SUPPLY CRATE', hint: 'DISCONTINUED', disabled: true, act: 'none' },
-        { label: 'OBJECTIVES >', act: 'tasks' },
+        { label: 'GENERATORS >', act: 'tasks' },
         { label: this.mission.state.extraction ? 'EXTRACTION IN PROGRESS' : 'REQUEST EXTRACTION', hint: links >= 3 ? '' : `${links}/3`, disabled: !pwr || links < 3 || !!this.mission.state.extraction, act: 'extract' },
       ],
       footer: pwr ? '[W/S] SELECT  [E] CONFIRM  [TAB] LEAVE' : 'NO POWER — LINK TO A RUNNING GENERATOR',
@@ -546,26 +457,7 @@ class RadioBehaviour {
     const g = this.game;
     switch (it.act) {
       case 'back': this.view = 'main'; break;
-      case 'order': this.view = 'order'; break;
       case 'tasks': this.view = 'tasks'; break;
-      case 'buy': net.toHost('act', { k: 'p', id: this.prop.id, a: 'buy', d: { tier: it.tier } }); this.view = 'main'; break;
-      case 'photos': {
-        const photos = (g.local.photos || []).map((p) => ({ subject: p.subject, key: p.key, value: p.value }));
-        g.local.photos = [];
-        net.toHost('photos', { photos });
-        net.toHost('act', { k: 'p', id: this.prop.id, a: 'drain', d: { n: 5 } });
-        audio.play('transmit', { pos: this.prop.root.position });
-        break;
-      }
-      case 'samples': {
-        const kinds = [];
-        g.local.inv.slots.forEach((s, i) => {
-          if (s && s.type === 'sample_jar' && s.state.kind) { kinds.push(s.state.kind); g.local.inv.remove(i); }
-        });
-        net.toHost('samples', { kinds });
-        net.toHost('act', { k: 'p', id: this.prop.id, a: 'drain', d: { n: 5 } });
-        break;
-      }
       case 'extract': net.toHost('act', { k: 'p', id: this.prop.id, a: 'extract' }); break;
       default: break;
     }
@@ -575,9 +467,7 @@ class RadioBehaviour {
     const m = this.mission;
     const b = this.prop.state.battery ?? 40;
     if (b <= 0 && a !== 'extract') return;
-    if (a === 'buy') {
-      void d; // supply ordering is discontinued (credits can't buy anything)
-    } else if (a === 'drain') {
+    if (a === 'drain') {
       this.mission.world.props.setState(this.prop.id, { battery: Math.max(0, b - (d?.n || 5)) });
     } else if (a === 'extract') {
       m.requestExtraction();
@@ -594,11 +484,10 @@ class RadioBehaviour {
       const d = this.prop.root.position.distanceTo(g.local.pos);
       if (d < 14) {
         this.screen.draw(dt, (ctx, w, h, pal, t) => {
-          text(ctx, 'R.O.O.M. FIELD RADIO', 20, 14, 30, pal.hi);
+          text(ctx, 'FIELD RADIO', 20, 14, 30, pal.hi);
           text(ctx, `DAY ${g.day.day}/7`, w / 2, 70, 92, pal.fg, 'center');
           text(ctx, `${g.day.leftString()} UNTIL DAY ${Math.min(7, g.day.day + 1)}`, w / 2, 168, 26, pal.dim, 'center');
-          text(ctx, `UPLINKS ${this.mission.linksCount()}/3`, 24, 220, 30, pal.fg);
-          text(ctx, `${g.run.credits} CR`, w - 24, 220, 30, pal.fg, 'right');
+          text(ctx, `SIGNAL ${this.mission.linksCount()}/3`, 24, 220, 30, pal.fg);
           text(ctx, 'BATTERY', 24, 268, 24, pal.fg);
           bar(ctx, 130, 268, w - 154, 26, (st.battery ?? 40) / 100, (st.battery ?? 40) < 15 ? pal.bad : pal.fg, pal.dim);
           const ex = this.mission.state.exit;
@@ -706,17 +595,12 @@ class ClonePadBehaviour {
   }
   prompt() {
     const dead = [...this.game.roster.values()].filter((r) => r.dead);
-    if (!dead.length) return 'Cloning Pad — no deceased employees  [hold LMB] Drag';
-    return `[${input.keyName('interact')}] Clone ${dead[0].name} (${this.game.cloneCost()} CR)`;
+    if (!dead.length) return 'Cloning Pad — nobody to bring back  [hold LMB] Drag';
+    return `[${input.keyName('interact')}] Bring ${dead[0].name} back`;
   }
   interact() {
     const dead = [...this.game.roster.values()].filter((r) => r.dead);
     if (!dead.length) return;
-    if (this.game.run.credits < this.game.cloneCost()) {
-      this.game.ui.toast(`Need ${this.game.cloneCost()} CR — transmit research!`, 'bad');
-      audio.play('ui_error', { volume: 0.5 });
-      return;
-    }
     net.toHost('requestClone', { target: dead[0].id, pad: this.prop.id });
   }
   onState() {}
@@ -729,8 +613,7 @@ class ClonePadBehaviour {
       this.screen.draw(dt, (ctx, w, h, pal) => {
         text(ctx, 'CLONE-O-MAT', 10, 6, 28, pal.hi);
         text(ctx, dead.length ? `${dead.length} PENDING` : 'STANDBY', 10, 44, 26, dead.length ? pal.bad : pal.good);
-        text(ctx, `COST ${this.game.cloneCost()} CR`, 10, 84, 24, pal.fg);
-        text(ctx, `BALANCE ${this.game.run.credits}`, 10, 114, 24, pal.fg);
+
       });
     }
   }

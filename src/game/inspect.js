@@ -5,7 +5,9 @@
 //   or call tagInspect(obj, name, desc). Physics userData may carry `inspect` too.
 // Defaults: INSPECT_DEFAULTS by prop type / device kind / device id, then the item's name (+ a line by its
 // category). Lobby objects (fish tank, reception desk, chairs, elevator) are tagged at runtime by kind, type
-// and object name, so level files stay untouched. Labels are floatText.say bubbles in the 'label' font slot, small.
+// and object name, so level files stay untouched. Labels are floatText.say bubbles in the 'label' font slot, small:
+// the name alone gets a pen underline that draws itself in; the flavour line carries the name above it between
+// two short pen strokes (ui/floattext.js), in the same warm ivory ink as all screen text.
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
 import { input } from '../core/input.js';
@@ -57,7 +59,7 @@ const CATEGORY = {
   flashlight: 'The light keeps the dark honest.',
   battery: 'A little bottled lightning.',
   multitool: 'Welds, attaches, takes apart. Mostly takes apart.',
-  material: 'Scrap. The crusher pays for it.',
+  material: 'Scrap. Somebody could make something of it.',
   furniture: 'Heavy. Someone carried it here, once.',
   item: 'Ordinary. That is what worries you.',
 };

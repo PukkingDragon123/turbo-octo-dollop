@@ -35,8 +35,13 @@ import { buildSuitExtras, buildPackPart, buildHatPart, buildVisorPart, buildAccP
 import { robotMaterial, ROBOT_MAT_FLAGS } from './robotmat.js';
 import { Hose } from './gear.js';
 import { DM } from './dollmat.js';
-import { resolveCos, DEFAULT_COSMETICS } from './dollcos.js';
+import { resolveCos, DEFAULT_COSMETICS, plainCosmetics } from './dollcos.js';
 import { makeMorph, shapeKey } from './robotmorph.js';
+import { PAINT_KEYS, paintMaterial, paintTexture, ensurePaintPos } from './paint.js';
+import { irisCap } from './eyes.js';
+import { buildCosmeticModel, hasCosmeticModel } from './hats.js';
+import { ClothSet, canonRags, LEGACY_RAG } from './cloth.js';
+import { eyeLayout } from './robotshape.js';
 
 const PI = Math.PI, TAU = PI * 2;
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
@@ -63,18 +68,23 @@ export function getPart(key, build) {
   }
   return PARTS.get(key);
 }
+// hats / face gear / accessories with a detailed model (hats.js) are separate meshes on their bone, not
+// merged parts; scarf and bandana are cloth rags now (cloth.js)
+const NONE_ENTRY = { id: 'none' };
+const merged = (slot, id) => (id === 'none' || hasCosmeticModel(slot, id) || (slot === 'accessory' && LEGACY_RAG[id]) ? 'none' : id);
 export function partsFor(cos) {
+  const h = merged('hat', cos.hat), v = merged('visor', cos.visor), a = merged('accessory', cos.accessory);
   return [
     getPart('rbase', buildRobotBase),
     getPart('rhead:' + headKind(cos.faceEntry), () => buildRobotHead(cos.faceEntry)),
     getPart('rsuitx:' + cos.suit, () => buildSuitExtras(cos.suit)),
     getPart('rpack:' + cos.backpack, () => buildPackPart(cos.packEntry)),
-    getPart('rhat:' + cos.hat, () => buildHatPart(cos.hatEntry)),
-    getPart('rvisor:' + cos.visor, () => buildVisorPart(cos.visorEntry)),
-    getPart('racc:' + cos.accessory, () => buildAccPart(cos.accEntry)),
+    getPart('rhat:' + h, () => buildHatPart(h === 'none' ? NONE_ENTRY : cos.hatEntry)),
+    getPart('rvisor:' + v, () => buildVisorPart(v === 'none' ? NONE_ENTRY : cos.visorEntry)),
+    getPart('racc:' + a, () => buildAccPart(a === 'none' ? NONE_ENTRY : cos.accEntry)),
   ];
 }
-export function cosKey(cos) { const sk = shapeKey(cos); return [cos.suit, headKind(cos.faceEntry), cos.backpack, cos.hat, cos.visor, cos.accessory].join('|') + (sk ? '|' + sk : ''); }
+export function cosKey(cos) { const sk = shapeKey(cos); return [cos.suit, headKind(cos.faceEntry), cos.backpack, merged('hat', cos.hat), merged('visor', cos.visor), merged('accessory', cos.accessory)].join('|') + (sk ? '|' + sk : ''); }
 
 // merged per-material geometry for a cosmetics combination (shared, ref-counted)
 const MERGED = new Map();
@@ -91,6 +101,18 @@ function acquireMerged(cos) {
     const springs = {}, info = {};
     for (const p of parts) { Object.assign(over, p.over); Object.assign(springs, p.springs); Object.assign(info, p.info); }
     let owned = new Set(); for (const [mat, list] of by) if (list.length > 1) owned.add(geos.get(mat));
+    // spray paint reads the pre-morph rest positions (paint.js). Cached part geometries are never touched
+    // (they merge with other parts later): a lone part gets a thin wrapper sharing its buffers.
+    for (const [mat, g] of geos) {
+      if (!PAINT_KEYS.has(mat) || !g) continue;
+      if (owned.has(g)) { ensurePaintPos(g); continue; }
+      const w = new THREE.BufferGeometry();
+      w.setIndex(g.index);
+      for (const k of Object.keys(g.attributes)) w.setAttribute(k, g.attributes[k]);
+      w.boundingBox = g.boundingBox; w.boundingSphere = g.boundingSphere;
+      ensurePaintPos(w);
+      geos.set(mat, w);
+    }
     // body plan (frame / skull / build / eyes): deform a copy of the merged rest geometry
     const mo = makeMorph(cos, over);
     if (mo) {
@@ -247,7 +269,7 @@ export class Avatar {
   setCosmetics(c) {
     const cos = resolveCos(c);
     this.cos = cos;
-    this.cosmetics = { suit: cos.suit, skin: cos.skin, hat: cos.hat, visor: cos.visor, face: cos.face, backpack: cos.backpack, accessory: cos.accessory, frame: cos.frame, skull: cos.skull, build: cos.build, eyes: cos.eyes };
+    this.cosmetics = plainCosmetics(cos);
     this._disposeParts();
     const M = acquireMerged(cos);
     this._merged = M;
@@ -268,6 +290,10 @@ export class Avatar {
     }
     if (!M.geos.has('decal')) this._decalGeo = null;
     for (const m of this.meshes) this.rigRoot.add(m);
+    this._syncPaint(cos.paint);
+    this._buildIris(cos);
+    this._buildModels(cos);
+    this._buildRags(cos);
     // pack cable
     const info = M.info;
     this.hoseStart.removeFromParent(); this.hoseEnd.removeFromParent();
@@ -300,8 +326,86 @@ export class Avatar {
     mesh.receiveShadow = true;
     if (fl.order) mesh.renderOrder = fl.order;
     mesh.name = 'robot_' + key;
+    mesh.userData.matKey = key;
     return mesh;
   }
+  // detailed hat / face gear / accessory models riding their bones (hats.js)
+  _buildModels(cos) {
+    for (const M of this._models || []) M.object.removeFromParent();
+    this._models = []; this._jig = []; this._spin = null; this._halo = null;
+    for (const [slot, e] of [['hat', cos.hatEntry], ['visor', cos.visorEntry], ['accessory', cos.accEntry]]) {
+      let M = null;
+      try { M = buildCosmeticModel(slot, e); } catch (err) { console.warn('[avatar] cosmetic model', slot, e?.id, err); }
+      if (!M) continue;
+      const bone = this.bones[M.bone];
+      if (!bone) continue;
+      bone.add(M.object);
+      M.object.traverse((o) => { if (o.isMesh) { o.castShadow = o.castShadow && !o.material.transparent; } });
+      this._models.push(M);
+      for (const J of M.jig || []) this._jig.push({ obj: J.obj, w: new Wobble(J.obj, J), base: J.obj.userData.baseRot || J.obj.rotation.clone() });
+      if (M.spin) this._spin = M.spin;
+      if (M.halo) this._halo = { obj: M.halo, y: M.halo.position.y };
+    }
+    this.modelSlots = Object.fromEntries(this._models.map((M) => [M.object.name.split('_')[0], M.object]));
+  }
+  // cloth rags (cloth.js): rebuilt only when the set of garments changes
+  _buildRags(cos) {
+    const ids = canonRags([cos.rags, LEGACY_RAG[cos.accessory]].filter(Boolean).join(','));
+    if (this.cloth && this._ragIds === ids && this.cloth.av === this) return;
+    this.cloth?.dispose();
+    this._ragIds = ids;
+    this.cloth = ids ? new ClothSet(this, ids, { rate: this.clothRate || 60 }) : null;
+  }
+  // teammates: a cheaper cloth step rate
+  setClothRate(r) { this.clothRate = r; if (this.cloth) this.cloth.rate = r; }
+  // painted, wet iris overlays on the eyeballs (eyes.js); button eyes keep their buttons
+  _buildIris(cos) {
+    for (const m of this._iris || []) m.removeFromParent();
+    this._iris = [];
+    const kind = headKind(cos.faceEntry);
+    this._pupilShape = cos.eyesEntry?.pupilShape || null;
+    if (kind === 'button') return;
+    const es = cos.eyesEntry?.s || 1;
+    for (const e of eyeLayout(kind)) {
+      const cap = irisCap(cos.eyes, e.side, e.r);
+      cap.scale.setScalar(es);
+      this.bones['eye' + e.side].add(cap);
+      this._iris.push(cap);
+    }
+  }
+  // ---- spray paint (paint.js): an encoded paint string from the cosmetics, or a live layer (customizer)
+  _syncPaint(str) {
+    if (this._paintLive) { this._applyPaint(); return; }
+    str = str || '';
+    if (str !== this._paintStr) {
+      if (this._paintEntry) this._paintEntry.refs--;
+      this._paintStr = str; this._paintTex = null; this._paintEntry = null;
+      const e = str ? paintTexture(str) : null;
+      if (e) {
+        e.refs++;
+        this._paintEntry = e;
+        e.ready.then((layer) => { if (this._paintEntry === e && layer) { this._paintTex = layer.texture; this._applyPaint(); } });
+      }
+    }
+    this._applyPaint();
+  }
+  _applyPaint() {
+    if (!this.meshes) return;
+    const tex = this._paintLive?.texture || this._paintTex || null;
+    for (const m of this.meshes) {
+      const key = m.userData.matKey;
+      if (!PAINT_KEYS.has(key)) continue;
+      const base = robotMaterial(key, this.cos);
+      m.material = tex ? paintMaterial(base, tex) : base;
+    }
+  }
+  // live paint layer (PaintLayer) while painting in the customizer; null returns to the cosmetics' paint
+  setPaintLayer(layer) {
+    this._paintLive = layer || null;
+    if (!layer) { const s = this._paintStr; this._paintStr = null; this._syncPaint(s); } else this._applyPaint();
+  }
+  // meshes that take paint (raycast targets for the spray robot)
+  get paintMeshes() { return (this.meshes || []).filter((m) => PAINT_KEYS.has(m.userData.matKey)); }
   _resetBones() {
     const R = this.rig;
     for (let i = 0; i < R.bones.length; i++) { const b = R.bones[i]; b.position.copy(R.restP[i]); b.quaternion.copy(R.restQ[i]); b.scale.set(1, 1, 1); }
@@ -336,6 +440,8 @@ export class Avatar {
   getHeadAnchor() { return this.anchors.head; }
   getWatchAnchor() { return this.anchors.watch; }
   dispose() {
+    this.cloth?.dispose(); this.cloth = null;
+    if (this._paintEntry) { this._paintEntry.refs--; this._paintEntry = null; }
     this._disposeParts();
     this.hose.mesh.geometry.dispose();
     this.root.removeFromParent();
@@ -541,8 +647,14 @@ export class Avatar {
     if (this.haloBone) { this.haloBone.position.y += Math.sin(t * 2.2) * 0.012; this.haloBone.rotation.y = t * 0.6; }
     if (this.flameBone) { const f = (0.35 + st.air * 0.9 + st.sprint * 0.3) * (1 - st.dead) * (0.85 + 0.15 * Math.sin(t * 47) * Math.sin(t * 31)); this.flameBone.scale.set(1, Math.max(0.001, f), 1); }
 
+    if (this._spin) { this._spinA = (this._spinA || 0) + dt * (5 + st.speed * 10 + st.air * 24); this._spin.rotation.y = this._spinA; }
+    if (this._halo) { this._halo.obj.position.y = this._halo.y + Math.sin(t * 2.2) * 0.008; this._halo.obj.rotation.y = t * 0.6; }
+    for (let k = 0; k < this._jig.length; k++) this._jig[k].obj.rotation.copy(this._jig[k].base);
     this.rigRoot.updateMatrixWorld(true);
     for (let k = 0; k < this.wobbles.length; k++) this.wobbles[k].update(dt);
+    if (this._jig.length) { for (let k = 0; k < this._jig.length; k++) this._jig[k].w.update(dt); this.rigRoot.updateMatrixWorld(true); }
+    // (a frozen pose, dt 0, leaves the cloth to whoever froze it: the customizer steps it itself)
+    if (this.cloth && (dt > 0 || first)) { this.cloth.hideZone = this.fpHidden ? 'head' : null; this.cloth.update(dt); }
 
     if (this.hose.mesh.visible) {
       this.hoseStart.parent.updateMatrixWorld(true);
@@ -823,8 +935,8 @@ export class Avatar {
       Y.lidD.rotation.x = st.lidD[i] * LID_D + st.eyePitch * 0.15;
       Y.brow.position.y += st.brow[i];
       Y.brow.rotation.z = -Y.sg * st.browRot[i];
-      const pu = Math.max(0.0001, st.pupil[i]);
-      Y.led.scale.set(pu, pu, 1);
+      const pu = Math.max(0.0001, st.pupil[i]), ps = this._pupilShape;
+      if (ps) Y.led.scale.set(pu * ps[0], pu * ps[1], 1); else Y.led.scale.set(pu, pu, 1);
     }
     if (this.cyclops) { b.ledR.scale.setScalar(0.0001); }
     b.jaw.rotation.x = -st.jaw;

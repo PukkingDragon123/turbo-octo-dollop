@@ -171,6 +171,14 @@ export class PoolroomsLevel extends YellowLevel {
       pp.uRolloff.value = 0.3;
     }
     if (pp.uContrast) pp.uContrast.value = 1.03;
+    // painted look: cool aqua depth haze that glows a little near the light, soft far focus, gentle split tone
+    if (pp.uHaze) {
+      pp.uSplit.value = 0.45;
+      pp.uHaze.value = 0.035; pp.uHazeStart.value = 2.5; pp.uHazeFarDist.value = 30;
+      pp.uHazeNear.value.setRGB(0.95, 0.97, 0.88); pp.uHazeFar.value.setRGB(0.5, 0.66, 0.7);
+      pp.uHazeLum.value = 0.05; pp.uHazeGlow.value = 0.35; pp.uHazeSky.value = 1.0;
+      pp.uDof.value = 0.6; pp.uDofStart.value = 12; pp.uDofEnd.value = 42;
+    }
     engine.renderer.toneMappingExposure = 1.0;
     this.world.monsters = this.monsters = new MonsterManager(this);
     this.mission = new Mission(this);
@@ -944,6 +952,7 @@ export class PoolroomsLevel extends YellowLevel {
     }
     s.background = this.prevEnv?.bg ?? new THREE.Color(0x000000);
     const pp = engine.post.params;
+    engine.post.resetLook?.();
     for (const [k, v] of Object.entries(this.prevPost || {})) {
       const u = pp[k];
       if (!u) continue;

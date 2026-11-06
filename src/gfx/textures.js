@@ -10,6 +10,7 @@
 // so world materials use repeat = 1/size.
 import * as THREE from 'three';
 import { tileFbm, tileNoise2, hash01, RNG, clamp, smoothstep } from '../core/rng.js';
+import { paintCanvas } from './texsynth.js';
 
 const cache = new Map();
 const variantCache = new Map();
@@ -140,11 +141,36 @@ function applyWear(L, amt, seed) {
   }
 }
 
+// soft relief for the hand-painted look: the height field is box-blurred twice before it becomes a normal map
+function softHeight(layer, passes = 2) {
+  const { w, h } = layer;
+  let a = layer.height, b = new Float32Array(w * h);
+  for (let p = 0; p < passes; p++) {
+    for (let y = 0; y < h; y++) {
+      const y0 = ((y - 1 + h) % h) * w, y1 = y * w, y2 = ((y + 1) % h) * w;
+      for (let x = 0; x < w; x++) {
+        const x0 = (x - 1 + w) % w, x2 = (x + 1) % w;
+        b[y1 + x] = (a[y0 + x0] + a[y0 + x] + a[y0 + x2] + a[y1 + x0] + a[y1 + x] + a[y1 + x2] + a[y2 + x0] + a[y2 + x] + a[y2 + x2]) / 9;
+      }
+    }
+    const t = a === layer.height ? new Float32Array(w * h) : a; a = b; b = t;
+  }
+  layer.height = a;
+}
+
 function finish(layer, opts = {}) {
   if (opts.wear) applyWear(layer, opts.wear, opts.seed ?? 1);
+  // hand-painted finish (docs/ART_DIRECTION.md): painted albedo, soft relief, matte surfaces
+  const rgb = toCanvasRGB(layer);
+  const painted = opts.paint !== false;
+  if (painted) {
+    try { paintCanvas(rgb, layer.height, { meters: opts.size ?? 1, bump: opts.normalStrength ?? 2, seed: opts.seed ?? 1, ...(opts.paint || {}) }); } catch (e) { console.warn('[textures] paint failed', e); }
+    softHeight(layer);
+    for (let i = 0; i < layer.rough.length; i++) layer.rough[i] = 0.6 + 0.4 * clamp(layer.rough[i], 0, 1);
+  }
   const out = {
-    map: canvasTex(toCanvasRGB(layer), true),
-    normalMap: canvasTex(normalFromHeight(layer, opts.normalStrength ?? 2), false),
+    map: canvasTex(rgb, true),
+    normalMap: canvasTex(normalFromHeight(layer, (opts.normalStrength ?? 2) * (painted ? 0.75 : 1)), false),
     roughnessMap: canvasTex(toCanvasGray(layer.rough, layer.w, layer.h, layer.metal), false),
     size: opts.size ?? 1,
     hasMetal: !!layer.metal,

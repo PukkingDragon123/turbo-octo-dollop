@@ -202,8 +202,6 @@ export class Anomalies {
         this.world.group.add(mesh);
         this.shadow = { mesh, t: 0 };
       }
-    } else {
-      this.game.healthity?.say('fake');
     }
   }
 

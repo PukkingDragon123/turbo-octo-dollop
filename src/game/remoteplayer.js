@@ -16,6 +16,7 @@ export class RemotePlayer {
     this.name = info.name || 'Clone';
     this.cosmetics = info.cosmetics || {};
     this.avatar = new Avatar(this.cosmetics);
+    this.avatar.setClothRate?.(30);   // teammates' cloth rags simulate at half rate
     this.pos = new THREE.Vector3(0, -100, 0);
     this.vel = new THREE.Vector3();
     this.yaw = 0;

@@ -1,9 +1,11 @@
-// The only HUD: two little machines hanging at the top of the view, drawn in the viewmodel layer.
-//   MECHANICAL HEART (health): brass valves and pipes, a steel band, a pressure gauge and a glass chamber of
-//     sloshing green plasma that beats with the clone's heart rate. Damage cracks the glass (more cracks the
+// The only HUD: two little machines hanging at the top of the view, drawn in the viewmodel layer. Both are
+// made like the rest of the world: chunky, painted metal (hand-brushed value shifts, worn lighter on the edges),
+// soft frosted glass, warm muted colours; no neon (art direction).
+//   MECHANICAL HEART (health): brass valves and pipes, a band, a pressure gauge and a glass chamber of
+//     sloshing rose-red plasma that beats with the clone's heart rate. Damage cracks the glass (more cracks the
 //     lower the health), cracks leak dripping plasma while bleeding, the pressure needle sags.
 //   MECHANICAL BRAIN "SANITY": a steel cage holding two glass hemispheres full of glowing filaments and gears.
-//     Calm = steady cyan glow and smooth gears; losing it = violet then red, flicker, stuttering gears,
+//     Calm = a steady soft teal glow and smooth gears; losing it = dusty rose then rust, flicker, stuttering gears,
 //     sparks; at zero the whole thing shakes itself apart (death by insanity).
 // Healing items play a first-person patch-up: the clone reaches into its chest, pulls the heart out into
 // both hands, tapes the cracks and/or injects plasma, and pushes it back in (startPatch / patch* weights
@@ -14,13 +16,14 @@ import { audio } from '../audio/audio.js';
 import { juice } from '../gfx/juice.js';
 import { clamp, damp } from '../core/rng.js';
 
-export const VITALS = { depth: 0.3, size: 1.3, landscapeX: 0.12, topY: 0.8, portraitX: [-0.72, -0.4], cradle: [0, -0.07, -0.25], cradleScale: 1.35 };
+export const VITALS = { depth: 0.3, size: 1.3, landscapeX: 0.12, topY: 0.8, portraitX: [-0.62, 0.06], portraitFit: 1.5, cradle: [0, -0.07, -0.25], cradleScale: 1.35 };
 const R = 0.019;
 const PI = Math.PI;
 const ease = (t) => t * t * (3 - 2 * t);
 const easeOutBack = (t) => { const c = 1.8; return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2; };
 const _v = new THREE.Vector3(), _c = new THREE.Color();
-const LOW_COL = new THREE.Color(0x9cff2a), CALM = new THREE.Color(0x5ff8ff), MID = new THREE.Color(0xb050ff), BAD = new THREE.Color(0xff2a2a), _col = new THREE.Color();
+const PLASMA = 0xd9604c, LOW_COL = new THREE.Color(0x8e2c22), CALM = new THREE.Color(0x7cc8bc), MID = new THREE.Color(0xcf8f98), BAD = new THREE.Color(0xd2552c), _col = new THREE.Color();
+const DRIP = 0xc8503e, SPARKS = [0xffd98a, 0xd2552c];
 
 // heart shape: a deformed sphere (two lobes and a cleft on top, a point at the bottom, flattened front-back)
 function deform(p) {
@@ -52,15 +55,42 @@ function gearGeo(r, teeth, depth, hole = 0.3) {
   const h = new THREE.Path(); h.absarc(0, 0, r * hole, 0, PI * 2, true); s.holes.push(h);
   return new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 6 }).translate(0, 0, -depth / 2);
 }
-function labelTex(text, w = 256, h = 64, fg = '#2a1a08', bg = '#c8a050') {
+// a hand-painted label plate: cream paint, ink lettering, a soft worn edge
+function labelTex(text, w = 256, h = 64, fg = '#3b2c18', bg = '#dcc89c') {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d');
   x.fillStyle = bg; x.fillRect(0, 0, w, h);
-  x.strokeStyle = 'rgba(0,0,0,0.5)'; x.lineWidth = 4; x.strokeRect(3, 3, w - 6, h - 6);
-  x.fillStyle = fg; x.font = `bold ${Math.round(h * 0.62)}px "Jolly Lodger", Georgia, serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillText(text, w / 2, h / 2 + 2);
-  for (const sx of [12, w - 12]) { x.fillStyle = '#6a5020'; x.beginPath(); x.arc(sx, h / 2, 5, 0, PI * 2); x.fill(); }
+  const g = x.createRadialGradient(w * 0.4, h * 0.4, 4, w / 2, h / 2, w * 0.6);
+  g.addColorStop(0, 'rgba(255,248,225,0.25)'); g.addColorStop(1, 'rgba(90,60,25,0.3)');
+  x.fillStyle = g; x.fillRect(0, 0, w, h);
+  x.strokeStyle = 'rgba(70,48,20,0.45)'; x.lineWidth = 3; x.lineCap = 'round';
+  x.beginPath(); x.moveTo(8, 7); x.quadraticCurveTo(w / 2, 4, w - 8, 8); x.quadraticCurveTo(w - 4, h / 2, w - 7, h - 7);
+  x.quadraticCurveTo(w / 2, h - 4, 7, h - 8); x.quadraticCurveTo(4, h / 2, 8, 7); x.stroke();
+  x.fillStyle = fg; x.font = `${Math.round(h * 0.66)}px "Jolly Lodger", Georgia, serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(text, w / 2, h / 2 + 3);
+  for (const sx of [14, w - 14]) { x.fillStyle = '#8a6a38'; x.beginPath(); x.arc(sx, h / 2, 5, 0, PI * 2); x.fill(); x.fillStyle = 'rgba(255,240,200,0.4)'; x.beginPath(); x.arc(sx - 1.5, h / 2 - 1.5, 2, 0, PI * 2); x.fill(); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+// painted metal: broad soft brush strokes and slow value shifts (used as the map of brass and band metal)
+let _paint = null;
+function paintTex() {
+  if (_paint) return _paint;
+  const n = 128, c = document.createElement('canvas'); c.width = c.height = n;
+  const x = c.getContext('2d');
+  x.fillStyle = '#d8d0c0'; x.fillRect(0, 0, n, n);
+  let s = 5;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let i = 0; i < 40; i++) {
+    const px = rnd() * n, py = rnd() * n, r = 10 + rnd() * 34;
+    const g = x.createRadialGradient(px, py, 0, px, py, r);
+    const v = rnd() < 0.5 ? '255,250,238' : '120,100,70';
+    g.addColorStop(0, `rgba(${v},${0.12 + rnd() * 0.12})`); g.addColorStop(1, `rgba(${v},0)`);
+    x.fillStyle = g; x.fillRect(px - r, py - r, r * 2, r * 2);
+  }
+  x.globalAlpha = 0.08; x.strokeStyle = '#5a4a30';
+  for (let i = 0; i < 14; i++) { const y = rnd() * n; x.lineWidth = 2 + rnd() * 4; x.beginPath(); x.moveTo(0, y); x.bezierCurveTo(n * 0.3, y + (rnd() - 0.5) * 12, n * 0.7, y + (rnd() - 0.5) * 12, n, y + (rnd() - 0.5) * 8); x.stroke(); }
+  _paint = new THREE.CanvasTexture(c); _paint.colorSpace = THREE.SRGBColorSpace; _paint.wrapS = _paint.wrapT = THREE.RepeatWrapping;
+  return _paint;
 }
 
 const LIQUID_VS = `
@@ -78,11 +108,11 @@ void main() {
   vec3 col = uColor * mix(1.35, 0.45, depth);
   if (!gl_FrontFacing) col = uColor * 1.7 + 0.08;
   float fres = pow(1.0 - abs(dot(normalize(vN), normalize(vView))), 2.0);
-  col += uColor * fres * 0.9;
+  col += mix(uColor, vec3(1.0, 0.9, 0.75), 0.35) * fres * 0.6;
   vec3 bp = q * 6.0 + vec3(0.0, -uTime * 1.6, 0.0);
   vec3 cell = fract(bp) - 0.5;
   float b = smoothstep(0.2, 0.06, length(cell)) * step(0.86, h31(floor(bp)));
-  col += vec3(0.7, 1.0, 0.75) * b * uBubble;
+  col += vec3(1.0, 0.86, 0.72) * b * uBubble * 0.6;
   gl_FragColor = vec4(col * uGlow, 1.0);
 }`;
 
@@ -120,19 +150,20 @@ export class VitalsHUD {
     H.add(this.heartBeat);
     this.root.add(H);
     const B = this.heartBeat;
-    const brass = (this.brass = new THREE.MeshStandardMaterial({ color: 0xc89a48, metalness: 0.9, roughness: 0.32, emissive: 0x2a1a06, emissiveIntensity: 0.6 }));
-    const steel = (this.steel = new THREE.MeshStandardMaterial({ color: 0xaeb4bc, metalness: 0.85, roughness: 0.3, emissive: 0x141618, emissiveIntensity: 0.6 }));
+    // painted metal reads like the world's props: mostly diffuse, lit a little from within so the HUD never goes black
+    const brass = (this.brass = new THREE.MeshStandardMaterial({ map: paintTex(), color: 0xe0b46a, metalness: 0.15, roughness: 0.62, emissive: 0x6a4a22, emissiveMap: paintTex(), emissiveIntensity: 0.7 }));
+    const steel = (this.steel = new THREE.MeshStandardMaterial({ map: paintTex(), color: 0xc2c4b4, metalness: 0.12, roughness: 0.7, emissive: 0x4a4c40, emissiveMap: paintTex(), emissiveIntensity: 0.7 }));
     const geo = heartGeo(R);
     this.liquidMat = new THREE.ShaderMaterial({
-      uniforms: { uLevel: { value: 0.5 }, uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 }, uColor: { value: new THREE.Color(0x2dff6a) }, uGlow: { value: 1 }, uBubble: { value: 1 }, uR: { value: R * 0.9 } },
+      uniforms: { uLevel: { value: 0.5 }, uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 }, uColor: { value: new THREE.Color(PLASMA) }, uGlow: { value: 1 }, uBubble: { value: 1 }, uR: { value: R * 0.9 } },
       vertexShader: LIQUID_VS, fragmentShader: LIQUID_FS, side: THREE.DoubleSide, toneMapped: false,
     });
     const liquid = new THREE.Mesh(heartGeo(R * 0.9), this.liquidMat);
     liquid.renderOrder = 1;
     B.add(liquid);
     // dark inner backing so the glass reads when the chamber is empty
-    B.add(new THREE.Mesh(heartGeo(R * 0.93, 24, 16), new THREE.MeshStandardMaterial({ color: 0x0a120c, roughness: 0.6, metalness: 0.2, side: THREE.BackSide })));
-    this.glassMat = new THREE.MeshPhysicalMaterial({ color: 0xd8f0e8, roughness: 0.06, metalness: 0, transparent: true, opacity: 0.24, clearcoat: 1, clearcoatRoughness: 0.05, depthWrite: false, envMapIntensity: 1.6 });
+    B.add(new THREE.Mesh(heartGeo(R * 0.93, 24, 16), new THREE.MeshStandardMaterial({ color: 0x4a3226, emissive: 0x24140e, roughness: 0.85, metalness: 0, side: THREE.BackSide })));
+    this.glassMat = new THREE.MeshPhysicalMaterial({ color: 0xf2e6cc, roughness: 0.3, metalness: 0, transparent: true, opacity: 0.2, clearcoat: 0.5, clearcoatRoughness: 0.35, depthWrite: false, envMapIntensity: 0.7 });
     const glass = new THREE.Mesh(geo, this.glassMat);
     glass.renderOrder = 2;
     B.add(glass);
@@ -173,11 +204,13 @@ export class VitalsHUD {
     // pressure gauge on the front-right
     const gc = document.createElement('canvas'); gc.width = gc.height = 128;
     const x = gc.getContext('2d');
-    x.fillStyle = '#efe6cf'; x.beginPath(); x.arc(64, 64, 62, 0, PI * 2); x.fill();
-    x.strokeStyle = '#222'; x.lineWidth = 3;
-    for (let i = 0; i <= 10; i++) { const a = PI * 0.75 + (i / 10) * PI * 1.5; x.beginPath(); x.moveTo(64 + Math.cos(a) * 44, 64 + Math.sin(a) * 44); x.lineTo(64 + Math.cos(a) * 56, 64 + Math.sin(a) * 56); x.stroke(); }
-    x.strokeStyle = '#c02010'; x.lineWidth = 8; x.beginPath(); x.arc(64, 64, 50, PI * 0.75, PI * 1.05); x.stroke();
-    x.fillStyle = '#222'; x.font = 'bold 18px "Jolly Lodger", Georgia, serif'; x.textAlign = 'center'; x.fillText('PSI', 64, 96);
+    x.fillStyle = '#ecdcb8'; x.beginPath(); x.arc(64, 64, 62, 0, PI * 2); x.fill();
+    const gg = x.createRadialGradient(54, 50, 6, 64, 64, 64); gg.addColorStop(0, 'rgba(255,250,232,0.4)'); gg.addColorStop(1, 'rgba(110,80,40,0.35)');
+    x.fillStyle = gg; x.beginPath(); x.arc(64, 64, 62, 0, PI * 2); x.fill();
+    x.strokeStyle = '#3b2c18'; x.lineWidth = 3; x.lineCap = 'round';
+    for (let i = 0; i <= 10; i++) { const a = PI * 0.75 + (i / 10) * PI * 1.5 + Math.sin(i * 7.1) * 0.02; const r0 = i % 5 ? 46 : 41; x.beginPath(); x.moveTo(64 + Math.cos(a) * r0, 64 + Math.sin(a) * r0); x.lineTo(64 + Math.cos(a) * 55, 64 + Math.sin(a) * 55); x.stroke(); }
+    x.strokeStyle = '#b4462c'; x.lineWidth = 7; x.beginPath(); x.arc(64, 64, 50, PI * 0.75, PI * 1.05); x.stroke();
+    x.fillStyle = '#3b2c18'; x.font = '22px "Jolly Lodger", Georgia, serif'; x.textAlign = 'center'; x.fillText('PSI', 64, 98);
     const gt = new THREE.CanvasTexture(gc); gt.colorSpace = THREE.SRGBColorSpace;
     const gauge = new THREE.Group();
     gauge.position.set(R * 0.62, R * 0.08, R * 0.62);
@@ -186,13 +219,13 @@ export class VitalsHUD {
     const face = new THREE.Mesh(new THREE.CircleGeometry(0.0052, 20), new THREE.MeshBasicMaterial({ map: gt, toneMapped: false }));
     face.position.z = 0.00115;
     gauge.add(face);
-    this.needle = new THREE.Mesh(new THREE.BoxGeometry(0.0006, 0.0044, 0.0004).translate(0, 0.002, 0), new THREE.MeshBasicMaterial({ color: 0xd01808 }));
+    this.needle = new THREE.Mesh(new THREE.BoxGeometry(0.0006, 0.0044, 0.0004).translate(0, 0.002, 0), new THREE.MeshBasicMaterial({ color: 0xa83a22 }));
     this.needle.position.z = 0.0014;
     gauge.add(this.needle);
     B.add(gauge);
     // hoses that only show while the heart is out of the chest
     this.hoses = new THREE.Group();
-    const hoseMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2c, roughness: 0.7, metalness: 0.1 });
+    const hoseMat = new THREE.MeshStandardMaterial({ color: 0x6a5a4a, emissive: 0x2a2018, roughness: 0.85, metalness: 0 });
     for (const sx of [-1, 1]) {
       const c = new THREE.CatmullRomCurve3([new THREE.Vector3(sx * 0.006, -R * 0.9, -0.002), new THREE.Vector3(sx * 0.012, -R * 2.2, 0.004), new THREE.Vector3(sx * 0.02, -R * 4.5, 0.03), new THREE.Vector3(sx * 0.03, -R * 9, 0.08)]);
       this.hoses.add(new THREE.Mesh(new THREE.TubeGeometry(c, 16, 0.0022, 6), hoseMat));
@@ -200,7 +233,7 @@ export class VitalsHUD {
     this.hoses.visible = false;
     B.add(this.hoses);
     // local glow so the HUD reads in the dark
-    this.heartLight = new THREE.PointLight(0x40ff70, 0.02, 0.09, 2);
+    this.heartLight = new THREE.PointLight(0xff9a7a, 0.02, 0.09, 2);
     this.lightRig.add(this.heartLight);
     // patch-up props: tape roll strips are drawn on the crack canvas; the syringe is a small model
     this.syringe = this._syringe();
@@ -210,8 +243,8 @@ export class VitalsHUD {
 
   _syringe() {
     const g = new THREE.Group();
-    const glass = new THREE.MeshStandardMaterial({ color: 0xd8f0e8, transparent: true, opacity: 0.35, roughness: 0.05, depthWrite: false });
-    const plasma = new THREE.MeshStandardMaterial({ color: 0x3cff6a, emissive: 0x2dff5a, emissiveIntensity: 1.5 });
+    const glass = new THREE.MeshStandardMaterial({ color: 0xf2e6cc, transparent: true, opacity: 0.35, roughness: 0.3, depthWrite: false });
+    const plasma = new THREE.MeshStandardMaterial({ color: PLASMA, emissive: PLASMA, emissiveIntensity: 0.7, roughness: 0.5 });
     g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.0045, 0.0045, 0.034, 12, 1, true), glass));
     this.syrPlasma = new THREE.Mesh(new THREE.CylinderGeometry(0.0038, 0.0038, 0.03, 10).translate(0, -0.015, 0), plasma);
     this.syrPlasma.position.y = 0.015;
@@ -251,10 +284,10 @@ export class VitalsHUD {
           c.lineTo(x, y);
           if (rnd() < 0.12) { c.moveTo(x, y); c.lineTo(x + Math.cos(a + 1.2) * 9, y + Math.sin(a + 1.2) * 7); c.moveTo(x, y); }
         }
-        c.strokeStyle = 'rgba(10,30,18,0.75)'; c.lineWidth = 3.2; c.stroke();
-        c.strokeStyle = i >= n ? 'rgba(255,120,120,0.85)' : 'rgba(225,255,235,0.95)'; c.lineWidth = 1.4; c.stroke();
+        c.strokeStyle = 'rgba(46,28,16,0.7)'; c.lineWidth = 3.2; c.stroke();
+        c.strokeStyle = i >= n ? 'rgba(220,140,150,0.85)' : 'rgba(250,238,215,0.92)'; c.lineWidth = 1.4; c.stroke();
       }
-      c.fillStyle = 'rgba(235,255,240,0.9)'; c.beginPath(); c.arc(cx, cy, 3.5, 0, PI * 2); c.fill();
+      c.fillStyle = 'rgba(250,240,220,0.9)'; c.beginPath(); c.arc(cx, cy, 3.5, 0, PI * 2); c.fill();
       if (i < tapes && i < n) {
         // duct tape cross over the crack
         for (const rot of [0.5, -0.6]) {
@@ -278,7 +311,7 @@ export class VitalsHUD {
     this.root.add(Bg);
     const J = this.brainJit;
     const BR = R * 0.95;
-    const glass = new THREE.MeshPhysicalMaterial({ color: 0xdfe8ff, roughness: 0.06, transparent: true, opacity: 0.2, clearcoat: 1, depthWrite: false, envMapIntensity: 1.6 });
+    const glass = new THREE.MeshPhysicalMaterial({ color: 0xf0e8d6, roughness: 0.3, transparent: true, opacity: 0.18, clearcoat: 0.5, clearcoatRoughness: 0.35, depthWrite: false, envMapIntensity: 0.7 });
     this.filMats = [];
     for (const sx of [-1, 1]) {
       const hemi = new THREE.Mesh(new THREE.SphereGeometry(BR, 28, 18, 0, PI).rotateY(sx > 0 ? PI / 2 : -PI / 2), glass);
@@ -287,12 +320,12 @@ export class VitalsHUD {
       hemi.renderOrder = 2;
       J.add(hemi);
       // dark lobe core
-      const core = new THREE.Mesh(new THREE.SphereGeometry(BR * 0.8, 18, 12, 0, PI).rotateY(sx > 0 ? PI / 2 : -PI / 2), new THREE.MeshStandardMaterial({ color: 0x1a1420, roughness: 0.5, metalness: 0.5, side: THREE.DoubleSide }));
+      const core = new THREE.Mesh(new THREE.SphereGeometry(BR * 0.8, 18, 12, 0, PI).rotateY(sx > 0 ? PI / 2 : -PI / 2), new THREE.MeshStandardMaterial({ color: 0x7a605a, emissive: 0x3a2a26, roughness: 0.85, metalness: 0, side: THREE.DoubleSide }));
       core.scale.set(0.85, 0.75, 1.05);
       core.position.x = sx * 0.002;
       J.add(core);
       // glowing filaments: random loops inside the hemisphere
-      const mat = new THREE.MeshBasicMaterial({ color: 0x5ff8ff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+      const mat = new THREE.MeshBasicMaterial({ color: CALM.getHex(), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
       this.filMats.push(mat);
       let rs = sx > 0 ? 11 : 23;
       const rnd = () => { rs = (rs * 16807) % 2147483647; return rs / 2147483647; };
@@ -336,7 +369,7 @@ export class VitalsHUD {
     const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.022, 0.0055), new THREE.MeshBasicMaterial({ map: labelTex('SANITY'), toneMapped: false }));
     plate.position.set(0, -BR * 0.82 - 0.0085, 0.0102);
     J.add(plate);
-    this.brainLight = new THREE.PointLight(0x5ff8ff, 0.02, 0.09, 2);
+    this.brainLight = new THREE.PointLight(CALM.getHex(), 0.02, 0.09, 2);
     this.lightRig.add(this.brainLight);
   }
 
@@ -345,7 +378,7 @@ export class VitalsHUD {
     this.drips = [];
     const geo = new THREE.SphereGeometry(0.0011, 6, 4);
     for (let i = 0; i < 18; i++) {
-      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x40ff70, transparent: true, depthWrite: false, toneMapped: false }));
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: DRIP, transparent: true, depthWrite: false, toneMapped: false }));
       m.visible = false;
       this.root.add(m);
       this.drips.push({ m, v: new THREE.Vector3(), life: 0 });
@@ -360,7 +393,7 @@ export class VitalsHUD {
     d.v.set((Math.random() - 0.5) * (spark ? 0.08 : 0.004), spark ? Math.random() * 0.05 : -0.002, 0);
     d.life = spark ? 0.35 : 1.4;
     d.spark = spark;
-    d.m.material.color.setHex(spark ? (Math.random() < 0.5 ? 0xff60ff : 0xffd040) : 0x40ff70);
+    d.m.material.color.setHex(spark ? SPARKS[Math.random() < 0.5 ? 0 : 1] : DRIP);
     d.m.scale.set(1, spark ? 1 : 1.6, 1);
     d.m.visible = true;
   }
@@ -449,8 +482,9 @@ export class VitalsHUD {
     // pin to the top of the screen whatever the viewmodel fov (it zooms when the watch is raised)
     const z = VITALS.depth;
     const halfH = z * Math.tan((cam.fov * PI) / 360), halfW = halfH * cam.aspect;
-    const k = halfH / (0.3 * Math.tan(PI / 6)) * VITALS.size;
     const portrait = cam.aspect < 1;
+    // a narrow portrait screen sizes them by its width, so both fit side by side clear of the corner buttons
+    const k = (portrait ? Math.min(halfH, halfW * VITALS.portraitFit) : halfH) / (0.3 * Math.tan(PI / 6)) * VITALS.size;
     const yN = VITALS.topY - (portrait ? 0.02 : 0);
     const hx = portrait ? VITALS.portraitX[0] : -VITALS.landscapeX / Math.max(1, cam.aspect / 1.6);
     const bx = portrait ? VITALS.portraitX[1] : VITALS.landscapeX / Math.max(1, cam.aspect / 1.6);
@@ -493,10 +527,10 @@ export class VitalsHUD {
     L.uTilt.value.copy(this.tilt);
     L.uTime.value = this.t;
     const low = 1 - fill;
-    _c.setHex(0x2dff6a).lerp(LOW_COL, low * 0.5);
-    if (this.fakeCracks && Math.random() < 0.3) _c.setHex(0xff3030);
+    _c.setHex(PLASMA).lerp(LOW_COL, low * 0.6);
+    if (this.fakeCracks && Math.random() < 0.3) _c.setHex(0x6a2c3a);
     L.uColor.value.copy(_c);
-    L.uGlow.value = 0.85 + lub * 0.35;
+    L.uGlow.value = 0.78 + lub * 0.25;
     L.uBubble.value = 0.6 + low;
     this.needle.rotation.z = (1 - fill) * 2.3 - 1.15 + (fill < 0.3 ? (Math.random() - 0.5) * 0.25 : 0) - (lub + dub) * 0.08;
     this.heartLight.intensity = (0.0004 + fill * 0.0006 + lub * 0.0003) * k * k;
@@ -520,7 +554,7 @@ export class VitalsHUD {
     const col = sv > 0.5 ? _col.copy(MID).lerp(CALM, (sv - 0.5) * 2) : _col.copy(BAD).lerp(MID, sv * 2);
     const flick = Math.random() < (1 - sv) ** 2 * 0.35 || (insane && Math.random() < 0.5);
     const glow = flick ? 0.15 : 0.75 + Math.sin(this.t * (2 + (1 - sv) * 9)) * 0.25 * (1 - sv * 0.5);
-    for (const m of this.filMats) { m.color.copy(col).multiplyScalar(glow * 2.2); }
+    for (const m of this.filMats) { m.color.copy(col).multiplyScalar(glow * 1.45); }
     this.brainLight.color.copy(col);
     this.brainLight.intensity = (0.0004 + 0.0006 * glow) * (flick ? 0.3 : 1) * k * k;
     this.brainLight.position.copy(this.brain.position).add(_v.set(0, 0, 0.03 * k));

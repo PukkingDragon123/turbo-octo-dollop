@@ -1,5 +1,7 @@
 // Game/session orchestrator: modes (solo/host/join), roster, world loading & transitions,
-// run state (credits, depth, day timer), deaths, cloning, evacuation and run-over flow.
+// run state (depth, day timer, deaths), dying and waking up again, evacuation and run-over flow.
+// game.survival (game/progress.js): what the team has made and how far it has come; game.gather (game/gather.js):
+// taking furniture apart; game.arrival: the wake-up sequence of the level being played (game/arrival.js).
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
 import { input } from '../core/input.js';
@@ -18,7 +20,9 @@ import { BacteriaBody, prewarmBacteria } from '../entities/monsters/bacteria_bod
 import { itemDef } from './itemdefs.js';
 import { Elevator } from '../world/elevator_ride.js';
 import { save } from '../core/save.js';
-import { levelRules } from './economy.js';
+import { SurvivalProgress } from './progress.js';
+import { Gather } from './gather.js';
+import { Gear } from './gear.js';
 
 const _v = new THREE.Vector3();
 
@@ -35,6 +39,9 @@ export class Game {
     this.run = this._newRun();
     this.day = new DayCycle(this);
     this.tools = new Tools(this);
+    this.survival = new SurvivalProgress(this);
+    this.gather = new Gather(this);
+    this.gear = new Gear(this);
     this.state = 'menu';
     this.loading = false;
     this.cutscene = null;
@@ -47,11 +54,9 @@ export class Game {
 
   _newRun() {
     return {
-      depth: 1, credits: 0, earned: 0, levelType: 'lobby', seed: 0,
-      deaths: 0, research: 0, photos: [], startedAt: Date.now(), starterGiven: false,
+      depth: 1, levelType: 'lobby', seed: 0,
+      deaths: 0, photos: [], startedAt: Date.now(),
       objectives: null, exitOpen: false,
-      // economy (game/economy.js): escape fund, unlock keys, quest states, quest counters, studied things
-      escape: 0, unlocks: {}, quests: {}, counters: {}, scans: {},
     };
   }
 
@@ -291,15 +296,15 @@ export class Game {
       audio.play('radio_static_burst', { volume: 0.4, bus: 'ui' });
     });
     net.onClient('revived', (d) => {
-      const paid = d.cost != null ? ` -$${d.cost}` : '';
       if (d.id === net.selfId) {
         this.local.revive({ pos: new THREE.Vector3().fromArray(d.p), yaw: d.yaw || 0 });
-        this.ui.toast(d.cost != null ? `CLONED.${paid}` : 'CLONE RESTORED. Welcome back, valued employee.', d.cost ? 'bad' : 'good');
+        // waking up again: lying where the new clone came to, eyes opening (game/arrival.js)
+        this.arrival?.wake?.({ short: true });
         profile.unlock('cloned');
+        if (d.bed) profile.unlock('revived');
       } else {
-        this.ui.feed(`${this.roster.get(d.id)?.name || 'A clone'} has been re-cloned.${paid}`, d.cost ? 'bad' : 'good');
+        this.ui.feed(`${this.roster.get(d.id)?.name || 'A clone'} is awake again.`, 'good');
       }
-      audio.play('clone_splat', { pos: new THREE.Vector3().fromArray(d.p) });
     });
     net.onClient('hq', (d) => this.ui.hq(d.text, d.from || 'HQ'));
     net.onClient('runOver', (d) => this._showRunOver(d));
@@ -310,23 +315,12 @@ export class Game {
   }
 
   _publicRun() {
-    const { depth, credits, earned, deaths, research, exitOpen, escape, unlocks, quests, counters, scans } = this.run;
-    return { depth, credits, earned, deaths, research, exitOpen, escape, unlocks, quests, counters, scans };
+    const { depth, deaths, exitOpen } = this.run;
+    return { depth, deaths, exitOpen };
   }
 
   pushRun() {
     if (net.isHost) net.toAll('run', this._publicRun());
-  }
-
-  addCredits(n, reason) {
-    if (!net.isHost) return;
-    this.run.credits += n;
-    // everything earned (not spent) fills the level's escape fund
-    if (n > 0) { this.run.earned += n; this.run.escape = (this.run.escape || 0) + n; }
-    this.pushRun();
-    if (reason) net.toAll('hq', { text: `+${n} CR — ${reason}`, from: 'ACCOUNTING' });
-    if (this.run.earned >= 250000) this.unlockAll('researcher');
-    if (this.run.earned >= 1000) this.unlockAll('quota');
   }
 
   // ---- run save slot (core/save.js): milestones, day changes, clean exit. The factory menu's Continue reads
@@ -334,49 +328,41 @@ export class Game {
   saveRun(reason = '', extra = {}) {
     if (!net.isHost || !this.world || this.isLobby) return null;
     const r = this.run, l = this.local, m = this.world.level?.mission;
+    // what is kept at the shelter: loose things lying in it and what the storage crates hold
     const stash = [];
-    if (m?.camp?.pos) {
+    if (m?.camp?.built && m.camp.pos) {
       this.world.props.query(m.camp.pos, (m.camp.radius || 6) + 2, (p) => {
-        if (!p.dead && p.def?.pocket && !p.def.camp && !p.type.startsWith('rag_') && p.def.quest !== 'file') stash.push(p.type);
+        if (p.dead || p.type.startsWith('rag_')) return;
+        if (p.def?.pocket) stash.push(p.type);
+        for (const it of p.state?.items || []) if (it?.type) stash.push(it.type);
       });
     }
     const st = {
-      credits: r.credits || 0, escape: r.escape || 0, level: this.world.type, depth: r.depth, day: this.day?.day || 1,
+      level: this.world.type, depth: r.depth, day: this.day?.day || 1,
       inventory: (l.inv?.slots || []).map((it) => it?.type || null), stash: stash.slice(0, 24),
-      unlocks: r.unlocks || {}, quests: r.quests || {}, counters: r.counters || {}, scans: r.scans || {},
-      gear: l.gear || {}, cosmetics: l.cosmetics || null, reason,
+      gear: l.gear || {}, cosmetics: l.cosmetics || null, reason, progress: this.survival?.state || null,
     };
     if (extra.cleared) {
-      // level cleared: the next one starts with an empty fund and its own quest tree; money and gear carry over
       const prev = save.load();
-      st.level = levelRules(extra.cleared).next || extra.cleared;
-      st.escape = 0; st.quests = {}; st.counters = {}; st.scans = {};
-      st.unlocks = Object.fromEntries(Object.entries(r.unlocks || {}).filter(([k]) => k.startsWith('up:') || k.startsWith('app:')));
+      st.level = LEVELS.nextAfter(extra.cleared, r.depth) || extra.cleared;
       st.cleared = [...new Set([...(prev?.cleared || []), extra.cleared])];
     }
     return save.store(st);
   }
 
-  // Continue: restore the saved run's credits / escape fund / unlocks / quests into this.run
+  // Continue: restore the saved run's gear and progress (its pockets and shelter stash drop in on dispatch)
   applySave() {
     const s = save.load();
     if (!s) return false;
     this.continued = true;
-    Object.assign(this.run, {
-      credits: s.credits || 0, escape: s.escape || 0, unlocks: { ...(s.unlocks || {}) }, quests: { ...(s.quests || {}) },
-      counters: { ...(s.counters || {}) }, scans: { ...(s.scans || {}) },
-    });
     if (s.gear) this.local.gear = { ...s.gear };
+    if (s.progress && this.survival) Object.assign(this.survival.state, s.progress);
     this.pushRun();
     return true;
   }
 
-  // the watch SCANNER finished studying a creature / fungus (game/bio.js) -> research pay through the economy
-  onStudy(species, info) {
-    const e = this.world?.level?.mission?.econ;
-    if (!e || e.disposed) return;
-    e.requestScan({ kind: 'sp_' + species, label: String(info?.name || species).toUpperCase(), cat: info?.kind === 'fungus' ? 'bio' : 'mon' });
-  }
+  // a creature or fungus was studied (game/bio.js): nothing pays for it any more
+  onStudy() {}
 
   // host -> everyone: unlock an achievement locally on every peer
   unlockAll(id) {
@@ -444,6 +430,7 @@ export class Game {
     this.disposeWorld();
     const world = new World(this, desc);
     this.world = world;
+    if (desc.fresh && !lateJoin && !net.isHost) this.survival?.reset(); // a new run (the host reset it in hostDispatch)
     // hunger & thirst drain everywhere by default; a level's mission may hold them back (Level 0: until the camp is up)
     this.local.survival.needsActive = true;
     world.level = createLevel(desc.type, world, desc);
@@ -522,9 +509,9 @@ export class Game {
     }
   }
 
+  // the clone arrives: the level's wake-up when it has one (game/arrival.js), else a fade in from black
   _arrivalSequence() {
-    audio.play('fall_wind', { volume: 0.7 });
-    engine.post.params.uGlitch.value = 0.8;
+    if (this.arrival?.wake && this.world && this.arrival.world === this.world) { this.arrival.wake({}); return; }
     engine.post.params.uFade.value = 1;
     this.cutscene = { t: 0, kind: 'arrival' };
   }
@@ -538,6 +525,7 @@ export class Game {
       level: this.world.level.serialize?.() || null,
       day: this.day.serialize(),
       run: this._publicRun(),
+      survival: this.survival?.state || null,
     };
   }
 
@@ -551,6 +539,7 @@ export class Game {
     if (d.level) this.world.level.applySync?.(d.level);
     if (d.day) this.day.sync(d.day);
     if (d.run) Object.assign(this.run, d.run);
+    if (d.survival && this.survival) Object.assign(this.survival.state, d.survival);
   }
 
   // ------------------------------------------------------------------
@@ -574,7 +563,7 @@ export class Game {
     this._checkAllDead();
   }
 
-  // the level's mission re-clones the dead by itself (Level 0 camp: automatic, costs half the money)
+  // the level's mission brings the dead back by itself (Level 0: they wake up again in their bed)
   get autoClone() { return !!this.world?.level?.mission?.autoClone; }
 
   _checkAllDead() {
@@ -586,42 +575,30 @@ export class Game {
     }
   }
 
-  // what bringing a dead clone back costs right now (auto-cloning missions: half the team's money)
-  cloneCost() {
-    if (this.autoClone) return Math.floor(this.run.credits / 2);
-    return 150 + (this.run.depth - 1) * 50;
-  }
-
+  // the cloning pad of older dimensions: a teammate brings a dead clone back there
   _hostClone(targetId, from, padId) {
     if (!this.world) return;
     const r = targetId ? this.roster.get(targetId) : [...this.roster.values()].find((x) => x.dead);
     if (!r || !r.dead) return;
-    const cost = this.cloneCost();
-    if (this.run.credits < cost) {
-      net.toAll('hq', { text: `INSUFFICIENT CREDITS FOR CLONING (${cost} CR REQUIRED)`, from: 'CLONING' });
-      return;
-    }
     const pad = this.world.props.get(padId) || null;
     const p = pad ? pad.root.position.clone().add(_v.set(0, 0.3, 0)) : this.world.level.spawnPoint(0, true).pos;
-    this.run.credits -= cost;
-    this.pushRun();
     this.hostRevive(r.id, p, 0);
     if (from === net.selfId) profile.unlock('revived'); else if (from) net.toPeer(from, 'ach', 'revived');
   }
 
-  // host: bring a dead clone back at pos (the caller handles payment; cost is only shown to players)
-  hostRevive(id, pos, yaw = 0, cost = null) {
+  // host: bring a dead clone back at pos (extra goes along to every peer: { bed } = woke up in its own bed)
+  hostRevive(id, pos, yaw = 0, cost = null, extra = {}) {
+    void cost;
     const r = this.roster.get(id);
     if (!this.world || !r || !r.dead) return false;
     r.dead = false;
     this.world.level?.removeBody?.(r.id);
-    net.toAll('revived', { id: r.id, p: pos.toArray(), yaw, cost });
-    this.world.fxAll({ k: 'sparks', p: [pos.x, pos.y + 0.5, pos.z], n: 30 });
+    net.toAll('revived', { id: r.id, p: pos.toArray(), yaw, ...extra });
     this._broadcastRoster();
     return true;
   }
 
-  // extra: merged into the run-over stats (e.g. { success: true, quota } for a completed shift)
+  // extra: merged into the run-over stats (e.g. { success: true } when the clones got out)
   hostRunOver(reason, extra = {}) {
     if (!net.isHost) return;
     if (this.runOverPending) return;
@@ -630,9 +607,8 @@ export class Game {
       reason,
       depth: this.run.depth,
       day: this.day.day,
-      earned: this.run.earned,
-      credits: this.run.credits,
       deaths: this.run.deaths,
+      crafted: this.survival?.state.crafted || 0,
       time: Math.round((Date.now() - this.run.startedAt) / 1000),
       ...extra,
     };
@@ -673,7 +649,7 @@ export class Game {
     const next = LEVELS.nextAfter(this.world.type, this.run.depth);
     this.run.depth += 1;
     this.run.exitOpen = false;
-    this.addCredits(100 * survivorIds.length, 'Successful evacuation bonus');
+    this.pushRun();
     this.hostLoadWorld({ type: next, seed: (Math.random() * 1e9) | 0, depth: this.run.depth, arrival: true, carry });
   }
 
@@ -682,7 +658,10 @@ export class Game {
     // otherwise the dimension picked on the main menu (Level 0 by default)
     if (!type) type = LEVELS[profile.settings.destination]?.ready ? profile.settings.destination : 'yellow';
     this.run = this._newRun();
-    // Continue: the saved credits / fund / unlocks / quests come back, the saved pockets and camp stash drop in
+    this.survival?.reset();
+    // Level 0 has no arrival car: the ride ends in the dark and the clone wakes up on the carpet (game/arrival.js)
+    if (extra?.elevator && type === 'yellow') { extra = { ...extra }; delete extra.elevator; }
+    // Continue: the saved gear and progress come back, the saved pockets and shelter stash drop in
     if (this.continued && this.applySave()) {
       const s = save.load();
       if (s.level && LEVELS[s.level]?.ready && !extra?.forceType) type = s.level;
@@ -691,7 +670,6 @@ export class Game {
     const depth = Math.max(1, LEVELS.order.indexOf(type) + 1);
     this.run.depth = depth;
     for (const r of this.roster.values()) r.dead = false;
-    this.unlockAll('first_day');
     this.hostLoadWorld({ type, seed: (Math.random() * 1e9) | 0, depth, arrival: true, carry, fresh: true, ...(extra || {}) });
   }
 
@@ -719,20 +697,17 @@ export class Game {
   // ------------------------------------------------------------------
   onDayChange(day) {
     if (net.isHost) this.saveRun('day');
-    const integrity = Math.round((1 - this.day.instability()) * 100);
     audio.play('day_change', { volume: 1 });
     this.ui.toast(`DAY ${day}/7`, day >= 6 ? 'bad' : 'warn');
-    this.healthity?.onDayChange(day, integrity);
+    this.world?.level?.mission?.onDayChange?.(day);
+    // no voice announces the days: the place itself changes (one line in the clone's head)
+    const lines = {
+      3: 'The furniture has moved since yesterday. Nobody moved it.',
+      5: 'More of the lights are dead today.',
+      7: 'The walls are breathing. Whatever this place is, it is coming apart.',
+    };
+    if (lines[day]) setTimeout(() => this.ui.toast(lines[day], 'warn'), 2500);
     if (net.isHost) {
-      const msgs = {
-        2: 'DAY 2/7. Reality integrity holding. Furniture may begin to relocate.',
-        3: 'DAY 3/7. Anomalous activity increasing. Additional entities detected.',
-        4: 'DAY 4/7. Integrity below 60%. Please hurry.',
-        5: 'DAY 5/7. SEVERE INSTABILITY. Lights failing across the sector.',
-        6: 'DAY 6/7. Final warning. Complete objectives or be written off.',
-        7: 'DAY 7/7. REALITY COLLAPSE IN PROGRESS. Corridors are shifting. EVACUATE.',
-      };
-      if (msgs[day]) net.toAll('hq', { text: msgs[day], from: 'HQ' });
       if (day >= 3) this.unlockAll('survive3');
       if (day >= 7) this.unlockAll('survivor7');
     }
@@ -742,7 +717,6 @@ export class Game {
 
   onTotalCollapse() {
     if (!net.isHost || this.isLobby) return;
-    net.toAll('hq', { text: 'DIMENSION LOST. All personnel written off.', from: 'HQ' });
     this.world.fxAll({ k: 'snd', n: 'collapse_rumble', v: 1 });
     for (const r of this.roster.values()) r.dead = true;
     if (!this.local.dead) this.local.onDeath('reality collapse');
@@ -755,20 +729,20 @@ export class Game {
     if ((profile.data.stats.deaths || 0) >= 10) profile.unlock('disposable');
     const alive = [...this.roster.values()].some((r) => r.id !== net.selfId && !r.dead);
     const m = this.world?.level?.mission;
-    if (m?.autoClone) this.ui.feed(`Your clone has been terminated. A new one is being printed at camp. Cost: half of the team's money ($${this.cloneCost()}).`, 'bad', 'R.O.O.M.');
-    else this.ui.feed(alive ? 'Your clone has been terminated. Teammates can re-clone you at the cloning pad.' : 'Your clone has been terminated.', 'bad', 'R.O.O.M.');
+    if (!m?.autoClone) this.ui.feed(alive ? 'Your clone is gone. Teammates can bring you back at the cloning pad.' : 'Your clone is gone.', 'bad');
   }
 
   onItemUsed(type, wasBleeding) {
     this.world?.level?.onItemUsed?.(type);
     this.world?.level?.mission?.onItemUsed?.(type);
+    this.survival?.onUsed(type);
     if ((type === 'bandage' || type === 'medkit') && wasBleeding && this.local.survival.bleed === 0) profile.unlock('medic');
     if (type === 'almond_water' || type === 'almond_milk') {
       if (profile.stat('almond') >= 10) profile.unlock('hydrated');
     }
   }
 
-  onItemPicked() {}
+  onItemPicked(item) { if (item?.type) this.survival?.onPicked(item.type); }
 
   // ------------------------------------------------------------------
   // Frame
@@ -782,7 +756,6 @@ export class Game {
       c.t = (performance.now() - (c.start ??= performance.now())) / 1000;
       if (c.kind === 'arrival') {
         engine.post.params.uFade.value = Math.max(0, 1 - c.t * 1.2);
-        engine.post.params.uGlitch.value = Math.max(0, 0.8 - c.t * 0.6);
         if (c.t > 1.5) this.cutscene = null;
       }
     }
@@ -791,6 +764,9 @@ export class Game {
     this.day.update(dt);
     this.world.update(dt);
     this.tools.update(dt);
+    this.gather.update(dt);
+    this.gear.update(dt);
+    this.survival.update(dt);
     // host relays poses
     if (net.isHost && net.isOnline) {
       this.poseRelayT -= dt;

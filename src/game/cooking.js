@@ -1,4 +1,4 @@
-// Physical camp cooking. A CAMP STOVE (prop) carries a cast-iron pan. Light it [E]; drag raw food (mole meat,
+// Physical cooking. A CAMP STOVE (prop: found in old camps or made at a workbench) carries a cast-iron pan. Light it [E]; drag raw food (mole meat,
 // crawler limbs, fungi, a can of stew) into the pan with the grab: it sizzles, steams and browns. Only the side
 // facing the pan cooks (the prop's real orientation): flip it [E on the food] or it burns. When both sides are
 // done it turns into the cooked item (more food, heals); a side left too long chars it into the burnt item.
@@ -20,6 +20,8 @@ export const COOK = {
   fungus_shelf: ['fungus_shelf_cooked', 'fungus_shelf_burnt', 7],
   fungus_puff: ['fungus_puff_cooked', 'fungus_puff_burnt', 6],
   canned_food: ['canned_food_hot', null, 10],
+  // a bottle of puddle water boils clean in the pan (no sides, it cannot burn)
+  water_dirty: ['water_clean', null, 8],
 };
 // every cookable / cooked / burnt type -> { base, stage }
 export const FOOD = {};

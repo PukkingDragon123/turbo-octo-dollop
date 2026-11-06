@@ -274,7 +274,7 @@ export function b_cg_stove() {
   k.parts.flame = k.mesh(flameMat, fg, 0.04, 0.3, 0, { name: 'flame', shadow: false });
   // control knob + printed scale
   P.knob(k, 0.15, 0.215, 0.134, 0.016, { static: true, skirt: false, tint: 0x18181a });
-  k.label(k.reg('stv', 128, 40, (c, w, h) => { c.fillStyle = '#23432d'; c.fillRect(0, 0, w, h); txt(c, 'R.O.O.M. FIELD STOVE', w * 0.5, h * 0.5, h * 0.42, { col: '#d8d0b0', ...SIGN, maxW: w * 0.92 }); rubOff(c, w, h, 2, 3); }, 'p'), 0.2, 0.05, -0.05, 0.215, 0.1345);
+  k.label(k.reg('stv', 128, 40, (c, w, h) => { c.fillStyle = '#23432d'; c.fillRect(0, 0, w, h); txt(c, 'FIELD STOVE', w * 0.5, h * 0.5, h * 0.42, { col: '#d8d0b0', ...SIGN, maxW: w * 0.92 }); rubOff(c, w, h, 2, 3); }, 'p'), 0.2, 0.05, -0.05, 0.215, 0.1345);
   // folding wire legs with rubber feet
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     k.tube('metal', [[sx * 0.17, 0.168, sz * 0.09], [sx * 0.19, 0.08, sz * 0.11], [sx * 0.2, 0.012, sz * 0.12]], 0.005, { ...FIN.zinc, radial: 6 });
@@ -336,7 +336,7 @@ export function b_cg_supply() {
     for (const sz of [-1, 1]) k.box('wood', 0.03, 0.05, 0.04, x + sx * 0.005, 0.02, sz * 0.1, { tint: BAT, r: 0.005 });
     rope(k, [[x + sx * 0.01, 0.03, -0.1], [x + sx * 0.04, -0.01, -0.07], [x + sx * 0.05, -0.03, 0], [x + sx * 0.04, -0.01, 0.07], [x + sx * 0.01, 0.03, 0.1]], 0.009);
   }
-  const st = k.reg('sb_st', 512, 190, stencil([['R.O.O.M.', 0.3, 0.3], ['FIELD SUPPLY', 0.62, 0.2], ['DO NOT DROP', 0.86, 0.12]], 'rgba(236,228,200,0.92)'));
+  const st = k.reg('sb_st', 512, 190, stencil([['SUPPLIES', 0.3, 0.3], ['KEEP DRY', 0.62, 0.2], ['DO NOT DROP', 0.86, 0.12]], 'rgba(236,228,200,0.92)'));
   for (const sz of [-1, 1]) k.decal(st, 0.46, 0.17, 0, 0.0, sz * (D / 2 + 0.0006), { rot: sz > 0 ? null : [0, PI, 0] });
   P.onFace(k, 0, 0.0, D / 2 + 0.0007, 'z', () => P.stain(k, 0.22, -0.1, 0, 0.14, 0.12));
   k.collide(cbox(0.72, 0.44, 0.48, 0, 0, 0));

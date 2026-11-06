@@ -141,8 +141,9 @@ function cmuDirty() { return _cmuDirty || (_cmuDirty = Mat.make('cmu', { color: 
 // exposed concrete deck of tall halls, warehouse racking paint
 let _deck = null, _rackUp = null, _rackBeam = null;
 function deckMat() { return _deck || (_deck = Mat.make('concrete', { color: 0x77726a })); }
-function rackUpMat() { return _rackUp || (_rackUp = Mat.make('metal_blue', { color: 0x2f5b8c })); }
-function rackBeamMat() { return _rackBeam || (_rackBeam = Mat.make('metal_red', { color: 0xd0601c })); }
+// (palette accents: faded teal uprights, rust-orange beams)
+function rackUpMat() { return _rackUp || (_rackUp = Mat.make('metal_blue', { color: 0x46706c })); }
+function rackBeamMat() { return _rackBeam || (_rackBeam = Mat.make('metal_red', { color: 0xb8622e })); }
 
 // subtract axis-aligned rects (holes) from a rect: returns the remaining pieces [[x0, z0, x1, z1], ...]
 function subtractRects(base, holes) {
@@ -353,10 +354,11 @@ export function buildChunk(level, cx, cz) {
   add(G.fixture, fixtureMaterial(), 0, { quant: 0.3 });
   // cut pile scatters light instead of mirroring it: little specular, so the floor keeps its colour at grazing angles
   add(G.carpet, Mat.get('carpet'), 1, { ao: 'floor', spec: 0.3 });
-  add(G.carpetOffice, carpetTint('office', 0xa4a49c), 1, { ao: 'floor', spec: 0.3 });
-  add(G.carpetManila, carpetTint('manila', 0xbea486), 1, { ao: 'floor', spec: 0.3 });
-  add(G.carpetCamp, carpetTint('camp', 0xb8977a), 1, { ao: 'floor', spec: 0.3 });
-  add(G.carpetLounge, carpetTint('lounge', 0xa0584a), 1, { ao: 'floor', spec: 0.3 });
+  // (tints over the sepia Level 0 pile: sage-grey office, manila, warm camp, dusty-rose lounge)
+  add(G.carpetOffice, carpetTint('office', 0xc4ccc0), 1, { ao: 'floor', spec: 0.3 });
+  add(G.carpetManila, carpetTint('manila', 0xeccca6), 1, { ao: 'floor', spec: 0.3 });
+  add(G.carpetCamp, carpetTint('camp', 0xe4bc98), 1, { ao: 'floor', spec: 0.3 });
+  add(G.carpetLounge, carpetTint('lounge', 0xd0807a), 1, { ao: 'floor', spec: 0.3 });
   add(G.vct, Mat.get('linoleum'), 1, { ao: 'floor' });
   add(G.slab, Mat.get('concrete_dark'), 4, { ao: 'floor' });
   add(G.tile, Mat.get('tile_pool'), 0, { ao: 'floor' });

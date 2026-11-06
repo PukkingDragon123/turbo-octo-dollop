@@ -4,23 +4,16 @@
 //   3+      -> an armful: everything stacked in a wobbly pile in front of the camera; no punching or using,
 //              and the weight slows the clone down
 // The built-in multitool, when drawn ([Q]), takes the right hand: a gadget with an LED battery bar and a
-// charge glow at the emitter.
+// charge glow at the emitter. Slots past the fifth are a worn backpack's (game/gear.js): not in the hands.
+// combine(types, out, done): the hand-crafting animation (game/crafting.js): the parts come together in front of
+// the clone, twist and snap, a puff, and the new thing is there.
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
 import { buildModel } from '../entities/catalog.js';
 import { applyItemVisual } from './itemfx.js';
 import { itemDef } from './itemdefs.js';
 import { clamp, damp } from '../core/rng.js';
-import { LOOT_TABLES } from '../entities/lootables.js';
 
-// new loot: plasma syringes with the medical supplies, caster wheels in toolboxes and storage
-try {
-  LOOT_TABLES.medical?.push(['plasma_syringe', 2.5]);
-  LOOT_TABLES.locker?.push(['plasma_syringe', 0.6]);
-  LOOT_TABLES.bedroom?.push(['plasma_syringe', 0.5]);
-  LOOT_TABLES.tools?.push(['wheel', 1.6]);
-  LOOT_TABLES.storage?.push(['wheel', 1]);
-} catch (e) { /* tables missing */ }
 
 export const HANDS = { armfulAt: 3, pileBase: [0, -0.235, -0.52], pileItem: 0.11, slowPerItem: 0.07, slowPerKg: 0.025, minSpeed: 0.5 };
 const WEIGHT = {
@@ -54,6 +47,10 @@ export class Hands {
     this.pileShow = 0;
     this.hidden = false;
     this.tool = null; // { obj, leds:[], glow }
+    this.comb = null; // hand-crafting animation { t, parts: [{ o, from }], out, done }
+    this.combRig = new THREE.Group();
+    this.combRig.name = 'combine';
+    engine.vmScene.add(this.combRig);
     this.layout = { right: -1, left: -1, pile: [], n: 0, armful: false, weight: 0 };
   }
 
@@ -61,7 +58,7 @@ export class Hands {
   compute() {
     const inv = this.p.inv, sl = inv.slots;
     const occ = [];
-    for (let i = 0; i < sl.length; i++) if (sl[i]) occ.push(i);
+    for (let i = 0; i < Math.min(sl.length, 5); i++) if (sl[i]) occ.push(i);
     const n = occ.length, L = this.layout;
     L.n = n; L.right = -1; L.left = -1; L.pile = []; L.armful = n >= HANDS.armfulAt;
     L.weight = 0;
@@ -166,7 +163,91 @@ export class Hands {
     t.glow.scale.setScalar(0.6 + pw * 1.6);
   }
 
+  // ---------------- hand crafting: the parts meet in front of the clone and snap together
+  combine(types, out, done) {
+    if (this.comb) this._endCombine();
+    const parts = types.map((t, i) => {
+      const m = buildModel(t, { seed: 1 });
+      const o = m.object;
+      applyItemVisual(t, {}, m);
+      o.traverse((c) => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; } });
+      o.updateMatrixWorld(true);
+      _box.setFromObject(o);
+      const size = _box.getSize(_s), ctr = _box.getCenter(_v);
+      const s = clamp(0.13 / Math.max(size.x, size.y, size.z, 0.02), 0.25, 1.2);
+      const piv = new THREE.Group();
+      o.position.sub(ctr);
+      piv.add(o);
+      piv.scale.setScalar(s);
+      const side = types.length <= 1 ? 0 : (i / (types.length - 1)) * 2 - 1;
+      const from = new THREE.Vector3(side * 0.2, -0.2 - Math.abs(side) * 0.02, -0.46 + Math.abs(side) * 0.03);
+      piv.position.copy(from);
+      piv.rotation.set(0.3, side * 0.8, side * 0.4);
+      this.combRig.add(piv);
+      return { o: piv, from, side, spin: (i % 2 ? 1 : -1) * (2 + i) };
+    });
+    this.comb = { t: 0, parts, out, done, fired: false, outObj: null };
+    this.hidden = true;
+  }
+
+  _updateCombine(dt) {
+    const c = this.comb;
+    if (!c) return;
+    c.t += dt;
+    const t = c.t, mid = new THREE.Vector3(0, -0.17, -0.44);
+    const k = clamp((t - 0.12) / 0.38, 0, 1), e = k * k * (3 - 2 * k);
+    for (const p of c.parts) {
+      // a small pull apart (anticipation), then together with a twist and a shake as they bind
+      const back = Math.sin(clamp(t / 0.14, 0, 1) * Math.PI) * 0.025;
+      p.o.position.lerpVectors(p.from, mid, e);
+      p.o.position.x += p.side * back;
+      p.o.rotation.y += p.spin * dt * (0.3 + e);
+      p.o.rotation.z = p.side * 0.4 * (1 - e) + (t > 0.45 && t < 0.62 ? Math.sin(t * 90) * 0.08 : 0);
+      p.o.scale.multiplyScalar(t > 0.5 ? 1 - Math.min(0.5, dt * 6) : 1);
+    }
+    if (t >= 0.55 && !c.fired) {
+      c.fired = true;
+      for (const p of c.parts) p.o.removeFromParent();
+      if (c.out) {
+        try {
+          const m = buildModel(c.out, { seed: 1 });
+          const o = m.object;
+          o.traverse((x) => { if (x.isMesh) { x.castShadow = false; x.receiveShadow = false; } });
+          o.updateMatrixWorld(true);
+          _box.setFromObject(o);
+          const size = _box.getSize(_s), ctr = _box.getCenter(_v);
+          const piv = new THREE.Group();
+          o.position.sub(ctr);
+          piv.add(o);
+          piv.userData.s = clamp(0.16 / Math.max(size.x, size.y, size.z, 0.02), 0.15, 1.3);
+          piv.position.copy(mid);
+          this.combRig.add(piv);
+          c.outObj = piv;
+        } catch (e) { c.outObj = null; }
+      }
+      this.p.shake = Math.max(this.p.shake || 0, 0.1);
+    }
+    if (c.outObj) {
+      // pops in big, overshoots, settles, turns once for a look
+      const u = clamp((t - 0.55) / 0.35, 0, 1);
+      const pop = 1 + Math.sin(u * Math.PI) * 0.35 * (1 - u);
+      c.outObj.scale.setScalar(c.outObj.userData.s * Math.min(1, u * 3) * pop);
+      c.outObj.rotation.y = u * 2.2;
+      c.outObj.position.y = mid.y + Math.sin(u * Math.PI) * 0.02;
+    }
+    if (t >= 0.95) this._endCombine();
+  }
+
+  _endCombine() {
+    const c = this.comb;
+    this.comb = null;
+    for (const ch of [...this.combRig.children]) ch.removeFromParent();
+    this.hidden = false;
+    c?.done?.();
+  }
+
   update(dt, st = {}) {
+    this._updateCombine(dt);
     const p = this.p, L = this.compute(), inv = p.inv;
     const hide = this.hidden;
     const toolVis = p.toolOut || (!!p.holdAction?.multitool && L.right < 0);
@@ -229,6 +310,7 @@ export class Hands {
 
   dispose() {
     this.pile.removeFromParent();
+    this.combRig.removeFromParent();
     this.reattach();
   }
 }

@@ -1,6 +1,6 @@
 // Dev-only model gallery: renders a grid of models in a neutral studio so art can be judged
 // (and screenshotted headlessly). Not part of the game build.
-//   gallery.html?set=furniture|items|devices|avatar|stilllife|critters|clones|healthity|bacteria
+//   gallery.html?set=furniture|items|devices|avatar|stilllife|critters|clones|bacteria
 //                &keys=a,b,c   (optional subset)   &from=0&n=12   &cols=4   &yaw=0.7&pitch=0.32
 //                &zoom=1   &bg=studio|dark   &close=1 (tight framing)   &cos=<json cosmetics>
 import * as THREE from 'three';
@@ -167,13 +167,6 @@ async function listModels() {
     const list = [1, 2, 3, 4].map((s) => ({ key: 'clone_stage' + s, m: C.buildUnfinishedClone(s, 2) }));
     list.push({ key: 'receptionist', m: C.buildReceptionist() });
     return list.map((x) => ({ key: x.key, build: () => x.m.root, update: (dt) => x.m.update?.(dt) }));
-  }
-  if (set === 'healthity') {
-    const H = await import('../entities/healthity_model.js');
-    // &faces=happy,angry &talk=1 &yaws=0.7,3.4 (pre-rolled so the face-change glitch has settled)
-    const faces = P.get('faces') ? P.get('faces').split(',') : (H.HEALTHITY_FACES || ['happy']).slice(0, 8);
-    const ys = P.get('yaws') ? P.get('yaws').split(',').map(Number) : [null];
-    return faces.flatMap((f) => ys.map((y) => { const m = H.buildHealthity(); m.setFace?.(f); m.setTalking?.(!!P.get('talk')); return { key: f + (y != null ? ' y=' + y : ''), build: () => m.root, update: (dt) => m.update?.(dt), pre: +(P.get('t') || 1.2), yaw: y ?? undefined }; }));
   }
   if (set === 'bacteria') {
     // &state=idle|wander|listen|investigate|stalk|chase|attack|smash|retreat|flee|stunned

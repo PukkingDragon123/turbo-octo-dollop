@@ -387,8 +387,8 @@ def('crowbar', () => {
     mottle(c, 0, 0, 1024, 256, 12, 5, 0.8);
     noise(c, 0, 0, 1024, 256, 10, 5);
     // stencils on the top flat
-    txt(c, 'R.O.O.M.', 300, 192, { size: 30, color: '#efe8da', weight: '900', ls: 6 });
-    txt(c, 'TOOL CRIB 4', 520, 192, { size: 17, color: '#efe8da', fam: MONO, weight: 'bold', ls: 2 });
+    // a scratched-in mark where a stencil was ground off
+    txt(c, 'XX', 400, 192, { size: 22, color: 'rgba(239,232,218,0.35)', weight: '900', ls: 10 });
     txt(c, 'FORGED • 24"', 300, 64, { size: 17, color: '#efe8da', fam: MONO, weight: 'bold', ls: 2 });
     // paint chips: bare dark steel with a light rim, more toward both ends
     const r = new RNG(4);

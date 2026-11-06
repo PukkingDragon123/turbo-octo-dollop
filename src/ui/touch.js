@@ -1,93 +1,71 @@
-// On-screen controls for phones and tablets: soft smoked-glass discs with thin ivory / gold rings, simple
-// line icons and small labels in the 'hint' font slot; a gentle press dip, gold rims for toggles.
-// Left thumb: a floating analog stick (push it all the way to sprint). Right thumb: drag anywhere to look,
-// tap to interact, and a cluster of buttons: JUMP, USE (E), GRAB (RMB: tap = use, hold = grab and pull),
-// PUNCH (LMB: punch / use the right-hand item / the drawn multitool; THROW while carrying), TOOL ([Q]),
-// DUCK, ROT / MODE. Everything feeds the regular input object (virtual keys, mouse buttons and look deltas),
-// so gameplay code is unchanged. The stick sprints through 'TouchSprint' (so it never triggers the
-// Shift far-throw). The layout is computed in pixels for the current viewport + safe area so nothing
-// overlaps, from 360 px portrait phones to landscape tablets.
+// On-screen controls for phones and tablets: calm and minimal. Everything is drawn in one warm ivory ink with
+// one soft shadow, thin hand-drawn rings (a pen circle that overlaps where it started) and simple line icons.
+//   Left thumb   a floating stick that appears where the thumb lands (push to the rim to sprint)
+//   Right thumb  drag anywhere to look, a quick tap uses what is under the dot ([E])
+//   Corner       pause (top right) and the watch beside it
+//   Cluster      HIT (LMB: punch / use the item in hand / multitool / throw while carrying), HAND (RMB: tap = use
+//                or pick up, hold = grab and carry; the grab stays latched until HAND is tapped again), JUMP, CROUCH
+//   Contextual   small rings on an outer arc that ease in only when they mean something: ROTATE while carrying,
+//                DROP / SWAP with something in hand, LIGHT with a flashlight, the multitool and its MODE.
+//                The list is data (CONTEXT below): each entry says when it shows and what it presses.
+// Terminals: HIT becomes OK, HAND becomes BACK and the stick steps through the menu. Dead: HIT / HAND flip
+// between teammates. Everything feeds the regular input object (virtual keys, mouse buttons, look deltas), so
+// gameplay code is unchanged; the stick sprints through 'TouchSprint' (never the Shift far-throw).
 import { input } from '../core/input.js';
-import { FONT, weightOf } from './fonts.js';
 
-// line icons (24 x 24, stroked in currentColor)
-const ICON = {
-  menu: 'M5 7h14M5 12h14M5 17h14',
-  watch: 'M9 3h6M9 21h6M12 9v3.2l2.2 1.4M18 12a6 6 0 1 1-12 0 6 6 0 0 1 12 0z',
-  light: 'M3.5 9.5h6l4-3v11l-4-3h-6zM17 8l3-2M17 12h4M17 16l3 2',
-  next: 'M9 5.5l6.5 6.5L9 18.5',
-  back: 'M15 5.5L8.5 12l6.5 6.5',
-  drop: 'M12 4v10.5M7.5 10l4.5 4.5 4.5-4.5M5 19.5h14',
-  bot: 'M12 19.5s-7-4.3-7-9.6A3.9 3.9 0 0 1 12 7.6a3.9 3.9 0 0 1 7 2.3c0 5.3-7 9.6-7 9.6z',
-  jump: 'M12 19.5V6M6.5 11.5L12 6l5.5 5.5M7 20h10',
-  hand: 'M8.5 12.5V6.8a1.4 1.4 0 0 1 2.8 0V11M11.3 10.6V5.4a1.4 1.4 0 0 1 2.8 0v5.2M14.1 10.8V7a1.4 1.4 0 0 1 2.8 0v6.5c0 3.8-2.4 6-5.4 6-2.4 0-3.9-1.2-5-3.2l-1.6-3a1.4 1.4 0 0 1 2.4-1.4l1.2 1.7',
-  grab: 'M4.5 8.5h15M7 8.5v5.5a5 5 0 0 0 10 0V8.5M10 12v2.5M14 12v2.5',
-  fist: 'M7 11V8.6a1.5 1.5 0 0 1 3 0V10M10 9.6V7.6a1.5 1.5 0 0 1 3 0V10M13 9.8V8.4a1.5 1.5 0 0 1 3 0v3.3M7 11a1.6 1.6 0 0 0-1.6 1.6v1.8A5.6 5.6 0 0 0 11 20h1.4a4.6 4.6 0 0 0 4.6-4.6v-4',
-  throw: 'M4.5 18.5C6.5 11 11.5 7 18.5 6.5M15 3.5l3.5 3-3 3.5',
-  gear: 'M14.6 5.2a4 4 0 0 0-5.1 5.1L4 15.8 8.2 20l5.5-5.5a4 4 0 0 0 5.1-5.1l-2.6 2.6-2.6-.8-.8-2.6z',
-  crouch: 'M6.5 9l5.5 5.5L17.5 9M5 19.5h14',
-  rotate: 'M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4.7h-4.7',
-  swap: 'M6 8h12l-3-3M18 16H6l3 3',
-  ok: 'M5 12.5l4.5 4.5L19 7.5',
-  item: 'M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7zM12 12l7.5-4.3M12 12v8.5M12 12L4.5 7.7',
-  swing: 'M5 19L16.5 7.5M14 4.5l5.5 5.5',
-  pulse: 'M3 12h4l2-5 4 10 2-5h6',
-  map: 'M9 4.5L3.5 6.5v13l5.5-2 6 2 5.5-2v-13l-5.5 2zM9 4.5v13M15 6.5v13',
-  task: 'M9.5 6.5h10M9.5 12h10M9.5 17.5h10M4 6.5l1 1 2-2M4 12l1 1 2-2M4 17.5l1 1 2-2',
+// ---------------------------------------------------------------- icons (24 x 24, stroked in currentColor)
+// drawn a little loose on purpose: nothing is a perfect geometric primitive
+export const ICON = {
+  pause: 'M9.4 7.1c.2 3.3.1 6.5-.1 9.8M14.7 7c-.1 3.4 0 6.6.1 9.9',
+  watch: 'M17.2 12.1c0 3-2.3 5.3-5.2 5.3S6.7 15 6.8 12 9.2 6.8 12.1 6.8s5.1 2.4 5.1 5.3zM12 9.3v3.1l2.1 1.2M9.7 6.9l.4-2.8h3.9l.3 2.8M9.7 17.3l.4 2.7h3.9l.3-2.7',
+  jump: 'M12.1 18.4c-.2-4.1 0-8.1-.1-12M7.7 10.5c1.5-1.5 2.9-2.9 4.4-4.3 1.5 1.4 3 2.8 4.4 4.4M7.1 20.1c3.3-.4 6.6-.3 9.9.1',
+  crouch: 'M7.3 8.9c1.6 1.5 3.1 3 4.7 4.6 1.6-1.6 3.1-3.1 4.7-4.6M6.5 18.2c3.7-.3 7.4-.3 11 0',
+  hand: 'M8.4 12.5V7.4c0-1 1.5-1.1 1.6 0v4M10 11V5.7c0-1.1 1.7-1.1 1.7 0v5.2M11.7 10.9V6.3c0-1 1.6-1 1.6.1v4.8M13.3 11.3V8.1c0-1 1.6-1 1.6.1v5.3c.1 3.6-2 6-4.9 6.1-2.4 0-3.7-1.2-4.8-3l-1.5-2.8c-.5-1 .8-1.8 1.5-.9l1.4 1.7',
+  fist: 'M7.1 11.1V8.7c0-1.9 2.9-2 2.9 0V10M10 9.7V7.7c0-1.9 3-2 3 0V10M13 9.9V8.5c0-1.9 3-1.9 3 0v3.2M7.1 11.1c-.9 0-1.7.7-1.7 1.6v1.7c0 3.1 2.5 5.6 5.6 5.6h1.4c2.5 0 4.6-2.1 4.6-4.6v-4',
+  swing: 'M5.6 18.7c3.6-3.9 7.5-7.9 11.4-11.8M14.3 4.7c1.9 1.7 3.5 3.4 5.2 5.3M8.1 16.5l-2.7-.4.5 2.8',
+  eat: 'M16.8 9.7c-1.4-1.6-3.3-1.2-4.8-.5-1.6-.8-3.6-1-5 .6-1.8 2.1-1 5.9 1.2 8.2 1.2 1.3 2.5 1.2 3.8.6 1.3.6 2.6.7 3.8-.6.9-1 1.6-2.4 1.9-3.8-1.3-.2-2.2-1.4-2-2.7.1-.7.6-1.4 1.1-1.8zM12 8.9c-.1-1.6.4-3 1.8-4',
+  drink: 'M7.3 7.5h9.4l-1.1 11c-.1.8-.7 1.3-1.5 1.3H9.9c-.8 0-1.4-.5-1.5-1.3zM7.7 11.4c2.9.6 5.8-.6 8.7 0',
+  heal: 'M10.4 5.9h3.3v4.4h4.4v3.3h-4.4V18h-3.3v-4.4H6v-3.3h4.4z',
+  item: 'M12 5.3l6.2 3.3v6.8L12 18.7l-6.2-3.3V8.6zM5.9 8.7L12 12l6.1-3.3M12 12v6.5',
+  throw: 'M4.9 18.5c1.9-6.5 6.4-10.5 13-11.5M14.5 4.5l3.7 2.6-2.4 3.8',
+  rotate: 'M18.5 12.4c-.2 3.6-3.1 6.3-6.7 6.2-3.6-.1-6.5-3.1-6.4-6.7.1-3.6 3.1-6.4 6.7-6.3 1.9 0 3.6.9 4.8 2.3M17.5 4.7l-.4 3.4-3.4-.2',
+  drop: 'M12 4.9c.1 3.3 0 6.6 0 9.9M8.3 11.5l3.7 3.6 3.7-3.6M5.7 19.2c4.2-.3 8.5-.3 12.7 0',
+  swap: 'M6.1 8.7c3.9-.2 7.9-.1 11.8 0M15.3 5.9l2.7 2.8-2.7 2.7M17.9 15.4c-3.9.2-7.9.1-11.8 0M8.7 12.7L6 15.4l2.7 2.8',
+  light: 'M4.7 10.1h5.1l3.5-2.6v9.1L9.8 14H4.7zM16.6 8.3l2.5-1.6M16.8 12.1h2.9M16.6 15.8l2.5 1.6',
+  tool: 'M14.8 5.5c-1.9-.6-3.9.3-4.7 2.1-.4 1-.4 2.1 0 3l-5.2 5.2c-.7.7-.7 1.7 0 2.3.6.6 1.6.6 2.2 0l5.2-5.2c2.6 1 5.3-.7 5.5-3.3l-2.6 1.2-2.3-1.1-.6-2.4z',
+  link: 'M10.3 13.7l3.5-3.5M8.7 11.4l-1.9 1.9c-1.3 1.3-1.3 3.2 0 4.5 1.3 1.3 3.2 1.3 4.5 0l1.9-1.9M15.3 12.6l1.9-1.9c1.3-1.3 1.3-3.2 0-4.5-1.3-1.3-3.2-1.3-4.5 0l-1.9 1.9',
+  scrap: 'M6.3 7.1l4.3 4.2M13.4 12.7l4.3 4.3M17.7 7.1l-4.3 4.3M10.6 12.7l-4.3 4.3',
+  next: 'M9.5 6.1c2.1 2 4 4 6 5.9-2 2-3.9 4-6 6',
+  prev: 'M14.5 6.1c-2.1 2-4 4-6 5.9 2 2 3.9 4 6 6',
+  ok: 'M5.7 12.6c1.5 1.5 2.9 3 4.3 4.5 2.8-3.4 5.6-6.6 8.5-9.7',
+  back: 'M9.2 7.7L5.7 11l3.5 3.4M6.1 11.1c3.8-.1 7.6-.2 10 .5 2.3.7 2.6 3.8.6 5.1-.9.6-2 .7-3 .7',
 };
-const svg = (name) => `<svg class="t-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[name] || ICON.item}"/></svg>`;
+const icoSvg = (name) => `<path d="${ICON[name] || ICON.item}"/>`;
 
-const CSS = `
-#touch.glass { --ink: #f3e7c8; --gold: 236,206,140; font-family: ${FONT.hint}; }
-#touch.glass .t-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-  width: var(--w); height: var(--h); border-radius: 50%; color: var(--ink); filter: none;
-  background: radial-gradient(120% 100% at 50% 22%, rgba(255,247,226,0.17), rgba(255,247,226,0.04) 45%, rgba(14,11,8,0.34) 100%);
-  box-shadow: inset 0 0 0 1px rgba(var(--gold),0.5), inset 0 1px 1px rgba(255,255,255,0.16), 0 3px 12px rgba(0,0,0,0.32);
-  -webkit-backdrop-filter: blur(5px) saturate(1.2); backdrop-filter: blur(5px) saturate(1.2);
-  transition: transform 0.16s cubic-bezier(0.3, 1.5, 0.5, 1), box-shadow 0.18s, background 0.18s, color 0.18s, opacity 0.2s; }
-#touch.glass .t-btn > * { pointer-events: none; }
-#touch.glass .t-btn .t-ico { width: 44%; height: 44%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
-  filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.55)); }
-#touch.glass .t-btn .t-lbl { font: ${weightOf('hint')} var(--fs) ${FONT.hint}; letter-spacing: 0.06em; line-height: 1; opacity: 0.9;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.7); white-space: nowrap; }
-#touch.glass .t-btn.on { transform: translate(-50%, -50%) scale(0.9); transition-duration: 0.06s;
-  background: radial-gradient(120% 100% at 50% 30%, rgba(var(--gold),0.38), rgba(var(--gold),0.1) 55%, rgba(14,11,8,0.4));
-  box-shadow: inset 0 0 0 1.5px rgba(var(--gold),0.95), 0 0 16px rgba(var(--gold),0.35); }
-#touch.glass .t-btn.lit { color: #ffe0a0; box-shadow: inset 0 0 0 1.5px rgba(var(--gold),0.95), inset 0 0 12px rgba(var(--gold),0.22), 0 0 12px rgba(var(--gold),0.28); }
-#touch.glass .t-btn.ready { animation: tg-ready 1.8s ease-in-out infinite; }
-#touch.glass .t-btn.ready canvas { animation: none; }
-@keyframes tg-ready { 50% { box-shadow: inset 0 0 0 1.5px rgba(var(--gold),1), inset 0 0 10px rgba(var(--gold),0.25), 0 0 20px rgba(var(--gold),0.5); } }
-#touch.glass .t-btn.big .t-ico { width: 40%; height: 40%; }
-#touch.glass .t-sys { border-radius: calc(var(--h) * 0.32); opacity: 0.9; }
-#touch.glass .t-sys .t-ico { width: auto; height: 46%; }
-#touch.glass .t-stick { opacity: 0.5; transition: opacity 0.2s; }
-#touch.glass .t-stick.on { opacity: 1; }
-#touch.glass .t-ring { border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(var(--gold),0.55), inset 0 0 0 calc(var(--tp) * 7) rgba(255,247,226,0.035), 0 0 18px rgba(0,0,0,0.25);
-  background: radial-gradient(closest-side, rgba(14,11,8,0.0) 60%, rgba(14,11,8,0.22)); }
-#touch.glass .t-ring::after { content: ''; position: absolute; inset: 34%; border-radius: 50%; border: 1px solid rgba(var(--gold),0.22); }
-#touch.glass .t-knob { border-radius: 50%; transition: box-shadow 0.2s, background 0.2s;
-  background: radial-gradient(110% 100% at 50% 25%, rgba(255,247,226,0.45), rgba(255,247,226,0.12) 50%, rgba(14,11,8,0.35));
-  box-shadow: inset 0 0 0 1px rgba(var(--gold),0.8), 0 3px 10px rgba(0,0,0,0.4); }
-#touch.glass .t-stick.sprint .t-knob { background: radial-gradient(110% 100% at 50% 25%, rgba(255,228,160,0.7), rgba(var(--gold),0.3) 55%, rgba(14,11,8,0.3));
-  box-shadow: inset 0 0 0 1.5px rgba(var(--gold),1), 0 0 18px rgba(var(--gold),0.55); }
-#touch.glass .t-ctx { padding: 0.32em 0.85em 0.38em; border-radius: 0.8em; color: var(--ink); white-space: nowrap;
-  font: ${weightOf('hint')} var(--cfs, 15px) ${FONT.hint}; letter-spacing: 0.03em; text-shadow: 0 1px 3px rgba(0,0,0,0.7);
-  background: rgba(14,11,8,0.5); box-shadow: inset 0 0 0 1px rgba(var(--gold),0.5); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
-#touch.glass .t-ctx::after { content: ''; position: absolute; right: 1.1em; bottom: -5px; width: 9px; height: 9px; transform: rotate(45deg);
-  background: rgba(14,11,8,0.5); box-shadow: inset -1px -1px 0 rgba(var(--gold),0.5); }
-#touch.glass .t-ctx.show { animation: tg-ctx 0.22s cubic-bezier(0.3, 1.4, 0.5, 1); }
-@keyframes tg-ctx { from { transform: translateY(6px); opacity: 0; } }
-#touch.glass .t-tab { display: flex; align-items: center; gap: 0.35em; padding: 0.3em 0.85em; border-radius: 1em; color: var(--ink);
-  font: ${weightOf('hint')} var(--cfs, 15px) ${FONT.hint}; letter-spacing: 0.05em; background: rgba(14,11,8,0.42); box-shadow: inset 0 0 0 1px rgba(var(--gold),0.4);
-  -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); transition: background 0.18s, box-shadow 0.18s; }
-#touch.glass .t-tab > * { pointer-events: none; }
-#touch.glass .t-tab .t-ico { width: 1.15em; height: 1.15em; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-#touch.glass .t-tab.sel { color: #ffe0a0; background: rgba(var(--gold),0.22); box-shadow: inset 0 0 0 1.5px rgba(var(--gold),0.9); }
-`;
-const LABEL = (l) => (l || '').charAt(0) + (l || '').slice(1).toLowerCase(); // 'GRAB' -> 'Grab'
+// a pen circle in the 48 x 48 button box: a slightly uneven radius and an end that overlaps its start
+function ringPath(seed, r = 21.2) {
+  let s = (seed * 9301 + 49297) % 233280 || 7;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  const p1 = rnd() * 6.28, p2 = rnd() * 6.28, a0 = rnd() * 6.28;
+  const N = 36, sweep = Math.PI * 2 + 0.38;
+  const pts = [];
+  for (let i = 0; i <= N; i++) {
+    const a = a0 + (sweep * i) / N;
+    const rr = r + 0.42 * Math.sin(2 * a + p1) + 0.28 * Math.sin(3 * a + p2) + (i / N) * 0.75;
+    pts.push([24 + Math.cos(a) * rr, 24 + Math.sin(a) * rr]);
+  }
+  let d = `M${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2;
+    d += `Q${pts[i][0].toFixed(2)} ${pts[i][1].toFixed(2)} ${mx.toFixed(2)} ${my.toFixed(2)}`;
+  }
+  return d;
+}
+const btnSvg = (seed, icon) => `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="ring" d="${ringPath(seed)}"/><g class="ico" transform="translate(12 12)">${icoSvg(icon)}</g></svg>`;
 
 const LOOK_PER_SCREEN = 3.6; // radians of yaw for a swipe across the full screen width
 const SPRINT_AT = 0.9;       // stick deflection that starts a sprint
+const TAP_MS = 260;          // a look touch shorter than this (and nearly still) is a tap = [E]
 
 export function wantsTouch() {
   const q = new URLSearchParams(location.search).get('touch');
@@ -96,123 +74,80 @@ export function wantsTouch() {
   return !!(window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && !window.matchMedia?.('(pointer: fine)').matches));
 }
 
-// art sizes are in kit pixels; the on-screen size is art * P (2 on phones, 3 on tablets)
-const BUTTONS = [
-  { id: 'menu', label: 'MENU', icon: 'menu', shape: 'plate', act: 'menu', sys: true },
-  { id: 'watch', label: 'WATCH', icon: 'watch', shape: 'plate', key: 'Tab', sys: true, led: true },
-  { id: 'light', label: 'LIGHT', icon: 'light', shape: 'plate', key: 'KeyF', sys: true, led: true },
-  { id: 'next', label: 'NEXT', icon: 'next', shape: 'plate', act: 'next', sys: true },
-  { id: 'drop', label: 'DROP', icon: 'drop', shape: 'plate', key: 'KeyG', sys: true },
-  { id: 'ask', label: 'HEALTH', icon: 'bot', shape: 'plate', key: 'KeyX', sys: true },
-  { id: 'jump', label: 'JUMP', icon: 'jump', d: 32, key: 'Space', bezel: 'hazmat' },
-  { id: 'use', label: 'USE', icon: 'hand', d: 28, key: 'KeyE', bezel: 'hazmat' },
-  { id: 'grab', label: 'GRAB', icon: 'grab', d: 28, mouse: 2 },
-  { id: 'item', label: 'PUNCH', icon: 'fist', d: 28, mouse: 0 },
-  { id: 'tool', label: 'TOOL', icon: 'gear', d: 22, key: 'KeyQ', led: true },
-  { id: 'duck', label: 'DUCK', icon: 'crouch', d: 24, act: 'duck', led: true },
-  { id: 'rot', label: 'ROT', icon: 'rotate', d: 22, key: 'KeyR' },
-  { id: 'mode', label: 'MODE', icon: 'swap', d: 22, act: 'mode' },
+// the always-there buttons: d = diameter in layout units (1 unit = 1 px on a 390 px phone side)
+const MAIN = [
+  { id: 'pause', icon: 'pause', d: 40, label: 'Pause', act: 'pause' },
+  { id: 'watch', icon: 'watch', d: 40, label: 'Watch', key: 'Tab', toggle: (l) => !!l.watchOpen },
+  { id: 'hit', icon: 'fist', d: 74, label: 'Hit', mouse: 0 },
+  { id: 'hand', icon: 'hand', d: 60, label: 'Use / grab', mouse: 2 },
+  { id: 'jump', icon: 'jump', d: 60, label: 'Jump', key: 'Space' },
+  { id: 'crouch', icon: 'crouch', d: 46, label: 'Crouch', act: 'crouch' },
 ];
-const SYS_ORDER = ['menu', 'watch', 'light', 'next', 'drop', 'ask']; // right to left along the top
-const PLATE_W = 30, PLATE_H = 24;
+
+// contextual buttons, in priority order (they take the outer arc's slots in this order). when(l, game) says
+// whether the button is wanted right now; on(l) lights it as a toggle. Change the list, not the drawing code.
+const handsOf = (l) => l.hands?.layout || null; // cached by the player every frame
+export const CONTEXT = [
+  { id: 'rotate', icon: 'rotate', label: 'Rotate', act: 'rotate', when: (l) => !!l.grab, on: (l, t) => t.rotateOn },
+  { id: 'drop', icon: 'drop', label: 'Drop (hold: all)', key: 'KeyG', when: (l) => !l.grab && (handsOf(l)?.n || 0) > 0 },
+  { id: 'swap', icon: 'swap', label: 'Swap hands', act: 'swap', when: (l) => !l.grab && (handsOf(l)?.n || 0) > 0 },
+  { id: 'light', icon: 'light', label: 'Flashlight', key: 'KeyF', when: (l) => (l.inv?.find?.('flashlight') ?? -1) >= 0, on: (l) => !!l.flashOn },
+  { id: 'tool', icon: 'tool', label: 'Multitool', key: 'KeyQ', when: (l) => !!l.tool && !l.grab && (l.toolOut || ((handsOf(l)?.n || 0) < 2 && !handsOf(l)?.armful)), on: (l) => !!l.toolOut },
+  { id: 'mode', icon: 'link', label: 'Tool mode', act: 'mode', when: (l) => !l.grab && !!(l.toolOut || l._mtItem?.()) },
+];
+const ARC = [194, 214, 234, 254, 274]; // outer slots (degrees around HIT: 180 = left, 270 = up)
 
 export class TouchControls {
   constructor(game) {
     this.game = game;
     this.crouchOn = false;
-    this.stick = null;   // { id, ox, oy }
-    this.look = null;    // { id, x, y, t0, moved }
+    this.rotateOn = false;
+    this.grabLatched = false;
+    this.stick = null;     // { id, ox, oy }
+    this.look = null;      // { id, x, y, t0, moved }
     this.held = new Map(); // pointerId -> button
-    this.state = '';
-    this.P = 2;
+    this.usedStick = false;
+    this.u = 1;
     this.root = document.createElement('div');
     this.root.id = 'touch';
     this.root.innerHTML = `
       <div class="t-zone t-left"></div>
       <div class="t-zone t-right"></div>
-      <div class="t-stick"><div class="t-ring"></div><div class="t-knob"></div></div>
-      <div class="t-ctx"></div>
-      <div class="t-tabs"></div>
-      ${BUTTONS.map((b) => `<button class="t-btn${b.sys ? ' t-sys' : ''}" data-b="${b.id}" type="button" aria-label="${b.label}"><span class="t-icw"></span><span class="t-lbl"></span></button>`).join('')}`;
-    this.root.classList.add('glass');
-    if (!document.getElementById('touch-glass-css')) {
-      const css = document.createElement('style');
-      css.id = 'touch-glass-css';
-      css.textContent = CSS;
-      document.head.appendChild(css);
-    }
+      <div class="t-stick"><svg class="t-ring" viewBox="0 0 48 48" aria-hidden="true"><path d="${ringPath(91, 22)}"/></svg><div class="t-knob"></div></div>
+      <div class="t-apps"><span class="t-appname"></span></div>`;
     document.body.appendChild(this.root);
     this.stickEl = this.root.querySelector('.t-stick');
-    this.ringCv = this.root.querySelector('.t-ring');
-    this.knobCv = this.root.querySelector('.t-knob');
-    this.ctxCv = this.root.querySelector('.t-ctx');
-    this.tabsEl = this.root.querySelector('.t-tabs');
-    this.sprinting = false;
+    this.ringEl = this.root.querySelector('.t-ring');
+    this.knobEl = this.root.querySelector('.t-knob');
+    this.appsEl = this.root.querySelector('.t-apps');
+    this.appName = this.root.querySelector('.t-appname');
     this.btn = {};
-    for (const b of BUTTONS) {
-      const el = this.root.querySelector(`[data-b="${b.id}"]`);
-      this.btn[b.id] = { def: b, el, icw: el.querySelector('.t-icw'), lbl: el.querySelector('.t-lbl'), down: false, lit: b.led ? false : null, glow: false, label: b.label, icon: b.icon, key: '', iconKey: '' };
-    }
-    this._buildTabs();
-    for (const b of Object.values(this.btn)) this._render(b);
+    let seed = 3;
+    const make = (def, ctx) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = `tb${ctx ? ' ctx' : ''}`;
+      el.dataset.b = def.id;
+      el.setAttribute('aria-label', def.label || def.id);
+      el.innerHTML = btnSvg(seed += 7, def.icon);
+      this.root.appendChild(el);
+      const b = { def, el, ico: el.querySelector('.ico'), icon: def.icon, show: false, lit: false, hint: false, down: false, ctx };
+      this.btn[def.id] = b;
+      return b;
+    };
+    for (const d of MAIN) make(d, false);
+    for (const d of CONTEXT) make({ ...d, d: 44 }, true);
+    // watch app switcher: two small rings either side of the app's name
+    const prev = make({ id: 'appPrev', icon: 'prev', d: 40, label: 'Previous app', act: 'appPrev' }, false);
+    const next = make({ id: 'appNext', icon: 'next', d: 40, label: 'Next app', act: 'appNext' }, false);
+    this.appsEl.prepend(prev.el);
+    this.appsEl.append(next.el);
+    prev.inline = next.inline = true;
     this._bind();
     this._layout();
     window.addEventListener('resize', () => this._layout());
     window.visualViewport?.addEventListener('resize', () => this._layout());
     window.addEventListener('orientationchange', () => setTimeout(() => this._layout(), 250));
-  }
-
-  // ------------------------------------------------------------------ rendering
-  _render(b) {
-    const d = b.def;
-    const key = `${b.down}|${b.lit}|${b.glow}|${b.label}|${b.icon}|${b.big ? 1 : 0}|${this.P}`;
-    if (key === b.key) return;
-    b.key = key;
-    const P = this.P;
-    const w = d.shape === 'plate' ? PLATE_W * P : (b.big ? 34 : d.d) * P, h = d.shape === 'plate' ? PLATE_H * P : w;
-    const el = b.el;
-    el.style.setProperty('--w', `${w}px`);
-    el.style.setProperty('--h', `${h}px`);
-    el.style.setProperty('--fs', `${Math.round(Math.max(10, Math.min(w, h) * (d.shape === 'plate' ? 0.24 : 0.2)))}px`);
-    el.classList.toggle('lit', !!b.lit);
-    el.classList.toggle('big', !!b.big);
-    if (b.iconKey !== b.icon) { b.iconKey = b.icon; b.icw.outerHTML = svg(b.icon); b.icw = el.querySelector('.t-ico'); }
-    const lbl = LABEL(b.label);
-    if (b.lbl.textContent !== lbl) b.lbl.textContent = lbl;
-    b.w = w / P; b.h = h / P;
-  }
-
-  _buildTabs() {
-    this.tabBtns = [];
-    const names = this.game.watch?.tabs || ['STATUS', 'MAP', 'TASK'];
-    const icons = ['pulse', 'map', 'task'];
-    names.forEach((n, i) => {
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.className = 't-tab';
-      el.dataset.tab = i;
-      el.innerHTML = `${svg(icons[i] || 'item')}<span>${LABEL(n)}</span>`;
-      this.tabsEl.appendChild(el);
-      this.tabBtns.push({ el, name: n, icon: icons[i] || 'item', key: '' });
-    });
-  }
-
-  _renderTab(tb, sel) {
-    const key = `${sel}`;
-    if (key === tb.key) return;
-    tb.key = key;
-    tb.el.classList.toggle('sel', !!sel);
-  }
-
-  _renderCtx(label) {
-    if (label === this._ctxLabel) return;
-    this._ctxLabel = label;
-    if (!label) { this.ctxCv.classList.remove('show'); return; }
-    this.ctxCv.textContent = label;
-    this.ctxCv.classList.remove('show');
-    void this.ctxCv.offsetWidth; // restart the pop-in
-    this.ctxCv.classList.add('show');
-    this._placeCtx();
   }
 
   // ------------------------------------------------------------------ layout
@@ -226,96 +161,83 @@ export class TouchControls {
     return { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
   }
 
-  get pixelScale() { return this.P; }
+  // kept for callers that size things to the touch layout (1 on a phone, up to 1.45 on a tablet)
+  get pixelScale() { return this.u; }
+
+  _place(b, x, y) {
+    const d = Math.round(b.def.d * this.u);
+    b.el.style.setProperty('--d', `${d}px`);
+    if (b.inline) return;
+    b.el.style.left = `${Math.round(x)}px`;
+    b.el.style.top = `${Math.round(y)}px`;
+  }
 
   _layout() {
     const vw = window.innerWidth, vh = window.innerHeight;
-    const P = Math.min(vw, vh) >= 700 && Math.max(vw, vh) >= 1000 ? 3 : 2;
-    const sizeChanged = P !== this.P;
-    this.P = P;
-    this.root.style.setProperty('--tp', `${P}px`);
-    if (sizeChanged) { for (const b of Object.values(this.btn)) { b.key = ''; this._render(b); } for (const t of this.tabBtns) t.key = ''; this._ctxLabel = null; }
-    this.ringCv.style.width = this.ringCv.style.height = `${56 * P}px`;
-    this.knobCv.style.width = this.knobCv.style.height = `${26 * P}px`;
-    this.root.style.setProperty('--cfs', `${Math.round(7.5 * P)}px`);
+    const u = (this.u = Math.max(0.88, Math.min(1.45, Math.min(vw, vh) / 390)));
     const ins = this._insets();
-    const m = 4 * P;
-    const portrait = vh > vw;
-    const L = {};
-    const put = (id, cx, cy) => { L[id] = { cx, cy }; };
-    // right cluster around the bottom-right corner
-    const bx = vw - ins.r - m, by = vh - ins.b - m;
-    put('jump', bx - 16 * P, by - 16 * P);
-    put('grab', bx - 50 * P, by - 15 * P);
-    put('use', bx - 15 * P, by - 50 * P);
-    put('item', bx - 45 * P, by - 45 * P);
-    put('duck', bx - 80 * P, by - 13 * P);
-    put('rot', bx - 76 * P, by - 41 * P);
-    put('mode', bx - 76 * P, by - 41 * P); // shares ROT's spot: ROT while carrying, MODE with the multitool out
-    put('tool', bx - 80 * P, by - 69 * P);
-    this.cluster = { left: bx - 92 * P, top: by - 82 * P, right: bx, bottom: by };
-    // system plates along the top right (two columns in portrait)
-    const pw = PLATE_W * P, ph = (PLATE_H + 2) * P, gap = 2 * P;
-    const needsRight = ins.l + 10 + 94 * P; // the needs patch hugs the top-left corner
-    const rowW = SYS_ORDER.length * pw + (SYS_ORDER.length - 1) * gap;
-    const cols = portrait || vw - ins.r - m - rowW < needsRight + m ? (portrait ? 2 : 3) : SYS_ORDER.length;
-    SYS_ORDER.forEach((id, i) => {
-      const c = i % cols, r = Math.floor(i / cols);
-      put(id, vw - ins.r - m - pw / 2 - c * (pw + gap), ins.t + m + ph / 2 + r * (ph + gap));
+    this.portrait = vh > vw;
+    const m = 14 * u; // margin from the safe edge
+    // the cluster hugs the bottom-right corner
+    const hx = vw - ins.r - m - 37 * u, hy = vh - ins.b - m - 37 * u;
+    this.hitPos = { x: hx, y: hy };
+    const B = this.btn;
+    this._place(B.hit, hx, hy);
+    this._place(B.hand, hx - 80 * u, hy + 5 * u);
+    this._place(B.jump, hx + 4 * u, hy - 80 * u);
+    this._place(B.crouch, hx - 70 * u, hy - 70 * u);
+    // pause in the top-right corner, the watch beside it
+    const ty = ins.t + m + 20 * u;
+    this._place(B.pause, vw - ins.r - m - 20 * u, ty);
+    this._place(B.watch, vw - ins.r - m - 20 * u - 52 * u, ty);
+    this.topBottom = ty + 20 * u; // px under the corner buttons
+    // contextual slots on the outer arc around HIT
+    const R = 158 * u;
+    this.slots = ARC.map((a) => ({ x: hx + Math.cos((a * Math.PI) / 180) * R, y: hy + Math.sin((a * Math.PI) / 180) * R }));
+    for (const b of Object.values(B)) if (b.ctx) { b.slot = -1; this._place(b, this.slots[0].x, this.slots[0].y); }
+    this._assignSlots(true);
+    for (const id of ['appPrev', 'appNext']) this._place(B[id], 0, 0);
+    // stick: radius of travel, ghost ring at rest until the first touch
+    this.stickR = 46 * u;
+    this.root.style.setProperty('--sr', `${Math.round(52 * u)}px`);
+    this.root.style.setProperty('--kr', `${Math.round(20 * u)}px`);
+    this.root.style.setProperty('--u', `${u}`);
+    this.stickRest = { x: ins.l + m + 62 * u, y: vh - ins.b - m - 62 * u };
+    if (!this.stick) this._stickAt(this.stickRest.x, this.stickRest.y);
+    this._placeApps();
+  }
+
+  _placeApps() {
+    const vw = window.innerWidth, vh = window.innerHeight, u = this.u, ins = this._insets();
+    let y = vh - ins.b - 30 * u;
+    if (this.portrait) {
+      // under the portrait watch panel, clear of the cluster
+      const wp = this.game.ui?.watchPanelEl;
+      const r = wp && wp.classList.contains('show') ? wp.getBoundingClientRect() : null;
+      y = r && r.height ? r.bottom + 34 * u : vh * 0.6;
+    }
+    const x = this.portrait ? vw / 2 : (ins.l + 150 * u + (this.hitPos.x - 130 * u)) / 2;
+    this.appsEl.style.left = `${Math.round(x)}px`;
+    this.appsEl.style.top = `${Math.round(y)}px`;
+  }
+
+  // give the wanted contextual buttons the outer slots in priority order; a button keeps its slot while it stays
+  _assignSlots(force = false) {
+    const want = CONTEXT.filter((c) => this.btn[c.id].show).map((c) => this.btn[c.id]);
+    const key = want.map((b) => b.def.id).join(',');
+    if (!force && key === this._slotKey) return;
+    this._slotKey = key;
+    // a hidden button gives its slot up and will fade in wherever its next slot is
+    for (const c of CONTEXT) if (!this.btn[c.id].show) this.btn[c.id].slot = -1;
+    want.forEach((b, i) => {
+      const s = this.slots[Math.min(i, this.slots.length - 1)];
+      if (b.slot === i && !force) return;
+      // a button that is fading in starts at its slot (no slide across the screen); a visible one glides over
+      b.el.classList.toggle('glide', b.slot >= 0 && !force);
+      b.slot = i;
+      b.el.style.left = `${Math.round(s.x)}px`;
+      b.el.style.top = `${Math.round(s.y)}px`;
     });
-    this.sysBottom = ins.t + m + Math.ceil(SYS_ORDER.length / cols) * (ph + gap);
-    this.sysLeft = vw - ins.r - m - Math.min(cols, SYS_ORDER.length) * (pw + gap) + gap;
-    for (const [id, p] of Object.entries(L)) {
-      const b = this.btn[id];
-      b.el.style.left = `${Math.round(p.cx)}px`;
-      b.el.style.top = `${Math.round(p.cy)}px`;
-    }
-    this.layoutPos = L;
-    this._placeUse();
-    // stick rest position (bottom-left)
-    this.stickRest = { x: ins.l + m + 28 * P, y: vh - ins.b - m - 28 * P };
-    if (!this.stick) { this.stickEl.style.left = `${this.stickRest.x}px`; this.stickEl.style.top = `${this.stickRest.y}px`; }
-    this.stickR = 22 * P;
-    // inventory / watch tabs: bottom centre between the stick and the cluster, or above the cluster in portrait
-    const inv = this.game.ui?.hotbar;
-    const n = this.game.local?.inv?.slots?.length || 5;
-    const hw = n * 28 * P + (n - 1) * P;
-    let pos;
-    // portrait: above the cluster, leaving a lane for the USE context tag
-    if (portrait) pos = { cx: vw / 2, bottom: ins.b + m + 86 * P };
-    else {
-      const left = ins.l + m + 56 * P + m, right = this.cluster.left - m;
-      if (right - left >= hw) pos = { cx: (left + right) / 2, bottom: ins.b + m };
-      else if (right - (ins.l + m) >= hw) pos = { cx: Math.max(ins.l + m + hw / 2, right - hw / 2), bottom: ins.b + m };
-      else pos = { cx: vw / 2, bottom: vh - this.cluster.top + m };
-    }
-    this.invPos = pos;
-    inv?.place(pos);
-    inv?.setScale(P);
-    // the watch tab strip sits where the inventory is
-    this.tabsEl.style.left = `${Math.round(pos.cx)}px`;
-    this.tabsEl.style.bottom = `${Math.round(pos.bottom)}px`;
-    this._placeCtx();
-  }
-
-  // terminals: USE becomes a big OK key in JUMP's corner
-  _placeUse() {
-    const L = this.layoutPos;
-    if (!L) return;
-    const p = this.root.classList.contains('term') ? L.jump : L.use;
-    this.btn.use.el.style.left = `${Math.round(p.cx)}px`;
-    this.btn.use.el.style.top = `${Math.round(p.cy)}px`;
-  }
-
-  _placeCtx() {
-    const u = this.layoutPos?.use;
-    if (!u || !this.ctxCv.classList.contains('show')) return;
-    const P = this.P, w = this.ctxCv.offsetWidth, h = this.ctxCv.offsetHeight + 5;
-    const r = 14 * P;
-    let x = u.cx + r - w + 2 * P, y = u.cy - r - h - 1 * P;
-    x = Math.max(8, x);
-    this.ctxCv.style.left = `${Math.round(x)}px`;
-    this.ctxCv.style.top = `${Math.round(y)}px`;
   }
 
   // ------------------------------------------------------------------ input
@@ -339,26 +261,24 @@ export class TouchControls {
     input.lastTouch = performance.now();
     const t = e.target;
     try { this.root.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-    const tab = t.closest?.('.t-tab');
-    if (tab) { this.game.watch?.setTab?.(+tab.dataset.tab); try { navigator.vibrate?.(6); } catch (err) { /* ignore */ } return; }
-    const bEl = t.closest?.('.t-btn');
-    if (bEl) {
+    const bEl = t.closest?.('.tb');
+    if (bEl && bEl.classList.contains('show')) {
       const b = this.btn[bEl.dataset.b];
       this.held.set(e.pointerId, b);
       this._press(b, true);
       return;
     }
-    if (t.classList.contains('t-left') && !this.stick) {
+    const left = t.classList.contains('t-left') || (bEl && e.clientX < window.innerWidth * 0.45);
+    if (left && !this.stick) {
       this.stick = { id: e.pointerId, ox: e.clientX, oy: e.clientY };
+      this.usedStick = true;
+      this.stickEl.classList.remove('ghost');
       this.stickEl.classList.add('on');
-      this.stickEl.style.left = `${e.clientX}px`;
-      this.stickEl.style.top = `${e.clientY}px`;
+      this._stickAt(e.clientX, e.clientY);
       this._stickTo(e.clientX, e.clientY);
       return;
     }
-    if ((t.classList.contains('t-right') || t.classList.contains('t-left')) && !this.look) {
-      this.look = { id: e.pointerId, x: e.clientX, y: e.clientY, t0: performance.now(), moved: 0 };
-    }
+    if (!this.look) this.look = { id: e.pointerId, x: e.clientX, y: e.clientY, t0: performance.now(), moved: 0 };
   }
 
   _move(e) {
@@ -388,60 +308,54 @@ export class TouchControls {
       this._press(b, false);
       return;
     }
-    if (this.stick && e.pointerId === this.stick.id) {
-      this._releaseStick();
-      return;
-    }
+    if (this.stick && e.pointerId === this.stick.id) { this._releaseStick(); return; }
     if (this.look && e.pointerId === this.look.id) {
       // a quick tap without dragging interacts with whatever is under the crosshair
-      if (this.look.moved < 12 && performance.now() - this.look.t0 < 260 && input.locked) this._tap('KeyE');
+      if (this.look.moved < 12 && performance.now() - this.look.t0 < TAP_MS && input.locked) this._tap('KeyE');
       this.look = null;
     }
+  }
+
+  _stickAt(x, y) {
+    this.stickEl.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
   }
 
   _releaseStick() {
     this.stick = null;
     this.stickEl.classList.remove('on', 'sprint');
-    if (this.stickRest) { this.stickEl.style.left = `${this.stickRest.x}px`; this.stickEl.style.top = `${this.stickRest.y}px`; }
-    this.knobCv.style.transform = '';
-    this._setSprint(false);
+    this.knobEl.style.transform = '';
+    this._sprint = false;
     input.moveAxis = null;
-    for (const k of ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'ShiftLeft', 'TouchSprint']) input.virtualUp(k);
-  }
-
-  _setSprint(on) {
-    if (on === this.sprinting) return;
-    this.sprinting = on;
-    this.stickEl.classList.toggle('sprint', on);
+    for (const k of ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'TouchSprint']) input.virtualUp(k);
+    // the ring fades where it was, then hides (it only ever shows under the thumb)
   }
 
   _stickTo(x, y) {
-    const R = this.stickR || 44;
+    const R = this.stickR || 46;
     let dx = x - this.stick.ox, dy = y - this.stick.oy;
     const d = Math.hypot(dx, dy);
     if (d > R) {
       // drag the base along so the stick never "runs out" under the thumb
       const over = d - R;
-      this.stick.ox += dx / d * over;
-      this.stick.oy += dy / d * over;
-      this.stickEl.style.left = `${this.stick.ox}px`;
-      this.stickEl.style.top = `${this.stick.oy}px`;
+      this.stick.ox += (dx / d) * over;
+      this.stick.oy += (dy / d) * over;
+      this._stickAt(this.stick.ox, this.stick.oy);
       dx = x - this.stick.ox;
       dy = y - this.stick.oy;
     }
-    this.knobCv.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+    this.knobEl.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
     const ax = dx / R, ay = dy / R;
-    const m = Math.hypot(ax, ay);
+    const mag = Math.hypot(ax, ay);
     // soft dead zone and a slight response curve: fine control near the centre, full speed at the rim
     const dz = 0.12;
-    const s = m < dz ? 0 : Math.min(1, (m - dz) / (1 - dz)) ** 1.25 / m;
+    const s = mag < dz ? 0 : Math.min(1, (mag - dz) / (1 - dz)) ** 1.25 / mag;
     input.moveAxis = { x: ax * s, y: ay * s };
     // digital edges for menus that read W/A/S/D (terminals)
     const set = (code, on) => (on ? input.virtualDown(code) : input.virtualUp(code));
     set('KeyW', ay < -0.55); set('KeyS', ay > 0.55); set('KeyA', ax < -0.55); set('KeyD', ax > 0.55);
-    const sprint = m > SPRINT_AT && ay < 0.2;
+    const sprint = mag > SPRINT_AT && ay < 0.2;
     set('TouchSprint', sprint);
-    this._setSprint(sprint);
+    if (sprint !== this._sprint) { this._sprint = sprint; this.stickEl.classList.toggle('sprint', sprint); }
   }
 
   _tap(code) {
@@ -449,32 +363,92 @@ export class TouchControls {
     setTimeout(() => input.virtualUp(code), 70);
   }
 
+  _key(code, down) { if (down) input.virtualDown(code); else input.virtualUp(code); }
+
   _press(b, down) {
     const d = b.def;
+    const g = this.game, l = g.local;
     b.down = down;
-    this._render(b);
     b.el.classList.toggle('on', down);
-    if (down) { try { navigator.vibrate?.(8); } catch (e) { /* ignore */ } }
-    // PUNCH while carrying something (not a camp part) is the far THROW
-    if (down) b.via = b.def.id === 'item' && this.throwMode ? 'TouchThrow' : null;
-    if (b.via) { if (down) input.virtualDown(b.via); else input.virtualUp(b.via); } else {
-      if (d.key) { if (down) input.virtualDown(d.key); else input.virtualUp(d.key); }
-      if (d.mouse !== undefined) input.virtualMouse(d.mouse, down);
+    if (down) { try { navigator.vibrate?.(7); } catch (e) { /* ignore */ } }
+    // what this press does is decided when it starts, so a button that changes meaning mid-press releases cleanly
+    if (down) b.via = this._route(b);
+    const v = b.via || {};
+    if (v.key) this._key(v.key, down);
+    if (v.mouse !== undefined) {
+      if (v.latch) {
+        // HAND: hold to grab; once something is caught the grab stays latched when the thumb lifts
+        if (down) {
+          if (this.grabLatched) { this.grabLatched = false; this._holdUntilRelease = true; input.virtualMouse(2, false); } else input.virtualMouse(2, true);
+        } else if (this._holdUntilRelease) this._holdUntilRelease = false;
+        else if (l?.grab) this.grabLatched = true;
+        else input.virtualMouse(2, false);
+      } else input.virtualMouse(v.mouse, down);
     }
     if (!down) return;
-    if (d.act === 'next') input.mouse.wheel += 1;
-    if (d.act === 'duck') {
-      this.crouchOn = !this.crouchOn;
-      if (this.crouchOn) input.virtualDown('KeyC'); else input.virtualUp('KeyC');
-    }
-    if (d.act === 'mode') this.game.local?.toggleMultitoolMode?.();
-    if (d.act === 'menu') {
-      if (this.game.local?.terminal || this.game.terminal?.active) this._tap('Escape');
-      else input.exitLock();
+    switch (v.act) {
+      case 'pause':
+        if (l?.terminal || g.terminal?.active) this._tap('Escape');
+        else input.exitLock();
+        break;
+      case 'crouch':
+        this.crouchOn = !this.crouchOn;
+        this._key('KeyC', this.crouchOn);
+        break;
+      case 'rotate':
+        this.rotateOn = !this.rotateOn;
+        this._key('KeyR', this.rotateOn);
+        break;
+      case 'swap': input.mouse.wheel += 1; break;
+      case 'mode': l?.toggleMultitoolMode?.(); break;
+      case 'appPrev': g.watch?.setTab?.((g.watch?.tabIdx ?? 0) - 1); break;
+      case 'appNext': g.watch?.setTab?.((g.watch?.tabIdx ?? 0) + 1); break;
+      default: break;
     }
   }
 
-  // ------------------------------------------------------------------
+  // what a press of b means in the current state: { key | mouse (+latch) | act }
+  _route(b) {
+    const d = b.def, l = this.game.local, st = this.mode;
+    if (st === 'term') {
+      if (d.id === 'hit') return { key: 'KeyE' };      // OK
+      if (d.id === 'hand') return { act: 'pause' };    // BACK
+    }
+    if (st === 'dead') {
+      if (d.id === 'hit') return { mouse: 0 };          // next teammate
+      if (d.id === 'hand') return { mouse: 2 };         // previous teammate
+    }
+    // carrying something that is not a camp part: HIT is the far throw
+    if (d.id === 'hit' && l?.grab && !l._mtOwnsLmb?.()) return { key: 'TouchThrow' };
+    if (d.id === 'hand') return { mouse: 2, latch: true };
+    if (d.key) return { key: d.key };
+    if (d.mouse !== undefined) return { mouse: d.mouse };
+    return { act: d.act };
+  }
+
+  // ------------------------------------------------------------------ per frame
+  _set(b, show, icon, lit, hint) {
+    if (show !== b.show) { b.show = show; b.el.classList.toggle('show', show); if (!show && b.down) this._forceUp(b); }
+    if (icon && icon !== b.icon) { b.icon = icon; b.ico.innerHTML = icoSvg(icon); }
+    lit = !!lit; if (lit !== b.lit) { b.lit = lit; b.el.classList.toggle('lit', lit); }
+    hint = !!hint; if (hint !== b.hint) { b.hint = hint; b.el.classList.toggle('hint', hint); }
+  }
+
+  _forceUp(b) {
+    for (const [id, hb] of this.held) if (hb === b) { this.held.delete(id); this._press(b, false); }
+  }
+
+  _releaseAll() {
+    this.look = null;
+    for (const b of this.held.values()) { b.down = false; b.el.classList.remove('on'); }
+    this.held.clear();
+    if (this.stick) this._releaseStick();
+    if (this.grabLatched) input.virtualMouse(2, false);
+    if (this.crouchOn) input.virtualUp('KeyC');
+    if (this.rotateOn) input.virtualUp('KeyR');
+    this.crouchOn = false; this.rotateOn = false; this.grabLatched = false; this._holdUntilRelease = false;
+  }
+
   update() {
     const g = this.game;
     const ui = g.ui;
@@ -482,80 +456,63 @@ export class TouchControls {
     const playing = g.state === 'playing' && !!g.world && !ui.menuOpen && !ui.customizing && input.locked;
     this.root.classList.toggle('show', playing);
     if (!playing) {
-      if (this.stick || this.look || this.held.size) {
-        this.look = null;
-        for (const b of this.held.values()) { b.down = false; this._render(b); b.el.classList.remove('on'); }
-        this.held.clear();
-        if (this.stick) this._releaseStick();
-      }
-      if (this.crouchOn) { this.crouchOn = false; }
+      if (this.stick || this.look || this.held.size || this.crouchOn || this.grabLatched) this._releaseAll();
       return;
     }
-    if (!this._laidOut || this._slotsN !== (l.inv?.slots?.length || 5)) { this._laidOut = true; this._slotsN = l.inv?.slots?.length || 5; this._layout(); }
-    if (this.crouchOn && !input.keys.has('KeyC')) this.crouchOn = false; // released by a pause
+    if (!this._laidOut) { this._laidOut = true; this._layout(); }
+    // keys released elsewhere (a pause clears every virtual key)
+    if (this.crouchOn && !input.keys.has('KeyC')) this.crouchOn = false;
+    if (this.rotateOn && (!input.keys.has('KeyR') || !l.grab)) { this.rotateOn = false; input.virtualUp('KeyR'); }
+    if (this.grabLatched && (!l.grab || !(input.mouse.buttons & 4))) { this.grabLatched = false; if (!this.btn.hand.down) input.virtualMouse(2, false); }
     const term = !!(l.terminal || g.terminal?.active);
     const dead = !!l.dead;
-    const grab = !!l.grab;
+    this.mode = term ? 'term' : dead ? 'dead' : 'play';
+    const play = this.mode === 'play';
     const watch = !!l.watchOpen;
-    // the drawn multitool (or the old multitool item) owns PUNCH and shows MODE
-    const cur = l.hands?.rightItem?.() ?? l.inv?.current;
-    const mt = !!(l.toolOut || l._mtItem?.());
-    const state = `${term}|${dead}|${grab}|${watch}|${mt}`;
-    if (state !== this.state) {
-      this.state = state;
-      const vis = (id, on) => this.btn[id].el.classList.toggle('gone', !on);
-      const full = !term && !dead;
-      for (const id of ['watch', 'light', 'next', 'drop', 'ask', 'jump', 'duck']) vis(id, full);
-      vis('use', !dead);
-      vis('grab', !term);
-      vis('item', !term);
-      vis('rot', full && grab);
-      vis('mode', full && !grab && mt);
-      vis('tool', full);
-      this.tabsEl.classList.toggle('show', full && watch);
-      const set = (id, label, icon) => { const b = this.btn[id]; b.label = label; b.icon = icon; };
-      set('grab', dead ? 'PREV' : 'GRAB', dead ? 'back' : 'grab');
-      set('menu', term ? 'EXIT' : 'MENU', term ? 'back' : 'menu');
-      set('use', term ? 'OK' : 'USE', term ? 'ok' : 'hand');
-      this.btn.use.big = term;
-      this.root.classList.toggle('term', term);
-      this._placeUse();
-      this.root.classList.toggle('watching', watch);
+    this.root.classList.toggle('term', term);
+    const B = this.btn;
+    // HIT shows what LMB does right now
+    let hit = 'fist';
+    if (term) hit = 'ok';
+    else if (dead) hit = 'next';
+    else if (l.grab) hit = l._mtOwnsLmb?.() ? 'link' : 'throw';
+    else {
+      const H = handsOf(l);
+      const use = l._handItemUse?.();
+      if (H?.armful) hit = 'drop';
+      else if (l.toolOut || use === 'multitool') hit = 'tool';
+      else if (use === 'swing') hit = 'swing';
+      else if (use === 'eat' || use === 'drink' || use === 'heal') hit = use;
+      else if (use) hit = 'item';
     }
-    // PUNCH button shows what LMB does: punch, the right-hand item, the multitool, THROW while carrying
-    const it = this.btn.item;
-    const owns = grab && l._mtOwnsLmb?.();
-    this.throwMode = grab && !owns;
-    const armful = !!l.hands?.layout?.armful;
-    if (dead) { it.label = 'NEXT'; it.icon = 'next'; }
-    else if (owns) { it.label = 'ATTACH'; it.icon = 'gear'; }
-    else if (grab) { it.label = 'THROW'; it.icon = 'throw'; }
-    else if (armful) { it.label = 'FULL'; it.icon = 'drop'; }
-    else if (mt) { it.label = l.mtMode === 'dismantle' ? 'SCRAP' : 'ATTACH'; it.icon = 'gear'; }
-    else if (cur && l._handItemUse?.()) {
-      const u = l._handItemUse();
-      it.label = u === 'swing' ? 'SWING' : u === 'eat' ? 'EAT' : u === 'drink' ? 'DRINK' : 'USE';
-      it.icon = u === 'swing' ? 'swing' : 'item';
-    } else { it.label = 'PUNCH'; it.icon = 'fist'; }
-    // context: what USE would do right now
-    let ctx = '';
-    if (!term && !dead) {
-      const p = l.focus?.prompt;
-      if (p) ctx = p.replace(/^\[[^\]]*\]\s*/, '').split(' · ')[0].split(/\s+/).slice(0, 4).join(' ').slice(0, 26);
+    const focus = play && !watch && !!l.focus?.prompt;
+    this._set(B.hit, true, hit, false, false);
+    this._set(B.hand, !watch || term || dead, term ? 'back' : dead ? 'prev' : l.grab ? 'fist' : 'hand', play && (this.grabLatched || !!l.grab), focus);
+    this._set(B.jump, play, null);
+    this._set(B.crouch, play, null, this.crouchOn || l.crouching);
+    this._set(B.pause, !term, null);
+    this._set(B.watch, play, null, watch);
+    for (const c of CONTEXT) {
+      let want = false;
+      try { want = play && !watch && !!c.when(l, g); } catch (e) { want = false; }
+      const b = B[c.id];
+      const icon = c.id === 'mode' ? (l.mtMode === 'dismantle' ? 'scrap' : 'link') : null;
+      this._set(b, want, icon, c.on ? c.on(l, this) : false);
     }
-    this._renderCtx(ctx);
-    const use = this.btn.use;
-    use.glow = !!ctx || term;
-    use.el.classList.toggle('ready', use.glow);
-    this.btn.light.lit = !!l.flashOn;
-    this.btn.duck.lit = this.crouchOn;
-    this.btn.watch.lit = watch;
-    this.btn.tool.lit = !!l.toolOut;
-    for (const b of Object.values(this.btn)) this._render(b);
-    if (watch) this.tabBtns.forEach((tb, i) => this._renderTab(tb, i === (g.watch?.tabIdx ?? 0)));
-    // the inventory gives way to the watch tabs while the watch is up
-    ui.hotbarHiddenByTouch = watch && !term && !dead;
+    this._assignSlots();
+    // the watch's app switcher (names come from the watch, so apps can change without touching this)
+    const tabs = (play && watch && g.watch?.tabs) || [];
+    const apps = tabs.length > 1;
+    this.appsEl.classList.toggle('show', apps);
+    this._set(B.appPrev, apps, null);
+    this._set(B.appNext, apps, null);
+    if (apps) {
+      const name = String(tabs[g.watch.tabIdx ?? 0] || '');
+      const nice = name.charAt(0) + name.slice(1).toLowerCase();
+      if (this.appName.textContent !== nice) this.appName.textContent = nice;
+      if (this.portrait) this._placeApps();
+    }
+    // the ghost ring at rest only until the stick has been found once
+    this.stickEl.classList.toggle('ghost', !this.usedStick && !this.stick && play);
   }
 }
-
-

@@ -1,13 +1,14 @@
-// Retro phosphor CRT screens drawn on canvases (used in-world on devices, the wristwatch,
-// the radio...). Fallout-style amber/green terminal look with scanlines and glow.
+// Old monitor screens drawn on canvases (used in-world on devices and the radio). Soft, warm phosphor tones that
+// sit in the painted world (no neon), a faint bloom on the letters, the glass darkening toward its corners; no
+// scanlines or rolling bars (docs/ART_DIRECTION.md).
 import * as THREE from 'three';
 import { FONT as SLOTS } from './fonts.js';
 
 export const PALETTES = {
-  amber: { fg: '#ffb43a', dim: '#a8701c', bg: '#140b02', hi: '#fff0c0', bad: '#ff5a3a', good: '#ffd060' },
-  green: { fg: '#4dff7a', dim: '#1f9a40', bg: '#020f05', hi: '#d8ffe0', bad: '#ff5a4a', good: '#9dff5a' },
-  cyan: { fg: '#5ae8ff', dim: '#1f7a8a', bg: '#020a10', hi: '#e0fbff', bad: '#ff6a5a', good: '#7dffb0' },
-  red: { fg: '#ff4a3a', dim: '#8a1f18', bg: '#120202', hi: '#ffd0c8', bad: '#ffffff', good: '#ffb040' },
+  amber: { fg: '#f0b862', dim: '#9a7038', bg: '#1d140a', hi: '#fbe6c0', bad: '#e0704c', good: '#f2cf78' },
+  green: { fg: '#a6d89c', dim: '#5c8a58', bg: '#0f160e', hi: '#e4f2d8', bad: '#e07a5c', good: '#cce08c' },
+  cyan: { fg: '#93d0c6', dim: '#4f857e', bg: '#0d1514', hi: '#e2f2ee', bad: '#e07a5c', good: '#acdcb2' },
+  red: { fg: '#e0745c', dim: '#8a3c2c', bg: '#1a0d0a', hi: '#f6dacb', bad: '#f3e6c8', good: '#f0b862' },
 };
 
 export const FONT = SLOTS.terminal; // the 'terminal' font slot (fonts.js)
@@ -55,7 +56,7 @@ export class CrtScreen {
     ctx.fillRect(0, 0, w, h);
     if (this.on) {
       ctx.shadowColor = pal.fg;
-      ctx.shadowBlur = 3;
+      ctx.shadowBlur = 2;
       fn(ctx, w, h, pal, this.time);
     }
     ctx.restore();
@@ -66,21 +67,15 @@ export class CrtScreen {
 
   overlay() {
     const { ctx, w, h } = this;
-    // scanlines
-    ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    for (let y = 0; y < h; y += 3) ctx.fillRect(0, y, w, 1);
-    // rolling bar
-    const by = ((this.time * 40) % (h + 80)) - 40;
-    const g = ctx.createLinearGradient(0, by - 40, 0, by + 40);
-    g.addColorStop(0, 'rgba(255,255,255,0)');
-    g.addColorStop(0.5, 'rgba(255,255,255,0.035)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, by - 40, w, 80);
-    // vignette
-    const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.72);
+    // the curved glass: a soft sheen in one corner and the edges falling into shade
+    const sh = ctx.createLinearGradient(0, 0, w * 0.6, h * 0.8);
+    sh.addColorStop(0, 'rgba(255,245,225,0.06)');
+    sh.addColorStop(0.5, 'rgba(255,245,225,0)');
+    ctx.fillStyle = sh;
+    ctx.fillRect(0, 0, w, h);
+    const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.32, w / 2, h / 2, Math.max(w, h) * 0.72);
     v.addColorStop(0, 'rgba(0,0,0,0)');
-    v.addColorStop(1, 'rgba(0,0,0,0.55)');
+    v.addColorStop(1, 'rgba(20,12,4,0.5)');
     ctx.fillStyle = v;
     ctx.fillRect(0, 0, w, h);
   }
@@ -94,7 +89,7 @@ export function text(ctx, str, x, y, size, color, align = 'left', glow = true) {
   ctx.fillStyle = color;
   if (!glow) ctx.shadowBlur = 0;
   ctx.fillText(str, x, y);
-  if (!glow) ctx.shadowBlur = 3;
+  if (!glow) ctx.shadowBlur = 2;
 }
 
 export function bar(ctx, x, y, w, h, frac, color, dim) {

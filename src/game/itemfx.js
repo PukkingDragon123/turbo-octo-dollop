@@ -1,5 +1,5 @@
-// Item state -> visuals & behaviour: lit glowsticks/flares (with a small pool of real lights),
-// filled sample jars, cups of water, armed noise makers, spike traps, the attached camp lamp.
+// Item state -> visuals & behaviour: lit glowsticks / flares / torches / lanterns / standing lamps (with a small
+// pool of real lights), filled sample jars, cups of water, armed noise makers, spike traps.
 import * as THREE from 'three';
 import { net } from '../net/net.js';
 import { audio } from '../audio/audio.js';
@@ -7,11 +7,22 @@ import { SAMPLES } from './itemdefs.js';
 
 const FLARE_LIFE = 90000;
 const GLOW_LIFE = 600000;
+const TORCH_LIFE = 300000;
 const _v = new THREE.Vector3();
+// light colour / intensity / range of each kind of lit thing on the floor
+const LIT = {
+  flare: { c: 0xff3a1a, i: 5, d: 10, flick: 1.5 },
+  glowstick: { c: 0x40ff80, i: 2.2, d: 6, flick: 0 },
+  torch: { c: 0xff8a34, i: 3.2, d: 7, flick: 0.7 },
+  lantern: { c: 0xffc070, i: 2.6, d: 8, flick: 0.08 },
+  camp_lamp: { c: 0xffd090, i: 2.8, d: 9, flick: 0 },
+};
 
 export function isLitState(type, s) {
+  if (type === 'camp_lamp') return s?.lit !== 0;
   if (!s?.lit) return false;
-  const life = type === 'flare' ? FLARE_LIFE : GLOW_LIFE;
+  if (type === 'lantern') return true;
+  const life = type === 'flare' ? FLARE_LIFE : type === 'torch' ? TORCH_LIFE : GLOW_LIFE;
   return Date.now() - (s.litAt || 0) < life;
 }
 
@@ -23,14 +34,14 @@ export function applyItemVisual(type, s, model, lit = isLitState(type, s)) {
     if (s.kind && SAMPLES[s.kind]) ud.setColor?.(SAMPLES[s.kind].color);
   } else if (type === 'paper_cup') {
     ud.setFill?.(s.water === 0 ? 0 : 0.8);
-  } else if (type === 'glowstick' || type === 'flare' || type === 'lighter') {
+  } else if (type === 'glowstick' || type === 'flare' || type === 'lighter' || type === 'torch' || type === 'lantern') {
     ud.setLit?.(lit);
   } else if (type === 'flashlight') {
     ud.setOn?.(false);
   } else if (type === 'water_tester') {
     ud.setResult?.(s?.result || null);
   } else if (type === 'camp_lamp') {
-    ud.setLit?.(!!s?.lit); // lights up once attached to the camp
+    ud.setLit?.(s?.lit !== 0); // on unless switched off
   }
 }
 
@@ -61,27 +72,27 @@ export class ItemFX {
     // nearest lit items get the real lights
     const lit = [];
     for (const p of w.props.props.values()) {
-      if ((p.type === 'flare' || p.type === 'glowstick') && this.isLit(p)) lit.push(p);
+      if (LIT[p.type] && this.isLit(p)) lit.push(p);
     }
     lit.sort((a, b) => a.root.position.distanceToSquared(cam) - b.root.position.distanceToSquared(cam));
     this.lights.forEach((l, i) => {
       const p = lit[i];
       if (!p) { l.intensity = 0; return; }
-      l.position.copy(p.root.position).add(_v.set(0, 0.15, 0));
+      const L = LIT[p.type];
+      l.position.copy(p.root.position).add(_v.set(0, p.type === 'camp_lamp' ? 0.9 : 0.15, 0));
+      l.color.setHex(L.c);
+      l.intensity = L.i + (L.flick ? (Math.sin(this.t * 37 + i) + Math.random()) * L.flick : 0);
+      l.distance = L.d;
       if (p.type === 'flare') {
-        l.color.setHex(0xff3a1a);
-        l.intensity = 5 + Math.sin(this.t * 37 + i) * 1.5 + Math.random() * 1.5;
-        l.distance = 10;
         if (Math.random() < dt * 25) w.fx.sparks(p.root.position, 1, null, [1, 0.3, 0.1], 1.5);
         if (Math.random() < dt * 8) w.fx.smoke(p.root.position, 1, [0.5, 0.2, 0.15], 0.5);
-      } else {
-        l.color.setHex(0x40ff80);
-        l.intensity = 2.2;
-        l.distance = 6;
-      }
+      } else if (p.type === 'torch' && Math.random() < dt * 4) w.fx.smoke(p.root.position, 1, [0.3, 0.26, 0.22], 0.4);
     });
     // flares burn out visually
-    for (const p of lit) if (p.type === 'flare' && Date.now() - p.state.litAt > FLARE_LIFE - 200) p.model.object.userData.setLit?.(false);
+    for (const p of lit) {
+      if (p.type === 'flare' && Date.now() - p.state.litAt > FLARE_LIFE - 200) p.model.object.userData.setLit?.(false);
+      if (p.type === 'torch' && Date.now() - p.state.litAt > TORCH_LIFE - 200) p.model.object.userData.setLit?.(false);
+    }
     if (net.isHost) this._hostTraps(dt);
   }
 

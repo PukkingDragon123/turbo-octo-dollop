@@ -11,6 +11,7 @@ import { sharedField, applyProbe } from '../gfx/bakedlight.js';
 import { GrabServer } from './grab.js';
 import { audio } from '../audio/audio.js';
 import { ItemFX } from './itemfx.js';
+import { registerBenches, playAssemble, updateAssemblies } from './crafting.js';
 
 const _c = new THREE.Color();
 
@@ -55,6 +56,7 @@ export class World {
     this.physics.onContactForce = (a, b, force, c1, c2) => this.onContact(a, b, force, c1, c2);
     this.lastImpactSound = 0;
     this.itemfx = new ItemFX(this);
+    registerBenches(this); // workbenches work in every dimension (game/crafting.js)
     this._bindNet();
   }
 
@@ -116,6 +118,7 @@ export class World {
       }
       case 'blood': this.fx.blood(p, m.n ?? 10); break;
       case 'alarmclock': this.itemfx.playFx(m); break;
+      case 'assemble': playAssemble(this, m); break;
       default:
         this.level?.playFx?.(m, p);
     }
@@ -195,6 +198,7 @@ export class World {
     this.level?.update(dt);
     this.fx.update(dt);
     this.itemfx.update(dt);
+    updateAssemblies(dt);
     this.field.update(this.time);
     // probes: refresh a slice per frame
     const arr = [...this.probeObjects];

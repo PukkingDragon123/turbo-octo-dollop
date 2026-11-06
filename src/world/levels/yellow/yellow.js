@@ -17,7 +17,7 @@ import { decorateBiome, populateBiome } from './biome.js';
 import { Scares } from './scares.js';
 import { registerLootables } from '../../../entities/lootables.js';
 import { modelHalfHeight } from '../../../entities/catalog.js';
-import { CampMission } from '../../../game/campmission.js';
+import { SurvivalMission } from '../../../game/survivalmission.js';
 import { MonsterManager } from '../../../game/monsters.js';
 import { Anomalies } from '../../../game/anomalies.js';
 import { Critters } from '../../../game/critters.js';
@@ -28,10 +28,11 @@ const UNLOAD_R = 3;   // beyond this they're dropped
 const LIGHT_R = 3;    // light registration radius (chunks)
 
 const DEAD_FRAC = [0, 0, 0.0, 0.03, 0.06, 0.11, 0.17, 0.26];
-const FOG_DENSITY = 0.03;
-// haze colour in well-lit halls: a dim brown murk, so depth reads as the light giving out rather than grey wash
-const FOG_LIT = new THREE.Color(0x3f3a27);
-const FOG_DARK = new THREE.Color(0x0e0c07);  // in dead / dark sectors
+const FOG_DENSITY = 0.022;
+// distance fog in well-lit halls: a soft olive-honey murk (the post stack's depth haze adds the warm glow near
+// the lights and the cool fade far away); near black in dead sectors
+const FOG_LIT = new THREE.Color(0x4a4630);
+const FOG_DARK = new THREE.Color(0x0b0c08);  // in dead / dark sectors
 // field light scale (the probes were calibrated at 0.56)
 const LIGHT_SCALE = 0.78;
 const FLICK_FRAC = [0, 0.0, 0.02, 0.05, 0.09, 0.14, 0.2, 0.3];
@@ -68,8 +69,12 @@ export class YellowLevel {
     this.dayApplied = 0;
     this.visited = new Set(); // explored cells (for the watch map)
     this.time = 0;
-    // arrival complex (seed independent): { camp, padHall, elevator: { x, z, yaw }, passage, exits } in world metres
+    // arrival complex (seed independent): { camp, padHall, passage, exits } in world metres. No arrival car stands in
+    // the alcove any more (the clone wakes up on the clearing's carpet, game/arrival.js), so the elevator landmark
+    // is left out of the gameplay copy (world/elevator_ride.js places a car wherever it finds one).
     this.landmarks = JSON.parse(JSON.stringify(LANDMARKS));
+    this.alcove = this.landmarks.elevator || null;
+    delete this.landmarks.elevator;
     clearLayoutCache();
   }
 
@@ -83,28 +88,40 @@ export class YellowLevel {
     // troffer pools: a steeper falloff (darker between fixtures and down the walls) at the same brightness
     // right under a fixture; CPU probes (sampleLight) and the outer-ring bake follow the same curve
     GRID_FALL.value = 0.28;
-    this.field.uniforms.uAmbient.value.setRGB(0.006, 0.0055, 0.0035);
+    // painted light: a cool olive-teal fill in the shadows, warm sepia bounce off the carpet, far indirect light a
+    // touch cooler, occluded corners sink into a cool shade instead of black
+    this.field.uniforms.uAmbient.value.setRGB(0.0042, 0.0056, 0.0054);
+    this.field.uniforms.uBounceTint.value.setRGB(1.08, 0.97, 0.8);
+    this.field.uniforms.uFarTint.value.setRGB(0.9, 0.97, 1.04);
+    this.field.uniforms.uAOTint.value.setRGB(0.62, 0.78, 0.8);
     this.field.uniforms.uLightScale.value = LIGHT_SCALE;
     this.field.uniforms.uGrid.value.set(CELL, HEIGHT - 0.04, 9, HEIGHT);
     this.hazeOn = engine.qualityName !== 'low';
     const pp = engine.post.params;
-    pp.uTint.value.setRGB(1.02, 1.0, 0.9);
+    engine.post.resetLook?.();
+    // hand-painted grade: warm honey highlights, olive-teal shadows, soft contrast, gentle vignette
+    pp.uTint.value.setRGB(1.0, 1.0, 0.98);
     pp.uSat.value = 1.0;
-    pp.uGrain.value = 0.045;
-    pp.uVignette.value = 0.46;
-    // film grade: warm lifted blacks, slightly green-yellow mids, tamed highlights
-    pp.uExposure.value = 1.06;
-    pp.uLift.value.set(0.01, 0.009, 0.003);
-    pp.uGamma.value.set(1.0, 1.01, 0.97);
-    pp.uGain.value.set(1.0, 0.985, 0.93);
-    pp.uRolloff.value = 0.25;
-    pp.uContrast.value = 1.12;
+    pp.uGrain.value = 0.05;
+    pp.uVignette.value = 0.42;
+    pp.uExposure.value = 1.04;
+    pp.uLift.value.set(0.008, 0.009, 0.006);
+    pp.uGamma.value.set(1.0, 1.0, 0.98);
+    pp.uGain.value.set(1.0, 0.99, 0.97);
+    pp.uRolloff.value = 0.3;
+    pp.uContrast.value = 1.1;
+    pp.uSplit.value = 0.5;
+    // golden depth haze (its brightness follows the local light, see update) and a soft far focus
+    pp.uHaze.value = 0.05; pp.uHazeStart.value = 2.0; pp.uHazeFarDist.value = 26;
+    pp.uHazeNear.value.setRGB(1.0, 0.87, 0.66); pp.uHazeFar.value.setRGB(0.46, 0.56, 0.54);
+    pp.uHazeLum.value = 0.03; pp.uHazeGlow.value = 0.4; pp.uHazeSky.value = 1.0;
+    pp.uDof.value = 0.7; pp.uDofStart.value = 11; pp.uDofEnd.value = 38;
     engine.renderer.toneMappingExposure = 0.95;
     this._fogCol = new THREE.Color();
     // drawers, cabinets, lockers, boxes ... can be searched once for supplies
     registerLootables(this.world);
     this.world.monsters = this.monsters = new MonsterManager(this);
-    this.mission = new CampMission(this);
+    this.mission = new SurvivalMission(this);
     this.anomalies = new Anomalies(this);
     this.critters = new Critters(this);
     // jumpscares and unsettling events (local to each clone)
@@ -128,16 +145,13 @@ export class YellowLevel {
     return new THREE.Vector3(this.landmarks.camp.x, 0, this.landmarks.camp.z);
   }
 
-  // clones arrive in the personnel lift: standing inside the car in the elevator alcove, facing its doors
+  // clones come to on the clearing's carpet (mission.wakeSpot); a late joiner turns up at the shelter if there is one
   spawnPoint(index = 0, lateJoin = false, arrival = false) {
-    const el = this.landmarks.elevator;
-    const offs = [[-0.45, -0.35], [0.45, -0.35], [-0.45, 0.4], [0.45, 0.4]];
-    const o = offs[index % 4];
-    const s = Math.sin(el.yaw), c = Math.cos(el.yaw);
-    // car-local (x right, z towards the doors) -> world
-    const pos = new THREE.Vector3(el.x + o[0] * c + o[1] * s, 0.06, el.z - o[0] * s + o[1] * c);
-    // a player's forward is (-sin yaw, -cos yaw): face the doors
-    return { pos, yaw: el.yaw + Math.PI, arrival: arrival || lateJoin, vy: 0 };
+    const m = this.mission;
+    const sh = lateJoin ? m?.state?.shelter : null;
+    if (sh) return { pos: new THREE.Vector3(sh.x + 1.2 + (index % 2) * 0.6, 0.06, sh.z + 0.8), yaw: 0, arrival: false, vy: 0 };
+    const w = m?.wakeSpot ? m.wakeSpot(index) : { pos: this.spawnCenter().setY(0.06), yaw: 0 };
+    return { pos: w.pos, yaw: w.yaw, arrival: arrival || lateJoin, vy: 0 };
   }
 
   hostStart(desc) {
@@ -447,6 +461,9 @@ export class YellowLevel {
       const ll = Math.min(1, Math.max(0, (this.game.local.lightLevel ?? 0.6) * 0.95));
       this._fogCol.copy(FOG_DARK).lerp(FOG_LIT, ll);
       engine.scene.fog.color.lerp(this._fogCol, Math.min(1, dt * 1.5));
+      // the depth haze glows where the halls are lit and stays dark in dead sectors
+      const pp = engine.post.params;
+      pp.uHazeLum.value += (0.004 + 0.034 * ll - pp.uHazeLum.value) * Math.min(1, dt * 1.5);
     }
     // floating dust in the light
     if (this.hazeOn) this.world.fx.ambient(dt, engine.camera.position, 1, this.game.local.lightColor);
@@ -796,6 +813,7 @@ export class YellowLevel {
     // reset the grade this level applied (other dimensions set their own)
     const pp = engine.post.params;
     pp.uExposure.value = 1; pp.uLift.value.set(0, 0, 0); pp.uGamma.value.set(1, 1, 1); pp.uGain.value.set(1, 1, 1); pp.uRolloff.value = 0; pp.uContrast.value = 1.04;
+    engine.post.resetLook?.();
     engine.renderer.toneMappingExposure = 1;
     GRID_FALL.value = 0.16;
   }

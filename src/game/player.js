@@ -24,6 +24,7 @@ import { VitalsHUD } from '../ui/vitals3d.js';
 import { juice } from '../gfx/juice.js';
 import { floatText } from '../ui/floattext.js';
 import { Inspector } from './inspect.js';
+import { HandCraft } from './crafting.js';
 
 const STAND_HH = 0.38, CROUCH_HH = 0.12, RADIUS = 0.3;
 const EYE_STAND = 1.36, EYE_CROUCH = 0.8; // matches the robot clone's eyes (doll/robotrig.js)
@@ -34,7 +35,7 @@ const REACH = 2.7;
 // to the hold distance (by its size; the wheel adjusts it), the grip slips past GRIP_BREAK
 const GRAB_REACH = 2.1, HOLD_MIN = 0.7, HOLD_MAX = 1.5, GRIP_BREAK = 2.6;
 const holdDist = (p) => clamp(0.72 + (p.radius || 0.2) * 1.1, HOLD_MIN, 1.25); // small things close, furniture at full reach
-export const CONTROLS = { tapTime: 0.22, pullStart: 0.5, pullMax: 1.7, pullRamp: 0.8, dropAllTime: 0.6, mtReserve: 0.25, mtTrickle: 0.002 };
+export const CONTROLS = { tapTime: 0.22, pullStart: 0.5, pullMax: 1.7, pullRamp: 0.8, dropAllTime: 0.6, mtReserve: 0.12, mtTrickle: 0.002 };
 const PATCH_TIME = { bandage: 2.6, medkit: 3.4, plasma_syringe: 2.4 };
 
 const _v = new THREE.Vector3();
@@ -110,9 +111,9 @@ export class LocalPlayer {
     this.qte = game.qte = new QTE(game);
     this.toolOut = false; // built-in multitool drawn ([Q])
     const self = this;
-    // the built-in multitool's battery: hold-to-charge power drains it; Healthity (or a battery item) charges it
+    // the built-in multitool's battery: hold-to-charge power drains it; a battery item (found or made) charges it
     this.tool = {
-      battery: 1, power: 0, sputter: 0,
+      battery: 0.6, power: 0, sputter: 0,
       get mode() { return self.mtMode; },
       set mode(v) { self.mtMode = v === 'dismantle' ? 'dismantle' : 'attach'; },
       charge(amount = 1) { this.battery = clamp(this.battery + amount, 0, 1); return this.battery; },
@@ -120,6 +121,9 @@ export class LocalPlayer {
     this.grabPower = CONTROLS.pullStart;
     this.rmbPending = null;
     this.dropHold = 0;
+    this.gear = {};                   // worn: { head, body, back } (game/gear.js)
+    this.craft = new HandCraft(this); // [R] puts what the hands hold together (game/crafting.js)
+    this.sleepBed = 0;                // 0 floor, 1 bedroll / sleeping bag, 2 cot (warmth while asleep)
 
     // viewmodel lighting follows the local light level
     this.vmHemi = new THREE.HemisphereLight(0xfff2d0, 0x3a3020, 0.6);
@@ -267,7 +271,7 @@ export class LocalPlayer {
     // sleeping
     if (s.sleeping) {
       this.sleepT += dt;
-      if ((canControl && (input.hit('jump') || input.hit('interact') || input.mouseHit(0))) || s.rest >= 100 || s.stress > 0.5) this.wake();
+      if ((canControl && (input.hit('jump') || input.hit('interact') || input.mouseHit(0))) || (s.advanced && s.rest >= 100) || s.stress > 0.5) this.wake();
     }
 
     this._updateMovement(dt, canControl && !s.sleeping && !qteLock);
@@ -504,31 +508,18 @@ export class LocalPlayer {
         const p = ud.prop;
         let pr = p.custom?.prompt?.(this, hit) ?? null;
         if (!pr && p.def.pocket && (!p.frozen || p.type === 'dart')) pr = `[RMB] Pick up ${itemName(p.type)}${this.hands.layout.n >= 2 ? ' (armful)' : ''}`;
+        if (!pr && p.def.wear) pr = this.game.gear?.wearPrompt(p) || null;
         if (!pr && p.def.sleep && this.survival.advanced) pr = this.survival.insomnia ? 'Can\'t sleep... something is watching' : `[${input.keyName('interact')}] Sleep`;
         if (!pr && p.def.use === 'drink' && !p.def.pocket) pr = `[${input.keyName('interact')}] Drink from ${itemName(p.type)}`;
         if (pr) focus = { kind: 'prop', target: p, prompt: pr, hit };
         else focus = { kind: 'propinfo', target: p, prompt: null, hit };
       } else if (ud.kind === 'remote' && ud.remote) {
         focus = { kind: 'remote', target: ud.remote, prompt: ud.remote.dead ? null : ud.remote.name, hit };
-      } else if (ud.kind === 'healthity') {
-        focus = { kind: 'healthity', target: ud.bot, prompt: this.game.healthity?.promptText?.() || `[${input.keyName('interact')}] Pat Healthity`, hit };
       }
     }
-    // Healthity has no collider: simple ray-sphere test
-    const bot = this.game.healthity?.bot;
-    if (!focus && bot) {
-      const c = bot.root.position;
-      const oc = _v.subVectors(c, origin);
-      const tca = oc.dot(_fwd);
-      if (tca > 0 && tca < 2.2 && oc.lengthSq() - tca * tca < 0.05) focus = { kind: 'healthity', target: bot, prompt: this.game.healthity?.promptText?.() || `[${input.keyName('interact')}] Pat Healthity`, hit: null };
-    }
-    // furniture shows its name, pad value and what the built-in multitool would do
+    // furniture shows its name, that it can be broken down and what the built-in multitool would do
     {
       if (focus && focus.kind === 'propinfo') focus.prompt = this.game.tools.mtPrompt(focus.target, this);
-      else if (!focus || !focus.prompt) {
-        const part = this.game.tools._campPartNearRay(hit ? hit.dist : REACH); // thin tent parts are easy to miss
-        if (part) focus = { kind: 'propinfo', target: part, prompt: this.game.tools.mtPrompt(part, this), hit: null };
-      }
     }
     this.focus = focus;
     this.lookHit = hit;
@@ -550,6 +541,8 @@ export class LocalPlayer {
     } else if (focus.kind === 'prop') {
       if (t.custom?.interact && t.custom.prompt?.(this, focus.hit)) {
         t.custom.interact(this, focus.hit);
+      } else if (t.def.wear && !t.def.pocket) {
+        this.game.gear?.requestWear(t);
       } else if (t.def.pocket) {
         if (!this.inv.hasFree()) {
           floatText.notice("Can't carry any more — [G] drop something", { duration: 1.6, color: '#ffb040' });
@@ -558,17 +551,12 @@ export class LocalPlayer {
         }
         net.toHost('pickup', { id: t.id });
       } else if (t.def.sleep && this.survival.advanced) {
-        if (this.survival.insomnia) {
-          this.game.healthity?.say('insomnia');
-          return;
-        }
+        if (this.survival.insomnia) return;
         this.sleep(t);
       } else if (t.def.use === 'drink') {
         this.survival.applyFx(t.def.fx);
         audio.play('drink', { volume: 0.7 });
       }
-    } else if (focus.kind === 'healthity') {
-      this.game.healthity?.pet();
     }
   }
 
@@ -584,7 +572,6 @@ export class LocalPlayer {
     // the hand that ends up holding it reaches down, snatches it and pulls it in
     const L = this.hands.compute();
     this.arms.gesture?.(L.armful ? 'snatch' : 'pickup', L.armful ? 'both' : L.left === slot ? 'L' : 'R');
-    this.game.healthity?.onPickup(item.type, itemName(item.type));
     this.game.onItemPicked?.(item);
   }
 
@@ -601,11 +588,28 @@ export class LocalPlayer {
     this.game.ui.toast('Sleeping... (any key to wake)');
   }
 
+  // lie down in a bed (game/shelter.js): eyes close, the night can pass; any key wakes the clone again
+  sleepIn(prop) {
+    const s = this.survival;
+    if (s.sleeping || this.dead) return;
+    this.releaseGrab(false);
+    this._cancelUse();
+    s.sleeping = true;
+    this.sleepT = 0;
+    this.sleepProp = prop?.id ?? null;
+    this.sleepBed = prop?.def?.bed || (prop?.def?.sleep ? 1 : 0);
+    this.watchOpen = false;
+    audio.play('yawn', { volume: 0.5 });
+    audio.play('suit_rustle', { volume: 0.5 });
+    floatText.notice(`Sleeping... ${input.keyName('jump')} to get up`, { duration: 2.2 });
+  }
+
   wake() {
     if (!this.survival.sleeping) return;
-    if (this.sleepT > 20 && !this.game.isLobby) { profile.unlock('night_owl'); profile.unlock('sleepy'); }
+    if (this.sleepT > 20 && !this.game.isLobby && this.sleepBed) profile.unlock('sleepy');
     this.survival.sleeping = false;
     this.sleepT = 0;
+    this.sleepBed = 0;
   }
 
   // ---------------- physics grab (RMB) ----------------
@@ -615,7 +619,7 @@ export class LocalPlayer {
     const armful = this.hands.layout.armful;
     if (!this.grab && !this.rmbPending && input.mouseHit(2) && !this.watchOpen) {
       const f = this.focus;
-      if (f && f.prompt && (f.kind === 'device' || f.kind === 'prop' || f.kind === 'healthity')) {
+      if (f && f.prompt && (f.kind === 'device' || f.kind === 'prop')) {
         const p = f.kind === 'prop' ? f.target : null;
         const draggable = p && p.body && !p.frozen && !p.def.static && !armful;
         if (draggable) this.rmbPending = { t: 0, focus: f }; // tap = use it, hold = drag it
@@ -706,14 +710,6 @@ export class LocalPlayer {
       } else if (hit.ud.kind === 'remote' && hit.ud.remote && !hit.ud.remote.dead) {
         this.grab = { remote: hit.ud.remote.id, dist: clamp(hit.dist, 0.8, GRAB_REACH), hold: 1.0, sendT: 0, t: 0 };
         audio.play('grab', { volume: 0.4, pos: hit.point });
-      }
-    }
-    if (!this.grab) {
-      // thin tent parts are easy to miss: grab one the ray passes close to by its centre
-      const part = this.game.tools._campPartNearRay(hit ? hit.dist : GRAB_REACH);
-      if (part?.body) {
-        this.grab = { id: part.id, lp: new THREE.Vector3(), dist: clamp(part.root.position.distanceTo(cam.position), 0.6, GRAB_REACH), hold: holdDist(part), sendT: 0, t: 0 };
-        audio.play('grab', { volume: 0.4, pos: part.root.position });
       }
     }
     if (this.grab) {
@@ -835,18 +831,19 @@ export class LocalPlayer {
     if (input.hit('flashlight')) this.toggleFlashlight();
     if (input.hit('tool') && !this.watchOpen) this.toggleTool();
     this._updateDrop(dt);
+    if (input.hit('healthity') && !this.watchOpen && !this.grab) this.game.gear?.packSwap(this); // [X]: the backpack
+    this.craft.update(dt);
     L = H.compute();
     // two items: both hands are full, so the right hand always holds one; the drawn multitool needs a free hand
     if (L.n >= 2 && !inv.current) { const i = inv.slots.findIndex(Boolean); if (i >= 0) inv.select(i); }
     if (this.toolOut && (L.n >= 2)) { this.toolOut = false; this._endHold(); }
     if (this.toolOut && L.n === 1 && inv.current) { const f = inv.firstFree(); if (f >= 0) inv.select(f); }
     if (!this.toolOut && !this.holdAction?.multitool) {
-      // a little trickle keeps an emergency reserve in the battery (camp building never soft-locks)
+      // a little trickle keeps an emergency reserve in the battery (enough to fix a door in place)
       if (this.tool.battery < CONTROLS.mtReserve) this.tool.charge(dt * CONTROLS.mtTrickle);
     }
     if (this.game.isLobby) this.tool.charge(dt * 0.05);
     this.tool.sputter = Math.max(0, this.tool.sputter - dt);
-    this.tool.drainMul = this._upgrade('battery') ? 0.5 : 1; // shop upgrade (game/economy.js)
     // use action in progress (eat / drink / heal)
     if (this.useAction) {
       this.useAction.t += dt;
@@ -865,7 +862,8 @@ export class LocalPlayer {
       return;
     }
     if (this.grab) {
-      // carrying a camp part: LMB attaches it with the multitool; anything else: LMB throws it
+      // carrying something with the multitool drawn: LMB attaches it where it is held (a door in a doorway);
+      // otherwise LMB throws it
       if (this._mtOwnsLmb()) { this._updateMultitool(dt); return; }
       this._endHold();
       this.combat.cancel();
@@ -883,7 +881,7 @@ export class LocalPlayer {
     }
     // fists, or a swing weapon in the right hand (not while reading the watch)
     if (this.watchOpen) { this.combat.cancel(); return; }
-    // ranged weapons (nail gun) fire through the economy's weapon attack (tools._swing, stats + quest counters)
+    // ranged weapons (the crossbow) shoot along the view ray (tools._swing: ammo, stats)
     if (def?.weapon?.ranged) { if (input.mouseHit(0)) this.game.tools._swing(cur, this); return; }
     this.combat.input(dt, { weapon: def?.use === 'swing' ? cur : null, sides: { R: !cur, L: !H.leftItem() } });
   }
@@ -909,7 +907,7 @@ export class LocalPlayer {
   _cycleHands(d) {
     const inv = this.inv, L = this.hands.compute();
     if (!L.n) return;
-    const occ = inv.slots.map((x, i) => (x ? i : -1)).filter((i) => i >= 0);
+    const occ = inv.slots.map((x, i) => (x ? i : -1)).filter((i) => i >= 0 && i < 5); // (slots past 5: the backpack)
     if (L.n === 1) {
       const it = occ[0];
       if (inv.selected === it) { const f = inv.firstFree(); if (f >= 0) inv.select(f); } else { inv.select(it); this.toolOut = false; }
@@ -966,10 +964,9 @@ export class LocalPlayer {
   // the old multitool item in the right hand works like the built-in one
   _mtItem() { return this._handItemUse() === 'multitool'; }
 
-  // LMB belongs to the multitool while carrying a camp part (attach it instead of throwing it)
+  // LMB belongs to the multitool while carrying something with it drawn (attach it instead of throwing it)
   _mtOwnsLmb() {
-    if (!this.grab || this.grab.id == null || !this.world) return false;
-    return !!this.world.props.get(this.grab.id)?.def.camp;
+    return !!(this.grab && this.grab.id != null && this.world && this.toolOut);
   }
   _mtOwnsRmb() { return this._mtOwnsLmb(); } // legacy name (touch controls)
 
@@ -985,7 +982,7 @@ export class LocalPlayer {
     audio.play('ui_select', { volume: 0.5, bus: 'ui' });
   }
 
-  // hold LMB: charge + attach / detach / dismantle what is aimed at (or the carried camp part); [R] mode
+  // hold LMB: charge + attach / detach / dismantle what is aimed at (or what the arms hold); [R] mode
   _updateMultitool(dt) {
     const tools = this.game.tools;
     if (!this.grab && input.hit('rotate')) this.toggleMultitoolMode();
@@ -1060,8 +1057,14 @@ export class LocalPlayer {
       case 'test':
         this.holdAction = this.game.tools.begin(def.use, item, this);
         break;
+      case 'light':
+      case 'fill':
+      case 'filter':
+      case 'read':
+        this.game.gear?.use(this, item, def);
+        break;
       default:
-        if (def.material) floatText.notice('Scrap — sell it in the crusher', { duration: 1.4 });
+        if (def.material) floatText.notice(`Hold two things and [${input.keyName('rotate')}] to put them together`, { duration: 1.8 });
         break;
     }
   }
@@ -1077,8 +1080,10 @@ export class LocalPlayer {
     if (ua.def.use === 'eat') this.stats.eaten++;
     if (ua.def.use === 'drink') this.stats.drank++;
     this.game.onItemUsed?.(ua.type, wasBleeding);
-    if (ua.type === 'bandage' || ua.type === 'medkit' || ua.type === 'plasma_syringe') this.game.healthity?.say('bandaged');
-    if (ua.type === 'splint') this.game.healthity?.say('splinted');
+    // a drink leaves its bottle in the hand (fill it again at a puddle or a cooler)
+    const empty = ua.def.empties;
+    if (empty) { const i = this.inv.add({ type: empty, state: {} }); if (i < 0) this.dropItem({ type: empty, state: {} }, false); }
+    if (ua.def.sick && Math.random() < ua.def.sick) { audio.play('cough', { volume: 0.6 }); this.shake = Math.max(this.shake, 0.3); floatText.notice('Your stomach turns.', { duration: 1.6 }); }
   }
 
   _cancelUse() {
@@ -1281,8 +1286,10 @@ export class LocalPlayer {
       lobby,
       dayPressure: lobby ? 0 : this.game.day?.instability?.() || 0,
       safeDay: !lobby && this.game.day?.active && this.game.day.day <= 1,
-      sanityDrainMul: this._upgrade('sanity') ? 0.3 : 1, // psycho-acoustic field upgrade (game/economy.js)
+      climate: this.world.level?.mission?.shelter?.climate(this) || null, // cold & warmth (game/shelter.js)
     });
+    // freezing: the clone shivers
+    if ((s.warmth ?? 100) < 15 && !s.sleeping) this.shake = Math.max(this.shake, 0.05 + (15 - s.warmth) * 0.006);
     if (s.dead && !this.dead) { this.onDeath(s.deathCause || 'injuries'); return; }
     // the stomach growls when hunger crosses a threshold (the old sleeve patch did this)
     if (!lobby && s.needsActive !== false) {
@@ -1320,9 +1327,11 @@ export class LocalPlayer {
     this.watchOpen = false;
     this.survival.sleeping = false;
     audio.play('death', { volume: 0.9 });
-    // drop everything where we died
+    // drop everything where we died: what the hands and the pack held, and what was worn
     const items = this.inv.serialize().filter(Boolean);
+    if (this.game.gear) items.push(...this.game.gear.strip(this));
     this.inv.clear();
+    this.inv.setCapacity?.(5);
     net.toHost('died', {
       cause: this.survival.deathCause || cause,
       p: this.pos.toArray(), yaw: this.yaw,
@@ -1397,12 +1406,6 @@ export class LocalPlayer {
       ko: this.combat.poseFlag || 0,
       hs: s.summary(), lp: s.fracture ? 1 : 0,
     });
-  }
-
-  // team upgrades bought in the shop (game/economy.js): 'battery' | 'carry' | 'sanity' | 'plasma'
-  _upgrade(k) {
-    const e = this.game.world?.level?.mission?.econ;
-    try { return !!(e && !e.disposed && e.has?.('up:' + k)); } catch (err) { return false; }
   }
 
   // teammates see the top of an armful in the clone's hands

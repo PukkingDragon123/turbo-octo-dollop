@@ -235,7 +235,7 @@ export function b_radio(o) {
   k.parts.leds = k.glow('leds', [[0.13, 0x30ff60], [0.17, 0xffa020], [0.21, 0xff2a1a]].map(([x, col]) => ({ geo: lens(0.006, 0.006).rotX(HP).translate(x, y0 + 0.145, pz + 0.004), color: col, intensity: 2.2 })));
   ['led_green', 'led_amber', 'led_red'].forEach((n, i) => { k.parts.leds[i].name = n; });
   k.parts.switches = [P.toggle(k, 0.14, y0 + 0.08, pz, { name: 'switch_power', on: true, static: true }), P.toggle(k, 0.2, y0 + 0.08, pz, { name: 'switch_band', static: true })];
-  const brand = k.reg('rd_brand', 260, 40, (c, w, h) => { c.clearRect(0, 0, w, h); txt(c, 'R.O.O.M. FIELD COMMS FR-90', w / 2, h / 2, h * 0.5, { col: '#d8d0b8', f: 'stencil', maxW: w * 0.96 }); });
+  const brand = k.reg('rd_brand', 260, 40, (c, w, h) => { c.clearRect(0, 0, w, h); txt(c, 'FIELD COMMS FR-90', w / 2, h / 2, h * 0.5, { col: '#d8d0b8', f: 'stencil', maxW: w * 0.96 }); });
   k.label(brand, 0.18, 0.028, 0.15, y0 + 0.2, pz + 0.0006);
   // carry handle
   for (const sx of [-1, 1]) k.box('metal', 0.03, 0.03, 0.05, sx * 0.13, y0 + H + 0.012, 0, { ...STEEL, r: 0.006 });
@@ -256,11 +256,11 @@ export function b_radio(o) {
   const hatch = k.grp(ix, iy + 0.013, iz - 0.045, { name: 'intakeHatch' });
   hatch.rotation.x = -1.3;
   k.insideStatic(hatch, () => { k.cyl('paint', 0.045, 0.008, 0, 0.004, 0.045, { ...DARK, seg: 22, bev: 0.002 }); k.box('metal', 0.02, 0.008, 0.012, 0, 0.006, 0.09, { ...STEEL, r: 0.003 }); });
-  const il = k.reg('rd_intake', 140, 30, (c, w, h) => { c.fillStyle = '#e8b417'; c.fillRect(0, 0, w, h); txt(c, 'SAMPLE INTAKE', w / 2, h / 2, h * 0.55, { col: '#111', f: 'mono' }); rubOff(c, w, h, 0.6, 3); });
+  const il = k.reg('rd_intake', 140, 30, (c, w, h) => { c.fillStyle = '#e8b417'; c.fillRect(0, 0, w, h); txt(c, 'BATTERY', w / 2, h / 2, h * 0.55, { col: '#111', f: 'mono' }); rubOff(c, w, h, 0.6, 3); });
   k.label(il, 0.11, 0.024, ix, iy + 0.0006, iz + 0.075, { rot: [-HP, 0, 0] });
   k.cyl('metal', 0.022, 0.025, W / 2 + 0.012, y0 + 0.12, 0.06, { ...STEEL, axis: 'x', seg: 16 });
   k.cyl('#c8a254:m', 0.012, 0.03, W / 2 + 0.02, y0 + 0.12, 0.06, { axis: 'x', seg: 12 });
-  const st = k.reg('rd_stencil', 300, 90, (c, w, h) => { c.clearRect(0, 0, w, h); txt(c, 'PROPERTY OF', w / 2, h * 0.3, h * 0.24, { col: 'rgba(225,215,190,0.85)', f: 'stencil' }); txt(c, 'R.O.O.M.', w / 2, h * 0.72, h * 0.42, { col: 'rgba(225,215,190,0.85)', f: 'stencil' }); rubOff(c, w, h, 1.5, 5); }, 'p');
+  const st = k.reg('rd_stencil', 300, 90, (c, w, h) => { c.clearRect(0, 0, w, h); txt(c, 'IF FOUND', w / 2, h * 0.3, h * 0.24, { col: 'rgba(225,215,190,0.85)', f: 'stencil' }); txt(c, 'KEEP TRYING', w / 2, h * 0.72, h * 0.32, { col: 'rgba(225,215,190,0.85)', f: 'stencil' }); rubOff(c, w, h, 1.5, 5); }, 'p');
   k.label(st, 0.2, 0.06, -W / 2 - 0.0106, y0 + 0.26, 0.02, { rot: [0, -HP, 0] });
   // handset clipped on the left side with a coiled cord
   k.box('#151515:r', 0.04, 0.16, 0.05, -W / 2 - 0.025, y0 + 0.2, -0.06, { r: 0.015 });

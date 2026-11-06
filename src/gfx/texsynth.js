@@ -123,7 +123,10 @@ float streaks(vec2 uv, float per, float prob, float len){
   return (1.0 - smoothstep(w * 0.4, w, abs(x))) * (1.0 - smoothstep(0.0, len, dy)) * (0.6 + 0.4 * gn(vec2(x * 8.0, uv.y * 60.0), vec2(8.0, 60.0))); }
 `;
 
+// uPass 0 albedo (sRGB), 1 ORM, 2 normal (legacy, unpainted recipes), 3 height (half-float target)
+// uRoughFloor: the hand-painted look keeps materials matte (roughness remapped into [floor, 1])
 const MAIN = /* glsl */`
+uniform float uRoughFloor;
 void main(){
   vec2 uv = vUv;
   if (uPass == 2) {
@@ -135,9 +138,106 @@ void main(){
   } else {
     S s = surface(uv);
     if (uPass == 0) gl_FragColor = vec4(srgbEnc(s.albedo), 1.0);
-    else gl_FragColor = vec4(sat(s.ao), clamp(s.rough, 0.02, 1.0), sat(s.metal), 1.0);
+    else if (uPass == 3) gl_FragColor = vec4(s.height, 0.0, 0.0, 1.0);
+    else { float r = clamp(s.rough, 0.02, 1.0); gl_FragColor = vec4(sat(s.ao), mix(r, uRoughFloor + (1.0 - uRoughFloor) * r, step(0.001, uRoughFloor)), sat(s.metal), 1.0); }
   }
 }`;
+
+// ---------------------------------------------------------------------------
+// Hand-painted finish (docs/ART_DIRECTION.md), applied to every painted recipe after synthesis:
+//  * albedo: generalised Kuwahara (edge-preserving, melts fine noise into soft painted patches), broad brush
+//    strokes in a few directions, large slow value shifts, painted edge wear from the height field's curvature
+//    (lighter, warmer on ridges / edges, darker in crevices)
+//  * normal: from the height field sampled over a wider stencil (soft, chunky relief instead of fine grit)
+// Recipes opt out with `paint: false` or tune it with `paint: { r, stroke, edge, shift, rough, soft }`.
+// ---------------------------------------------------------------------------
+const PAINT_LIB = /* glsl */`
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D tA, tH;
+uniform float uTexel, uSeed, uR, uStroke, uEdge, uShift, uBump, uSoft, uHasH, uSA, uSL;
+float h12(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031 + uSeed * 0.01371); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+vec2 h22(vec2 p){ vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973) + uSeed * 0.01371); q += dot(q, q.yzx + 33.33); return fract((q.xx + q.yz) * q.zy); }
+float gn(vec2 p, vec2 per){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  vec2 a = h22(mod(i, per)) * 2.0 - 1.0, b = h22(mod(i + vec2(1, 0), per)) * 2.0 - 1.0, c = h22(mod(i + vec2(0, 1), per)) * 2.0 - 1.0, d = h22(mod(i + vec2(1, 1), per)) * 2.0 - 1.0;
+  return 0.5 + 0.75 * mix(mix(dot(a, f), dot(b, f - vec2(1, 0)), u.x), mix(dot(c, f - vec2(0, 1)), dot(d, f - vec2(1, 1)), u.x), u.y); }
+float H(vec2 uv){ return texture2D(tH, uv).r; }
+`;
+
+const PAINT_FS = PAINT_LIB + /* glsl */`
+void main(){
+  vec2 uv = vUv;
+  float e = uTexel;
+  // --- generalised Kuwahara over a 5x5 tap grid (4 overlapping 3x3 sectors), radius uR texels
+  float sp = uR * 0.5;
+  vec3 m0 = vec3(0.0), m1 = vec3(0.0), m2 = vec3(0.0), m3 = vec3(0.0); vec2 v0 = vec2(0.0), v1 = vec2(0.0), v2 = vec2(0.0), v3 = vec2(0.0);
+  vec3 c0 = texture2D(tA, uv).rgb;
+  for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) {
+    vec3 c = texture2D(tA, uv + vec2(float(i), float(j)) * e * sp).rgb;
+    float l = dot(c, vec3(0.299, 0.587, 0.114)); vec2 lv = vec2(l, l * l);
+    if (i <= 0 && j <= 0) { m0 += c; v0 += lv; } if (i >= 0 && j <= 0) { m1 += c; v1 += lv; }
+    if (i <= 0 && j >= 0) { m2 += c; v2 += lv; } if (i >= 0 && j >= 0) { m3 += c; v3 += lv; }
+  }
+  m0 /= 9.0; m1 /= 9.0; m2 /= 9.0; m3 /= 9.0; v0 /= 9.0; v1 /= 9.0; v2 /= 9.0; v3 /= 9.0;
+  float w0 = 1.0 / pow(1.0 + 400.0 * max(v0.y - v0.x * v0.x, 0.0), 4.0), w1 = 1.0 / pow(1.0 + 400.0 * max(v1.y - v1.x * v1.x, 0.0), 4.0);
+  float w2 = 1.0 / pow(1.0 + 400.0 * max(v2.y - v2.x * v2.x, 0.0), 4.0), w3 = 1.0 / pow(1.0 + 400.0 * max(v3.y - v3.x * v3.x, 0.0), 4.0);
+  vec3 col = (m0 * w0 + m1 * w1 + m2 * w2 + m3 * w3) / max(w0 + w1 + w2 + w3, 1e-6);
+  col = mix(c0, col, uSoft);
+  // --- broad brush strokes: three stroke directions (horizontal, vertical, diagonal), each a stretched periodic
+  // noise, chosen per patch by a slow mask; plus large slow value shifts across the tile
+  float sh = gn(uv * 2.0 + 0.3, vec2(2.0)) * 0.6 + gn(uv * 4.0 + 1.7, vec2(4.0)) * 0.4;
+  vec2 fa = vec2(uSL, uSA), fb = vec2(uSA, uSL);
+  float sa = gn(uv * fa, fa) * 0.7 + gn(uv * fa * 2.0 + 3.1, fa * 2.0) * 0.3;
+  float sb = gn(uv * fb + 7.7, fb) * 0.7 + gn(uv * fb * 2.0 + 1.3, fb * 2.0) * 0.3;
+  vec2 dg = vec2(uv.x + uv.y, uv.x - uv.y);
+  vec2 fc = vec2(max(1.0, floor(uSL * 0.7)), max(1.0, floor(uSA * 0.7)));
+  float sc = gn(dg * fc + 4.4, fc);
+  float pick = gn(uv * 3.0 + 9.1, vec2(3.0));
+  float stroke = mix(mix(sa, sb, smoothstep(0.35, 0.5, pick)), sc, smoothstep(0.55, 0.7, pick));
+  float val = (stroke - 0.5) * uStroke + (sh - 0.5) * uShift;
+  col *= 1.0 + val;
+  col += val * vec3(0.22, 0.08, -0.18);      // lighter strokes lean warm, darker ones cool
+  // --- painted edge wear from the height field's curvature
+  if (uHasH > 0.5) {
+    float r = max(2.0, uR) * e;
+    float h0 = H(uv);
+    float ha = (H(uv + vec2(r, 0.0)) + H(uv - vec2(r, 0.0)) + H(uv + vec2(0.0, r)) + H(uv - vec2(0.0, r))) * 0.25;
+    float hb = (H(uv + vec2(r, r) * 2.0) + H(uv - vec2(r, r) * 2.0) + H(uv + vec2(r, -r) * 2.0) + H(uv - vec2(r, -r) * 2.0)) * 0.25;
+    float cav = ((ha - h0) * 0.65 + (hb - h0) * 0.35) * uBump * 3.0;   // > 0 in crevices, < 0 on ridges
+    float dark = smoothstep(0.03, 0.35, cav), lite = smoothstep(0.03, 0.35, -cav);
+    col *= 1.0 - dark * 0.28 * uEdge;
+    col = mix(col, col * vec3(1.12, 1.09, 1.0) + vec3(0.03, 0.025, 0.012), lite * 0.45 * uEdge);
+  }
+  gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+
+// normals from the packed height, sampled over a wider stencil (bilinear taps between texels add a 2x2 average)
+const NORMAL_FS = PAINT_LIB + /* glsl */`
+void main(){
+  vec2 uv = vUv;
+  float k = uR; float e = uTexel * k;
+  vec2 o = vec2(0.5 * uTexel);
+  float hl = H(uv + o - vec2(e, 0.0)), hr = H(uv + o + vec2(e, 0.0)), hd = H(uv + o - vec2(0.0, e)), hu = H(uv + o + vec2(0.0, e));
+  vec3 n = normalize(vec3((hl - hr) * uBump, (hd - hu) * uBump, 2.0 * e * 512.0));
+  gl_FragColor = vec4(n * 0.5 + 0.5, 1.0);
+}`;
+
+let paintMat = null, normalMat = null;
+function paintMaterials() {
+  if (paintMat) return;
+  const U = () => ({
+    tA: { value: null }, tH: { value: null }, uTexel: { value: 1 / 512 }, uSeed: { value: 0 }, uR: { value: 3 }, uStroke: { value: 0.08 },
+    uEdge: { value: 1 }, uShift: { value: 0.08 }, uBump: { value: 1 }, uSoft: { value: 1 }, uHasH: { value: 1 }, uSA: { value: 24 }, uSL: { value: 4 },
+  });
+  paintMat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: PAINT_FS, uniforms: U(), depthTest: false, depthWrite: false });
+  normalMat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: NORMAL_FS, uniforms: U(), depthTest: false, depthWrite: false });
+}
+// paint settings: recipe defaults < recipe `paint` < per-call o.paint
+const PAINT_DEF = { r: 3, stroke: 0.08, edge: 1, shift: 0.09, rough: 0.6, soft: 1, nsoft: 1.6 };
+function paintOpts(def, o) {
+  if (o.paint === false || def.paint === false) return null;
+  return { ...PAINT_DEF, ...(def.paint || {}), ...(o.paint || {}) };
+}
 
 const VERT = /* glsl */`varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
@@ -653,7 +753,7 @@ function materialFor(name) {
     uniforms: {
       uPass: { value: 0 }, uSeed: { value: 0 }, uTexel: { value: 1 / 512 }, uBump: { value: 1 }, uWear: { value: 0 },
       uC0: { value: new THREE.Color() }, uC1: { value: new THREE.Color() }, uC2: { value: new THREE.Color() }, uC3: { value: new THREE.Color() },
-      uP0: { value: new THREE.Vector4() }, uP1: { value: new THREE.Vector4() },
+      uP0: { value: new THREE.Vector4() }, uP1: { value: new THREE.Vector4() }, uRoughFloor: { value: 0 },
     },
     depthTest: false, depthWrite: false,
   });
@@ -690,7 +790,7 @@ function dataTexture(buf, size, srgb) {
 
 function keyOf(name, o) {
   const k = {};
-  for (const f of ['c0', 'c1', 'c2', 'c3', 'p0', 'p1', 'wear', 'seed', 'size', 'bump']) if (o[f] !== undefined) k[f] = o[f];
+  for (const f of ['c0', 'c1', 'c2', 'c3', 'p0', 'p1', 'wear', 'seed', 'size', 'bump', 'paint']) if (o[f] !== undefined) k[f] = o[f];
   return name + JSON.stringify(k);
 }
 
@@ -721,13 +821,43 @@ export function pbr(name, o = {}) {
   U.uP0.value.set(p0[0] ?? 0, p0[1] ?? 0, p0[2] ?? 0, p0[3] ?? 0);
   U.uP1.value.set(p1[0] ?? 0, p1[1] ?? 0, p1[2] ?? 0, p1[3] ?? 0);
   quad.material = mat;
-  const rt = new THREE.WebGLRenderTarget(size, size, { depthBuffer: false, stencilBuffer: false, generateMipmaps: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+  const po = paintOpts(def, o);
+  U.uRoughFloor.value = po ? po.rough : 0;
+  const mk = (lin, half) => new THREE.WebGLRenderTarget(size, size, { type: half ? THREE.HalfFloatType : THREE.UnsignedByteType, depthBuffer: false, stencilBuffer: false, generateMipmaps: false, minFilter: lin ? THREE.LinearFilter : THREE.NearestFilter, magFilter: lin ? THREE.LinearFilter : THREE.NearestFilter, wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping });
+  const rt = mk(false);
   const out = [];
-  for (let pass = 0; pass < 3; pass++) {
-    U.uPass.value = pass;
-    r.setRenderTarget(rt);
-    r.render(quadScene, quadCam);
+  if (!po) {
+    for (let pass = 0; pass < 3; pass++) {
+      U.uPass.value = pass;
+      r.setRenderTarget(rt);
+      r.render(quadScene, quadCam);
+      out.push(readTarget(r, rt, size));
+    }
+  } else {
+    // albedo and height into their own targets, ORM read back directly, then the painted albedo and soft normals
+    const rtA = mk(true), rtH = mk(true, true);
+    U.uPass.value = 0; r.setRenderTarget(rtA); r.render(quadScene, quadCam);
+    U.uPass.value = 3; r.setRenderTarget(rtH); r.render(quadScene, quadCam);
+    U.uPass.value = 1; r.setRenderTarget(rt); r.render(quadScene, quadCam);
+    const orm = readTarget(r, rt, size);
+    paintMaterials();
+    const k = size / 512;
+    for (const pm of [paintMat, normalMat]) {
+      const P = pm.uniforms;
+      P.tA.value = rtA.texture; P.tH.value = rtH.texture; P.uTexel.value = 1 / size; P.uSeed.value = U.uSeed.value;
+      P.uStroke.value = po.stroke; P.uEdge.value = po.edge; P.uShift.value = po.shift; P.uSoft.value = po.soft; P.uHasH.value = 1;
+      P.uBump.value = U.uBump.value;
+      // brush strokes ~3.5 cm wide and ~25 cm long in the world, whatever the tile size (integer: tiles stay seamless)
+      const m = o.meters ?? d.meters ?? 1;
+      P.uSA.value = Math.min(64, Math.max(2, Math.round(m / 0.035))); P.uSL.value = Math.min(12, Math.max(1, Math.round(m / 0.25)));
+      P.uR.value = pm === paintMat ? Math.max(1, po.r * k) : Math.max(1, po.nsoft * k);
+    }
+    quad.material = paintMat; r.setRenderTarget(rt); r.render(quadScene, quadCam);
     out.push(readTarget(r, rt, size));
+    out.push(orm);
+    quad.material = normalMat; r.setRenderTarget(rt); r.render(quadScene, quadCam);
+    out.push(readTarget(r, rt, size));
+    rtA.dispose(); rtH.dispose();
   }
   r.setRenderTarget(null);
   rt.dispose();
@@ -742,6 +872,53 @@ export function pbr(name, o = {}) {
   };
   cache.set(key, res);
   return res;
+}
+
+// Paint an already drawn canvas texture (textures.js object maps) in place: same finish as the synthesized sets.
+// height: optional Float32Array (w * h, row 0 = canvas top) for the edge wear; o: paint options + { meters, bump }
+export function paintCanvas(canvas, height = null, o = {}) {
+  const w = canvas.width, h = canvas.height;
+  if (w !== h) return canvas; // tiles are square; leave anything else as drawn
+  const po = { ...PAINT_DEF, ...o };
+  const r = synthRenderer();
+  if (!quad) {
+    quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), null);
+    quad.frustumCulled = false;
+    quadScene = new THREE.Scene();
+    quadScene.add(quad);
+    quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  }
+  paintMaterials();
+  const tA = new THREE.CanvasTexture(canvas);
+  tA.flipY = false; tA.wrapS = tA.wrapT = THREE.RepeatWrapping; tA.generateMipmaps = false;
+  tA.minFilter = tA.magFilter = THREE.LinearFilter; tA.colorSpace = THREE.NoColorSpace; tA.needsUpdate = true;
+  let tH = null, span = 1;
+  if (height) {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < height.length; i++) { const v = height[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    span = hi - lo || 1;
+    const hd = new Uint8Array(w * h * 4);
+    for (let i = 0; i < w * h; i++) { const v = ((height[i] - lo) / span) * 255; hd[i * 4] = hd[i * 4 + 1] = hd[i * 4 + 2] = v; hd[i * 4 + 3] = 255; }
+    tH = new THREE.DataTexture(hd, w, h, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tH.wrapS = tH.wrapT = THREE.RepeatWrapping; tH.minFilter = tH.magFilter = THREE.LinearFilter; tH.needsUpdate = true;
+  }
+  const P = paintMat.uniforms;
+  P.tA.value = tA; P.tH.value = tH || tA; P.uHasH.value = tH ? 1 : 0; P.uTexel.value = 1 / w; P.uSeed.value = (o.seed ?? 7) % 1000;
+  P.uStroke.value = po.stroke; P.uEdge.value = po.edge; P.uShift.value = po.shift; P.uSoft.value = po.soft;
+  P.uBump.value = (o.bump ?? 1) * span; P.uR.value = Math.max(1, po.r * (w / 512));
+  const m = o.meters ?? 1;
+  P.uSA.value = Math.min(64, Math.max(2, Math.round(m / 0.035))); P.uSL.value = Math.min(12, Math.max(1, Math.round(m / 0.25)));
+  const rt = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false, stencilBuffer: false, generateMipmaps: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+  quad.material = paintMat;
+  r.setRenderTarget(rt); r.render(quadScene, quadCam);
+  const buf = readTarget(r, rt, w);
+  r.setRenderTarget(null);
+  rt.dispose(); tA.dispose(); tH?.dispose();
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  img.data.set(buf);
+  ctx.putImageData(img, 0, 0);
+  return canvas;
 }
 
 // A texture set view with its own UV repeat (shares the GPU upload with the cached original)

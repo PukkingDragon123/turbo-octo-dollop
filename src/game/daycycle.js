@@ -1,5 +1,6 @@
-// The seven-day reality-collapse clock. Each day lasts exactly 10 real minutes (70 min per
-// dimension). Host-authoritative; clients extrapolate between periodic syncs.
+// The seven-day reality-collapse clock. Each day lasts 10 real minutes (70 min per dimension); the watch clock
+// runs 06:00 -> 06:00 over a day, the last third (22:00 on) is night. While everyone alive sleeps through the night
+// the clock runs `speed` times faster (game/shelter.js). Host-authoritative; clients extrapolate between syncs.
 import { net } from '../net/net.js';
 
 const q = new URLSearchParams(location.search);
@@ -17,6 +18,7 @@ export class DayCycle {
     this.day = 1;
     this.syncT = 0;
     this.collapsed = false;
+    this.speed = 1;
   }
 
   reset(active, t0 = 0) {
@@ -25,6 +27,7 @@ export class DayCycle {
     this.day = this._dayOf(t0);
     this.collapsed = false;
     this.syncT = 0;
+    this.speed = 1;
   }
 
   _dayOf(t) { return Math.min(DAYS, Math.floor(t / DAY_LENGTH) + 1); }
@@ -49,7 +52,7 @@ export class DayCycle {
 
   update(dt) {
     if (!this.active) return;
-    this.time += dt;
+    this.time += dt * (this.speed || 1);
     const d = this._dayOf(this.time);
     if (d !== this.day) {
       const prev = this.day;
@@ -59,7 +62,7 @@ export class DayCycle {
     if (net.isHost) {
       this.syncT -= dt;
       if (this.syncT <= 0) {
-        this.syncT = 5;
+        this.syncT = this.speed > 1 ? 1 : 5;
         net.toRemotes('time', this.serialize());
       }
       if (!this.collapsed && this.time >= DAYS * DAY_LENGTH) {
@@ -69,10 +72,11 @@ export class DayCycle {
     }
   }
 
-  serialize() { return { t: this.time, a: this.active ? 1 : 0 }; }
+  serialize() { return { t: this.time, a: this.active ? 1 : 0, s: this.speed || 1 }; }
   sync(d) {
     if (!d) return;
     this.active = !!d.a;
+    this.speed = d.s || 1;
     // smooth small drift, snap large
     if (Math.abs(d.t - this.time) > 2) this.time = d.t;
     else this.time += (d.t - this.time) * 0.5;

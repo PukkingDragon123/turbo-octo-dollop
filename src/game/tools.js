@@ -1,13 +1,15 @@
 // Tool actions: welding (real fixed physics joints), the built-in multitool (attach / detach / dismantle,
-// camp-part snapping), sample collection and melee swings. Client side produces hold actions; the host
+// tent-part snapping), sample collection and ranged weapons. Client side produces hold actions; the host
 // owns the physical results.
 //
 // Built-in multitool (drawn with [Q], or the old multitool item; hold LMB). Holding charges POWER (the beam
 // thickens, the whine rises): actions finish faster, heavy furniture needs power to dismantle, and releasing
 // at full charge fires a damaging ZAP (monsters, teammates, props). Power drains the battery
-// (player.tool.battery, shown on the gadget's LED bar; Healthity / batteries recharge it); empty, it sputters.
-// Attaching a caster WHEEL to a prop makes a real revolute axle (DIY carts).
-//   * camp part near its ghost marker -> ATTACH it to the camp (CampMission.hostCampAttach)
+// (player.tool.battery, shown on the gadget's LED bar); a battery item recharges it (found, or made at a
+// workbench); empty, it sputters. Dismantling with it takes everything off a piece of furniture
+// (game/gather.js) but costs a good bite of battery.
+// Attaching a caster WHEEL to a prop makes a real revolute axle (DIY carts); attaching a PLANK DOOR to the
+// world hangs it on a hinge along its edge (it swings; [E] opens / closes it, game/shelter.js).
 //   * welded prop                      -> DETACH (remove its joints)
 //   * mode 'attach' (default)          -> ATTACH: fixed joint to whatever it touches (prop or world)
 //   * mode 'dismantle' ([R] toggles)   -> DISMANTLE into materials
@@ -17,13 +19,14 @@ import { input } from '../core/input.js';
 import { net } from '../net/net.js';
 import { RAPIER, Q } from '../physics/physics.js';
 import { audio } from '../audio/audio.js';
-import { itemDef, itemName, SAMPLES, sellValue } from './itemdefs.js';
+import { itemDef, itemName, SAMPLES } from './itemdefs.js';
 import { profile } from '../core/profile.js';
 import { juice } from '../gfx/juice.js';
+import { floatText } from '../ui/floattext.js';
 
 const MT_RANGE = 2.6;
-export const MT = { chargeTime: 1.4, drainIdle: 0.01, drainPower: 0.045, zapCost: 0.15, zapRange: 6, zapDamage: 32, heavyMass: 40, reserve: 0.25 };
-const MT_COLORS = { attach: 0x6fe0ff, camp: 0x8dffa6, detach: 0xffa040, dismantle: 0xff7a30 };
+export const MT = { chargeTime: 1.4, drainIdle: 0.01, drainPower: 0.045, zapCost: 0.15, zapRange: 6, zapDamage: 32, heavyMass: 40, reserve: 0.12, dismantleCost: 0.1 };
+const MT_COLORS = { attach: 0x6fe0ff, detach: 0xffa040, dismantle: 0xff7a30 };
 
 const _f = new THREE.Vector3();
 const _v = new THREE.Vector3();
@@ -163,7 +166,20 @@ export class Tools {
     // a caster wheel on a prop spins on a revolute axle through its hub (local X) instead of a rigid weld
     const wheel = other && prop.def.wheel !== other.def.wheel ? (prop.def.wheel ? prop : other) : null;
     let joint;
-    if (wheel) {
+    if (prop.def.door && !other) {
+      // a door hung on the world: a hinge along its -X edge (game/shelter.js swings it open / shut)
+      phys.removeBody(b2);
+      const h = prop.model?.anchors?.hinge || new THREE.Vector3(-0.45, 0, 0);
+      const hw = h.clone().applyQuaternion(q1).add(new THREE.Vector3(t1.x, t1.y, t1.z));
+      b2 = phys.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(hw.x, hw.y, hw.z).setRotation({ x: q1.x, y: q1.y, z: q1.z, w: q1.w }));
+      const jd = RAPIER.JointData.revolute({ x: h.x, y: h.y, z: h.z }, { x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 });
+      joint = phys.world.createImpulseJoint(jd, b1, b2, true);
+      joint.setContactsEnabled?.(false);
+      try { joint.setLimits?.(-1.9, 1.9); } catch (e) { /* limits optional */ }
+      prop.hinge = joint;
+      prop.hingeQ0 = q1.clone(); // closed (game/shelter.js swings it toward open / closed)
+      w.fxAll({ k: 'snd', n: 'door_creak', p: point.toArray(), v: 0.9 });
+    } else if (wheel) {
       const wb = wheel.body, base = wheel === prop ? other : prop, bb = base.body;
       const tw = wb.translation(), rw = wb.rotation(), tb = bb.translation(), rb = bb.rotation();
       const qw = new THREE.Quaternion(rw.x, rw.y, rw.z, rw.w), qb = new THREE.Quaternion(rb.x, rb.y, rb.z, rb.w);
@@ -186,7 +202,7 @@ export class Tools {
       );
       joint = phys.world.createImpulseJoint(jd, b1, b2, true);
     }
-    const rec = { joint, a: prop.id, b: other ? other.id : null, anchor: other ? null : b2, axle: !!wheel };
+    const rec = { joint, a: prop.id, b: other ? other.id : null, anchor: other ? null : b2, axle: !!wheel, hinge: !!prop.hinge && !other };
     prop.welds = prop.welds || [];
     prop.welds.push(rec);
     if (other) { other.welds = other.welds || []; other.welds.push(rec); }
@@ -212,6 +228,7 @@ export class Tools {
       }
     }
     prop.welds = [];
+    prop.hinge = null;
     prop.body?.wakeUp();
     if (!prop.dead) w.props.setState(prop.id, { welded: 0 });
   }
@@ -232,13 +249,7 @@ export class Tools {
   // What the multitool would do to this prop: { act, label, dur, prompt } | { blocked: text } | null
   mtVerdict(prop, player = this.game.local) {
     if (!prop || prop.dead || !this.world) return null;
-    const m = this.world.level?.mission;
     const name = itemName(prop.type);
-    if (prop.def.camp) {
-      const c = m?.campAttachCheck?.(prop);
-      if (!c) return null;
-      return c.ok ? { act: 'camp', label: 'ATTACHING', dur: 0.45, prompt: `[LMB] ATTACH ${name.toUpperCase()}` } : { blocked: c.text, prompt: `${name} — ${c.text}` };
-    }
     if (prop.frozen || prop.def.static) return null;
     if (prop.state.welded > 0) return { act: 'detach', label: 'DETACHING', dur: 0.7, prompt: '[LMB] DETACH' };
     if ((player.mtMode || 'attach') === 'dismantle') {
@@ -254,10 +265,8 @@ export class Tools {
     const v = this.mtVerdict(prop, player);
     if (!v) return null;
     const tool = player.toolOut || player._mtItem?.();
-    if (prop.def.camp) return tool || player.grab?.id === prop.id || v.blocked ? v.prompt : `${itemName(prop.type)} · [RMB] Drag it to its marker`;
-    const m = this.world.level?.mission;
-    const val = m?.showValues ? sellValue(prop.type, prop.mass, prop.state) : 0;
-    return `${itemName(prop.type)}${val ? ` $${val}` : ''} · [RMB] Drag · ${tool ? v.prompt : `[${input.keyName('tool')}] Multitool`}`;
+    const breakable = !!itemDef(prop.type).dismantle?.length && !tool;
+    return `${itemName(prop.type)} · [RMB] Drag${breakable ? ' · [LMB] Break it down' : ''} · ${tool ? v.prompt : `[${input.keyName('tool')}] Multitool`}`;
   }
 
   // the hold-RMB action (item = the old multitool item, or null for the built-in one)
@@ -280,7 +289,7 @@ export class Tools {
         } else {
           tool.power = Math.max(0, tool.power - dt * 3);
           tool.sputter = 0.3;
-          if (!warned) { warned = true; ui.toast?.('MULTITOOL BATTERY EMPTY — ask Healthity to charge it', 'warn'); audio.play('ui_error', { volume: 0.4, bus: 'ui' }); }
+          if (!warned) { warned = true; ui.toast?.('Multitool battery flat. A battery will charge it.', 'warn'); audio.play('ui_error', { volume: 0.4, bus: 'ui' }); }
         }
         if (!this.mtLoop && !dry) this.mtLoop = audio.loop('weld', { volume: 0.25, pitch: 0.6 });
         if (this.mtLoop) { this.mtLoop.setPitch(0.6 + tool.power * 0.9); this.mtLoop.setVolume(dry ? 0 : 0.18 + tool.power * 0.4); }
@@ -304,11 +313,6 @@ export class Tools {
             return;
           }
           if (hit?.ud?.kind === 'prop') { prop = hit.ud.prop; point = hit.point; normal = hit.normal; }
-          else {
-            // aim assist for camp parts: thin poles are easy to miss (the ray slips between the legs)
-            const near = this._campPartNearRay(hit ? hit.dist : MT_RANGE);
-            if (near) { prop = near; point = near.root.position.clone(); }
-          }
         }
         const v = prop ? this.mtVerdict(prop, player) : null;
         if (!v || v.blocked) {
@@ -327,7 +331,7 @@ export class Tools {
         if (sparkT <= 0) {
           sparkT = 0.07;
           if (act === 'dismantle' || act === 'detach') this.world.fx.sparks(point, 3, normal, [1, 0.6, 0.25], 2.5);
-          else this.world.fx.sparks(point, 3, normal, act === 'camp' ? [0.5, 1, 0.6] : [0.45, 0.85, 1], 2);
+          else this.world.fx.sparks(point, 3, normal, [0.45, 0.85, 1], 2);
         }
         soundT -= dt;
         if (soundT <= 0) { soundT = 0.28; audio.play(act === 'dismantle' ? 'multitool' : 'weld_crackle', { pos: point, volume: 0.45 }); }
@@ -335,7 +339,7 @@ export class Tools {
         if (t >= v.dur) {
           finished = true;
           net.toHost('mt', { id: prop.id, a: act, p: point.toArray() });
-          if (act === 'dismantle') audio.play('dismantle', { pos: point });
+          if (act === 'dismantle') { audio.play('dismantle', { pos: point }); tool.battery = Math.max(0, tool.battery - MT.dismantleCost * (prop.mass > MT.heavyMass ? 1.6 : 1)); }
           else {
             audio.play('bolt_turn', { pos: point, volume: 0.9 });
             audio.play('spark', { pos: point, volume: 0.7 });
@@ -386,22 +390,6 @@ export class Tools {
     juice.shake(0.35); juice.hitstop(50); juice.flash(0.15);
     w.noise.emit(end, 14, 'zap');
     if (player.arms) player.arms.throwKick = 0.8;
-  }
-
-  // a loose camp part within ~0.45 m of the view ray (closer than maxDist), or null
-  _campPartNearRay(maxDist) {
-    const cam = engine.camera;
-    _f.set(0, 0, -1).applyQuaternion(cam.quaternion);
-    let best = null, bd = 0.45;
-    for (const p of this.world.props.props.values()) {
-      if (!p.def.camp || p.frozen || p.dead) continue;
-      _v.subVectors(p.root.position, cam.position);
-      const along = _v.dot(_f);
-      if (along < 0.3 || along > maxDist + 0.4) continue;
-      const off = Math.sqrt(Math.max(0, _v.lengthSq() - along * along));
-      if (off < bd) { bd = off; best = p; }
-    }
-    return best;
   }
 
   // jagged zap beam from the wrist emitter to the target point (local visual)
@@ -465,17 +453,13 @@ export class Tools {
     const p = d.p ? new THREE.Vector3().fromArray(d.p) : prop.root.position.clone();
     const say = (text, kind = 'warn') => net.toPeer(from, 'mtMsg', { text, kind });
     w.noise.emit(p, 9, 'multitool');
-    if (d.a === 'camp') {
-      const m = w.level?.mission;
-      if (m?.hostCampAttach) m.hostCampAttach(prop, from);
-      else say('Nothing to attach it to here.');
-    } else if (d.a === 'detach') {
+    if (d.a === 'detach') {
       if (!prop.welds?.length) { w.props.setState(prop.id, { welded: 0 }); return; }
       this.unweld(prop);
       w.fxAll({ k: 'sparks', p: p.toArray(), n: 14 });
       w.fxAll({ k: 'snd', n: 'wire_connect', p: p.toArray(), v: 0.8, pi: 0.8 });
     } else if (d.a === 'dismantle') {
-      this._hostDismantle({ id: prop.id });
+      this._hostDismantle({ id: prop.id }, from);
     } else if (d.a === 'attach') {
       if (!prop.body || prop.frozen) return;
       const other = this._touching(prop, p);
@@ -518,23 +502,11 @@ export class Tools {
     return best || (stat ? 'world' : null);
   }
 
-  _hostDismantle(d) {
-    const w = this.world;
-    const prop = w?.props.get(d.id);
+  // the multitool takes everything off (game/gather.js)
+  _hostDismantle(d, from) {
+    const prop = this.world?.props.get(d.id);
     if (!prop || prop.dead) return;
-    const def = itemDef(prop.type);
-    const pos = prop.root.position.clone();
-    this.unweld(prop);
-    w.grab.releaseAllFor(prop.id);
-    w.props.despawn(prop.id, { k: 'break', m: prop.material, p: pos.toArray() });
-    w.noise.emit(pos, 10, 'dismantle');
-    const yields = [...(def.dismantle || def.into || [])];
-    // anything that rolled on casters gives its wheels back (office chairs, trolleys, carts)
-    for (const t of prop.model?.breakInto || []) if (t === 'wheel') yields.push('wheel');
-    yields.forEach((t, i) => {
-      const off = new THREE.Vector3(Math.cos(i * 2.1) * 0.25, 0.2 + i * 0.08, Math.sin(i * 2.1) * 0.25);
-      w.props.spawn(t, pos.clone().add(off), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, i, 0)), { vel: off.clone().multiplyScalar(2) });
-    });
+    if (this.game.gather) this.game.gather.breakDown(prop, { power: 1 }, from);
   }
 
   // ---------------- samples ----------------
@@ -565,16 +537,45 @@ export class Tools {
     };
   }
 
-  // ---------------- melee ----------------
-  _swing() {
-    const hit = this._aim(1.8);
-    audio.play('throw_whoosh', { volume: 0.5 });
-    this.game.local.arms.throwKick = 1;
+  // ---------------- ranged weapons (crossbow) ----------------
+  // LMB with a ranged weapon: a bolt along the view ray (creature combat API first, then props); uses ammo
+  _swing(item) {
+    const w = (item && itemDef(item.type).weapon) || { dmg: 1, range: 1.8, cd: 0.45 };
+    const now = performance.now() / 1000;
+    if (now - (this._lastSwing || 0) < (w.cd || 0.5)) return;
+    this._lastSwing = now;
+    const l = this.game.local, cam = engine.camera, world = this.world;
+    if (w.ammo && item) {
+      const n = item.state.bolts ?? 0;
+      if (n <= 0) {
+        floatText.notice('No bolts. Hold a bundle of bolts with it and [R] to load.', { duration: 2.4 });
+        audio.play('ui_error', { volume: 0.3, bus: 'ui' });
+        return;
+      }
+      item.state.bolts = n - 1;
+      l.inv.version++;
+    }
+    _f.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    audio.play('dart_throw', { volume: 0.9, pitch: 0.7 });
+    audio.play('thunk', { volume: 0.5, pitch: 1.6 });
+    if (l.arms) l.arms.throwKick = 0.6;
+    l.shake = Math.max(l.shake || 0, 0.06);
+    const mon = world.monsters;
+    if (mon?.applyHit) {
+      let res = null;
+      try { res = mon.applyHit({ origin: cam.position.clone(), dir: _f.clone(), range: w.range, damage: w.dmg * 16, from: net.selfId, kind: 'weapon', heavy: w.dmg >= 2, radius: 0.15 }); } catch (e) { console.error('[tools] applyHit', e); }
+      if (res?.hit) {
+        const pt = res.point?.isVector3 ? res.point : Array.isArray(res.point) ? _v.fromArray(res.point) : null;
+        if (pt) { world.fx.blood(pt, 6); audio.play('flesh_hit', { pos: pt, volume: 0.8 }); }
+        return;
+      }
+    }
+    const hit = this._aim(w.range);
     if (!hit) return;
-    _f.set(0, 0, -1).applyQuaternion(engine.camera.quaternion);
-    if (hit.ud?.kind === 'prop') net.toHost('hit', { id: hit.ud.prop.id, p: hit.point.toArray(), d: _f.toArray() });
-    else if (hit.ud?.kind === 'monster') net.toHost('hit', { mon: hit.ud.monster.id, p: hit.point.toArray(), d: _f.toArray() });
-    else audio.play('impact_metal', { pos: hit.point, intensity: 0.7 });
+    world.fx.sparks(hit.point, 6, hit.normal, [1, 0.85, 0.5], 2);
+    if (hit.ud?.kind === 'prop') net.toHost('hit', { id: hit.ud.prop.id, p: hit.point.toArray(), d: _f.toArray(), f: 1.2, w: 1 });
+    else if (hit.ud?.kind === 'monster' && !mon?.applyHit) net.toHost('hit', { mon: hit.ud.monster.id, p: hit.point.toArray(), d: _f.toArray() });
+    else audio.play('impact_metal', { pos: hit.point, intensity: 0.6 });
   }
 
   _hostHit(d, from) {
@@ -591,6 +592,8 @@ export class Tools {
         prop.touched = true;
         w.fxAll({ k: 'impact', m: prop.material, p: d.p, i: Math.min(1, 0.5 + f * 0.3) });
         if (d.zap) w.fxAll({ k: 'sparks', p: d.p, n: 16 });
+        // punches and swings work furniture loose (game/gather.js)
+        if (!d.zap) this.game.gather?.hostHit(prop, d, from);
       }
     } else if (d.mon != null) {
       w.monsters?.hit(d.mon, dir, from);

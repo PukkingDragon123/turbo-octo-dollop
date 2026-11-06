@@ -2,7 +2,7 @@
 // fallbacks so the game still runs if a model module fails to load.
 import * as THREE from 'three';
 
-const mods = import.meta.glob(['./stilllife_model.js', './healthity_model.js', './clone_models.js', './critter_models.js'], { eager: true });
+const mods = import.meta.glob(['./stilllife_model.js', './clone_models.js', './critter_models.js'], { eager: true });
 const all = Object.assign({}, ...Object.values(mods));
 
 function blob(color, h = 1.2, r = 0.3) {
@@ -19,13 +19,6 @@ export const buildStillLife = all.buildStillLife || ((variant) => {
   return { root, update() {}, height: variant === 'tall' ? 2.3 : 1.2, radius: 0.3 };
 });
 export const STILL_LIFE_VARIANTS = all.STILL_LIFE_VARIANTS || ['watcher', 'crawler', 'twin', 'mass', 'tall'];
-
-export const buildHealthity = all.buildHealthity || (() => {
-  const root = new THREE.Group();
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.14, 24, 16), new THREE.MeshStandardMaterial({ color: 0xe8fff4, roughness: 0.3 }));
-  root.add(m);
-  return { root, setFace() {}, setTalking() {}, update() {} };
-});
 
 export const buildUnfinishedClone = all.buildUnfinishedClone || ((stage) => ({ root: blob(0xd8b090, 1.1, 0.25 + stage * 0.02), update() {} }));
 export const buildReceptionist = all.buildReceptionist || (() => ({ root: blob(0xd8c0a0, 1.2), update() {} }));

@@ -17,11 +17,11 @@ import { TouchControls, wantsTouch } from './ui/touch.js';
 import { Distortion } from './gfx/distort.js';
 import { juice } from './gfx/juice.js';
 import { floatText } from './ui/floattext.js';
-import { Healthity } from './game/healthity.js';
 import { Voice } from './net/voice.js';
 import { preloadItems } from './entities/models_items.js';
 import { warmFurniture } from './entities/models_furniture.js';
 import { MenuScene } from './world/menu_scene.js';
+import { openCustomizer, isCustomizerOpen } from './world/customizer/index.js';
 
 const params = new URLSearchParams(location.search);
 
@@ -65,7 +65,6 @@ async function boot() {
   const game = new Game(ui);
   game.terminal = new Terminal(game);
   game.watch = new Watch(game);
-  game.healthity = new Healthity(game);
   game.voice = new Voice(game);
   game.touch = input.touch ? new TouchControls(game) : null;
   game.distort = new Distortion(game);
@@ -106,6 +105,12 @@ async function boot() {
     ui.hideMenus();
     if (params.get('level')) game.hostDispatch([], params.get('level'));
   }
+  // test hook: ?customize=1 (or =paint|eyes|rags|hats) opens the clone customizer straight away
+  if (params.get('customize') && game.state === 'menu') {
+    menuScene?.deactivate();
+    const st = params.get('customize');
+    openCustomizer({ game, station: st === '1' ? 'paint' : st, onDone: () => { window.__customized = true; } });
+  }
 
   // ---------------- main loop ----------------
   const timer = new THREE.Timer();
@@ -119,14 +124,14 @@ async function boot() {
     dt = juice.scaleDt(Math.min(dt, 0.1));
     try {
       // main menu: the factory set renders through the post stack (engine.setView) and handles all menu input
-      if (menuScene && (game.state === 'menu' || game.state === 'joining')) menuScene.update(dt);
+      if (isCustomizerOpen()) { /* the customizer (world/customizer) owns the view and runs itself */ }
+      else if (menuScene && (game.state === 'menu' || game.state === 'joining')) menuScene.update(dt);
       else menuScene?.deactivate();
       if (game.menuBackdrop && game.state === 'menu') { if (!menuScene) menuCamera(game, dt); }
       else game.update(dt);
       if (game.state !== 'menu' || !game.menuBackdrop) {
         game.terminal.update(dt);
         game.watch.update(dt);
-        game.healthity.update(dt);
         game.voice.update(dt);
       }
       juice.applyCamera(engine.view?.camera || engine.camera, dt);

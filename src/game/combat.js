@@ -129,7 +129,7 @@ export class Combat {
     const cam = engine.camera;
     const origin = cam.position.clone();
     const dir = _f.set(0, 0, -1).applyQuaternion(cam.quaternion).clone();
-    // shop weapons carry stats (itemdefs weapon: dmg = hits per swing, range, knock)
+    // weapons and tools carry stats (itemdefs weapon: dmg = hits per swing, range, knock)
     const ws = sw.weapon ? itemDef(sw.weapon.type).weapon : null;
     const range = ws?.range ?? (sw.weapon ? COMBAT.weaponRange : COMBAT.range);
     const [d0, d1] = sw.weapon ? COMBAT.weaponDamage : COMBAT.damage;
@@ -166,7 +166,8 @@ export class Combat {
     if (!hit) return; // whiff
     const ud = hit.ud;
     if (ud?.kind === 'prop' && ud.prop) {
-      net.toHost('hit', { id: ud.prop.id, p: hit.point.toArray(), d: dir.toArray(), f: Math.max(0.3, sw.power) * (ws?.knock ?? 1), w: sw.weapon ? 1 : 0 });
+      // t: what the hand held (game/gather.js: furniture comes apart by hand, faster and cleaner with tools)
+      net.toHost('hit', { id: ud.prop.id, p: hit.point.toArray(), d: dir.toArray(), f: Math.max(0.3, sw.power) * (ws?.knock ?? 1), w: sw.weapon ? 1 : 0, t: sw.weapon?.type || null, pw: +sw.power.toFixed(2) });
       this._landed(hit.point, sw, ud.prop.material);
     } else if (ud?.kind === 'monster' && ud.monster) {
       net.toHost('hit', { mon: ud.monster.id, p: hit.point.toArray(), d: dir.toArray(), f: sw.power, w: sw.weapon ? 1 : 0 });

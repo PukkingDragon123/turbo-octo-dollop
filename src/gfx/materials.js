@@ -1,4 +1,5 @@
-// Shared material library. Materials are PBR (MeshStandard/Physical).
+// Shared material library. Materials are PBR (MeshStandard/Physical), hand-painted look: textures carry texsynth's
+// paint finish, surfaces stay matte (roughness 0.6+ from the maps), colours lean on the art-direction palette.
 //  - World surfaces (wallpaper, carpet, ceiling, concrete, office_carpet, linoleum, paint*, panel, tile*,
 //    lightpanel and the environment set: trim, enamel, cmu, slab, pipes, insulation...) are built on GPU-
 //    synthesized texture sets (src/gfx/texsynth.js + src/world/env/recipes.js): albedo + normal + ORM.
@@ -20,14 +21,14 @@ const defs = {
   plank: { tex: 'plank', color: 0xffffff, roughness: 1 },
   metal: { tex: 'metal', color: 0xb9bcbf, roughness: 1, metalness: 1, metalMap: true },
   metal_dark: { tex: 'metal', color: 0x4a4e52, roughness: 1, metalness: 1, metalMap: true },
-  metal_red: { tex: 'metal', color: 0xa8312a, roughness: 1, metalness: 1, metalMap: true },
+  metal_red: { tex: 'metal', color: 0xa8402e, roughness: 1, metalness: 1, metalMap: true },
   metal_yellow: { tex: 'metal', color: 0xd9a92a, roughness: 1, metalness: 1, metalMap: true },
   metal_green: { tex: 'metal', color: 0x4f6b4a, roughness: 1, metalness: 1, metalMap: true },
   metal_blue: { tex: 'metal', color: 0x3b5674, roughness: 1, metalness: 1, metalMap: true },
   metal_beige: { tex: 'metal', color: 0xc9bea2, roughness: 1, metalness: 1, metalMap: true },
   steel: { tex: 'steel', color: 0xffffff, roughness: 1, metalness: 1 },
-  chrome: { color: 0xeeeeee, roughness: 0.08, metalness: 1, envMapIntensity: 1.4 },
-  brass: { color: 0xc9a65a, roughness: 0.3, metalness: 1 },
+  chrome: { color: 0xe6e2da, roughness: 0.45, metalness: 1, envMapIntensity: 1.2 },
+  brass: { color: 0xc9a65a, roughness: 0.55, metalness: 1 },
   rust: { tex: 'rust', color: 0xffffff, roughness: 1, metalness: 1, metalMap: true },
   cardboard: { tex: 'cardboard', color: 0xffffff, roughness: 1 },
   fabric_blue: { tex: 'fabric', color: 0x3c4f6e, roughness: 1, texRepeat: 4 },
@@ -41,12 +42,12 @@ const defs = {
   plastic_beige: { tex: 'plastic', color: 0xcfc4a6, roughness: 1 },
   plastic_black: { tex: 'plastic', color: 0x1d1d1f, roughness: 1 },
   plastic_grey: { tex: 'plastic', color: 0x7a7c7e, roughness: 1 },
-  plastic_red: { tex: 'plastic', color: 0xc0302a, roughness: 1 },
-  plastic_blue: { tex: 'plastic', color: 0x2f5d9e, roughness: 1 },
-  plastic_green: { tex: 'plastic', color: 0x3f8a4a, roughness: 1 },
-  plastic_orange: { tex: 'plastic', color: 0xe8661c, roughness: 1 },
-  plastic_yellow: { tex: 'plastic', color: 0xf0c020, roughness: 1 },
-  rubber: { color: 0x1a1a1a, roughness: 0.85 },
+  plastic_red: { tex: 'plastic', color: 0xb04436, roughness: 1 },
+  plastic_blue: { tex: 'plastic', color: 0x3f6488, roughness: 1 },
+  plastic_green: { tex: 'plastic', color: 0x5a8358, roughness: 1 },
+  plastic_orange: { tex: 'plastic', color: 0xd06c2c, roughness: 1 },
+  plastic_yellow: { tex: 'plastic', color: 0xdcb446, roughness: 1 },
+  rubber: { color: 0x2a2826, roughness: 0.9 },
   paper: { color: 0xf1eee4, roughness: 0.9 },
   glass: { physical: true, color: 0xcfe6e6, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.18, envMapIntensity: 1.6, depthWrite: false },
   glass_tint: { physical: true, color: 0x5c7a72, roughness: 0.05, transparent: true, opacity: 0.35, envMapIntensity: 1.5, depthWrite: false },

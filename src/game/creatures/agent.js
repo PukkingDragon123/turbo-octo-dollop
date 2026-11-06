@@ -3,6 +3,7 @@
 // inside a field, and the camp-raid sub-machine (approach -> ransack -> drag -> leave).
 import * as THREE from 'three';
 import { RAPIER, GROUPS, G, groups, Q } from '../../physics/physics.js';
+import { itemDef } from '../itemdefs.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -385,7 +386,7 @@ export class Agent {
     this.world.props.query(camp.pos, camp.radius + 0.5, (p) => {
       if (p.dead || !p.body || p.frozen || p.isHeld()) return;
       if (p.def.device && dragging) return; // the radio / crates stay
-      if (p.type === 'field_bench' || p.type === 'distorter') return;
+      if (p.type === 'field_bench' || p.type === 'scrap_bench' || p.type === 'distorter' || p.type === 'plank_door' || p.type === 'stash_crate' || p.type === 'radio' || itemDef(p.type).bed) return;
       if (/tent|camp|teleport|pad/.test(p.type)) return;
       const m = p.body.mass();
       if (m > maxMass || m < 0.3) return;

@@ -88,7 +88,7 @@ const SETS = {
   tile: ['tiles', { c0: 0xe9ebe6, c1: 0xa9aba2, c2: 0x5a5444, c3: 0xe4e7e2, p0: [4, 4, 0.05, 0.07], p1: [0.05, 0.2, 0.14, 0.55], wear: 0.45, meters: 0.6, size: 512, seed: 37 }],
   concrete: ['concrete', { c0: 0x9a968e, c1: 0x7e7a72, c2: 0x4a4640, c3: 0xb8b2a6, p0: [90, 0.2, 0.9, 0.45], wear: 0.4, meters: 1.2, size: 512, seed: 38 }],
   // woven canvas / nylon / webbing / cord (neutral light base: the vertex tint gives the colour)
-  cloth: ['fabric', { c0: 0xd2cec6, c1: 0xe6e2da, c2: 0xf2eee6, p0: [40, 40, 1, 0.8], p1: [0.2, 0, 0, 0], wear: 0.45, meters: 0.12, size: 512, seed: 39, bump: 2.6 }],
+  cloth: ['fabric', { c0: 0xd2cec6, c1: 0xe6e2da, c2: 0xf2eee6, p0: [40, 40, 1, 0.8], p1: [0.2, 0, 0, 0], wear: 0.45, meters: 0.12, size: 512, seed: 39, bump: 1.6, paint: { edge: 0.2, r: 2 } }],
 };
 // mean linear albedo of each neutral base (the tint becomes the final colour)
 const TINT_REF = { paint: 0.765, metal: 0.6, plastic: 0.76, dark: 0.5, wood: 1, rust: 1, tile: 1, concrete: 1, cloth: 1, atlas: 1 };
@@ -128,8 +128,9 @@ function colorChunk(mode) {
   vec3 P = vDP;
   vec3 tint = pow(max(vDT.rgb, vec3(0.0)), vec3(2.2));
   vec3 base = diffuseColor.rgb;
-  float en = dvN(P * uDVA.x) * 0.5 + dvN(P * uDVA.x * 3.3 + 11.0) * 0.32 + dvN(P * uDVA.x * 9.1 + 4.0) * 0.18;
-  dvEdgeM = smoothstep(0.42, 0.6, vDF.g * (en * 1.6 - 0.15)) * uDVA.y;
+  // painted edge wear: broad soft patches, not grit
+  float en = dvN(P * uDVA.x * 0.45) * 0.7 + dvN(P * uDVA.x * 1.3 + 11.0) * 0.3;
+  dvEdgeM = smoothstep(0.4, 0.62, vDF.g * (en * 1.6 - 0.15)) * uDVA.y;
   vec3 col;
 ${mode === 0 ? `
   vec4 orm = texture2D(roughnessMap, vRoughnessMapUv);
@@ -144,7 +145,7 @@ ${mode === 0 ? `
   float rust = smoothstep(0.74 - vDW.y * 0.55, 0.84 - vDW.y * 0.55, rn) * step(0.01, vDW.y);
   vec3 paintC = tint * base / uDVRef;
   paintC = mix(paintC, paintC * vec3(0.8, 0.62, 0.46), primer * rust * 0.7);
-  vec3 steel = uDVEdge * (0.8 + rn * 0.4);
+  vec3 steel = mix(uDVEdge * (0.85 + rn * 0.25), paintC * 1.35 + 0.04, 0.45);
   vec3 rustC = mix(vec3(0.15, 0.05, 0.017), vec3(0.34, 0.13, 0.04), dvN(P * 57.0));
   vec3 primerC = mix(vec3(0.3, 0.12, 0.07), paintC * 0.55, 0.35);
   col = mix(paintC, primerC, primer * 0.7);
@@ -191,19 +192,19 @@ ${mode === 0 ? `
 function roughChunk(mode) {
   return `
 roughnessFactor *= (0.25 + 1.5 * vDT.a);
-${mode === 0 ? 'roughnessFactor = mix(roughnessFactor, mix(0.34, 0.9, dvRust), dvChip);'
+${mode === 0 ? 'roughnessFactor = mix(roughnessFactor, mix(0.6, 0.9, dvRust), dvChip);'
     : mode === 1 ? 'roughnessFactor = mix(roughnessFactor, 0.86, dvRust); roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.72, dvChip * 0.5);'
       : mode === 2 ? 'roughnessFactor = mix(roughnessFactor, 0.72, dvChip * 0.7);'
         : 'roughnessFactor = mix(roughnessFactor, min(1.0, roughnessFactor + 0.15), dvChip);'}
 roughnessFactor = mix(roughnessFactor, 0.97, dvDust);
-roughnessFactor = clamp(roughnessFactor, 0.04, 1.0);
+roughnessFactor = clamp(roughnessFactor, 0.5, 1.0); // hand-painted look: nothing glossy
 `;
 }
 function metalChunk(mode) {
   // rough / dirty metal reads partly diffuse (oxide, grime): keeps it visible under the game's dim
   // environment lighting, where pure metals would only show the (faint) environment map
   return `
-${mode === 0 ? 'metalnessFactor = mix(metalnessFactor, 0.78 * (1.0 - dvRust), dvChip);' : mode === 1 ? 'metalnessFactor *= (1.0 - dvRust) * mix(1.0, 0.55, smoothstep(0.42, 0.85, vDT.a)) * (1.0 - dvGrime * 0.6);' : ''}
+${mode === 0 ? 'metalnessFactor = mix(metalnessFactor, 0.4 * (1.0 - dvRust), dvChip);' : mode === 1 ? 'metalnessFactor *= (1.0 - dvRust) * mix(1.0, 0.55, smoothstep(0.42, 0.85, vDT.a)) * (1.0 - dvGrime * 0.6);' : ''}
 metalnessFactor *= 1.0 - dvDust;
 `;
 }

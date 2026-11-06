@@ -9,7 +9,7 @@ import { profile, ACHIEVEMENTS } from '../core/profile.js';
 import { Device } from './devices.js';
 import { buildModel } from '../entities/catalog.js';
 import { CrtScreen, text, bar, drawMenu, wrap } from '../ui/crt.js';
-import { RECIPES, itemName } from './itemdefs.js';
+import { itemName } from './itemdefs.js';
 import * as Devs from '../entities/models_devices.js';
 import { LORE } from './lore.js';
 
@@ -80,8 +80,7 @@ export class VendingMachine extends ModelDevice {
     super(world, id, key, opts);
     this.drink = key === 'vending_drink';
     this.list = this.drink ? DRINKS : SNACKS;
-    // credits can't buy anything: machines out in the Backrooms are free but only hold a few snacks
-    this.price = 0;
+    // out in the Backrooms the machines take no coins: they are free, but only hold a few snacks
     this.stock = opts.backrooms ? 3 : Infinity;
     this.state = { stuck: null, busy: 0, sold: 0, broken: opts.backrooms ? (Math.random() < 0.2 ? 1 : 0) : 0 };
     this.scr = this.screen('main', 256, 128, 'green', 1.6);
@@ -99,11 +98,11 @@ export class VendingMachine extends ModelDevice {
       distance: 1.9,
       anchorNormal: new THREE.Vector3(0, 0, 1).applyQuaternion(this.root.quaternion),
       view() {
-        const items = self.list.map(([t, name], i) => ({ label: `${String.fromCharCode(65 + Math.floor(i / 4))}${(i % 4) + 1}  ${name}`, hint: self.price ? `${self.price} CR` : 'FREE', disabled: !!self.state.broken || (self.price > 0 && g.run.credits < self.price), i }));
+        const items = self.list.map(([t, name], i) => ({ label: `${String.fromCharCode(65 + Math.floor(i / 4))}${(i % 4) + 1}  ${name}`, hint: 'PRESS', disabled: !!self.state.broken, i }));
         return {
           title: self.drink ? 'R.O.O.M. COLA' : 'SNAK-MATIC 3000',
-          subtitle: self.price ? `${g.run.credits} CR` : 'EMPLOYEE PERK',
-          lines: [self.state.broken ? { t: 'OUT OF ORDER. DO NOT SHAKE.', c: 'bad' } : self.state.sold >= self.stock ? { t: 'SOLD OUT.', c: 'bad' } : { t: self.price ? 'Snacks billed to your team account.' : 'Complimentary refreshments. Consumption is mandatory.', c: 'dim', s: 20 }],
+          subtitle: 'COIN SLOT JAMMED',
+          lines: [self.state.broken ? { t: 'OUT OF ORDER. DO NOT SHAKE.', c: 'bad' } : self.state.sold >= self.stock ? { t: 'SOLD OUT.', c: 'bad' } : { t: 'The coin mechanism is long gone. Press and hope.', c: 'dim', s: 20 }],
           items,
           footer: '[W/S] SELECT  [E] VEND  [TAB] LEAVE',
         };
@@ -113,12 +112,6 @@ export class VendingMachine extends ModelDevice {
   }
   hostAction(a, d, from) {
     if (a !== 'vend' || this.state.busy || this.state.broken || this.state.sold >= this.stock) return;
-    const g = this.world.game;
-    if (this.price) {
-      if (g.run.credits < this.price) return;
-      g.run.credits -= this.price;
-      g.pushRun();
-    }
     this.setState({ busy: 1 });
     this.world.fxAll({ k: 'vend', id: this.id, i: d.i });
     this.world.noise.emit(this.root.position, 8, 'vend');
@@ -174,7 +167,7 @@ export class VendingMachine extends ModelDevice {
       this.scr.draw(dt, (ctx, w, h, pal, t) => {
         if (this.state.broken) { text(ctx, 'ERR 0x0BAD', 10, 30, 40, pal.bad); return; }
         text(ctx, this.state.busy ? 'VENDING...' : this.state.stuck ? 'ITEM JAMMED' : 'MAKE SELECTION', 10, 20, 34, this.state.stuck ? pal.bad : pal.fg);
-        text(ctx, this.price ? `${this.price} CR` : 'FREE', 10, 70, 30, pal.dim);
+        text(ctx, this.stock !== Infinity ? `${Math.max(0, this.stock - this.state.sold)} LEFT` : 'FREE', 10, 70, 30, pal.dim);
         if (Math.floor(t * 2) % 2) text(ctx, '_', 200, 70, 30, pal.fg);
       });
     }
@@ -696,87 +689,6 @@ export class ServerRack extends ModelDevice {
 }
 
 // ---------------------------------------------------------------------------
-// Workbench crafting
-export class Workbench extends ModelDevice {
-  constructor(world, id, opts) {
-    super(world, id, 'workbench', opts);
-    this.scr = this.screen('main', 512, 384, 'amber', 1.3);
-  }
-  _materialsOnBench() {
-    const min = this.anchors.surfaceMin, max = this.anchors.surfaceMax;
-    const out = [];
-    this.root.updateMatrixWorld(true);
-    const inv = this.root.matrixWorld.clone().invert();
-    this.world.props.query(this.root.position, 2.4, (p) => {
-      if (!p.def.material && p.type !== 'plank') return;
-      const l = p.root.position.clone().applyMatrix4(inv);
-      if (min && max) {
-        if (l.x < min.x - 0.1 || l.x > max.x + 0.1 || l.z < min.z - 0.15 || l.z > max.z + 0.15 || l.y < min.y - 0.1 || l.y > max.y + 0.6) return;
-      } else if (p.root.position.distanceTo(this.root.position) > 1.3) return;
-      out.push(p);
-    });
-    return out;
-  }
-  _counts(list) {
-    const c = {};
-    for (const p of list) c[p.type] = (c[p.type] || 0) + 1;
-    return c;
-  }
-  prompt() { return `[${input.keyName('interact')}] Use workbench — place materials on it`; }
-  interact() {
-    const self = this;
-    const g = this.world.game;
-    g.terminal.open({
-      device: this, screen: this.scr, mesh: this.model.screens?.main?.mesh,
-      view() {
-        const counts = self._counts(self._materialsOnBench());
-        const have = Object.entries(counts).map(([k, n]) => `${n}x ${itemName(k)}`).join(', ') || 'nothing';
-        return {
-          title: 'FABRICATION BENCH', subtitle: 'DIY-OS',
-          lines: [{ t: `ON BENCH: ${have}`, s: 20 }],
-          items: RECIPES.map((r) => {
-            const ok = Object.entries(r.needs).every(([k, n]) => (counts[k] || 0) >= n);
-            return { label: r.name, hint: Object.entries(r.needs).map(([k, n]) => `${n}${itemName(k).slice(0, 5).toUpperCase()}`).join(' '), disabled: !ok, r };
-          }),
-          footer: 'Put planks/scrap/screws/cloth/wire ON the bench.',
-        };
-      },
-      select(it) { self.send('craft', { id: it.r.id }); },
-    });
-  }
-  hostAction(a, d, from) {
-    if (a !== 'craft') return;
-    const r = RECIPES.find((x) => x.id === d.id);
-    if (!r) return;
-    const mats = this._materialsOnBench();
-    const counts = this._counts(mats);
-    if (!Object.entries(r.needs).every(([k, n]) => (counts[k] || 0) >= n)) return;
-    const need = { ...r.needs };
-    for (const p of mats) {
-      if (need[p.type] > 0) { need[p.type]--; this.world.props.despawn(p.id); }
-    }
-    const c = this.anchorWorld('surfaceMin').lerp(this.anchorWorld('surfaceMax'), 0.5);
-    this.world.fxAll({ k: 'snd', n: 'craft', p: c.toArray(), v: 1 });
-    this.world.fxAll({ k: 'dust', p: c.toArray(), n: 16 });
-    this.world.noise.emit(c, 14, 'craft');
-    setTimeout(() => this.world.props.spawn(r.id, c.clone().add(_v.set(0, 0.35, 0)), new THREE.Quaternion(), {}), 900);
-    if (from === net.selfId) profile.unlock('craft');
-    else net.toPeer(from, 'ach', 'craft');
-  }
-  update(dt) {
-    if (this.world.game.terminal.session?.device === this || !this.nearLocal(8)) return;
-    this.scr.fps = 2;
-    this.scr.draw(dt, (ctx, w, h, pal, t) => {
-      text(ctx, 'FABRICATION BENCH', 20, 16, 34, pal.hi);
-      text(ctx, 'Place materials on the bench', 20, 70, 24, pal.fg);
-      text(ctx, 'and press [E] to fabricate.', 20, 96, 24, pal.fg);
-      RECIPES.slice(0, 6).forEach((r, i) => text(ctx, `- ${r.name}`, 30, 140 + i * 30, 24, pal.dim));
-      void t;
-    });
-  }
-}
-
-// ---------------------------------------------------------------------------
 export class CreepyTV extends ModelDevice {
   constructor(world, id, opts) {
     super(world, id, opts.model || 'tv_crt', opts);
@@ -851,7 +763,6 @@ export function makeDevice(world, kind, id, opts = {}) {
     case 'coffee_machine': return new CoffeeMachine(world, id, opts);
     case 'fridge': return new Fridge(world, id, opts);
     case 'server_rack': return new ServerRack(world, id, opts);
-    case 'workbench': return new Workbench(world, id, opts);
     case 'creepy_tv': return new CreepyTV(world, id, opts);
     default: {
       // generic static set-piece device

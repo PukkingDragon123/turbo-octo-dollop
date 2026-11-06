@@ -29,6 +29,7 @@ import { itemName } from './itemdefs.js';
 import { Combat, initCombat } from './creatures/combat.js';
 import { FAUNA_AI } from './creatures/fauna.js';
 import { Bio } from './bio.js';
+import { isNight } from './shelter.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -51,7 +52,7 @@ const PARTY_BY_DAY = [0, 0, 1, 1, 1, 1, 2, 2];
 // camp raids: seconds between raids by day, raiders per raid
 const RAID_GAP = [0, 0, 150, 130, 115, 100, 90, 75];
 const RAIDERS = [0, 0, 1, 1, 2, 2, 2, 3];
-const STAGE_RAIDS = new Set(['survive', 'sell', 'exit']);
+const STAGE_RAIDS = new Set(); // a mission that reports a stage ('camp': no shelter yet) holds the raids back
 const LABEL = { bacteria: 'THE BACTERIA', hound: 'HOUND', smiler: 'SMILER', partygoer: 'PARTYGOER', mole: 'BACKROOMS MOLE', moth: 'PALE MOTH', dcrawler: 'DAMP CRAWLER', fungal: 'THE FUNGAL' };
 // Level 0 fauna (creatures/fauna.js) by day: passive moles / moths from Day 1, damp-zone hostiles from Day 2
 const FAUNA_BY_DAY = { mole: [0, 2, 2, 3, 3, 3, 3, 3], moth: [0, 1, 2, 2, 2, 3, 3, 3], dcrawler: [0, 0, 1, 1, 2, 2, 3, 3], fungal: [0, 0, 0, 1, 1, 1, 2, 2] };
@@ -729,7 +730,7 @@ export class MonsterManager {
     if (this._litAt !== this.time) {
       this._litAt = this.time;
       this._litList.length = 0;
-      for (const p of this.world.props.props.values()) if ((p.type === 'flare' || p.type === 'glowstick') && isLitState(p.type, p.state)) this._litList.push(p);
+      for (const p of this.world.props.props.values()) if ((p.type === 'flare' || p.type === 'glowstick' || p.type === 'torch' || p.type === 'lantern' || p.type === 'camp_lamp') && isLitState(p.type, p.state)) this._litList.push(p);
     }
     let best = null, bd = r * r;
     for (const p of this._litList) {
@@ -765,7 +766,6 @@ export class MonsterManager {
       const k = l.pos.clone().sub(from).setY(0).normalize().multiplyScalar(5);
       l.applyYank([k.x, 2.5, k.z]);
     }
-    this.game.healthity?.say(d.kind === 'slash' ? 'slashed' : 'hurt');
     if (died) l.onDeath(d.cause);
   }
 
@@ -879,7 +879,8 @@ export class MonsterManager {
     this.spawnT = 6;
     const day = this.game.day.day;
     const depthBonus = Math.min(2, this.level.depth - 1);
-    const wantB = Math.min(5, BACTERIA_BY_DAY[day] + (day >= 3 ? depthBonus : 0));
+    const night = day >= 2 && isNight(this.game.day) ? 1 : 0; // more of them about at night
+    const wantB = Math.min(5, BACTERIA_BY_DAY[day] + (day >= 3 ? depthBonus : 0) + night);
     const wantS = STILL_BY_DAY[day] + depthBonus;
     let bac = 0, sl = 0, hound = 0, smiler = 0, party = 0;
     for (const a of this.agents.values()) {
@@ -957,6 +958,8 @@ export class MonsterManager {
     const camp = this.camp();
     const day = this.game.day.day;
     if (!camp || day < 2 || !this._raidsAllowed() || this.world.type === 'poolrooms') { this.raidT = Math.max(this.raidT, 45); return; }
+    // Level 0: they come for the shelter at night
+    if (this.level.mission?.survival && !isNight(this.game.day)) { this.raidT = Math.max(this.raidT, 25); return; }
     this.raidT -= dt;
     if (this.raidT > 0) return;
     this.raidT = (RAID_GAP[day] || 90) + this.rng.range(-20, 20);
@@ -969,7 +972,10 @@ export class MonsterManager {
     if (!camp || !net.isHost) return 0;
     if (!this.level.isChunkLoaded(camp.pos.x, camp.pos.z)) return 0; // nobody near enough to witness it
     const day = Math.max(2, this.game.day.day);
-    const n = count ?? RAIDERS[Math.min(7, day)] ?? 1;
+    // a shelter that is shut up tight is not worth the trouble (game/shelter.js rating 0..4)
+    const fort = this.level.mission?.state?.rating >= 4 ? 2 : this.level.mission?.state?.rating >= 3 ? 1 : 0;
+    const n = count ?? Math.max(0, (RAIDERS[Math.min(7, day)] ?? 1) - fort);
+    if (!n) return 0;
     const raiders = [];
     // creatures already out there turn toward the camp first
     const cands = [...this.agents.values()].filter((a) => !a.raid && (a.type === 'bacteria' || a.type === 'hound' || a.type === 'partygoer') && a.state !== 'chase' && a.state !== 'attack' && a.pos.distanceTo(camp.pos) < 60);
@@ -987,8 +993,8 @@ export class MonsterManager {
     if (raiders.length) {
       this.raidActive += raiders.length;
       const covered = zoneAt(this.world, camp.pos);
-      net.toAll('hq', { text: covered ? 'CAMP SENSOR: movement closing on your camp. Distorter field is up.' : 'CAMP SENSOR: movement closing on your camp. It is not protected.', from: 'CAMP' });
-      this.world.fxAll({ k: 'snd', n: 'radio_static_burst', p: camp.pos.toArray(), v: 0.6 });
+      void covered; // no camp sensor: you hear them coming (or you don't)
+      this.world.fxAll({ k: 'snd', n: 'scare_sting', p: camp.pos.toArray(), v: 0.35 });
     }
     return raiders.length;
   }

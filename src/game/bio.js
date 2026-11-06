@@ -7,7 +7,6 @@
 //      BESTIARY[species] -> { name, kind, hostile, study (seconds), tame, desc }
 //  * taming notices (fauna.js bonds a mole / moth to a clone: 'petBond', 'petWarn')
 //  * fungal SPORES: sanity loss + coughing on the clones they reach
-//  * the camp STOVE: once the team's camp exists (mission.camp), a stove with a pan is placed beside it
 //  * scribbled NOTES left by earlier clones ([E] reads them), glowcap pulse, and strange sounds in the dark
 import * as THREE from 'three';
 import { net } from '../net/net.js';
@@ -46,24 +45,32 @@ export const NOTES = [
   'Found a cart with two wheels gone. There are wheels in the supply crates. Weld them on, carry more.',
   'If it grabs you, fight. Pull, kick, anything. It lets go if you fight.',
   'Black fungus walks. Lights don\'t scare it. Flares do. Fire does.',
-  'R.O.O.M. says the moths are harmless. R.O.O.M. said a lot of things.',
+  'The moths are harmless, they said. They said a lot of things.',
   'I counted the exits twice. The second time there was one more.',
   'The other clone stopped answering on day 4. I found his lamp still lit. No clone.',
   'When it staggers, get on top of it. Pin it. Finish it. Don\'t give it a second chance.',
   'Somebody keeps leaving supply crates out here. Somebody who knew we would come.',
   'My replacement will read this. Hello. Sorry. Keep the stove lit.',
   'The walls are damp because something is breathing behind them.',
+  'Chairs come apart if you keep hitting them. Metal will not, not with hands. Find something to pry with.',
+  'Stick, a bit of glass, tape. Now I have a knife. Now I have a chance.',
+  'Puddle water made me sick. Boiled in the pan it is fine. Bottles are worth keeping.',
+  'Slept in my bedroll by the stove. Woke up there, after. Every time.',
+  'At night they come for wherever you sleep. A door that shuts. Planks across the rest.',
+  'Lay the parts on the bench and look at them long enough, you see what they want to be.',
+  'There is a radio by the place I woke up. It hisses. Fix it and someone answers.',
 ];
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _d = new THREE.Vector3();
 
 class NoteBehaviour {
-  constructor(prop) { this.prop = prop; }
+  constructor(prop, game) { this.prop = prop; this.game = game; }
   prompt() { return `[${input.keyName('interact')}] Read the scribbled note`; }
   interact() {
     const i = (this.prop.state.n ?? this.prop.id) % NOTES.length;
     floatText.notice(`"${NOTES[i]}"`, { duration: 8, speaker: 'SCRIBBLED NOTE', color: '#3a2a1a', font: 'scrawl' });
     audio.play('paper', { volume: 0.7 });
+    this.game?.survival?.onNote(i, NOTES[i]); // the watch NOTES app keeps it
   }
 }
 
@@ -74,13 +81,11 @@ export class Bio {
     this.game = mgr.game;
     this.studied = new Set();
     this.cur = null;      // study in progress { key, p }
-    this.stoveT = 3;
-    this.stoveId = null;
     this.ambT = 25;
     this.sporeMsgT = 0;
     this.warnT = 0;
     registerCooking(this.world);
-    this.world.props.registerBehaviour('note_scribble', (p) => new NoteBehaviour(p));
+    this.world.props.registerBehaviour('note_scribble', (p) => new NoteBehaviour(p, this.game));
     net.onClient('spores', (d) => this._onSpores(d));
     net.onClient('petBond', (d) => this.game.ui?.toast?.(`The ${d.label.toLowerCase()} trusts you now. It follows you and warns you of danger.`, 'good'));
     net.onClient('petWarn', (d) => {
@@ -162,36 +167,6 @@ export class Bio {
     this.world.fx.dustBurst(p, Math.round(10 * n), [0.35, 0.5, 0.4], 1.4 * n);
   }
 
-  // ---------------------------------------------------------------- camp stove (host)
-  _hostStove() {
-    const camp = this.mgr.camp();
-    if (!camp || !this.mgr.level.isChunkLoaded?.(camp.pos.x, camp.pos.z)) return;
-    if (this.stoveId != null && this.world.props.get(this.stoveId)) return;
-    let found = null;
-    this.world.props.query(camp.pos, camp.radius + 8, (p) => { if (p.type === 'camp_stove' && !p.dead) found = p; });
-    if (found) { this.stoveId = found.id; return; }
-    const yaw = camp.yaw || 0;
-    for (let k = 0; k < 12; k++) {
-      const a = yaw + 0.9 + k * 0.52, R = 2.4 + (k % 3) * 0.5;
-      const x = camp.pos.x + Math.cos(a) * R, z = camp.pos.z + Math.sin(a) * R;
-      const y = this.mgr.level.floorY?.(x, z) ?? 0;
-      _v.set(x, y + 0.5, z);
-      if (!this.world.physics.lineOfSight(_w.set(camp.pos.x, y + 0.5, camp.pos.z), _v)) continue;
-      let blocked = false;
-      this.world.props.query(_v, 0.9, () => { blocked = true; });
-      if (blocked) continue;
-      const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -a + Math.PI / 2);
-      const st = this.world.props.spawn('camp_stove', new THREE.Vector3(x, y + 0.2, z), q, { state: { lit: 0 } });
-      if (!st) return;
-      this.stoveId = st.id;
-      // something to practise on
-      this.world.props.spawn('canned_food', new THREE.Vector3(x + 0.45, y + 0.15, z + 0.2), new THREE.Quaternion());
-      this.world.props.spawn('fungus_shelf', new THREE.Vector3(x - 0.4, y + 0.15, z + 0.25), new THREE.Quaternion());
-      net.toAll('hq', { text: 'CAMP: a field stove has been issued. Light it [E], drop raw food in the pan, flip it [E] before it burns. Cooked food heals.', from: 'R.O.O.M.' });
-      return;
-    }
-  }
-
   // ---------------------------------------------------------------- strange sounds (local)
   _ambient(dt) {
     this.ambT -= dt;
@@ -211,10 +186,6 @@ export class Bio {
     this.sporeMsgT -= dt;
     this.warnT -= dt;
     if (GLOW.mat) GLOW.mat.emissiveIntensity = 1.3 + Math.sin(this.world.time * 1.7) * 0.5 + Math.sin(this.world.time * 4.3) * 0.15;
-    if (net.isHost && !this.game.isLobby) {
-      this.stoveT -= dt;
-      if (this.stoveT <= 0) { this.stoveT = 2; this._hostStove(); }
-    }
     this._ambient(dt);
   }
 

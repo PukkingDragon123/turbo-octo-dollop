@@ -1,5 +1,6 @@
-// Quick-time events, diegetic: the title floats in front of the camera (floatText), big 3D keycaps hang
-// under the crosshair in the viewmodel layer, the clone's hands shake and the screen pulses with every hit.
+// Quick-time events, diegetic: the title floats in front of the camera (floatText), hand-drawn key rings hang
+// under the crosshair in the viewmodel layer (ivory ink, one soft shadow, like all screen UI), the clone's hands
+// shake and the screen pulses with every hit.
 // Keyboard and touch (a full-screen tap / hold area, or tappable keycaps for sequences).
 //
 //   game.qte.start({ kind: 'mash' | 'sequence' | 'hold', keys (codes, or a count for random WASD), duration, title, onWin, onFail,
@@ -16,7 +17,8 @@ import { floatText } from '../ui/floattext.js';
 
 export const QTE_TUNE = { mashCount: 14, mashDecay: 0.2, holdTime: 1.6, duration: 3.5, wrongPenalty: 0.35, panelDepth: 0.34, panelY: -0.045 };
 const SEQ_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
-const TITLES = { mash: 'BREAK FREE!', sequence: 'FOLLOW THE KEYS!', hold: 'HOLD ON!' };
+const TITLES = { mash: 'Break free!', sequence: 'Follow the keys', hold: 'Hold on!' };
+const INK = '#f3e6c8', SHADE = 'rgba(28,20,10,0.62)', RUST = '#c9603c', DARK = '#3d3020';
 const CW = 512, CH = 256;
 
 export function keyLabel(code) {
@@ -54,7 +56,7 @@ export class QTE {
       o, kind, keys, idx: 0, t: 0, progress: 0, done: false, flash: 0, wrong: 0,
       duration: o.duration ?? (kind === 'sequence' ? 1.1 + keys.length * 0.7 : QTE_TUNE.duration),
       count: o.count ?? QTE_TUNE.mashCount, hold: o.hold ?? QTE_TUNE.holdTime, decay: o.decay ?? QTE_TUNE.mashDecay,
-      lock: o.lock !== false, color: o.color || '#ffcc33',
+      lock: o.lock !== false, color: o.color || INK,
       touchHold: false,
     };
     q.title = floatText.notice(o.title || TITLES[kind], { color: q.color, duration: q.duration + 0.6 });
@@ -154,38 +156,54 @@ export class QTE {
     const c = this.ctx;
     c.clearRect(0, 0, CW, CH);
     const keys = q.kind === 'sequence' ? q.keys : [q.keys[0]];
-    const n = keys.length, kw = Math.min(110, (CW - 40) / n - 12), kh = 92, gap = 12;
-    const total = n * kw + (n - 1) * gap;
+    const n = keys.length, gap = 16;
+    const d = Math.min(96, (CW - 40 - (n - 1) * gap) / n);
+    const total = n * d + (n - 1) * gap;
     let x = (CW - total) / 2;
-    const y = 36;
+    const cy = 30 + 48;
+    c.lineCap = 'round'; c.lineJoin = 'round';
     keys.forEach((k, i) => {
       const cur = q.kind !== 'sequence' || i === q.idx, done = q.kind === 'sequence' && i < q.idx;
       const pressed = cur && q.flash > 0.5;
       const lab = keyLabel(k), wide = lab.length > 3;
-      const w = wide && n === 1 ? 230 : kw, xx = n === 1 ? (CW - w) / 2 : x;
-      const yy = y + (pressed ? 6 : 0);
-      // keycap: dark skirt, beige top, legend
-      rr(c, xx, y + 10, w, kh, 14); c.fillStyle = 'rgba(0,0,0,0.55)'; c.fill();
-      rr(c, xx, yy, w, kh - 6, 14); c.fillStyle = done ? '#3a5a3a' : q.wrong > 0.3 && cur ? '#a83020' : cur ? '#e8dcb8' : '#8a8270'; c.fill();
-      rr(c, xx + 8, yy + 6, w - 16, kh - 26, 10); c.fillStyle = done ? '#4f7a4f' : cur ? '#f6efd8' : '#a39a86'; c.fill();
-      c.fillStyle = done ? '#bfffbf' : '#1a1610';
-      c.font = `bold ${wide ? 40 : 58}px "Jolly Lodger", Georgia, serif`;
+      const w = wide && n === 1 ? 220 : d, xx = n === 1 ? (CW - w) / 2 : x;
+      const cx = xx + w / 2, r = (cur ? 1 : 0.84) * d / 2 * (pressed ? 0.92 : 1);
+      const wrong = q.wrong > 0.3 && cur;
+      c.save();
+      c.shadowColor = SHADE; c.shadowBlur = 8; c.shadowOffsetY = 2;
+      // a soft disc so the ink reads on bright walls, then the pen ring
+      c.fillStyle = done ? 'rgba(243,230,200,0.86)' : 'rgba(34,26,16,0.22)';
+      pill(c, cx, cy, r, wide && n === 1 ? w / 2 : r); c.fill();
+      c.strokeStyle = wrong ? RUST : INK;
+      c.globalAlpha = done ? 0.5 : cur ? 1 : 0.55;
+      c.lineWidth = cur ? 4 : 2.6;
+      penPill(c, cx, cy, r, wide && n === 1 ? w / 2 : r, i * 13 + 5); c.stroke();
+      c.globalAlpha = done ? 1 : cur ? 1 : 0.6;
+      c.fillStyle = done ? DARK : INK;
+      c.font = `${wide ? 44 : 60}px "Jolly Lodger", Georgia, serif`;
       c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText(done ? '✓' : lab, xx + w / 2, yy + (kh - 26) / 2 + 8);
-      if (cur && !done) { c.strokeStyle = q.color; c.lineWidth = 5; rr(c, xx - 5, yy - 5, w + 10, kh + 4, 18); c.stroke(); }
-      x += kw + gap;
+      if (done) { c.shadowColor = 'transparent'; c.strokeStyle = DARK; c.lineWidth = 5; c.beginPath(); c.moveTo(cx - 14, cy + 1); c.lineTo(cx - 3, cy + 12); c.lineTo(cx + 16, cy - 12); c.stroke(); }
+      else c.fillText(lab, cx, cy + 4);
+      c.restore();
+      x += d + gap;
     });
-    // progress bar + time fuse
-    const by = 168, bw = 380, bx = (CW - bw) / 2;
-    rr(c, bx, by, bw, 22, 11); c.fillStyle = 'rgba(0,0,0,0.6)'; c.fill();
-    rr(c, bx + 3, by + 3, Math.max(0, (bw - 6) * q.progress), 16, 8); c.fillStyle = q.color; c.fill();
-    const left = 1 - q.t / q.duration;
-    c.fillStyle = left < 0.3 ? '#ff5040' : 'rgba(255,255,255,0.7)';
-    c.fillRect(bx + (bw * (1 - left)) / 2, by + 30, bw * left, 5);
-    c.font = 'bold 30px "Jolly Lodger", Georgia, serif';
-    c.fillStyle = '#fff';
-    const hint = input.touch ? (q.kind === 'mash' ? 'TAP! TAP! TAP!' : q.kind === 'hold' ? 'HOLD THE SCREEN' : 'TAP THE KEYS') : (q.kind === 'mash' ? 'MASH IT!' : q.kind === 'hold' ? 'HOLD IT!' : '');
-    if (hint) c.fillText(hint, CW / 2, 228);
+    // progress: a pen line filling in, and a thin fuse that burns down
+    const by = 168, bw = 360, bx = (CW - bw) / 2;
+    c.save();
+    c.shadowColor = SHADE; c.shadowBlur = 6; c.shadowOffsetY = 2;
+    c.strokeStyle = INK;
+    c.globalAlpha = 0.3; c.lineWidth = 3;
+    penLine(c, bx, bx + bw, by, 3); c.stroke();
+    if (q.progress > 0.01) { c.globalAlpha = 1; c.lineWidth = 7; penLine(c, bx, bx + bw * q.progress, by, 3); c.stroke(); }
+    const left = Math.max(0, 1 - q.t / q.duration);
+    c.globalAlpha = 0.85; c.lineWidth = 2.5; c.strokeStyle = left < 0.3 ? RUST : INK;
+    if (left > 0.01) { penLine(c, bx + (bw * (1 - left)) / 2, bx + bw - (bw * (1 - left)) / 2, by + 22, 9); c.stroke(); }
+    c.globalAlpha = 1;
+    c.font = '34px "Jolly Lodger", Georgia, serif';
+    c.fillStyle = INK; c.textAlign = 'center'; c.textBaseline = 'middle';
+    const hint = input.touch ? (q.kind === 'mash' ? 'Tap, tap, tap!' : q.kind === 'hold' ? 'Hold the screen' : 'Tap the keys') : (q.kind === 'mash' ? 'Mash it!' : q.kind === 'hold' ? 'Hold it!' : '');
+    if (hint) c.fillText(hint, CW / 2, 226);
+    c.restore();
     this.tex.needsUpdate = true;
   }
 
@@ -201,7 +219,7 @@ export class QTE {
       audio.play('ui_select', { volume: 0.7, bus: 'ui' });
       juice.flash(0.25);
       juice.shake(0.3);
-      floatText.notice('FREE!', { color: '#8dffa6', duration: 1.1 });
+      floatText.notice('Free!', { duration: 1.1 });
       try { q.o.onWin?.(q); } catch (e) { console.error('[qte] onWin', e); }
     } else if (win === false) {
       audio.play('ui_error', { volume: 0.7, bus: 'ui' });
@@ -222,7 +240,7 @@ export class QTE {
         e.preventDefault();
         const q = this.active;
         if (!q) return;
-        const k = e.target?.dataset?.k;
+        const k = e.target?.closest?.('[data-k]')?.dataset?.k;
         if (q.kind === 'hold') q.touchHold = true;
         else if (q.kind === 'sequence') { if (k) this.press(k); } else this.press('*');
       });
@@ -239,25 +257,57 @@ export class QTE {
     if (on && q?.kind === 'sequence') {
       const uniq = [...new Set(q.keys)];
       const wrap = document.createElement('div');
-      wrap.style.cssText = 'position:absolute;left:50%;bottom:18%;transform:translateX(-50%);display:flex;gap:14px;';
-      for (const k of uniq) {
+      wrap.className = 'qte-keys';
+      uniq.forEach((k, i) => {
         const b = document.createElement('button');
         b.type = 'button';
+        b.className = 'qte-key';
         b.dataset.k = k;
-        b.textContent = keyLabel(k);
-        b.style.cssText = 'min-width:68px;height:68px;font:bold 28px "Jolly Lodger", Georgia, serif;background:#e8dcb8;color:#1a1610;border:3px solid #ffcc33;border-radius:12px;';
+        b.innerHTML = `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="${ringD(24, 24, 21, i * 7 + 3)}"/></svg>`;
+        b.append(keyLabel(k));
         wrap.appendChild(b);
-      }
+      });
       el.appendChild(wrap);
     }
   }
 }
 
-function rr(c, x, y, w, h, r) {
+// ---- hand-drawn shapes (pen lines that wobble a little and overrun where they meet)
+function rnd(seed) { let s = (seed * 16807 + 11) % 2147483647 || 7; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; }
+function ringD(cx, cy, r, seed) {
+  const R = rnd(seed), p = R() * 6.28, a0 = R() * 6.28, N = 28, sweep = Math.PI * 2 + 0.35;
+  let d = '';
+  for (let i = 0; i <= N; i++) {
+    const a = a0 + (sweep * i) / N, rr = r * (1 + 0.035 * Math.sin(2 * a + p) + (i / N) * 0.03);
+    d += `${i ? 'L' : 'M'}${(cx + Math.cos(a) * rr).toFixed(2)} ${(cy + Math.sin(a) * rr).toFixed(2)}`;
+  }
+  return d;
+}
+// a capsule (or circle when hw === r) as a smooth closed path
+function pill(c, cx, cy, r, hw) {
   c.beginPath();
-  c.moveTo(x + r, y); c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r);
-  c.lineTo(x + w, y + h - r); c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  c.lineTo(x + r, y + h); c.quadraticCurveTo(x, y + h, x, y + h - r);
-  c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y);
+  if (hw <= r + 0.5) { c.arc(cx, cy, r, 0, Math.PI * 2); return; }
+  c.arc(cx - hw + r, cy, r, Math.PI / 2, Math.PI * 1.5);
+  c.arc(cx + hw - r, cy, r, -Math.PI / 2, Math.PI / 2);
   c.closePath();
+}
+// the same outline drawn by hand: a slightly uneven loop that overruns its start
+function penPill(c, cx, cy, r, hw, seed) {
+  const R = rnd(seed), p = R() * 6.28, a0 = R() * 6.28, N = 36, sweep = Math.PI * 2 + 0.3;
+  c.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const a = a0 + (sweep * i) / N, k = 1 + 0.03 * Math.sin(2 * a + p) + (i / N) * 0.025;
+    const ex = Math.max(0, hw - r) * Math.sign(Math.cos(a));
+    const x = cx + ex + Math.cos(a) * r * k, y = cy + Math.sin(a) * r * k;
+    if (i) c.lineTo(x, y); else c.moveTo(x, y);
+  }
+}
+function penLine(c, x0, x1, y, seed) {
+  const R = rnd(seed), n = Math.max(2, Math.round((x1 - x0) / 60));
+  c.beginPath();
+  c.moveTo(x0, y + (R() - 0.5) * 2);
+  for (let i = 1; i <= n; i++) {
+    const x = x0 + ((x1 - x0) * i) / n;
+    c.quadraticCurveTo(x - (x1 - x0) / n / 2, y + (R() - 0.5) * 4, x, y + (R() - 0.5) * 2);
+  }
 }

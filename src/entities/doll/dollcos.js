@@ -7,6 +7,9 @@
 // (s = eyeball scale, iris colour, led = 'red' swaps the LED pupil, pupil = LED disc scale).
 // Entries with `unlock` are commendation rewards (ids in core/profile.js ACHIEVEMENTS).
 import { RNG, hashString } from '../../core/rng.js';
+// garment list canonicaliser (set by cloth.js to avoid an import cycle; strings pass through until then)
+let RAG_CANON = (v) => (typeof v === 'string' ? v : Array.isArray(v) ? v.join(',') : '');
+export function setRagCanon(fn) { RAG_CANON = fn; }
 
 export const COSMETICS = {
   suit: [
@@ -129,8 +132,24 @@ COSMETICS.eyes = [
   { id: 'red', name: 'Red Alert', iris: [0.22, 0.03, 0.02], led: 'red', s: 1, unlock: 'ratcatcher' },
   { id: 'void', name: 'Pinprick Void', iris: [0, 0, 0], s: 1.05, pupil: 0.38, unlock: 'photo_bacteria' },
   { id: 'gold', name: 'Gilded Optics', iris: [0.55, 0.38, 0.06], s: 1.05, unlock: 'researcher' },
+  // the jar shelf additions (eyes.js paints every iris)
+  { id: 'cat', name: 'Alley Cat', iris: [0.45, 0.4, 0.1], s: 1.04, pupilShape: [0.38, 1.25], unlock: null },
+  { id: 'spiral', name: 'Hypno Swirl', iris: [0.3, 0.16, 0.3], s: 1.06, pupil: 0.55, unlock: null },
+  { id: 'marble', name: 'Shooter Marbles', iris: [0.2, 0.45, 0.42], s: 1.08, pupil: 0.6, unlock: null },
+  { id: 'odd', name: 'Odd Pair', iris: [0.15, 0.3, 0.55], s: 1, unlock: null },
+  { id: 'shutter', name: 'Camera Shutters', iris: [0.3, 0.3, 0.3], s: 1.03, pupil: 0.8, unlock: null },
+  { id: 'milk', name: 'Milk Glass', iris: [0.6, 0.65, 0.68], s: 1, pupil: 0.7, unlock: null },
 ];
-export const DEFAULT_COSMETICS = { suit: 'yellow', skin: 'tan', hat: 'none', visor: 'none', face: 'dots', backpack: 'tank', accessory: 'none', frame: 'neutral', skull: 'std', build: 'std', eyes: 'glass' };
+// paint: encoded spray-paint layer (paint.js, '' = none); rags: worn cloth garments, comma-separated
+// garment ids (cloth.js RAGS, at most one per zone: torso / neck / head)
+export const DEFAULT_COSMETICS = { suit: 'yellow', skin: 'tan', hat: 'none', visor: 'none', face: 'dots', backpack: 'tank', accessory: 'none', frame: 'neutral', skull: 'std', build: 'std', eyes: 'glass', paint: '', rags: '' };
+// plain, canonical cosmetics object (what is saved / sent over the network)
+export function plainCosmetics(c) {
+  const r = c && c.suitEntry ? c : resolveCos(c);
+  const o = {};
+  for (const k of Object.keys(DEFAULT_COSMETICS)) o[k] = r[k];
+  return o;
+}
 
 export function cosmeticEntry(slot, id) {
   const list = COSMETICS[slot];
@@ -140,6 +159,7 @@ export function randomCosmetics(seed = 1, allowLocked = true) {
   const r = new RNG(typeof seed === 'string' ? hashString(seed) : seed);
   const out = {};
   for (const slot in COSMETICS) out[slot] = r.pick(COSMETICS[slot].filter((e) => allowLocked || !e.unlock)).id;
+  out.paint = ''; out.rags = '';
   return out;
 }
 export function resolveCos(c) {
@@ -159,5 +179,7 @@ export function resolveCos(c) {
   out.suit = out.suitEntry.id; out.skin = out.skinEntry.id; out.hat = out.hatEntry.id; out.visor = out.visorEntry.id;
   out.face = out.faceEntry.id; out.backpack = out.packEntry.id; out.accessory = out.accEntry.id;
   out.frame = out.frameEntry.id; out.skull = out.skullEntry.id; out.build = out.buildEntry.id; out.eyes = out.eyesEntry.id;
+  out.paint = typeof out.paint === 'string' && out.paint.startsWith('p1.') ? out.paint : '';
+  out.rags = RAG_CANON(out.rags);
   return out;
 }

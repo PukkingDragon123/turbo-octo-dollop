@@ -8,8 +8,7 @@
 //  - WHEEL TROLLEY prop: one rigid body that only turns about Y, frictionless ball "wheels", grippy deck,
 //    sideways damping like fixed casters, wheels kept on the floor while someone pushes it, and loads on
 //    the deck dragged along with it (with the reaction pushed back into the cart).
-//  (Crafting is retired: no field workbench is put down at the camp any more; game/crafting.js turns the
-//   level's workbenches into set dressing.)
+//  (Both are made at a workbench: game/crafting.js, which also registers the level's workbench devices.)
 import * as THREE from 'three';
 import { engine } from '../core/engine.js';
 import { net } from '../net/net.js';
@@ -17,7 +16,7 @@ import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
 import { RAPIER, Q } from '../physics/physics.js';
 import { zoneAt } from './creatures/agent.js';
-import './crafting.js'; // registers the retired workbench device
+import './crafting.js'; // registers the workbench device (DEVICE_FACTORIES.workbench)
 import { modelHalfHeight } from '../entities/catalog.js';
 
 export const SAFE_R = 7;

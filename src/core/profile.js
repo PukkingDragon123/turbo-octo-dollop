@@ -2,41 +2,45 @@
 // Only cosmetics and achievements persist between runs — no gameplay upgrades.
 const KEY = 'room_profile_v1';
 
+// Survival milestones. The ids are kept (the cosmetics in entities/doll/dollcos.js unlock by id); what they
+// stand for is the survival loop: waking up, the first tool, a bench, a shelter, the first night, the radio, out.
+// game/progress.js unlocks most of them; game/radio.js unlocks radio_contact, grid_restored and escape.
 export const ACHIEVEMENTS = {
-  first_day: { name: 'First Day on the Job', desc: 'Get dispatched into the Backrooms.' },
-  survive3: { name: 'Probationary Period', desc: 'Survive until Day 3.' },
+  first_day: { name: 'Rise and Shine', desc: 'Wake up in the Backrooms.' },
+  craft: { name: 'Handmade', desc: 'Put two things together into something new.' },
+  quota: { name: 'First Tool', desc: 'Make your first tool.' },
+  generators: { name: 'Workshop', desc: 'Build a workbench.' },
+  crate: { name: 'A Roof of Sorts', desc: 'Lie down in a bed and claim a shelter.' },
+  researcher: { name: 'Home Cooking', desc: 'Eat a meal you cooked on a stove.' },
+  night_owl: { name: 'Night Owl', desc: 'Live through your first night.' },
+  sleepy: { name: 'Power Nap', desc: 'Sleep in a bed you made.' },
+  survive3: { name: 'Three Days In', desc: 'Survive until Day 3.' },
   survivor7: { name: 'Seven Day Week', desc: 'Reach Day 7 in a dimension.' },
-  generators: { name: 'Generator Whisperer', desc: 'Repair all three generators.' },
-  escape: { name: 'Escape Artist', desc: 'Evacuate through the exit door.' },
+  radio_contact: { name: 'Is Anyone There?', desc: 'Hear another voice on the radio.' },
+  escape: { name: 'Escape Artist', desc: 'Get out of the Backrooms alive.' },
   bullseye: { name: 'Bullseye', desc: 'Hit a bullseye in the break room.' },
   photo_bacteria: { name: 'Say Cheese', desc: 'Photograph the Bacteria and live.' },
   stilllife: { name: 'Still Life Painter', desc: 'Photograph a Still Life.' },
-  cloned: { name: 'Clone Again', desc: 'Get brought back on a cloning pad.' },
+  cloned: { name: 'Not Again', desc: 'Die and wake up again.' },
+  revived: { name: 'Home Again', desc: 'Wake up again in your own bed.' },
   hydrated: { name: 'Hydration Champion', desc: 'Drink 10 almond-based beverages.' },
   ratcatcher: { name: 'Pest Control', desc: 'Catch a rat in a sample jar.' },
   disposable: { name: 'Truly Disposable', desc: 'Die 10 times.' },
-  teamlift: { name: 'Team Building Exercise', desc: 'Carry something with 3 clones at once.' },
-  vending: { name: 'Snack Attack', desc: 'Buy 10 things from vending machines.' },
-  welder: { name: 'Hot Work Permit', desc: 'Weld something to something else.' },
-  crate: { name: 'Air Mail', desc: 'Order a supply crate.' },
-  researcher: { name: 'Employee of the Month', desc: 'Earn $250,000 in one run.' },
+  teamlift: { name: 'Heavy Lifting', desc: 'Carry something with 3 clones at once.' },
+  vending: { name: 'Snack Attack', desc: 'Get 10 things out of vending machines.' },
+  welder: { name: 'Hot Work', desc: 'Fix something to something else with the multitool.' },
+  collector: { name: 'Hoarder', desc: 'Fill a storage crate.' },
   aquarium: { name: 'Fish Out of Water', desc: 'Break the aquarium.' },
-  sleepy: { name: 'Power Nap', desc: 'Sleep in the Backrooms.' },
-  craft: { name: 'Arts & Crafts', desc: 'Craft something at a workbench.' },
-  medic: { name: 'Field Medic', desc: 'Stop your own bleeding with a bandage or medkit.' },
-  quota: { name: 'Quota Met', desc: 'Earn your first $1,000 at the crusher.' },
-  collector: { name: 'Specimen Collector', desc: 'Deposit 5 research samples.' },
-  revived: { name: 'Back From the Vat', desc: 'Re-clone a teammate at the cloning pad.' },
-  lost: { name: 'Hopelessly Lost', desc: 'Wander more than 150 m from where you landed.' },
-  night_owl: { name: 'Night Owl', desc: 'Sleep through a nap in the Backrooms.' },
-  // ---- hard quests of the quest tree (game/economy.js QUEST_TREES): each one unlocks a special cosmetic
-  //      (entities/doll/dollcos.js entries with unlock: <id>). hard: shown with a star on the trophy wall.
-  escape_fund: { name: 'Escape Velocity', desc: 'Fill a level\'s $1,000,000 escape fund.', hard: true, cosmetic: 'skin:gilded' },
-  asset_stripper: { name: 'Asset Stripper', desc: 'Deliver $500,000 to the crusher in one level.', hard: true, cosmetic: 'suit:liquidator' },
-  ironclad: { name: 'Ironclad', desc: 'Reach Day 5 without a single re-clone.', hard: true, cosmetic: 'suit:ironclad' },
+  medic: { name: 'Field Medic', desc: 'Stop your own bleeding with a bandage.' },
+  lost: { name: 'Hopelessly Lost', desc: 'Wander more than 150 m from where you woke up.' },
+  // ---- hard ones: each unlocks a special cosmetic (entities/doll/dollcos.js entries with unlock: <id>);
+  //      hard: shown with a star on the trophy wall
+  escape_fund: { name: 'Fortified', desc: 'A shelter with a bed, a door, storage, a stove, a light, insulation and a trap.', hard: true, cosmetic: 'skin:gilded' },
+  asset_stripper: { name: 'Scrapper', desc: 'Take 40 things apart in one run.', hard: true, cosmetic: 'suit:liquidator' },
+  ironclad: { name: 'Ironclad', desc: 'Reach Day 5 without anyone dying.', hard: true, cosmetic: 'suit:ironclad' },
   bacteria_basher: { name: 'Bacteria Basher', desc: 'Stun the Bacteria 3 times.', hard: true, cosmetic: 'suit:basher' },
-  dossier: { name: 'Complete Dossier', desc: 'Recover all 6 case files and study 15 things.', hard: true, cosmetic: 'suit:archivist' },
-  grid_restored: { name: 'Grid Restored', desc: 'Get all 3 maze generators running.', hard: true, cosmetic: 'suit:lineman' },
+  dossier: { name: 'Archivist', desc: 'Read every note the earlier clones left.', hard: true, cosmetic: 'suit:archivist' },
+  grid_restored: { name: 'Long Range', desc: 'Fit the radio with an antenna, a tuning coil and an amplifier.', hard: true, cosmetic: 'suit:lineman' },
 };
 // achievement id -> 'slot:id' of the cosmetic it unlocks (for the trophy wall)
 export const ACHIEVEMENT_COSMETICS = Object.fromEntries(Object.entries(ACHIEVEMENTS).filter(([, a]) => a.cosmetic).map(([k, a]) => [k, a.cosmetic]));

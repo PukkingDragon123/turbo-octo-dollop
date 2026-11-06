@@ -22,7 +22,7 @@ export function hazeMaterial(field) {
     uniforms: Object.assign(THREE.UniformsUtils.clone(THREE.UniformsLib.fog), {
       uLightTex: field.uniforms.uLightTex,
       uLightScale: field.uniforms.uLightScale,
-      uHaze: { value: 0.02 },
+      uHaze: { value: 0.03 },
       uTime: field.uniforms.uTime,
     }),
     vertexShader: /* glsl */`
@@ -68,7 +68,8 @@ export function hazeMaterial(field) {
         float nearFade = smoothstep(0.6, 2.2, length(cameraPosition - vWP));
         float shimmer = 0.88 + 0.12 * sin(vWP.x * 3.1 + vWP.z * 2.3 + uTime * 0.4) * sin(vWP.y * 4.0 - uTime * 0.3);
         float a = uHaze * across * fall * nearFade * shimmer;
-        gl_FragColor = vec4(vCol * uLightScale * a, 1.0);
+        // golden haze: the glow under a troffer is a touch warmer than the tube itself
+        gl_FragColor = vec4(vCol * vec3(1.06, 0.95, 0.76) * uLightScale * a, 1.0);
         #include <fog_fragment>
         #ifdef USE_FOG
           gl_FragColor.rgb *= 1.0 - fogFactor * 0.85;

@@ -2,10 +2,10 @@
 //  decorateBiome(level, rec)  every peer, static: black mould stains and mushroom tufts (glowcaps too) in damp
 //                             cells, blood / oil drag trails, clones torn apart (missing limbs, oil, wires),
 //                             the cold fire ring of an abandoned camp
-//  populateBiome(level, rec)  host, once: collectible fungus in damp cells; ABANDONED CAMPS (collapsed tent,
-//                             sleeping bag, supply crate, camp stove, a broken trolley, loose wheels, boards,
-//                             scrap, tools, batteries, a scribbled note, sometimes a case file); lone R.O.O.M.
-//                             supply crates, scrap piles and notes
+//  populateBiome(level, rec)  host, once: collectible fungus in damp cells; ABANDONED CAMPS of earlier clones
+//                             (collapsed tent, sleeping bag, supply crate, camp stove, a broken trolley, loose
+//                             wheels, boards, sticks, rags, scrap, tools, batteries, a burnt-out torch, a scribbled
+//                             note); lone supply crates, scrap piles and notes
 import * as THREE from 'three';
 import { CELL, CHUNK } from './layout.js';
 import { RNG, hash3, hash01 } from '../../../core/rng.js';
@@ -367,7 +367,7 @@ export function populateBiome(level, rec) {
     for (const t of ['metal_scrap', 'screws', rng.pick(['battery', 'battery', 'flashlight']), rng.pick(['canned_food', 'almond_water', 'mole_meat'])]) put(t, cx + r(1.8), cz + r(1.8), rng.next() * 6, { ...o, clear: 0.18 });
     if (rng.chance(0.35)) put(rng.pick(['wrench', 'crowbar', 'tape_roll']), cx + r(1.6), cz + r(1.6), rng.next() * 6, o);
     put('note_scribble', cx - 0.4 + r(0.4), cz - 0.2 + r(0.4), rng.next() * 6, { ...o, clear: 0.15, state: { n: rng.int(0, 999) } });
-    if (rng.chance(0.07)) put('case_file', cx + r(1.2), cz + r(1.2), rng.next() * 6, o);
+    for (const t of ['stick', rng.pick(['fabric_scrap', 'foam', 'bottle']), rng.pick(['torch', 'lighter', 'glass_shard'])]) put(t, cx + r(1.8), cz + r(1.8), rng.next() * 6, { ...o, clear: 0.15 });
   }
   // --- lone supply crate / scrap pile / note somewhere open
   const pickCell = () => (openCells.length ? openCells[rng.int(0, openCells.length - 1)] : null);

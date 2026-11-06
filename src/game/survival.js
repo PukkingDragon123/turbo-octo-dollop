@@ -8,8 +8,11 @@
 // fractures, rest / microsleep / insomnia keep their code paths but are held at neutral values every
 // tick (so other systems writing to them are neutralised too). Flip the flag to bring them back.
 //
-// needsActive: hunger & thirst only drain while true. Level 0 keeps it false until the camp is built
-// (CampMission); Game.loadWorld turns it on for every other level.
+// WARMTH (0..100, always on in the Backrooms): drains, faster at night and later in the week; fires, the
+// stove, a lit torch, worn padding, the shelter and sleeping restore it (ctx.climate from game/shelter.js). Cold
+// slows stamina, then gnaws at health and sanity. Day 1 never lets it kill.
+// armorMul: damage taken x (worn armour, a held shield: game/gear.js).
+// needsActive: hunger & thirst only drain while true (Game.loadWorld turns it on for every level).
 import { clamp } from '../core/rng.js';
 
 export const ADVANCED_SURVIVAL = false;
@@ -35,6 +38,8 @@ export class Survival {
     this.maxStamina = 40;
     this.rest = 100;         // 100 = fully rested
     this.sanity = 100;
+    this.warmth = 100;       // 100 = warm
+    this.armorMul = this.armorMul ?? 1;
     this.pain = 0;           // 0..1
     this.stress = 0;         // 0..1 (monster proximity, chase)
     this.heartRate = 72;
@@ -48,7 +53,7 @@ export class Survival {
     this.staminaDelay = 0;
     this.lastDamage = 0;
     this.damageFlash = 0;
-    this.events = []; // condition change notifications for Healthity
+    this.events = []; // condition change notifications
     this._prev = {};
     this.time = 0;
     this.microsleep = 0;
@@ -83,6 +88,7 @@ export class Survival {
       if (this.health - amount < 15) amount = Math.max(0, this.health - 15);
     }
     const adv = this.advanced;
+    amount *= this.armorMul ?? 1;
     this.health -= amount;
     this.lastHit = { amount, kind, time: this.time };
     this.pain = clamp(this.pain + amount / 60, 0, 1);
@@ -165,8 +171,17 @@ export class Survival {
     const hrTarget = 68 + this.stress * 70 + (1 - bv) * 90 + (ctx.sprinting ? 45 : ctx.moving ? 12 : 0) + (fever ? 12 : 0) - (this.sleeping ? 12 : 0) + this.pain * 15;
     this.heartRate += (hrTarget - this.heartRate) * Math.min(1, dt * 0.8);
 
+    // warmth: the climate around the clone (no climate: the lobby, a level without one -> warm)
+    const cl = ctx.climate;
+    if (cl && !lobby) {
+      this.warmth = clamp(this.warmth + (cl.gain - cl.loss) * dt * (cl.gain > cl.loss ? 6 : 1), 0, 100);
+      if (this.warmth < 15) {
+        this.sanity = clamp(this.sanity - dt * 0.06, 0, 100);
+        if (this.warmth <= 0.5 && !ctx.safeDay) this.health -= dt * 0.12;
+      }
+    } else this.warmth = Math.min(100, this.warmth + dt * 3);
     // stamina
-    const exhausted = this.rest < 20 || this.hunger < 15 || this.thirst < 10;
+    const exhausted = this.rest < 20 || this.hunger < 15 || this.thirst < 10 || this.warmth < 30;
     this.maxStamina = this.fracture ? 25 : 40;
     if (ctx.sprinting && ctx.moving) {
       this.stamina -= dt * 7.5;
@@ -224,7 +239,7 @@ export class Survival {
     this.damageFlash = Math.max(0, this.damageFlash - dt * 1.2);
 
     if (this.blood <= 1500) this.die('blood loss');
-    if (this.health <= 0) this.die(this.hunger <= 0 ? 'starvation' : this.thirst <= 0 ? 'dehydration' : this.infection >= 100 ? 'infection' : this.bleed ? 'blood loss' : 'injuries');
+    if (this.health <= 0) this.die(this.hunger <= 0 ? 'starvation' : this.thirst <= 0 ? 'dehydration' : this.warmth <= 0.5 ? 'the cold' : this.infection >= 100 ? 'infection' : this.bleed ? 'blood loss' : 'injuries');
 
     if (!adv) this._neutralise();
     this._detectChanges();
@@ -240,7 +255,7 @@ export class Survival {
     this.blood = 5000;
   }
 
-  // condition flags for UI/Healthity
+  // condition flags for the UI (watch STATUS)
   conditions() {
     const c = [];
     const adv = this.advanced;
@@ -255,6 +270,8 @@ export class Survival {
     else if (this.thirst < 40) c.push('THIRSTY');
     if (adv && this.rest < 20) c.push('EXHAUSTED');
     else if (adv && this.rest < 40) c.push('TIRED');
+    if (this.warmth < 15) c.push('FREEZING');
+    else if (this.warmth < 35) c.push('COLD');
     if (this.sanity < 25) c.push('PSYCHOSIS');
     else if (this.sanity < 50) c.push('ANXIOUS');
     if (adv && this.blood < 3200) c.push('LOW BLOOD PRESSURE');
@@ -266,7 +283,7 @@ export class Survival {
     const cur = {
       bleed: this.bleed, fracture: this.fracture, infected: this.infection > 50, hungry: this.hunger < 30,
       thirsty: this.thirst < 30, tired: this.rest < 25, insane: this.sanity < 30, lowbp: this.blood < 3200,
-      critical: this.health < 30, starving: this.hunger < 8, dehydrated: this.thirst < 8,
+      critical: this.health < 30, starving: this.hunger < 8, dehydrated: this.thirst < 8, cold: this.warmth < 30,
     };
     for (const k in cur) {
       if (this._prev[k] !== undefined && cur[k] !== this._prev[k]) this.events.push({ key: k, value: cur[k] });
@@ -274,7 +291,7 @@ export class Survival {
     this._prev = cur;
   }
 
-  // compact summary for network (remote Healthity faces, spectator info)
+  // compact summary for network (spectator info)
   summary() {
     return {
       h: Math.round(this.health), b: this.bleed, f: this.fracture ? 1 : 0,
@@ -284,7 +301,7 @@ export class Survival {
 
   serialize() {
     const o = {};
-    for (const k of ['health', 'blood', 'bleed', 'fracture', 'infection', 'hunger', 'thirst', 'stamina', 'rest', 'sanity']) o[k] = this[k];
+    for (const k of ['health', 'blood', 'bleed', 'fracture', 'infection', 'hunger', 'thirst', 'stamina', 'rest', 'sanity', 'warmth']) o[k] = this[k];
     return o;
   }
   restore(o) { if (o) Object.assign(this, o); }

@@ -167,7 +167,7 @@ class AtmospherePass extends Pass {
   }
   render(renderer, writeBuffer, readBuffer) {
     this.uniforms.tDiffuse.value = readBuffer.texture;
-    this.uniforms.tDepth.value = readBuffer.depthTexture;
+    this.uniforms.tDepth.value = this.depth || readBuffer.depthTexture;
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.fsQuad.render(renderer);
   }
@@ -292,19 +292,24 @@ export class GrassSky {
     if (this._installed === post) return;
     this.uninstall();
     const comp = post.composer;
-    for (const rt of [comp.renderTarget1, comp.renderTarget2]) {
-      if (!rt.depthTexture) {
-        const dt = new THREE.DepthTexture(rt.width, rt.height);
-        dt.type = THREE.UnsignedIntType;
-        rt.depthTexture = dt;
-        rt.dispose();
-        rt._grassDepth = true;
+    // the post stack renders the scene into its own target and exposes its depth (post.sceneDepth); the
+    // atmosphere goes right after the paint pass (which carries the scene into the composer's buffers),
+    // before the first-person viewmodel. Screen-space AO is switched off outdoors (it cannot see the GPU-placed
+    // grass and impostors).
+    this.pass.depth = post.sceneDepth || null;
+    if (!this.pass.depth) {
+      for (const rt of [comp.renderTarget1, comp.renderTarget2]) {
+        if (!rt.depthTexture) {
+          const dt = new THREE.DepthTexture(rt.width, rt.height);
+          dt.type = THREE.UnsignedIntType;
+          rt.depthTexture = dt;
+          rt.dispose();
+          rt._grassDepth = true;
+        }
       }
     }
-    // right after the scene render, before the first-person viewmodel. Screen-space AO is switched off
-    // outdoors (it would swap away the depth buffer and cannot see the GPU-placed grass and impostors).
     if (post.gtao) { this._gtaoWas = post.gtao.enabled; post.gtao.enabled = false; }
-    const idx = comp.passes.indexOf(post.renderPass) + 1;
+    const idx = comp.passes.indexOf(post.paintPass || post.renderPass) + 1;
     comp.insertPass(this.pass, idx);
     this._installed = post;
   }

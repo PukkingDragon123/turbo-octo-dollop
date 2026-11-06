@@ -71,17 +71,19 @@ export class LobbyLevel {
     this.field.uniforms.uLightScale.value = LIGHT_SCALE;
     this.field.uniforms.uGrid.value.set(3, H - 0.04, 10, H);
     const pp = engine.post.params;
-    // sodium-sick office grade: green-grey shadows, crushed blacks, heavy vignette and grain
-    pp.uTint.value.setRGB(1.0, 0.97, 0.9);
-    pp.uSat.value = 0.9;
-    pp.uGrain.value = 0.075;
-    pp.uVignette.value = 0.66;
+    // painted office grade: warm lights, olive-teal shadows, soft contrast, gentle vignette, golden haze
+    engine.post.resetLook?.();
+    pp.uTint.value.setRGB(1.0, 0.98, 0.93);
+    pp.uSat.value = 1.0;
+    pp.uGrain.value = 0.05;
+    pp.uVignette.value = 0.45;
     pp.uExposure.value = 1.0;
-    pp.uLift.value.set(0.004, 0.008, 0.006);
-    pp.uGamma.value.set(1.02, 1.0, 1.03);
-    pp.uGain.value.set(1.0, 1.0, 0.96);
+    pp.uLift.value.set(0.006, 0.008, 0.006);
+    pp.uGamma.value.set(1.0, 1.0, 1.0);
+    pp.uGain.value.set(1.0, 0.99, 0.95);
     pp.uRolloff.value = 0.3;
-    pp.uContrast.value = 1.14;
+    pp.uContrast.value = 1.05;
+    if (pp.uHaze) { pp.uHaze.value = 0.035; pp.uHazeLum.value = 0.025; pp.uDof.value = 0.5; pp.uDofStart.value = 10; pp.uDofEnd.value = 34; }
     engine.renderer.toneMappingExposure = 0.95;
     pp.uGlitch.value = 0;
     this.world.customModel = (type, state) => this._customModel(type, state);
@@ -558,6 +560,7 @@ export class LobbyLevel {
     this.field.tint.setRGB(1, 1, 1);
     const pp = engine.post.params;
     pp.uExposure.value = 1; pp.uLift.value.set(0, 0, 0); pp.uGamma.value.set(1, 1, 1); pp.uGain.value.set(1, 1, 1); pp.uRolloff.value = 0; pp.uContrast.value = 1.04;
+    engine.post.resetLook?.();
     engine.renderer.toneMappingExposure = 1;
   }
 }

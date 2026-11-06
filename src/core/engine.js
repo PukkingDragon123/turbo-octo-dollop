@@ -7,10 +7,11 @@ const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _o = new THREE.Vect
 
 // maxDpr caps the device pixel ratio; the adaptive resolution scaler (see render()) then trims the render
 // scale between minScale and 1 to hold the frame rate, so the target resolution can stay high.
+// paint: 'full' = 5x5-tap painterly filter, 'lite' = 3x3 taps (phones); dof: far depth of field; fxaa: edge AA pass.
 export const QUALITY = {
-  low: { pixelRatio: 1.0, shadows: false, shadowSize: 512, bloom: false, ao: false, msaa: false, maxDpr: 1.5, minScale: 0.6 },
-  medium: { pixelRatio: 1.0, shadows: true, shadowSize: 1024, bloom: true, ao: false, msaa: false, maxDpr: 2, minScale: 0.6 },
-  high: { pixelRatio: 1.0, shadows: true, shadowSize: 2048, bloom: true, ao: true, msaa: false, maxDpr: 2.5, minScale: 0.7 },
+  low: { pixelRatio: 1.0, shadows: false, shadowSize: 512, bloom: false, ao: false, msaa: false, maxDpr: 1.5, minScale: 0.6, paint: 'lite', dof: false, fxaa: false },
+  medium: { pixelRatio: 1.0, shadows: true, shadowSize: 1024, bloom: true, ao: false, msaa: false, maxDpr: 2, minScale: 0.6, paint: 'full', dof: true, fxaa: true },
+  high: { pixelRatio: 1.0, shadows: true, shadowSize: 2048, bloom: true, ao: true, msaa: false, maxDpr: 2.5, minScale: 0.7, paint: 'full', dof: true, fxaa: true },
 };
 
 // Image-based-lighting scene: a drop-ceiling office with a grid of fluorescent panels. Average radiance is
@@ -19,17 +20,17 @@ function officeEnvironment() {
   const env = new THREE.Scene();
   const basic = (hex, k, side = THREE.FrontSide) => new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k), side });
   // probe sits ~1 m above the floor, 1.8 m below the ceiling
-  const room = new THREE.Mesh(new THREE.BoxGeometry(16, 2.8, 16), basic(0xd8d2c2, 1.15, THREE.BackSide));
+  const room = new THREE.Mesh(new THREE.BoxGeometry(16, 2.8, 16), basic(0xdccfb0, 1.15, THREE.BackSide));
   room.position.y = 0.4;
   env.add(room);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), basic(0x8a7f6a, 0.55));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), basic(0x8a6c4a, 0.55));
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -0.98;
   env.add(floor);
   const base = new THREE.Mesh(new THREE.BoxGeometry(15.9, 0.25, 15.9), basic(0x4a4036, 0.5, THREE.BackSide));
   base.position.y = -0.86;
   env.add(base);
-  const panel = basic(0xfff6e4, 5.0, THREE.DoubleSide);
+  const panel = basic(0xfff0d2, 5.0, THREE.DoubleSide);
   const geo = new THREE.PlaneGeometry(1.2, 0.6);
   for (let i = 0; i < 5; i++) {
     for (let j = 0; j < 6; j++) {
@@ -96,9 +97,10 @@ class Engine {
     this.renderer.shadowMap.enabled = this.quality.shadows;
     this.resScale = 1;
     this.renderer.setPixelRatio(this._targetDpr());
-    const oldParams = this.post?.params;
+    const old = this.post, oldParams = old?.params;
     this.post = new PostFX(this.renderer, this.scene, this.camera, this.vmScene, this.vmCamera, this.quality);
-    if (oldParams) for (const k in oldParams) if (k !== 'tDiffuse' && k !== 'uRes') this.post.params[k].value = oldParams[k].value;
+    if (oldParams) for (const k in oldParams) if (this.post.params[k] && k !== 'tDiffuse' && k !== 'uRes') this.post.params[k].value = oldParams[k].value;
+    if (old) { old.bloom && this.post.bloom && (this.post.bloom.strength = old.bloom.strength, this.post.bloom.threshold = old.bloom.threshold); try { old.dispose(); } catch (e) { /* already gone */ } }
     this._applyView();
     this.scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
   }

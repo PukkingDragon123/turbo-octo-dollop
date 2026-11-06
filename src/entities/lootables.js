@@ -1,5 +1,5 @@
 // Searchable furniture: drawers, cabinets, lockers, fridges, boxes, crates, suitcases, toolboxes, trash cans and
-// vending machines can be searched once ([E]). The host rolls the contents from a loot table, pops the items out
+// vending machines can be searched once ([E]); breaking one apart (game/gather.js) spills it too. The host rolls the contents from a loot table, pops the items out
 // in front of the container and marks it looted (prop.state.looted = n items, synced to everyone); the
 // container's drawer / door part slides or swings open on every peer.
 //
@@ -13,19 +13,19 @@ import { RNG, hash3 } from '../core/rng.js';
 import { ITEM, itemName } from '../game/itemdefs.js';
 
 export const LOOT_TABLES = {
-  office: [['protein_bar', 3], ['chips', 3], ['candy_bar', 3], ['soda_can', 3], ['painkillers', 1.5], ['battery', 3], ['tape_roll', 2], ['screws', 2], ['wire_spool', 1.5], ['bandage', 1.5], ['almond_water', 1.5], ['energy_drink', 1.5], ['glowstick', 1], ['lighter', 0.6]],
-  kitchen: [['canned_food', 4], ['soda_can', 4], ['almond_water', 3], ['almond_milk', 2.5], ['protein_bar', 2], ['chips', 2], ['candy_bar', 2], ['energy_drink', 2], ['paper_cup', 1]],
-  bedroom: [['painkillers', 2], ['bandage', 2.5], ['almond_water', 2], ['candy_bar', 2], ['battery', 1.5], ['fabric_scrap', 3], ['glowstick', 1.2], ['lighter', 1], ['flare', 0.6], ['antibiotics', 0.5], ['canned_food', 1]],
-  locker: [['bandage', 2], ['energy_drink', 2], ['protein_bar', 2], ['fabric_scrap', 2], ['battery', 2], ['flashlight', 0.7], ['glowstick', 1.5], ['flare', 1], ['medkit', 0.5], ['painkillers', 1.2], ['almond_water', 1.5]],
-  tools: [['screws', 4], ['metal_scrap', 3], ['wire_spool', 3], ['tape_roll', 2], ['pipe_short', 2], ['gear', 2], ['battery', 2], ['plank', 2], ['flare', 1], ['wrench', 0.6], ['crowbar', 0.4]],
-  storage: [['plank', 3], ['fabric_scrap', 3], ['screws', 2], ['canned_food', 2], ['almond_water', 2], ['battery', 1.5], ['metal_scrap', 2], ['wire_spool', 1], ['tape_roll', 1], ['glowstick', 0.8], ['protein_bar', 1]],
+  office: [['protein_bar', 3], ['chips', 3], ['candy_bar', 3], ['soda_can', 3], ['painkillers', 1.5], ['battery', 3], ['tape_roll', 2.5], ['screws', 2], ['wire_spool', 1.5], ['bandage', 1.5], ['almond_water', 1.5], ['energy_drink', 1.5], ['glowstick', 1], ['lighter', 0.8], ['bottle', 1.2], ['glass_shard', 0.8]],
+  kitchen: [['canned_food', 4], ['soda_can', 4], ['almond_water', 3], ['almond_milk', 2.5], ['protein_bar', 2], ['chips', 2], ['candy_bar', 2], ['energy_drink', 2], ['paper_cup', 1], ['bottle', 2], ['water_clean', 1], ['lighter', 0.6]],
+  bedroom: [['painkillers', 2], ['bandage', 2.5], ['almond_water', 2], ['candy_bar', 2], ['battery', 1.5], ['fabric_scrap', 3.5], ['foam', 1.5], ['glowstick', 1.2], ['lighter', 1], ['flare', 0.6], ['antibiotics', 0.5], ['canned_food', 1], ['plasma_syringe', 0.5]],
+  locker: [['bandage', 2], ['energy_drink', 2], ['protein_bar', 2], ['fabric_scrap', 2], ['battery', 2], ['flashlight', 0.7], ['glowstick', 1.5], ['flare', 1], ['medkit', 0.5], ['painkillers', 1.2], ['almond_water', 1.5], ['plasma_syringe', 0.6], ['tape_roll', 1]],
+  tools: [['screws', 4], ['metal_scrap', 3], ['wire_spool', 3], ['tape_roll', 2.5], ['pipe_short', 2], ['gear', 2], ['battery', 2], ['plank', 2], ['flare', 1], ['wrench', 0.6], ['crowbar', 0.3], ['wheel', 1.6], ['lighter', 0.6], ['radio_antenna', 0.25], ['radio_battery', 0.2]],
+  storage: [['plank', 3], ['fabric_scrap', 3], ['screws', 2], ['canned_food', 2], ['almond_water', 2], ['battery', 1.5], ['metal_scrap', 2], ['wire_spool', 1], ['tape_roll', 1.5], ['glowstick', 0.8], ['protein_bar', 1], ['wheel', 1], ['foam', 1], ['stick', 1.5], ['bottle', 1]],
   snacks: [['chips', 4], ['candy_bar', 4], ['protein_bar', 2]],
   drinks: [['soda_can', 5], ['energy_drink', 3], ['almond_water', 2]],
-  trash: [['paper_cup', 3], ['soda_can', 1], ['chips', 1], ['metal_scrap', 1], ['fabric_scrap', 1], ['battery', 0.5]],
-  medical: [['bandage', 4], ['painkillers', 3], ['antibiotics', 1.5], ['medkit', 1], ['splint', 1.5], ['almond_water', 1]],
-  // abandoned camps of earlier clones / R.O.O.M. field supply crates (world/levels/yellow/biome.js)
-  camp: [['battery', 3], ['canned_food', 3], ['almond_water', 2.5], ['flare', 1.5], ['glowstick', 1.5], ['tape_roll', 2], ['screws', 2], ['metal_scrap', 2], ['wire_spool', 1.5], ['bandage', 2], ['wheel', 1.5], ['fungus_shelf', 1], ['wrench', 0.6], ['crowbar', 0.5], ['flashlight', 0.6], ['lighter', 0.8]],
-  supply: [['battery', 3], ['medkit', 1.5], ['bandage', 2.5], ['canned_food', 3], ['almond_water', 3], ['flare', 2], ['wheel', 2], ['welder', 0.6], ['flashlight', 1], ['painkillers', 1.5], ['energy_drink', 1.5], ['tape_roll', 1.5]],
+  trash: [['paper_cup', 2], ['soda_can', 1], ['chips', 1], ['metal_scrap', 1], ['fabric_scrap', 1], ['battery', 0.5], ['bottle', 2], ['glass_shard', 1], ['stick', 0.6]],
+  medical: [['bandage', 4], ['painkillers', 3], ['antibiotics', 1.5], ['medkit', 1], ['splint', 1.5], ['almond_water', 1], ['plasma_syringe', 2.5]],
+  // abandoned camps of earlier clones and the supply crates they left (world/levels/yellow/biome.js)
+  camp: [['battery', 3], ['canned_food', 3], ['almond_water', 2.5], ['flare', 1.5], ['glowstick', 1.5], ['tape_roll', 2], ['screws', 2], ['metal_scrap', 2], ['wire_spool', 1.5], ['bandage', 2], ['wheel', 1.5], ['fungus_shelf', 1], ['wrench', 0.6], ['crowbar', 0.4], ['flashlight', 0.6], ['lighter', 1], ['torch', 0.8], ['water_clean', 1], ['rag_bandage', 1], ['radio_antenna', 0.2], ['radio_coil', 0.1]],
+  supply: [['battery', 3], ['medkit', 1.5], ['bandage', 2.5], ['canned_food', 3], ['almond_water', 3], ['flare', 2], ['wheel', 2], ['welder', 0.6], ['flashlight', 1], ['painkillers', 1.5], ['energy_drink', 1.5], ['tape_roll', 2], ['bottle', 1], ['radio_battery', 0.4], ['radio_coil', 0.15], ['radio_amp', 0.06]],
 };
 
 // part: animated sub-mesh that opens (furniture 'drawer0' slides along z, 'door' swings about y; device lockers /

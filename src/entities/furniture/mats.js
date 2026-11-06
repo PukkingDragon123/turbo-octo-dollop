@@ -101,7 +101,7 @@ Synth.registerRecipe('furn_laminate', {
 const SETS = {
   oak: ['wood', { c0: 0x86603e, c1: 0xc9a47a, c2: 0x4a3018, p0: [26, 1, 0.8, 0.4], wear: 0.25, meters: 1.0, size: 1024, seed: 11 }],
   pine: ['wood', { c0: 0xa47a44, c1: 0xdcbc86, c2: 0x6a4a26, p0: [12, 1.6, 0.25, 0.78], wear: 0.55, meters: 0.8, size: 512, seed: 4 }],
-  fabric: ['fabric', { c0: 0xb4b4b4, c1: 0xcccccc, c2: 0xeeeeee, p0: [36, 36, 0, 0.7], p1: [0.12, 0, 0, 0], wear: 0.3, meters: 0.07, size: 512, seed: 5, bump: 2.6 }],
+  fabric: ['fabric', { c0: 0xb4b4b4, c1: 0xcccccc, c2: 0xeeeeee, p0: [36, 36, 0, 0.7], p1: [0.12, 0, 0, 0], wear: 0.3, meters: 0.07, size: 512, seed: 5, bump: 1.6, paint: { edge: 0.2, r: 2 } }],
   uph_teal: ['furn_upholstery', { c0: 0x1b4248, c1: 0x9b5b80, c2: 0xe0d2aa, c3: 0xd08a52, p0: [8, 0.75, 0, 0], size: 512, seed: 7 }],
   uph_mauve: ['furn_upholstery', { c0: 0x4a2c3c, c1: 0x3f8a86, c2: 0xe6d8b4, c3: 0xc9a14a, p0: [8, 0.7, 0, 0], size: 512, seed: 9 }],
   paint: ['paint_metal', { c0: 0xdadada, c1: 0x9a9da0, c2: 0x6a3a1c, c3: 0xa09078, p0: [0.4, 0.35, 0, 0], wear: 0.14, meters: 0.6, size: 512, seed: 2, bump: 1.3 }],
@@ -149,9 +149,10 @@ float fxN(vec3 x){ vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 
 const FX_COLOR = `
 {
   vec3 fp = vFurnP;
-  float en = fxN(fp * uFxB.w) * 0.5 + fxN(fp * uFxB.w * 3.3 + 11.0) * 0.32 + fxN(fp * uFxB.w * 9.1 + 4.0) * 0.18;
-  fxEdgeM = smoothstep(0.42, 0.6, vFurnFx.g * (en * 1.6 - 0.15)) * uFxA.x;
-  float gn = fxN(fp * 6.0 + 3.0) * 0.7 + fxN(fp * 23.0) * 0.3;
+  // painted edge wear: broad, soft-edged patches (a brush, not grit)
+  float en = fxN(fp * uFxB.w * 0.45) * 0.7 + fxN(fp * uFxB.w * 1.3 + 11.0) * 0.3;
+  fxEdgeM = smoothstep(0.4, 0.62, vFurnFx.g * (en * 1.6 - 0.15)) * uFxA.x;
+  float gn = fxN(fp * 4.0 + 3.0) * 0.8 + fxN(fp * 11.0) * 0.2;
   float grime = clamp(vFurnFx.b * uFxA.w * (0.45 + 0.9 * gn), 0.0, 1.0);
   vec3 col = mix(diffuseColor.rgb, uFxC.x > 0.5 ? diffuseColor.rgb * uFxEdgeCol * 2.0 : uFxEdgeCol, fxEdgeM);
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
@@ -159,7 +160,7 @@ const FX_COLOR = `
   col *= mix(1.0, vFurnFx.r, uFxA.z);
   float up = smoothstep(0.6, 0.97, normalize(vFurnN).y);
   float dn = fxN(fp * uFxB.z) * 0.6 + fxN(fp * uFxB.z * 4.7 + 5.0) * 0.4;
-  fxDustM = up * uFxA.y * smoothstep(0.38, 0.78, dn) * (0.35 + 0.65 * vFurnFx.r) * (0.75 + 0.25 * fxN(fp * 140.0));
+  fxDustM = up * uFxA.y * smoothstep(0.38, 0.78, dn) * (0.35 + 0.65 * vFurnFx.r);
   col = mix(col, uFxDustCol, fxDustM);
   diffuseColor.rgb = col;
 }
@@ -184,7 +185,8 @@ export function applyFx(mat, fx = {}) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFurnFx = furnFx; vFurnP = position; vFurnN = normal;');
     let fs = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + FX_PARS_F);
     fs = fs.replace('#include <color_fragment>', '#include <color_fragment>\n' + FX_COLOR);
-    fs = fs.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, uFxB.x, fxEdgeM); roughnessFactor = mix(roughnessFactor, 0.97, fxDustM);');
+    // hand-painted look: everything stays fairly matte (no glossy plastic), worn edges included
+    fs = fs.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, uFxB.x, fxEdgeM); roughnessFactor = mix(roughnessFactor, 0.97, fxDustM); roughnessFactor = max(roughnessFactor, 0.48);');
     fs = fs.replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, uFxB.y, fxEdgeM); metalnessFactor *= 1.0 - fxDustM;');
     // atlas surface map: R channel = self-illumination of the (un-grimed) atlas colour
     if (P.emit) fs = fs.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\ntotalEmissiveRadiance += sampledDiffuseColor.rgb * texelRoughness.r * ${P.emit.toFixed(3)};`);
@@ -279,9 +281,9 @@ const FXP = {
   darkwood: { edge: 0.45, edgeCol: 0xa8805a, edgeRough: 0.75, dust: 0.18, grime: 0.5 },
   rawwood: { edge: 0.35, edgeCol: 0xe6d2a6, edgeRough: 0.9, dust: 0.2, grime: 0.75 },
   laminate: { edge: 0.5, edgeCol: 0x6a5038, edgeRough: 0.85, dust: 0.14, grime: 0.45 },
-  paint: { edge: 0.6, edgeCol: 0x9a9c9f, edgeRough: 0.34, edgeMetal: 0.55, dust: 0.16, grime: 0.6 },
-  steel: { edge: 0.3, edgeCol: 0xd8dadc, edgeRough: 0.25, edgeMetal: 0.6, dust: 0.12, grime: 0.6 },
-  chrome: { edge: 0.25, edgeCol: 0x9a9a98, edgeRough: 0.45, edgeMetal: 0.6, dust: 0.1, grime: 0.5 },
+  paint: { edge: 0.6, edgeCol: 0xa8a090, edgeMul: true, edgeRough: 0.6, edgeMetal: 0.15, dust: 0.16, grime: 0.5 },
+  steel: { edge: 0.3, edgeCol: 0xd8d4cc, edgeRough: 0.55, edgeMetal: 0.4, dust: 0.12, grime: 0.5 },
+  chrome: { edge: 0.25, edgeCol: 0xb0aca4, edgeRough: 0.6, edgeMetal: 0.4, dust: 0.1, grime: 0.45 },
   plastic: { edge: 0.4, edgeCol: 0xc8c4b8, edgeMul: true, edgeRough: 0.75, dust: 0.14, grime: 0.5 },
   plasticDark: { edge: 0.5, edgeCol: 0xffffff, edgeMul: true, edgeRough: 0.8, dust: 0.18, grime: 0.35 },
   fabric: { edge: 0.3, edgeCol: 0xdadada, edgeMul: true, edgeRough: 1, dust: 0.05, grime: 0.55, ao: 0.9 },
@@ -311,7 +313,7 @@ const DEFS = {
   // bare metals are only partly metallic: the game's light probes feed the diffuse term only, so
   // fully metallic surfaces would read black under the dim environment map
   steel: () => synthMaterial('steel', { set: 'metal', metal: 0.6, fx: FXP.steel }),
-  chrome: () => synthMaterial('chrome', { set: 'metal', color: 0xf4f4f4, rough: 0.36, metal: 0.72, normal: 0.25, envI: 1.6, fx: FXP.chrome }),
+  chrome: () => synthMaterial('chrome', { set: 'metal', color: 0xf4f4f4, rough: 0.75, metal: 0.6, normal: 0.25, envI: 1.3, fx: FXP.chrome }),
   alu: () => synthMaterial('alu', { set: 'metal', color: 0xd4d7d9, rough: 1.1, metal: 0.45, fx: FXP.steel }),
   brass: () => synthMaterial('brass', { set: 'metal', color: 0xd8b26a, rough: 0.8, metal: 0.7, envI: 1.4, fx: { ...FXP.chrome, edgeCol: 0xf0d8a0 } }),
   zinc: () => synthMaterial('zinc', { set: 'metal', color: 0xb4bcc0, rough: 1.15, metal: 0.5, fx: FXP.steel }),
@@ -340,7 +342,7 @@ const DEFS = {
   acoustic: () => synthMaterial('acoustic', { set: 'acoustic', fx: { ...FXP.stone, edgeCol: 0xf2eee2 } }),
   clay: () => synthMaterial('clay', { set: 'clay', fx: { ...FXP.stone, edgeCol: 0xd8885a } }),
   soil: () => synthMaterial('soil', { set: 'soil', fx: FXP.none }),
-  ceramic: () => plainMaterial('ceramic', { color: 0xf2efe6, rough: 0.22, clearcoat: 0.7, clearcoatRough: 0.12, fx: { edge: 0.25, edgeCol: 0xd8d2c4, edgeRough: 0.6, dust: 0.1, grime: 0.6 } }),
+  ceramic: () => plainMaterial('ceramic', { color: 0xf2efe6, rough: 0.55, clearcoat: 0.25, clearcoatRough: 0.35, fx: { edge: 0.25, edgeCol: 0xd8d2c4, edgeRough: 0.6, dust: 0.1, grime: 0.6 } }),
   // glass & liquids & light
   glass: () => plainMaterial('glass', { physical: true, color: 0xcfe2e0, rough: 0.05, transparent: true, opacity: 0.22, envI: 1.6, fx: false }),
   crt_glass: () => plainMaterial('crt_glass', { physical: true, color: 0x101512, rough: 0.12, clearcoat: 1, clearcoatRough: 0.04, envI: 1.0, fx: false }),
@@ -351,8 +353,8 @@ const DEFS = {
   led_red: () => plainMaterial('led_red', { color: 0x2a0806, emissive: 0xff2010, emissiveI: 3, rough: 0.3, fx: false }),
   led_amber: () => plainMaterial('led_amber', { color: 0x2a1a04, emissive: 0xffa020, emissiveI: 2.5, rough: 0.3, fx: false }),
   lampshade: () => synthMaterial('lampshade', { set: 'fabric', color: 0xeadcb8, side: THREE.DoubleSide, normal: 0.5, fx: { ...FXP.fabric, dust: 0.35 } }),
-  reflect: () => plainMaterial('reflect', { color: 0xe8ecee, rough: 0.28, metal: 0.25, envI: 1.6, fx: { edge: 0.3, edgeCol: 0x9a9a9a, dust: 0.2, grime: 0.5 } }),
-  wax: () => plainMaterial('wax', { color: 0xf0ece0, rough: 0.5, fx: false }),
+  reflect: () => plainMaterial('reflect', { color: 0xe8ecee, rough: 0.5, metal: 0.25, envI: 1.3, fx: { edge: 0.3, edgeCol: 0x9a9a9a, dust: 0.2, grime: 0.5 } }),
+  wax: () => plainMaterial('wax', { color: 0xf0ece0, rough: 0.75, fx: false }),
   felt_dark: () => synthMaterial('felt_dark', { set: 'fabric', color: 0x2c2c2c, normal: 0.6, fx: FXP.fabric }),
   whiteboard: () => {
     const c = document.createElement('canvas');
@@ -361,7 +363,7 @@ const DEFS = {
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 8;
-    const m = new THREE.MeshPhysicalMaterial({ name: 'furn_whiteboard', map: t, roughness: 0.18, clearcoat: 0.6, clearcoatRoughness: 0.12, envMapIntensity: 1.1 });
+    const m = new THREE.MeshPhysicalMaterial({ name: 'furn_whiteboard', map: t, roughness: 0.5, clearcoat: 0.25, clearcoatRoughness: 0.3, envMapIntensity: 1.0 });
     return applyFx(m, { edge: 0, dust: 0.04, grime: 0.3, ao: 0.6 });
   },
   bark: () => synthMaterial('bark', { set: 'oak', color: 0x6a5a4a, rough: 1.5, normal: 1.6, fx: { ...FXP.rawwood, edge: 0.1 } }),
@@ -410,8 +412,8 @@ const DEFS = {
   // atlas families
   // matte / gloss / metal / glowing palette cells and label regions, via the atlas surface map
   atlas: () => atlasMaterial('atlas', { surface: true, fx: { edge: 0, dust: 0.15, grime: 0.35, emit: 1.5 } }),
-  atlas_gloss: () => atlasMaterial('atlas_gloss', { rough: 0.22, fx: { edge: 0, dust: 0.12, grime: 0.3 } }),
-  atlas_metal: () => atlasMaterial('atlas_metal', { rough: 0.34, metal: 0.65, fx: { edge: 0.2, edgeCol: 0xd0d0d0, edgeRough: 0.25, edgeMetal: 1, dust: 0.12, grime: 0.4 } }),
+  atlas_gloss: () => atlasMaterial('atlas_gloss', { rough: 0.5, fx: { edge: 0, dust: 0.12, grime: 0.3 } }),
+  atlas_metal: () => atlasMaterial('atlas_metal', { rough: 0.58, metal: 0.55, fx: { edge: 0.2, edgeCol: 0xd0ccc4, edgeRough: 0.55, edgeMetal: 0.5, dust: 0.12, grime: 0.4 } }),
   decal: () => atlasMaterial('decal', { rough: 0.7, transparent: true, fx: { edge: 0, dust: 0.15, grime: 0.3 } }),
   glow: () => atlasMaterial('glow', { rough: 0.3, emissive: 1.5, fx: { edge: 0, dust: 0, grime: 0, ao: 0 } }),
   leaf: () => atlasMaterial('leaf', { rough: 0.55, alphaTest: 0.45, side: THREE.DoubleSide, fx: { edge: 0, dust: 0.25, grime: 0.2, ao: 0.6 } }),
