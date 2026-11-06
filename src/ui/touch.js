@@ -5,6 +5,7 @@
 //   Corner       pause (top right) and the watch beside it
 //   Cluster      HIT (LMB: punch / use the item in hand / multitool / throw while carrying), HAND (RMB: tap = use
 //                or pick up, hold = grab and carry; the grab stays latched until HAND is tapped again), JUMP, CROUCH
+//                (its ring breathes when the player sets crawlHint, near a vent or crawlspace)
 //   Contextual   small rings on an outer arc that ease in only when they mean something: ROTATE while carrying,
 //                DROP / SWAP with something in hand, LIGHT with a flashlight, the multitool and its MODE.
 //                The list is data (CONTEXT below): each entry says when it shows and what it presses.
@@ -489,7 +490,8 @@ export class TouchControls {
     this._set(B.hit, true, hit, false, false);
     this._set(B.hand, !watch || term || dead, term ? 'back' : dead ? 'prev' : l.grab ? 'fist' : 'hand', play && (this.grabLatched || !!l.grab), focus);
     this._set(B.jump, play, null);
-    this._set(B.crouch, play, null, this.crouchOn || l.crouching);
+    // a level can set player.crawlHint near a vent or crawlspace: the crouch ring then breathes softly
+    this._set(B.crouch, play, null, this.crouchOn || l.crouching, !!l.crawlHint && !l.crouching);
     this._set(B.pause, !term, null);
     this._set(B.watch, play, null, watch);
     for (const c of CONTEXT) {

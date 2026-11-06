@@ -119,6 +119,14 @@ export const ITEM = {
   radio_coil: { name: 'Tuning Coil', pocket: true, radioPart: 'coil', weight: 0.3 },
   radio_amp: { name: 'Signal Amplifier', pocket: true, radioPart: 'amp', weight: 1.0 },
 
+  // --- things worth finding (game/explore.js, placed by world/levels/yellow/biome.js) ---
+  // a duffel bag someone stashed in a dead end, a crawlspace, a strange room: unzip it ([E])
+  stash_bag: { name: 'Stashed Bag', dismantle: ['fabric_scrap', 'fabric_scrap'], gather: 'soft' },
+  // a padlocked footlocker: a pry bar (or a hatchet) in the hand opens it; the best things are in these
+  locked_cache: { name: 'Locked Footlocker', locked: true },
+  // planks nailed across a doorway: something is behind it. Break it down (faster with a pry bar)
+  boarded_door: { name: 'Boarded-up Doorway', boarded: true, dismantle: ['plank', 'plank', 'stick', 'screws'], gather: 'wood' },
+
   // --- paper ---
   notebook: { name: 'Field Notebook', pocket: true, use: 'read', weight: 0.2 },
   note_scribble: { name: 'Scribbled Note' },

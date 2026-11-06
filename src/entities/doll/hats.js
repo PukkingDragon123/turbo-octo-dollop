@@ -135,7 +135,7 @@ const HATS = {
     g.add(m(lathe([[0.108, 0.026], [0.109, 0.04], [0.106, 0.05]], 56), FM.fabric('hat_bucket_band', T.felt('band', 0x5a4a36), { sheen: 0.4 }), { s: [OVAL[0] * 1.01, 1, 1.01] }));
     // an eyelet each side
     for (const s of [-1, 1]) g.add(m(new THREE.TorusGeometry(0.006, 0.0016, 6, 14), brassMat(), { p: [s * 0.088, 0.075, 0.02], r: [0, PI / 2, 0] }));
-    g.rotation.x = -0.14; g.position.set(0, 0.04, 0.008); g.scale.setScalar(0.9);
+    g.rotation.x = -0.2; g.position.set(0, 0.058, 0.012); g.scale.setScalar(0.86);
     return { object: g, jig: [{ obj: g, k: 110, d: 7, gain: 0.004, limit: 0.1 }] };
   },
   beanie(e) {

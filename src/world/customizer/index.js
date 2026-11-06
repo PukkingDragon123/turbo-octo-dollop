@@ -400,7 +400,7 @@ class Customizer {
     const st = this.stations[act.st || this.station];
     if (act.st === 'paint') {
       const S = this.spray;
-      if (act.type === 'can') { S.select(act.i); this.cans?.[act.i]; }
+      if (act.type === 'can') S.select(act.i);
       else if (act.type === 'rag') S.takeRag();
       else if (act.type === 'undo') S.undo();
       else if (act.type === 'nozzle') S.toggleNozzle();
@@ -537,6 +537,7 @@ function close(saved, cos) {
   if (!cz) return;
   OPEN = null;
   cancelAnimationFrame(cz.raf);
+  if (engine.post?.params?.uFade) engine.post.params.uFade.value = 0;
   if (engine.view?.scene === cz.scene) engine.resetView();
   try { cz.dispose(); } catch (e) { console.warn('[customizer] dispose', e); }
   if (window.__customizer === cz) window.__customizer = null;

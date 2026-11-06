@@ -24,7 +24,7 @@ import { WetField } from '../../env/wetness.js';
 
 export const LIGHT_TONES = [
   new THREE.Color(1.0, 0.92, 0.72),  // 0 warm fluorescent
-  new THREE.Color(0.92, 0.96, 1.0),  // 1 office cool
+  new THREE.Color(0.95, 0.97, 1.0),  // 1 office cool
   new THREE.Color(1.0, 0.62, 0.32),  // 2 maintenance sodium
   new THREE.Color(1.0, 0.8, 0.55),   // 3 manila
   new THREE.Color(1.0, 0.12, 0.08),  // 4 red
@@ -32,7 +32,12 @@ export const LIGHT_TONES = [
   new THREE.Color(1.0, 0.8, 0.86),   // 6 party / playroom
   new THREE.Color(0.84, 1.0, 0.74),  // 7 dying tubes: sick green-white (failing sectors)
 ];
-const TONE_INT = [1.0, 1.05, 0.75, 0.95, 0.9, 1.25, 1.0, 0.82];
+const TONE_INT = [1.0, 1.0, 0.75, 1.12, 0.9, 1.25, 1.0, 0.82];
+// exploration readability (docs/ART_DIRECTION.md): special rooms glow a little warmer and brighter than the halls
+// around them, so their light spills out of the doorways and invites you in (deliberate signal colours stay);
+// inside the dark zones a few dead fixtures keep a dim amber ember: far-off lures in the black
+const SIGNAL_TONES = new Set([2, 4, 5, 6, 7]);
+const _warm = new THREE.Color(1.05, 0.96, 0.82), LURE = new THREE.Color(1.0, 0.64, 0.34);
 
 // ---------------------------------------------------------------------------
 // light helpers shared with the level (registration + baking queries)
@@ -44,6 +49,9 @@ export function cellLightSpec(cell) {
   const a = (cell.lightSeed * 7.31) % 1, b = (cell.lightSeed * 13.7 + 0.37) % 1;
   _tube.copy(LIGHT_TONES[cell.lightTone] || LIGHT_TONES[0]);
   if (cell.lightTone === 0 || cell.lightTone === 1 || cell.lightTone === 3) _tube.multiply(_tubeTint.setRGB(1 + (b - 0.5) * 0.05, 1 + (0.5 - Math.abs(b - 0.5)) * 0.04, 1 - (b - 0.5) * 0.06));
+  let base = (TONE_INT[cell.lightTone] ?? 1) * (0.86 + a * 0.2), mode = cell.lightMode;
+  if (cell.special && !SIGNAL_TONES.has(cell.lightTone)) { _tube.multiply(_warm); base *= 1.28; }
+  if (cell.zone === 'dark' && mode === 'dead' && ((cell.lightSeed * 31.7 + 0.21) % 1) < 0.09) { _tube.copy(LURE); base = 0.4; mode = 'on'; }
   return {
     key: LightField.texel(cell.i, cell.j),
     x: (cell.i + 0.5) * CELL,
@@ -51,8 +59,8 @@ export function cellLightSpec(cell) {
     z: (cell.j + 0.5) * CELL,
     radius: 9,
     color: _tube,
-    base: (TONE_INT[cell.lightTone] ?? 1) * (0.86 + a * 0.2),
-    mode: cell.lightMode,
+    base,
+    mode,
     seed: cell.lightSeed,
   };
 }

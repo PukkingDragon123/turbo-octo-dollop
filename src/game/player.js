@@ -1279,7 +1279,7 @@ export class LocalPlayer {
     const lobby = this.world.type === 'lobby';
     s.update(dt, {
       sprinting: this.sprinting, moving: this.moving,
-      light: Math.max(this.lightLevel ?? 1, this.flashOn ? 0.35 : 0),
+      light: Math.max(this.lightLevel ?? 1, this.flashOn ? 0.35 : 0, this.game.gear?.heldLight || 0),
       teammatesNear: near,
       monsterVisible: !!mm?.localVisible, monsterNear: mm?.localNear || 0, chased: !!mm?.localChased,
       inWater: (this.waterDepth || 0) > 0.05,

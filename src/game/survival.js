@@ -131,14 +131,14 @@ export class Survival {
     const fever = this.infection > 50;
     // hunger & thirst (only once the level switched them on: Level 0 waits for the camp)
     if (!lobby && this.needsActive) {
-      this.hunger -= dt * (100 / (34 * 60)) * (ctx.sprinting ? 1.6 : 1) * sleepMul;
-      this.thirst -= dt * (100 / (24 * 60)) * (ctx.sprinting ? 1.6 : 1) * (fever ? 1.5 : 1) * sleepMul;
+      this.hunger -= dt * (100 / (60 * 60)) * (ctx.sprinting ? 1.6 : 1) * sleepMul;
+      this.thirst -= dt * (100 / (45 * 60)) * (ctx.sprinting ? 1.6 : 1) * (fever ? 1.5 : 1) * sleepMul;
     }
     if (!lobby && adv) this.rest -= dt * (100 / (40 * 60)) * (ctx.sprinting ? 1.3 : 1) * (this.sleeping ? 0 : 1);
     this.hunger = clamp(this.hunger, 0, 100);
     this.thirst = clamp(this.thirst, 0, 100);
-    if (this.hunger <= 0) this.health -= dt * 0.18;
-    if (this.thirst <= 0) this.health -= dt * 0.32;
+    if (this.hunger <= 0) this.health -= dt * 0.1;
+    if (this.thirst <= 0) this.health -= dt * 0.18;
 
     // bleeding (light clots after a while, heavy slows to light). Simple mode: it costs health directly.
     if (this.bleed > 0) {

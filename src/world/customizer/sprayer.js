@@ -423,7 +423,12 @@ export class SprayStation {
       const off = this.tool === 'rag' ? 0.0 : S.off;
       // nozzle sits off the surface along the normal, leaning toward the camera so it stays in view
       const camDir = _v3.copy(cz.camera.position).sub(aim.point).normalize();
-      const n = _v1.copy(aim.normal).lerp(camDir, 0.35).normalize();
+      // ... and toward the robot's own side, so the arm reaches in from the side instead of across the
+      // view (most of all when zoomed in on the face)
+      const zoom = cz.zoom || 0;
+      const side = _v4.set(BOT_BASE.x - aim.point.x, 0, BOT_BASE.z - aim.point.z).normalize();
+      const n = _v1.copy(aim.normal).lerp(camDir, 0.3 - 0.2 * zoom).addScaledVector(side, 0.25 + 0.55 * zoom).normalize();
+      if (n.dot(aim.normal) < 0.25) n.lerp(aim.normal, 0.5).normalize();
       const nozzleW = _v2.copy(aim.point).addScaledVector(n, off);
       // out of reach: back the nozzle off along the line to the column (it sprays from further away,
       // a wider, fainter cone, but still where you aim)

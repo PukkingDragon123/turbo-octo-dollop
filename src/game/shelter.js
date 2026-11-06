@@ -4,7 +4,7 @@
 //    cot, sleeping bag) and the team has no shelter yet (or its bed is gone), the place it stands becomes the shelter. Sleeping heals and warms you; when everyone alive is asleep at night
 //    the night goes by fast (day clock x NIGHT_FF) until the lights come back up.
 //  * THE SHELTER is the space around the first bed (SHELTER_R). What stands in it counts (itemdefs `shelter`):
-//    a hinged door, fixed barricades, storage, a lit stove, lights, insulation pads, traps. Rated 0..4
+//    a hinged door, fixed barricades, storage, a lit stove, lights, traps (found insulation pads help too). Rated 0..4
 //    (game.survival.progress.shelter). Inside it is warmer, and fewer things come for you at night.
 //  * DOOR: a plank door attached to the world with the multitool hangs on a hinge (game/tools.js weld): [E] opens
 //    or closes it (a soft motor), and you can shove it.
@@ -135,7 +135,7 @@ export class Shelter {
     let t = n.bed ? 1 : 0;
     if (t >= 1 && (n.light || n.stove)) t = 2;
     if (t >= 2 && (n.door || n.barricade >= 2) && n.storage) t = 3;
-    if (t >= 3 && n.stove && n.light && n.insulation && n.trap) t = 4;
+    if (t >= 3 && n.stove && n.light && n.trap) t = 4;
     this.tier = t;
     const ins = Math.min(3, n.insulation);
     if (this.state.rating !== t || this.state.ins !== ins) { this.state.rating = t; this.state.ins = ins; this.m.pushState(); }
@@ -164,7 +164,7 @@ export class Shelter {
   climate(l) {
     const g = this.game, day = g.day, s = l.survival;
     const night = isNight(day);
-    let loss = night ? 0.3 : 0.07;
+    let loss = night ? 0.12 : 0.025;   // slow: the cold is a reason to go home, not a timer
     loss *= day.day <= 1 ? 0.55 : 1 + (day.instability?.() || 0) * 0.6;
     // what the clone wears
     let wear = 0;

@@ -157,8 +157,8 @@ export class PoolroomsLevel extends YellowLevel {
     this.field.uniforms.uAmbient.value.setRGB(0.02, 0.024, 0.026);
     this.field.uniforms.uLightScale.value = 0.36;
     const pp = engine.post.params;
-    pp.uTint.value.setRGB(0.96, 1.0, 0.99);
-    pp.uSat.value = 0.86;
+    pp.uTint.value.setRGB(1.0, 0.995, 0.97);
+    pp.uSat.value = 0.95;
     pp.uGrain.value = 0.045;
     pp.uVignette.value = 0.36;
     if (engine.post.bloom) { engine.post.bloom.strength = 0.4; this.prevEnv.thr = engine.post.bloom.threshold; engine.post.bloom.threshold = 1.05; }
@@ -173,7 +173,7 @@ export class PoolroomsLevel extends YellowLevel {
     if (pp.uContrast) pp.uContrast.value = 1.03;
     // painted look: cool aqua depth haze that glows a little near the light, soft far focus, gentle split tone
     if (pp.uHaze) {
-      pp.uSplit.value = 0.45;
+      pp.uSplit.value = 0.55;
       pp.uHaze.value = 0.035; pp.uHazeStart.value = 2.5; pp.uHazeFarDist.value = 30;
       pp.uHazeNear.value.setRGB(0.95, 0.97, 0.88); pp.uHazeFar.value.setRGB(0.5, 0.66, 0.7);
       pp.uHazeLum.value = 0.05; pp.uHazeGlow.value = 0.35; pp.uHazeSky.value = 1.0;
@@ -597,8 +597,9 @@ export class PoolroomsLevel extends YellowLevel {
     scene.environmentIntensity = (0.05 + 0.2 * k) * (1 - col * 0.5);
     this.field.uniforms.uAmbient.value.setRGB(0.006 + 0.018 * k, 0.007 + 0.021 * k, 0.008 + 0.022 * k);
     const pp = engine.post.params;
-    pp.uTint.value.setRGB(0.96 - u * 0.4, 1.0 - u * 0.1, 0.99 - u * 0.15);
-    pp.uSat.value = 0.86 - u * 0.2;
+    // (painted look: a touch of sun-warmth in the highlights above water, cool and muted under it)
+    pp.uTint.value.setRGB(1.0 - u * 0.44, 0.995 - u * 0.095, 0.97 - u * 0.13);
+    pp.uSat.value = 0.95 - u * 0.25;
     const muf = Math.round(u * 0.75 * 50) / 50;
     if (muf !== this._muf) { this._muf = muf; audio.setMuffle?.(muf); }
     if (this.fadeT > 0) {

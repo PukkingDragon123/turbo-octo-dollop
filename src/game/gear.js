@@ -239,6 +239,8 @@ export class Gear {
       if (!it || it.type !== 'torch' || !it.state?.lit) continue;
       if (!isLitState('torch', it.state)) { it.type = 'stick'; it.state = {}; l.inv.version++; floatText.notice('The torch burned out.', { duration: 1.6 }); }
     }
+    // how bright it is for the clone's nerves (survival sanity): a light in the hand makes the dark zones bearable
+    this.heldLight = best && !l.dead ? (best.type === 'torch' ? 0.45 : 0.55) : 0;
     if (best && !l.dead) {
       const torch = best.type === 'torch';
       this.light.color.setHex(torch ? 0xff9a40 : 0xffc880);
